@@ -26,8 +26,8 @@ mkisofs \
     -p 'Ian F. Darwin, ian@darwinsys.com' 	\
 	-r 			\
 	-V ${VERSION}		\
-	.			\
-	> ${DISK_IMAGE}
+	-o ${DISK_IMAGE} \
+	.
 
 # Now tell UNIX that we have a CD-ROM image ready
 # volcheck ${DISK_IMAGE}		# Doesn't work on Solaris 2.4
