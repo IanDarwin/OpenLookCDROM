@@ -17,7 +17,8 @@ VERSION=		OpenLook-XView-1.1a		# CHANGE THIS EVERY TIME!!
 DISK_IMAGE=		~/olcd_image.fs
 
 # The cdrecord description of the CD burner
-CD_BURNER="/dev/rcd1c:1,5,0"
+CD_BURNER=		"/dev/rcd1c:1,5,0"
+SPEED=			2
 
 LOGFILE=		$$HOME/proj/olcd/log.$(VERSION)
 
@@ -55,4 +56,4 @@ check:
 	sudo vnconfig -u -v svnd0
 
 burn:
-	cdrecord -v speed=1 dev=${CD_BURNER} -isosize ${DISK_IMAGE}
+	cdrecord -v speed=$(SPEED) dev=${CD_BURNER} -isosize ${DISK_IMAGE}
