@@ -5,7 +5,7 @@
 
 SHELL=			/bin/ksh
 
-VERSION=		OpenLook-XView-1.1a		# CHANGE THIS EVERY TIME!!
+VERSION=		OpenLook-XView-1.2a		# CHANGE THIS EVERY TIME!!
 # Used as the Primary Volume Identifier. AVOID volume names with 
 # imbedded slashes as some UNIX versions will be unable to auto-mount them!
 
