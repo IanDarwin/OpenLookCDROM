@@ -17,7 +17,8 @@ VERSION=		OpenLook-XView-1.1a		# CHANGE THIS EVERY TIME!!
 DISK_IMAGE=		~/olcd_image.fs
 
 # The cdrecord description of the CD burner
-CD_BURNER=		"/dev/rcd1c:1,5,0"
+CD_BURNER=		/dev/rcd1c:1,5,0
+CD_MOUNT=		/dev/cd1c
 SPEED=			2
 
 LOGFILE=		$$HOME/proj/olcd/log.$(VERSION)
@@ -49,11 +50,14 @@ master:
 check:
 	# volcheck $(DISK_IMAGE)		# Doesn't work on Solaris 2.4
 	# Mount using vnd...
-	sudo vnconfig -c -v svnd0 $(DISK_IMAGE)
-	sudo mount -t cd9660 /dev/svnd0c /mnt
-	sudo ls -l /mnt
-	sudo umount /dev/svnd0c
-	sudo vnconfig -u -v svnd0
+	vnconfig -c -v svnd0 $(DISK_IMAGE)
+	mount -t cd9660 /dev/svnd0c /mnt
+	ls -l /mnt
+	umount /dev/svnd0c
+	vnconfig -u -v svnd0
 
 burn:
 	cdrecord -v speed=$(SPEED) dev=${CD_BURNER} -isosize ${DISK_IMAGE}
+	mount $(CD_MOUNT) /mnt
+	ls . /mnt
+	umount $(CD_MOUNT)
