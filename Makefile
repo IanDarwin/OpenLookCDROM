@@ -18,9 +18,6 @@ set -o noclobber			# ksh feature to preserve logfiles
 
 exec > $HOME/proj/olcd/log.${VERSION} 2>&1
 
-# echo "Start cleanup at `date`"
-# ./scripts/fixperms
-
 echo "Start premastering at `date`"
 
 mkisofs \
