@@ -14,7 +14,7 @@ VERSION=		OpenLook-XView-1.2a		# CHANGE THIS EVERY TIME!!
 # YOU PROBABLY LOSE A WHOLE DISK PARTITION.
 
 #DISK_IMAGE=	/dev/rdsk/c0t2d0s4	# Your mileage WILL vary. CHANGE THIS.
-DISK_IMAGE=		$$HOME/olcd_image.fs
+DISK_IMAGE=		$$HOME/olcd_image.iso
 
 # The cdrecord description of the CD burner
 CD_BURNER=		/dev/rcd1c:1,5,0
