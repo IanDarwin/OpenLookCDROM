@@ -22,9 +22,9 @@ echo "Start premastering at `date`"
 
 mkisofs \
     -P 'Darwin Open Systems, R R # 1, Palgrave, ON Canada L0N 1P0.' \
+	-A "The OPEN LOOK and XView CD-ROM" \
     -p 'Ian F. Darwin, ian@darwinsys.com' 	\
-	-R 			\
-	-T 			\
+	-r 			\
 	-V ${VERSION}		\
 	.			\
 	> ${DISK_IMAGE}
