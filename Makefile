@@ -1,4 +1,4 @@
-#!/bin/ksh -ex
+#!/bin/ksh -e
 
 # This is left here to show you exactly how we made 
 # "The OPEN LOOK, XView and NeWS Archive CD-ROM".
@@ -14,12 +14,17 @@ VERSION='OpenLook-XView-1.1a'		# CHANGE THIS EVERY TIME!!
 DISK_IMAGE=/dev/rdsk/c0t2d0s4	# Your mileage WILL vary. CHANGE THIS.
 DISK_IMAGE=~ian/olcd_image
 
-set -o noclobber			# ksh feature to preserve logfiles
-
-exec > $HOME/proj/olcd/log.${VERSION} 2>&1
+LOGFILE=$HOME/proj/olcd/log.${VERSION}
+if [ -f ${LOGFILE} ]; then
+	echo "$0: ${LOGFILE} exists: remove it or change version number"
+	exit 1
+fi
+(
+exec > ${LOGFILE}
 
 echo "Start premastering at `date`"
 
+set -x
 mkisofs \
     -P 'Darwin Open Systems, R R # 1, Palgrave, ON Canada L0N 1P0.' \
 	-A "The OPEN LOOK and XView CD-ROM" \
@@ -28,8 +33,12 @@ mkisofs \
 	-V ${VERSION}		\
 	-o ${DISK_IMAGE} \
 	.
+) &
+tail -f ${LOGFILE} &
 
 # Now tell UNIX that we have a CD-ROM image ready
 # volcheck ${DISK_IMAGE}		# Doesn't work on Solaris 2.4
 # Mount using vnd...
-vnconfig -c -v /dev/vnd0 ${DISK_IMAGE}
+sudo vnconfig -c -v /dev/vnd0 ${DISK_IMAGE}
+sudo mount -t cd9660 /dev/vnd0 /mnt
+sudo ls -l /mnt
