@@ -3,6 +3,8 @@
 
 # How we made your version of "The OPEN LOOK, XView and NeWS Archive CD-ROM".
 
+SHELL=			/bin/ksh
+
 VERSION=		OpenLook-XView-1.1a		# CHANGE THIS EVERY TIME!!
 # Used as the Primary Volume Identifier. AVOID volume names with 
 # imbedded slashes as some UNIX versions will be unable to auto-mount them!
@@ -17,9 +19,12 @@ DISK_IMAGE=		~/olcd_image.fs
 # The cdrecord description of the CD burner
 CD_BURNER="/dev/rcd1c:1,5,0"
 
-LOGFILE=		~/proj/olcd/log.$(VERSION)
+LOGFILE=		$$HOME/proj/olcd/log.$(VERSION)
 
 all:			master check
+
+cleanlog:
+	rm -f $(LOGFILE)
 
 master:
 	@if [ -f $(LOGFILE) ]; then \
@@ -43,11 +48,11 @@ master:
 check:
 	# volcheck $(DISK_IMAGE)		# Doesn't work on Solaris 2.4
 	# Mount using vnd...
-	sudo vnconfig -c -v /dev/vnd0 $(DISK_IMAGE)
-	sudo mount -t cd9660 /dev/vnd0 /mnt
+	sudo vnconfig -c -v svnd0 $(DISK_IMAGE)
+	sudo mount -t cd9660 /dev/svnd0c /mnt
 	sudo ls -l /mnt
-	sudo umount /dev/vnd0
-	sudo vnconfig -u -v /dev/vnd0
+	sudo umount /dev/svnd0c
+	sudo vnconfig -u -v svnd0
 
 burn:
 	cdrecord -v speed=1 dev=${CD_BURNER} -isosize ${DISK_IMAGE}
