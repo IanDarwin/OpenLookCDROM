@@ -8,15 +8,11 @@ VERSION='OpenLook-XView-1.1a'		# CHANGE THIS EVERY TIME!!
 # imbedded slashes as some UNIX versions will be unable to auto-mount them!
 
 # BE SURE YOU CHANGE THIS to where you want the CD image to go.
-# If you get this wrong, and run as root, YOU LOSE A DISK partition.
-RAW_DISK=/dev/rdsk/c0t2d0s4	# Your mileage WILL vary. CHANGE THIS.
+# If you get this wrong, it's a partition, and you run as root, 
+# YOU PROBABLY LOSE A WHOLE DISK PARTITION.
 
-# Set this if you want to make a copy on tape.
-DISTN_TAPE=/dev/rmt/0
-
-# How many 512-byte blocks to write per tape block:
-BLK_FACT=4		# each 4b == 1 2048-byte CD-ROM block
-#BLK_FACT=40		# faster, but check with reader first!
+DISK_IMAGE=/dev/rdsk/c0t2d0s4	# Your mileage WILL vary. CHANGE THIS.
+DISK_IMAGE=~ian/olcd_image
 
 set -o noclobber			# ksh feature to preserve logfiles
 
@@ -34,13 +30,9 @@ mkisofs \
 	-T 			\
 	-V ${VERSION}		\
 	.			\
-	> ${RAW_DISK}
+	> ${DISK_IMAGE}
 
 # Now tell UNIX that we have a CD-ROM image ready
-# volcheck ${RAW_DISK}		# Doesn't work on Solaris 2.4
-
-# And copy to tape for CD master on another machine.
-echo "Starting tape copy at `date`"
-dd bs=${BLK_FACT}b if=${RAW_DISK} of=${DISTN_TAPE}
-mt -f ${DISTN_TAPE} offline
-echo "Finished tape copy at `date`"
+# volcheck ${DISK_IMAGE}		# Doesn't work on Solaris 2.4
+# Mount using vnd...
+vnconfig -c -v /dev/vnd0 ${DISK_IMAGE}
