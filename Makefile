@@ -3,7 +3,7 @@
 # This is left here to show you exactly how we made 
 # "The OPEN LOOK, XView and NeWS Archive CD-ROM".
 
-VERSION='OpenLook-XView-1.0e'		# CHANGE THIS EVERY TIME!!
+VERSION='OpenLook-XView-1.1a'		# CHANGE THIS EVERY TIME!!
 # Used as the Primary Volume Identifier. AVOID volume names with 
 # imbedded slashes as some UNIX versions will be unable to auto-mount them!
 
@@ -28,7 +28,7 @@ exec > $HOME/proj/olcd/log.${VERSION} 2>&1
 echo "Start premastering at `date`"
 
 mkisofs \
-    -P 'Darwin Open Systems, Box 278, Palgrave, ON Canada L0N 1P0.' \
+    -P 'Darwin Open Systems, R R # 1, Palgrave, ON Canada L0N 1P0.' \
     -p 'Ian F. Darwin, ian@darwinsys.com' 	\
 	-R 			\
 	-T 			\
