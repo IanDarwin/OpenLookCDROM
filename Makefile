@@ -58,6 +58,6 @@ check:
 
 burn:
 	cdrecord -v speed=$(SPEED) dev=${CD_BURNER} -isosize ${DISK_IMAGE}
-	mount $(CD_MOUNT) /mnt
+	mount -t cd9660 $(CD_MOUNT) /mnt
 	ls . /mnt
 	umount $(CD_MOUNT)
