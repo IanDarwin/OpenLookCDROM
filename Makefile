@@ -61,3 +61,4 @@ burn:
 	mount -t cd9660 $(CD_MOUNT) /mnt
 	ls . /mnt
 	umount $(CD_MOUNT)
+	eject  $(CD_MOUNT)
