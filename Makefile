@@ -14,9 +14,12 @@ VERSION=		OpenLook-XView-1.1a		# CHANGE THIS EVERY TIME!!
 #DISK_IMAGE=	/dev/rdsk/c0t2d0s4	# Your mileage WILL vary. CHANGE THIS.
 DISK_IMAGE=		~/olcd_image.fs
 
+# The cdrecord description of the CD burner
+CD_BURNER="/dev/rcd1c:1,5,0"
+
 LOGFILE=		~/proj/olcd/log.$(VERSION)
 
-all:			master
+all:			master check
 
 master:
 	@if [ -f $(LOGFILE) ]; then \
@@ -36,10 +39,15 @@ master:
 		.  | \
 	tee $(LOGFILE)
 
+# Now tell UNIX that we have a CD-ROM image ready, ls it.
 check:
-	# Now tell UNIX that we have a CD-ROM image ready
 	# volcheck $(DISK_IMAGE)		# Doesn't work on Solaris 2.4
 	# Mount using vnd...
 	sudo vnconfig -c -v /dev/vnd0 $(DISK_IMAGE)
 	sudo mount -t cd9660 /dev/vnd0 /mnt
 	sudo ls -l /mnt
+	sudo umount /dev/vnd0
+	sudo vnconfig -u -v /dev/vnd0
+
+burn:
+	cdrecord -v speed=1 dev=${CD_BURNER} -isosize ${DISK_IMAGE}
