@@ -12,7 +12,7 @@ VERSION='OpenLook-XView-1.1a'		# CHANGE THIS EVERY TIME!!
 # YOU PROBABLY LOSE A WHOLE DISK PARTITION.
 
 DISK_IMAGE=/dev/rdsk/c0t2d0s4	# Your mileage WILL vary. CHANGE THIS.
-DISK_IMAGE=~ian/olcd_image
+DISK_IMAGE=~ian/olcd_image.fs
 
 LOGFILE=$HOME/proj/olcd/log.${VERSION}
 if [ -f ${LOGFILE} ]; then
