@@ -1,0 +1,123 @@
+% Date: 3 Sep 87 15:37:59 GMT
+% From: uwmcsd1!leah!itsgw!steinmetz!sprite!montnaro@unix.macc.wisc.edu  (Skip Montanaro)
+% Subject: Print Object hierarchy for NeWS classes & a bugfix for class.ps
+% To: news-makers@brillig.umd.edu
+% 
+% Here's a short PostScript program that pretty prints the object
+% hierarchy for Sun's PostScript implementation of Smalltalk classes and
+% points out a bug in class.ps. It doesn't print things graphically, but
+% how hard could it be to add that? :-)
+% 
+% Ph uses the SubClasses field in each class, which is an array of
+% literals of that class's subclasses. It can be used to demonstrate
+% that processes do not share dictionary stacks, except for systemdict.
+% To see this, enter NeWS, create a terminal, run psh (before doing
+% anything else), and then execute "/Object ph". The only subclasses of
+% Object defined at that point should be LiteMenu and LiteWindow. Then
+% execute the itemdemo from the NeWS menu. Itemdemo loads liteitem.ps,
+% which defines several other classes in systemdict, but itemdemo itself
+% defines the class SquareRadioItem, which it places in its userdict.
+% The SubClasses field for Item contains a "/SquareRadioItem" entry, but
+% no object with that name is found by the process executing ph, hence
+% it prints the "(Undefined)" following the class name.
+% 
+% Every time you execute itemdemo, another /SquareRadioItem is appended
+% to CycleItem's SubClasses array. The bug is in classend, defined in
+% class.ps. I have enclosed a fixed (although perhaps not too efficient)
+% version of classend after ph.ps.
+% 
+% ----------ph.ps----------
+% written for NeWS 1.0 - your mileage may vary
+
+/ph { % object => - (print NeWS object hierarchy beginning at object)
+    0 phhelper } def
+
+/phhelper { % /obj nest => - (print object hierarchy beginning at obj)
+    2 dict begin
+        /nest exch def
+	/obj exch def
+	1 1 nest { (\t) print pop } for
+	obj 20 string cvs print
+	obj cvx
+	dup where {
+	    (\n) print
+	    pop				% don't really want the dict entry
+	    exec /SubClasses get
+	    [ nest 1 add /phhelper cvx ] cvx forall
+	}
+	{
+	    % known, but not found on this process's dictionary stack
+	    ( (Undefined)\n) print
+	} ifelse
+    end
+} def
+% ----------classend.ps----------
+% systemdict begin
+% /classend { %  - => classname newclass
+%     	ObjectTemplate {def} forall   % Now initialize the class structure.
+%     	ClassTemplate {def} forall
+%     	ClassBeginArgs! {def} forall
+%     	currentdict /ClassBeginArgs! undef
+% 
+% 	% Compile all the methods in this class:
+%         currentdict {
+%             dup xcheck {ParentDict methodcompile def} {pop pop} ifelse
+%         } forall
+% 
+% 	% Initialize InstanceVarDict & ParentDictArray
+% 	/InstanceVarDict InstanceVars def
+% 	/ParentDictArray [] def
+% 
+% 	% Convert InstanceVarDict to dict if was an array
+%         InstanceVarDict type /arraytype eq {
+%             /InstanceVarDict InstanceVarDict length dict dup begin
+%                 InstanceVarDict {null def} forall
+%             end def
+%         } if
+% 
+% 	% Optimizations:
+% 	%	-Make InstanceVarDict the sum of its parents instance vars.
+% 	%	-Create an array of all the parent dicts so that send
+% 	%	 doesnt have to run down the ParentDict pointers.
+% 	% Also check for redundant instance variables and add me to my
+% 	% super class' list of subclasses.  This is to allow easy
+% 	% cross referencing in the future.
+%         ParentDict null ne {
+% 	    % only append ClassName to ParentDict's /SubClasses array if
+% 	    % it isn't already there
+% 	    1 dict begin
+% 		/found false def
+%                 ParentDict /SubClasses get
+% 	        {
+% 		    ClassName eq {
+% 		        /found true def
+% 		        exit
+% 		    } if
+% 	        } forall
+% 	        found not {
+% 	            ParentDict /SubClasses 2 copy get [ClassName] append put
+% 	        } if
+% 	    end
+% 	    /InstanceVarDict
+% 	        ParentDict /InstanceVarDict get InstanceVarDict append def
+% 	    /ParentDictArray
+% 	        ParentDict /ParentDictArray get [ParentDict] append def
+% 
+% %	    InstanceVarDict length InstanceVars length sub
+% %	    ParentDict /InstanceVarDict get length ne {
+% %	        ClassName
+% %	        InstanceVarDict length
+% %	        InstanceVars length
+% %	        ParentDict /InstanceVarDict get length
+% %	        ForceAnError!
+% %	    } if
+% 	} if
+% 
+% 	ClassName	% return the class name
+% 	DictBEMulFudge /DictBEMulFudge 2 store
+%     dictend
+%     exch /DictBEMulFudge exch store
+% } def
+% end
+% ----------end of classend.ps----------
+% Skip (montanaro@ge-crd.arpa or uunet!steinmetz!desdemona!montanaro)

@@ -1,0 +1,237 @@
+/$VTXDict 50 dict def
+$VTXDict begin
+
+/XOfs 35 def
+/YOfs 610 def
+/XInc 13 def
+/YIncSingle 16 def
+/YIncDouble YIncSingle 2 mul def
+/TextXSize 18 def
+/TextYSize 16 def
+/TextXOfs 2 def
+/TextYOfs 4 def
+/SymXSize 12 def
+/SymYSize 10 def
+/SymXOfs 2 def
+/SymYOfs 4 def
+/RedWeight 0.30 def
+/GreenWeight 0.59 def
+/BlueWeight 0.11 def
+
+% Copy oldfont to newfont except for entries /FID and /Encoding
+% newfont oldfont CopyFont
+/CopyFont {
+  findfont dup maxlength dict currentdict exch begin exch
+    {
+      1 index /FID eq 
+      2 index /Encoding eq or {		% Don't copy /FID and /Encoding
+        pop pop
+      } {
+        currentdict 3 1 roll put	% Copy entry to new font
+      } ifelse
+    } forall
+    exch currentdict put
+  end
+} bind def
+
+% Create Fonts Videotext-Text and Videotext-Symbol
+% - MakeVTXFont -
+/MakeVTXFonts {
+  2 dict begin
+    /textfont /Courier CopyFont
+    textfont begin
+      /Encoding 256 array def
+      0 1 255 {
+        Encoding exch /.notdef put
+      } for
+      Encoding 32
+      [ /space /exclam /quotedbl /sterling /dollar /percent /ampersand
+        /quoteright /parenleft /parenright /asterisk /plus /comma /minus
+        /period /slash /zero /one /two /three /four /five /six /seven /eight
+        /nine /colon /semicolon /less /equal /greater /question /at /A /B /C /D
+        /E /F /G /H /I /J /K /L /M /N /O /P /Q /R /S /T /U /V /W /X /Y /Z
+        /.notdef /question /.notdef /.notdef /numbersign /emdash /a /b /c /d /e
+        /f /g /h /i /j /k /l /m /n /o /p /q /r /s /t /u /v /w /x /y /z /question
+        /bar /question /.notdef /numbersign ]
+      putinterval
+      Encoding 192
+      [ /eacute /idieresis /agrave /edieresis /ecircumflex /ugrave /icircumflex
+        /egrave /acircumflex /ocircumflex /ucircumflex /ccedilla /currency
+        /Eacute /Adieresis /Odieresis /Aring /Udieresis /underscore /adieresis
+        /odieresis /aring /udieresis /section /circumflex /ring /germandbls
+        /exclamdown /questiondown /ntilde /aacute /iacute /ograve /igrave
+        /oacute /uacute ]
+      putinterval
+      Encoding 254 /question put
+    end
+    /Videotext-Text textfont definefont pop
+
+    /symfont /Symbol CopyFont
+    symfont begin
+      /Encoding 256 array def
+      0 1 255 {
+        Encoding exch /.notdef put
+      } for
+      Encoding 91
+      [ /arrowleft /.notdef /arrowright /arrowup ]
+      putinterval
+      Encoding 126 /divide put
+    end
+    /Videotext-Symbol symfont definefont pop
+  end
+} bind def
+
+% Draw a filled box at currentpoint
+% width height rbox -
+/rbox {
+  gsave
+    dup 0 exch rlineto
+    exch 0 rlineto
+    neg 0 exch rlineto
+    closepath
+    fill
+  grestore
+} bind def
+
+% Draw block-graphic character
+% int DrawBlkGraph -
+/DrawBlkGraph {
+  save exch
+  2 dict begin
+    currentpoint /y exch def /x exch def
+    5 -1 0 {
+      dup 1 and 1 exch sub XInc 2 div mul x add	% calc. x-coord.
+      exch 2 idiv YInc mul 3 div y add moveto	% calc. y-coord. & moveto
+						% Set color according to bit 0
+      dup 1 and 1 eq { FGColor } { BGColor } ifelse SetColor
+      XInc 2 div YInc 3 div rbox	% Draw box for single bit
+      -1 bitshift
+    } for
+    1 and 1 eq {				% Draw separator lines if
+      BGColor SetColor				% bit 6 was set
+      x y moveto
+      XInc YInc 10 div rbox
+      x y YInc 3 div add moveto
+      XInc YInc 10 div rbox
+      x y YInc 2 mul 3 div add moveto
+      XInc YInc 10 div rbox
+      x XInc 2 div add y moveto
+      XInc 10 div neg YInc rbox
+      x XInc add y moveto
+      XInc 10 div neg YInc rbox
+    } if
+  end
+  restore
+  XInc 0 rmoveto
+} bind def
+
+% Draw string of block-graphics characters
+% string G -
+/G {
+  { DrawBlkGraph } forall
+} bind def
+
+% Draw text-string (and bg) with current font
+% string DrawText -
+/DrawText {
+  dup
+  save exch
+  1 dict begin
+    /char 1 string def
+    dup length XInc mul YInc
+    BGColor SetColor rbox
+    FGColor SetColor
+    {
+      char exch 0 exch put
+      currentpoint
+      char show
+      moveto XInc 0 rmoveto
+    } forall
+  end
+  restore
+  length XInc mul 0 rmoveto
+} bind def
+
+% Draw text-string (and bg) with Text-font
+% string T -
+/T {
+  TextFont setfont
+  DrawText
+} bind def
+
+% Draw text-string (and bg) with Symbol-font
+% string S -
+/S {
+  SymFont setfont
+  DrawText
+} bind def
+
+% Convert Videotext-color to RGB-color/grayscale & make it current color
+% int SetColor -
+/SetColor {
+  3 {
+    dup 1 and exch -1 bitshift
+  } repeat
+  pop
+  UseColor {
+    setrgbcolor
+  } {
+    BlueWeight mul exch
+    GreenWeight mul add exch
+    RedWeight mul add
+    InvertPage {
+      1 exch sub
+    } if
+    setgray
+  } ifelse
+} bind def
+
+% Set foreground-color
+% int FG -
+/FG {
+  /FGColor exch def
+} bind def
+
+% Set background-color
+% int BG -
+/BG {
+  /BGColor exch def
+} bind def
+
+% Set double-height-attribute
+% - DH -
+/DH {
+  /YInc YIncDouble def
+  /TextFont TextFontDouble def
+  /SymFont SymFontDouble def
+} bind def
+
+% Set single-height-attribute
+% - SH -
+/SH {
+  /YInc YIncSingle def
+  /TextFont TextFontSingle def
+  /SymFont SymFontSingle def
+} bind def
+
+% Go to beginning of new line; reset colors
+% - NL -
+/NL {
+  SH
+  XOfs currentpoint exch pop
+  YInc sub moveto
+  0 BG
+  7 FG
+} bind def
+
+MakeVTXFonts
+/TextFontSingle /Videotext-Text findfont
+  [ TextXSize 0 0 TextYSize TextXOfs TextYOfs ] makefont def
+/TextFontDouble /Videotext-Text findfont
+  [ TextXSize 0 0 TextYSize 2 mul TextXOfs TextYOfs 2 mul ] makefont def
+/SymFontSingle /Videotext-Symbol findfont
+  [ SymXSize 0 0 SymYSize SymXOfs SymYOfs ] makefont def
+/SymFontDouble /Videotext-Symbol findfont
+  [ SymXSize 0 0 SymYSize 2 mul SymXOfs SymYOfs 2 mul ] makefont def
+
+end

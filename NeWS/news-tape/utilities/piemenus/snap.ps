@@ -1,0 +1,229 @@
+%!
+% Snap to window edges
+% Copyright (C) 1989 by Don Hopkins
+
+systemdict begin
+
+/EdgeLock createmonitor def
+/EdgeWinLock createmonitor def
+
+/EdgeX 0 def
+/EdgeY 0 def
+
+/EdgeMinX 0 def
+/EdgeMinY 0 def
+/EdgeMaxX 0 def
+/EdgeMaxY 0 def
+
+/CalcEdges {
+  /MinX FrameX floor def
+  /MinY FrameY floor def
+  /MaxX FrameX FrameWidth add ceiling def
+  /MaxY FrameY FrameHeight add ceiling def
+} def
+
+/EdgeSnap {
+  Iconic? not {
+    EdgeWinLock {
+      10 dict begin
+	CalcEdges
+	/EdgeMinX EdgeMinX
+	  MaxX EdgeX lt { MaxX max } {
+	    MinX EdgeX lt { MinX max } if
+	  } ifelse
+	store
+	/EdgeMinY EdgeMinY
+	  MaxY EdgeY lt { MaxY max } {
+	    MinY EdgeY lt { MinY max } if
+	  } ifelse
+	store
+	/EdgeMaxX EdgeMaxX
+	  MinX EdgeX gt { MinX min } {
+	    MaxX EdgeX gt { MaxX min } if
+	  } ifelse
+	store
+	/EdgeMaxY EdgeMaxY
+	  MinY EdgeY gt { MinY min } {
+	    MaxY EdgeY gt { MaxY min } if
+	  } ifelse
+	store
+  %(Frame (% %)-(% %), Edge (% %), (% %)-(% %)\n) 
+  %[MinX MinY MaxX MaxY
+  % EdgeX EdgeY EdgeMinX EdgeMinY EdgeMaxX EdgeMaxY] dbgprintf
+      end
+    } monitor
+  } if
+} def
+
+systemdict /QuickWindow known not {
+  systemdict /QuickWindow NeatWindow put
+} if
+
+/SnapWindow QuickWindow
+dictbegin
+  /Meta false def
+  /Shift false def
+  /Control false def
+dictend
+classbegin
+
+  /PointBBox { % x y => minx miny maxx maxy
+    EdgeLock {
+      /EdgeY exch store
+      /EdgeX exch store
+      gsave
+	framebuffer setcanvas
+	clippath pathbbox
+	/EdgeMaxY exch store /EdgeMaxX exch store
+	/EdgeMinY exch store /EdgeMinX exch store
+      grestore
+      { EdgeSnap } AllWin
+      20 {pause} repeat % ???
+      EdgeMinX EdgeMinY EdgeMaxX EdgeMaxY
+    } monitor
+  } def
+
+ /UpdateShifts {
+   /Meta false def  /Shift false def  /Control false def
+   CurrentEvent /KeyState get {
+     dup {
+       /Meta /Shift /Control { true store }
+       /Default { pop }
+     } case
+   } forall
+ } def
+
+ /SnapGrow? { % - => bool
+   Meta
+ } def
+
+ /SnapShrink? { % - => bool
+   Shift
+ } def
+
+ /stretchtopright {
+    non-iconic
+    UpdateShifts
+    SnapGrow? SnapShrink? or {
+      FrameX  FrameY % l b
+      FrameX FrameWidth add FrameY FrameHeight add % l b r t
+      PointBBox % l b minx miny maxx maxy
+      SnapShrink? { 4 2 roll } if
+      4 2 roll pop pop % l b maxx maxy
+      points2rect reshape
+    } {
+      /stretchtopright super send
+    } ifelse
+  } def
+
+  /stretchtopleft {
+    non-iconic
+    UpdateShifts
+    SnapGrow? SnapShrink? or {
+      FrameX FrameWidth add  FrameY % r b
+      FrameX FrameY FrameHeight add % r b l t
+      PointBBox % r b minx miny maxx maxy
+      SnapShrink? { 4 2 roll } if
+      6 1 roll pop pop % maxy r b minx
+      exch 3 -1 roll 4 -1 roll % minx b r maxy
+      points2rect reshape
+    } {
+      /stretchtopleft super send
+    } ifelse
+  } def
+
+  /stretchbottomright {
+    non-iconic
+    UpdateShifts
+    SnapGrow? SnapShrink? or {
+      FrameX  FrameY FrameHeight add % l t
+      FrameX FrameWidth add FrameY % l t r b
+      PointBBox % l t minx miny maxx maxy
+      SnapShrink? { 4 2 roll } if
+      pop 3 -1 roll pop % l t miny maxx
+      3 -1 roll % l miny maxx t
+      points2rect reshape
+    } {
+      /stretchbottomright super send
+    } ifelse
+  } def
+
+  /stretchbottomleft {
+    non-iconic
+    UpdateShifts
+    SnapGrow? SnapShrink? or {
+      FrameX FrameWidth add  FrameY FrameHeight add % r t
+      FrameX FrameY % r t b l
+      PointBBox % r t minx miny maxx maxy
+      SnapShrink? { 4 2 roll } if
+      pop pop 4 2 roll % minx miny r t
+      points2rect reshape
+    } {
+      /stretchbottomleft super send
+    } ifelse
+  } def
+
+  /stretchtop {
+    non-iconic
+    UpdateShifts
+    SnapGrow? SnapShrink? or {
+      FrameX FrameY % l b
+      FrameX FrameWidth add % l b r
+      FrameX FrameY FrameHeight add PointBBox % l b r minx miny maxx maxy
+      SnapShrink? { 4 2 roll } if
+      4 1 roll pop pop pop % l b r maxy
+      points2rect reshape
+    } {
+      /stretchtop super send
+    } ifelse
+  } def
+
+  /stretchbottom {
+    non-iconic
+    UpdateShifts
+    SnapGrow? SnapShrink? or {
+      FrameX dup FrameY PointBBox % l minx miny maxx maxy
+      SnapShrink? { 4 2 roll } if
+      pop pop exch pop % l miny
+      FrameX FrameWidth add FrameY FrameHeight add % l miny r t
+      points2rect reshape
+    } {
+      /stretchbottom super send
+    } ifelse
+  } def
+
+  /stretchleft {
+    non-iconic
+    UpdateShifts
+    SnapGrow? SnapShrink? or {
+      FrameX FrameY PointBBox % minx miny maxx maxy
+      SnapShrink? { 4 2 roll } if
+      pop pop pop % minx
+      FrameY FrameX FrameWidth add FrameY FrameHeight add % minx b r t
+      points2rect reshape
+    } {
+      /stretchleft super send
+    } ifelse
+  } def
+
+  /stretchright {
+    non-iconic
+    UpdateShifts
+    SnapGrow? SnapShrink? or {
+      FrameX FrameY % l b
+      FrameX FrameWidth add FrameY PointBBox % l b minx miny maxx maxy
+      SnapShrink? { 4 2 roll } if
+      pop 3 1 roll pop pop % l b maxx
+      FrameY FrameHeight add
+      points2rect reshape
+    } {
+      /stretchright super send
+    } ifelse
+  } def
+
+classend def
+
+/DefaultWindow SnapWindow def
+
+end % systemdict
+

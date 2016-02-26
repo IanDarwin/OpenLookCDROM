@@ -1,0 +1,181 @@
+%!
+% Date: 13 Jul 87 11:03:32 GMT
+% From: polygen!haahr@bu-cs.bu.edu  (Paul Haahr)
+% Subject: Re: Help with user.ps
+% To: news-makers@brillig.umd.edu
+% 
+% In article <75200002@sfu_css> keith@sfu_css.cs.sfu writes:
+% >
+% >	I am having a problems with my user.ps file when starting
+% >	up NeWS. I have a bunch of (psterm <options>) forkunix
+% >	lines, and sometimes it works completely, sometimes it
+% >	doesn't fire up anything, and sometimes it just fires
+% >	up the last one in the file.
+% >
+% >	My question is
+% >		is this a known bug and is there a fix ??
+% 
+% based on a followup article <6661@steinmetz.steinmetz.UUCP> and my
+% own experience of what works and what doesn't:  yes there is a bug
+% in the server that seems to be a timing problem.  however, i just
+% did a
+% 	(nterm) dup dup forkunix forkunix forkunix
+% (nterm is a locally hacked psterm) and it looked like it brought up
+% only one window, but actually all three /reshapefromuser messages were
+% handled at the same time and i had three identically placed, identically
+% shaped windows.
+% 
+% >	I am trying to basically reproduce my .suntools file, so that
+% >	I can have a fixed startup, therefore eliminating suntools.
+% 
+% i wanted to do something similar, but wanted to have fixed startup of
+% windows in known locations without hacking every utility that i might
+% want to start up to take x/y coordinates, so the approach i have taken
+% is:
+% 	save the reshapefromuser procedure from DefaultWindow
+% 	hack a new reshapefromuser that actually uses fixed coordinates,
+% 		replaces reshapefromuser in itself with the real
+% 		reshapefromuser, replaces reshapefromuser in DefaultWindow
+% 		with a similar reshapefromuser for the second program
+% 		to be run, and does a forkunix of the second program
+% 	the last of theses fake reshapefromusers puts the real one in
+% 	DefaultWindow
+% 	forkunix the first program to be brought up
+% 
+% this all could be re-written as one procedure like
+% 	[ (program ...) coordinates (program) coordinates ] fixedstartup
+% but i guess i just didn't feel like it.
+% 
+% for the sake of completeness i'm enclosing my whole user.ps,
+% but the only really clever thing is what i've just described and
+% is near the end
+% 
+% note: nterm -l foo brings up something like a psterm with the argument to
+% -l as the frame line (similar to suntools -Wl)
+% 
+
+%
+% user.ps -- private news startup file
+%	Paul Haahr, 3 June 1987 - 4 June 1987
+%
+
+% load the debugger
+
+(NeWS/debug.ps) run
+
+% change the default menu font (NeWS manual, section 7.5, page 76)
+
+DefaultMenu begin
+	/MenuFont /Helvetica-Oblique findfont 12 scalefont def
+	/StrokeSelection true def
+end
+
+% delete the demo menus
+
+[ 6 4 3 2 ] { /deleteitem rootmenu send } forall
+
+% add suntools to menu (NeWS manual, section A.6, page 173)
+
+/toolshellmenu [
+	(text)		{ (cmdtool)	forkunix }
+	(console)	{ (cmdtool -C -Wp 0 571 -Ws 798 263) forkunix }
+	(tty)		{ (shelltool)	forkunix }
+	(vt100)		{ (vt100tool)	forkunix }
+	(graphics)	{ (gfxtool)	forkunix }
+] /new DefaultMenu send def
+
+/suntoolsmenu [
+	(Shells =>)	toolshellmenu
+	(Mail)		{ (mailtool -Wi -WP 1088 836) forkunix }
+] /new DefaultMenu send def
+
+/terminalmenu [
+	(nterm)		{ (nterm -l Local)		forkunix }
+	(PostScript)	{ (nterm -l NeWS	psh)	forkunix }
+	(Console)	{ (nterm -l Console	-C)	forkunix }
+	(vt100)		{ (psterm -t vt100)		forkunix }
+	(sun)		{ (psterm -t sun)		forkunix }
+] /new DefaultMenu send def
+
+/psterminal {				% host psterminal => -
+	dup
+	( nterm -l ) exch append append
+	(on -n ) exch append
+	( psterminal) append
+	forkunix
+} def
+
+/rloginterminal {
+	dup
+	( rlogin ) exch append append
+	(nterm -l ) exch append
+	( -8) append
+	forkunix
+} def
+
+/dnaloginterminal {
+	dup
+	( dnalogin ) exch append append
+	(vt100tool -Wl ) exch append
+	forkunix
+} def
+
+/SunTerminalMenu
+	[ (lucy) (bugs) (barney) (fred) (ethel) (ricky)
+	  (wilma) (calvin) (hobbes) (daffy) (wiley) (tweety) ]
+	[ { currentkey psterminal } ]
+/new DefaultMenu send def
+
+/UltrixTerminalMenu
+	[ (nemo) (baxter) (figeac) (pebble) (dino)
+	  (latour) (lafite) (mouton) (cheval) ]
+	[ { currentkey rloginterminal } ]
+/new DefaultMenu send def
+
+/vmsTerminalMenu
+	[ (poly1) (astro) (snark) (thing) ]
+	[ { currentkey dnaloginterminal } ]
+/new DefaultMenu send def
+
+/rterminalmenu [
+	(Suns =>)		SunTerminalMenu
+	(Ultrix Vaxen =>)	UltrixTerminalMenu
+	(VMS Vaxen =>)		vmsTerminalMenu
+] /new DefaultMenu send def
+
+0 (Terminals =>)	terminalmenu	/insertitem rootmenu send
+1 (Remote Terminals =>)	rterminalmenu	/insertitem rootmenu send
+2 (Suntools =>) 	suntoolsmenu	/insertitem rootmenu send
+3 (Clock)		{ (roundclock) forkunix } /insertitem rootmenu send
+
+% startup windows
+%	this is a hack but it works well and is pretty clean
+%	the assumption made is that any forkunix'd window will
+%	send a /reshapefromuser message to DefaultWindow
+
+%	save real reshape function
+
+/realreshapefromuser DefaultWindow /reshapefromuser get def
+
+%	clock in uppper right
+
+DefaultWindow /reshapefromuser {
+	1092 800 56 96 /reshape self send
+	self /reshapefromuser /realreshapefromuser cvx put
+
+	%	console in upper left
+
+	DefaultWindow /reshapefromuser {
+		0 610 528 290 /reshape self send
+		self /reshapefromuser /realreshapefromuser cvx put
+		DefaultWindow /reshapefromuser /realreshapefromuser cvx put
+	} put
+	(nterm -C -l Console) forkunix
+
+} put
+
+(roundclock) forkunix
+
+% --
+% paul haahr				(bu-cs|princeton)!polygen!haahr
+% polygen corporation, waltham, ma	617-890-2888

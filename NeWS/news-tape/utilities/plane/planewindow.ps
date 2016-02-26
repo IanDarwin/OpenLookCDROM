@@ -1,0 +1,256 @@
+%!
+% Date: Thu, 30 Mar 89 11:38:55 EST
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Improved PlaneWindow
+% From: dennis!dennis@boulder.colorado.edu
+% 
+% Some time ago I posted the code for PlaneWindow,
+% which provides the illusion of a window over a larger window.
+% It provided the ability to pan/scroll/zoom over that larger window.
+% That code had some errors in it, most notably that it had
+% a cyclic reference so that when the window was killed, the
+% window didn't disappear from the screen.
+% The following version corrects that problem.
+% ==================================================
+
+systemdict /LiteWindow known not { (NeWS/litewin.ps) run } if
+
+% --------------------------------------------------
+
+% Define a subwindow of scroll window in which
+% the client canvas acts like a window onto a larger canvas (called the plane).
+% Moving the scrollbars appears to pan and scroll over the plane canvas.
+% When the scroll bar buttons are in the bottom and left, then they
+% cause the origin of the client canvas to appear in the bottom left.
+% As the canvas grows, the scale and location of the scroll bar
+% buttons may change independent of user actions
+% This relies on the assumption all drawing is done on the client
+% canvas and that no canvases overlay the client canvas
+% (except when rubberbanding or dragging).
+% This operates by redrawing onto the client canvas with appropriate
+% scale and translation.
+
+% Methods:
+% 1. "minx miny maxx maxy SetPlaneSize => -"
+% 	Set the size of the plane canvas over which the client
+% 	canvas can pan/scroll.
+% 	This may visibly affect the scroll bar button locations.
+% 2. "xscale yscale SetPlaneScale => -"
+% 	Set the scale used on the plane.
+% 	Changing this will have the effect of a zoom.
+% 3. "- CenterPlane => -"
+% 	Put center of the plane at the origin of the client canvas
+% 4. "factor ExpandPlane => -"
+% 	Expand the size of the plane by the factor as a multiplier
+% 	in the +X -X, +Y -Y directions.
+% 5. "x y MovePlane => -"
+% 	Put origin of the client canvas at x,y of the plane.
+
+systemdict begin
+
+/PlaneWindow	ScrollWindow
+    dictbegin
+	% portion of the plane currently in use (needed for scrollbars)
+	/minX	0 def
+	/minY	0 def
+	/maxX	1 def
+	/maxY	1 def
+
+	/ScaleX 1.0 def
+	/ScaleY 1.0 def
+
+	% Client origin wrt plane origin
+	/PlaneX 0 def
+	/PlaneY 0 def
+
+	% Make the following a per-object value
+	% because it will change as scale changes
+
+	/ClientFont /Screen-Bold findfont 16 scalefont def
+
+    dictend
+classbegin
+
+%    /ForkPaintClient?	false def % ???????????????????
+
+    /PlaneWidth	{maxX minX sub} def
+    /PlaneHeight {maxY minY sub} def
+
+    /Xrange {
+	[minX maxX PlaneWidth .01 mul round PlaneWidth .1 mul round  null]
+    } def
+    /Yrange {
+	[minY maxY PlaneHeight .01 mul round PlaneHeight .1 mul round null]
+    } def
+
+    % Enlarge (or shrink) the plane canvas by specifying new x and y dimensions
+    % This will visibly affect only the scroll bar button locations
+    
+    /SetPlaneSize { % minx miny maxx maxy => -
+	% keep things to integers
+	0.5 add truncate /maxY exch store
+	0.5 add truncate /maxX exch store
+	0.5 sub truncate /minY exch store
+	0.5 sub truncate /minX exch store
+	% Make sure that the plane size is at least as big as
+	% the client canvas.  Extend equally in +x/y and -x/y directions to
+	% achieve this affect
+	ClientWidth PlaneWidth sub dup 0 gt { % deltax
+	    2 div 0.5 add truncate dup % deltax/2 deltax/2
+	    maxX add	% deltax/2 maxX+deltax/2
+	    /maxX exch store % deltax/2
+	    minX exch sub /minX exch store
+	} {
+	    pop
+	}
+	ifelse
+	ClientHeight PlaneHeight sub dup 0 gt { % deltay
+	    2 div 0.5 add truncate dup maxY add /maxY exch store
+	    minY exch sub /minY exch store
+	}{
+	    pop
+	} ifelse
+	rerange
+    } def
+
+    /SetPlaneScale { % scalex scaley => -
+	/ScaleY exch store
+	/ScaleX exch store
+	/ClientFont ClientFont ScaleX ScaleY min 16 mul 0.5 add truncate
+	scalefont store
+	redisplay
+    } def
+
+    /reshape { % x y w h => -
+	/reshape super send
+	% when the client canvas is reshaped, we need to
+	% make sure that some portion of the previous
+	% view is left visible.
+	% We will assume that the point in the plane
+	% that is at the client canvas origin before the reshape
+	% is still at the origin after the reshape
+	% This means that
+	% if the client canvas gets bigger than the plane,
+	% then the plane is extended in the positive x and
+	% y directions only.
+	% Doing it this way does have the funny effect
+	% that the window may be refreshed twice.  Seems no obvious fix.
+
+	minX minY maxX maxY SetPlaneSize	% will enforce constraint
+						% and may force redisplay
+    } def
+
+    /rerange { % - => -
+	Xrange /setrange HScrollbar send
+	Yrange /setrange VScrollbar send
+	% re paint scrollbars in toto
+	PlaneX  {/Itemvalue exch store paint} HScrollbar send
+	PlaneY  {/Itemvalue exch store paint} VScrollbar send
+    } def
+
+    /redisplay { % - => -
+	eraseclient
+	ShapeClientCanvas
+	paintclient
+    } def
+
+    /setplaneorigin { % x y => -
+	/PlaneY exch def
+	/PlaneX exch def
+    } def
+
+    /MovePlane { % x y => - (set client canvas origin wrt plane origin
+	setplaneorigin
+	PlaneX HScrollbar movescroll
+	PlaneY VScrollbar movescroll
+	redisplay
+    } def
+
+    /CenterPlane { % - => - (put center of the plane at origin of clientcanvas)
+	minX PlaneWidth 2 div add	% xc
+	minY PlaneHeight 2 div add	% xc yc
+	MovePlane
+    } def
+
+    /ExpandPlane { % expansion => -
+	[/minX /minY /maxX /maxY] { % expansion variable
+	    dup load 	% expansion var val
+	    2 index mul store
+	} forall
+	rerange
+    } def
+
+    % client canvas manipulation
+
+    /ClientPath {
+	/ClientPath super send
+	PlaneX neg PlaneY neg translate
+	ScaleX ScaleY scale
+    } def
+
+
+    /PaintClient { % - => -
+	/PaintClient super send
+	ClientFont setfont
+    } def
+
+    /eraseclient { % - => -
+	gsave
+	    ClientCanvas setcanvas
+	    erasepage
+	grestore
+    } def
+
+    % scroll bar manipulations
+
+    /createscrollbars { % - => - (Create scrollbar canvases/items)
+        /HScrollbar
+		Xrange PlaneX
+		{/planenotify  MyPlane send}
+		FrameCanvas /new SimpleScrollbar send
+		dup /BarVertical? false put
+		dup /MyPlane self put % Kludge: connect bar to this window
+            store
+        /VScrollbar
+		Yrange PlaneY
+		{/planenotify  MyPlane send}
+		FrameCanvas /new SimpleScrollbar send
+		dup /MyPlane self put % Kludge: connect bar to this window
+            store
+    } def
+
+    % repaint the button at a given location
+    /movescroll { % value scrollbar => -
+	{
+	    CheckValueBounds
+%	    setvalue
+	    /ItemValue exch store
+	    gsave
+		ItemCanvas setcanvas
+		ItemPaintedValue null ne {EraseBox} if
+		PaintBox
+	    grestore
+	    /ItemPaintedValue ItemValue store
+	}	% value bar proc
+	exch send
+    } def
+
+    /planenotify { % - => -
+	/getvalue HScrollbar send
+	/getvalue VScrollbar send
+	MovePlane
+    } def
+
+    % Remove the cycle induced by the MyPlane
+    % variable added to the Scrollbars.
+    % Thanks to Tom Sheffler of Mitre for pointing this out.
+    /destroy {
+	{/MyPlane null store} HScrollbar send
+	{/MyPlane null store} VScrollbar send
+	/destroy super send
+    } def
+classend def
+pause
+
+end % systemdict
+

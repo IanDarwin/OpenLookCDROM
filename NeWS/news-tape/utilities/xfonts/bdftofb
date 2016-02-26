@@ -1,0 +1,44 @@
+#!/bin/csh -f
+# Convert X11 .bdf font files to NeWS .afb font files,
+# apply some heuristics to figure out their names,
+# and dump out NeWS .fb files.
+#
+# Copyright (C) 1988 by Don Hopkins. (don@brillig.umd.edu)
+# University of Maryland Human Computer Interaction Lab.
+# Feel free to redistribute this. Please send my your improvements!
+#
+# Bugs: You can't run multiple instances of this shell script at once in 
+# the same directory (because of the file "font-name"). 
+# The heuristics to figure out the font name seem to work OK with the 
+# X11R3 fonts, but they may need to be frobbed for other fonts.
+#
+
+foreach file ($*)
+echo -n Converting $file ... 
+rm -f font-name
+set out = `basename $file:r.afb`
+awk '\
+/^FONT / { if ($2 == "Apple" && $3 == "Macintosh") \
+		name = $4 \
+	   else name = $2 \
+	   if (name ~ /\.bdf$/) \
+		name = substr(name, 1, length(name)-4) } \
+/^FAMILY_NAME / { name = $2 } \
+/^WEIGHT_NAME / { name = name "-" $2 } \
+/^SLANT / { if ($2 == "\"I\"" && name !~ /.*Italic/) \
+		name = name "Italic" } \
+/^DEVICE_FONT_NAME / { name = $2 } \
+/^COPYRIGHT "public domain"/ { next } \
+/^STARTPROPERTIES/ , /^ENDPROPERTIES/ { next } \
+{print} \
+END { while ((name ~ /\n$/) || (name ~ /-[0-9]*$/)) \
+	name = substr(name, 1, length(name)-1) \
+      print name > "font-name" } \
+' $file > $out
+set name = `sed 's/"//g' < font-name`
+echo Done.
+echo -n Dumping $name ...
+dumpfont -d fonts -n $name $out
+rm $out
+end
+rm -f font-name

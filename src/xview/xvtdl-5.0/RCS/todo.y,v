@@ -1,0 +1,330 @@
+head	3.0;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+3.0
+date	92.09.15.12.07.36;	author jipping;	state Exp;
+branches
+	3.0.1.1;
+next	;
+
+3.0.1.1
+date	95.06.29.23.04.41;	author ian;	state Exp;
+branches;
+next	;
+
+
+desc
+@Yacc grammar.
+@
+
+
+3.0
+log
+@checked in with -k by ian at 1995/06/29 23:04:09
+@
+text
+@%token NUMBER LSTRING STRING COMMENT SLASH COLON BAR
+%token BIGD BIGN BIGW BIGM BIGT BIGO BIGS
+%token LITTLED LITTLEW LITTLEB LITTLEM LITTLEY
+%token CATEGORY DEADLINE PARENT
+
+%start todo_list
+
+%{ 
+/*
+ * $Id: todo.y,v 3.0 1992/09/15 12:07:36 jipping Exp $
+ * **********************************************************************
+ *
+ * Todo.y ==> YACC description of the ASCII todo database format.  
+ *
+ * ----------------------------------------------------------------------
+ * Copyright (c) 1992 by Mike Jipping and Hope College
+ *
+ * Permission is granted to copy and distribute this file in modified or
+ * unmodified form, for noncommercial use, provided (a) this copyright notice
+ * is preserved, (b) no attempt is made to restrict redistribution of this
+ * file, and (c) this file is not distributed as part of any collection whose
+ * redistribution is restricted by a compilation copyright.
+ * ----------------------------------------------------------------------
+ *
+ * Revision History:
+ *
+ * $Log: todo.y,v $
+ * Revision 3.0  1992/09/15  12:07:36  jipping
+ * Release 4.0 beta.  Added deadline recognition and changed recurring
+ * parsing to accomodate verion 4.0 recurrence stuff.
+ *
+ * Revision 2.1  1992/07/13  14:36:58  jipping
+ * Cleaned up code to avoid compilation warnings.
+ *
+ * Revision 2.0  1992/07/06  13:34:47  jipping
+ * Initial release.
+ *
+ *
+ */
+
+#include "globaldefs.h"
+
+extern struct entry_list *entry_search();
+extern struct category_rec *new_category();
+extern struct category_rec *cat_search();
+
+extern int merging;
+
+int number_value;
+char string_value[80], cat[80];
+int inquotes;
+int datecode, currdc;
+struct day_entry *de, *tmpde;
+struct entry_list *el;
+struct recurrence_list *tmprl;
+struct category_rec *cr, *tmpcr, *ttmpcr;
+struct deadline_rec *dr;
+int yylineno;
+%}
+
+%%
+
+todo_list : /* empty */
+	       | todo_entry todo_list
+          | deadline todo_list
+	       | category todo_list
+	       ;
+
+todo_entry : date_part {
+	             el = entry_search(datecode, TRUE, cr);
+					 de = el->last;
+					 tmprl = NULL;
+	          }
+             recurring_part
+	          priority_part
+	          text_part {
+					 currdc = (curr_year-1990)*10000 + curr_month*100 + curr_day;
+					 if (!merging ||
+						  !entry_text_search(string_value,
+													datecode<currdc?currdc:datecode, cr)) {
+						 if (tmprl == NULL) {
+							 tmpde = NEW(struct day_entry);
+							 tmpde->recurring_entry = FALSE;
+							 tmpde->deadline = NULL;
+							 tmpde->next = NULL;
+							 tmpde->starting_day_code = datecode;
+							 strcpy(tmpde->text, string_value);
+							 if (number_value != 0) {
+								 tmpde->priority = number_value;
+								 tmpde->checked = FALSE;
+							 } else {
+								 tmpde->priority = default_priority;
+								 tmpde->checked = TRUE;
+							 }
+							 if (de == NULL) {
+								 el->first = el->last = tmpde;
+								 tmpde->prev = NULL;
+							 } else {
+								 de->next = el->last = tmpde;
+								 tmpde->prev = de;
+							 }
+						 } else {
+							 strcpy(rl_tail->text, string_value);
+							 rl_tail->priority = number_value;
+						 }
+					 }
+				 }
+				 ;
+
+date_part : NUMBER {datecode = number_value;}
+            SLASH NUMBER {datecode = datecode * 100 + number_value;}
+            SLASH NUMBER {datecode = (number_value - 90) * 10000 + datecode;}
+          ;
+
+recurring_part :
+	            | BAR {
+						tmprl = NEW(struct recurrence_list);
+						if (rl_head == NULL) {
+							cr->rl_head = rl_head = cr->rl_tail = rl_tail = tmprl;
+						} else {
+							cr->rl_tail->next = rl_tail->next = tmprl;
+							cr->rl_tail = rl_tail = tmprl;
+						}
+						tmprl->starting_day_code = datecode;
+						tmprl->daily = tmprl->weekly = tmprl->biweekly = tmprl->monthly = tmprl->yearly = FALSE;
+						tmprl->dow = -1;
+						tmprl->dom = 0;
+						tmprl->week_number =
+							tmprl->number_of_weeks =
+								tmprl->number_of_months = 0;
+						tmprl->deadline = NULL;
+						tmprl->next = NULL;
+					}
+					recur_desc
+	            ;
+
+recur_desc : /* empty */
+           | LITTLED {tmprl->daily = TRUE;} recur_desc
+           | LITTLEW {tmprl->weekly = TRUE;} recur_desc
+           | LITTLEB {tmprl->biweekly = TRUE;} recur_desc
+           | LITTLEM {tmprl->monthly = TRUE;} recur_desc
+           | LITTLEY {tmprl->yearly = TRUE;} recur_desc
+           | BIGM {tmprl->dow = 42;} recur_desc      /* backwards compat. */
+           | BIGT {tmprl->dow = 20;} recur_desc      /* backwards compat. */
+           | BIGD NUMBER {tmprl->dow = number_value;} recur_desc
+           | BIGN NUMBER {tmprl->week_number = number_value;} recur_desc
+           | BIGW NUMBER {tmprl->number_of_weeks = number_value;} recur_desc
+           | BIGO NUMBER {tmprl->number_of_months = number_value;} recur_desc
+           | BIGS NUMBER {tmprl->dom = number_value;} recur_desc
+           ;
+
+priority_part: COLON NUMBER ;
+
+text_part : COLON estring;
+
+estring: STRING {
+				string_value[0] = '\0';
+				sscanf(yytext, "\"%[^\"]\"", string_value);
+			}
+      |  LSTRING {
+				string_value[0] = '\0';
+				strncpy(string_value, &yytext[2], strlen(yytext)-4);
+				string_value[strlen(yytext)-4] = '\0';
+			}
+		;
+
+deadline: DEADLINE {
+				 dr = NEW(struct deadline_rec);
+	       }
+          COLON deadline_date_part {
+				 dr->datecode = datecode;
+			 }
+			 COLON NUMBER {
+				 dr->actions = number_value;
+			 }
+			 COLON NUMBER {
+				 dr->delete_time = number_value;
+			 }
+			 NUMBER {
+				 dr->delete_units = number_value;
+			 }
+          COLON NUMBER {
+				 dr->priority_up_units = number_value;
+			 }
+			 COLON NUMBER {
+				 dr->priority_down_units = number_value;
+			 }
+			 COLON STRING {
+	          string_value[0] = '\0';
+				 sscanf(yytext, "\"%[^\"]\"", string_value);
+				 strcpy(dr->mail_on, string_value);
+			 }
+			 COLON STRING {
+	          string_value[0] = '\0';
+				 sscanf(yytext, "\"%[^\"]\"", string_value);
+				 strcpy(dr->mail_after, string_value);
+			 }
+			 COLON NUMBER {
+				 dr->move_time = number_value;
+			 }
+			 NUMBER {
+				 dr->move_units = number_value;
+			 }
+          COLON {
+				 if (tmprl == NULL) {
+					 tmpde->deadline = dr;
+				 } else {
+					 rl_tail->deadline = dr;
+				 }
+			 }
+		  ;
+
+deadline_date_part : NUMBER {datecode = number_value;} deadline_date_rest;
+
+deadline_date_rest : SLASH NUMBER {datecode = datecode * 100 + number_value;}
+                     SLASH NUMBER {
+								datecode = (number_value - 90) * 10000 + datecode;
+								dr->relative = FALSE;
+							}
+                   | LITTLED {datecode = datecode * 10; dr->relative = TRUE;}
+                   | LITTLEW {datecode = datecode * 10 + 1; dr->relative = TRUE;}
+                   | LITTLEM {datecode = datecode * 10 + 2; dr->relative = TRUE;}
+                   | LITTLEY {datecode = datecode * 10 + 3; dr->relative = TRUE;}
+                   ;
+
+category: CATEGORY COLON estring {
+	          if (category_head == NULL) cr = NULL;
+	          strcpy(cat, string_value);
+			 }
+          parent
+        ;
+
+parent : /* empty */ {
+	         if ( merging &&
+					 (tmpcr = cat_search(category_head, string_value))) {
+					cr = tmpcr;
+					entry_head = cr->entry_head;
+					entry_tail = cr->entry_tail;
+					rl_head = cr->rl_head;
+					rl_tail = cr->rl_tail;
+				} else {
+					if (category_head == NULL) {
+						cr = NULL;
+					} else {
+						for (cr=category_head; cr->next!=NULL; cr=cr->next) ;
+					}
+					cr = new_category(string_value, cr, FALSE);
+					entry_head = entry_tail = (struct entry_list *) NULL;
+					rl_head = rl_tail = (struct recurrence_list *) NULL;
+				}
+         }
+	    | PARENT COLON estring {
+				tmpcr = cat_search(category_head, string_value);
+	         if ( merging &&
+					 (ttmpcr = cat_search(category_head, cat))) {
+					cr = ttmpcr;
+					entry_head = cr->entry_head;
+					entry_tail = cr->entry_tail;
+					rl_head = cr->rl_head;
+					rl_tail = cr->rl_tail;
+				} else {
+					if (tmpcr->subcats == NULL) {
+						cr = new_category(cat, tmpcr, TRUE);
+					} else {
+						cr = new_category(cat, cr, FALSE);
+					}
+					entry_head = entry_tail = (struct entry_list *) NULL;
+					rl_head = rl_tail = (struct recurrence_list *) NULL;
+				}
+				cr->parent = tmpcr;
+		   }
+       ;
+
+%%
+#include "lex.yy.c"
+
+void yyerror(s)
+char *s;
+{
+	fprintf(stderr,
+			  "Error on line %d: %s at or around \"%s\"\n",
+			  yylineno, s, yytext);
+   yyerrok;
+}
+
+@
+
+
+3.0.1.1
+log
+@Add default yywrap() for systems (linux) that lack it.
+@
+text
+@a285 6
+#ifdef	linux
+int yywrap()
+{
+	return 1;
+}
+#endif
+@

@@ -1,0 +1,416 @@
+head	1.5;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.5
+date	92.12.13.00.48.55;	author malingka;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	92.12.11.15.45.50;	author lacey;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	92.12.10.12.48.51;	author malingka;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	92.12.10.12.13.51;	author lacey;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	92.12.10.09.03.54;	author malingka;	state Exp;
+branches;
+next	;
+
+
+desc
+@breadth first search for PERT's y coordinate
+@
+
+
+1.5
+log
+@final revision
+@
+text
+@/* FILE calc.c *********************************************
+ *
+ * xplan - project planning tool
+ * Copyright (C) 1992 Brian Gaubert, Mark M. Lacey, Richard Malingkas,
+ * and Mike Marlow.
+ * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation.
+ * 
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License (distributed with this program in the file
+ * COPYING) for more details.
+ * 
+ * If you did not received a copy of the GNU General Public License
+ * along with this program, write to the Free Software Foundation,
+ * Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * 
+ * Since this was a project for a one semester software engineering
+ * course, the authors will not be offering support for the product
+ * after its release.
+ *
+ *  DESCRIPTION OF CONTENTS
+ *
+ *  Breadth first search algorithm for calculating the y-coordinate
+ *  of each box in the PERT chart.
+ *
+ ************************************************************/
+
+#include <stdio.h>
+#include "db.h"
+#include "calc.h"
+
+static struct task_node **queue;  /* array of pointer to task list */
+static int 
+  head,         /* head of the queue */
+  tail;         /* tail of the queue */
+static int database_size;   /* number of tasks in the database */
+
+
+/* FUNCTION init_queue **************************************
+
+   PURPOSE
+
+   Initialize the queue that is going to be used by the
+   breadth first search algorithm.
+
+   SAMPLE CALL
+
+   init_queue();
+
+   AUTHOR/AUDITOR/TESTER
+   
+   Author.... Richard C. Malingkas (rcm), 10 Dec 1992
+   Auditor... 
+   Tester.... Richard C. Malingkas (rcm), 10 Dec 1992 
+
+   MODIFICATIONS (most recent to least)
+
+ ********************************************************************/
+
+init_queue() {
+
+  struct task_list *t1;  /* pointer to the main task list */
+  
+  t1 = get_main_task_list();
+  /*--------------------------------------------------------------
+    If the task list exist, allocate space for the queue array.
+    -------------------------------------------------------------*/
+  if (t1 != NULL) {  
+    queue = (struct task_node **)calloc(t1->size, sizeof(struct task_list *));
+    database_size = t1->size;
+  }
+  head = tail = 0;
+
+}  /* end of init_queue() */
+
+
+/* FUNCTION insert_queue **************************************
+
+   PURPOSE
+
+   Act as a main routine for traversing the task list.
+   Insert the 1st task along with its child tasks into the queue,
+   and process the recursively by calling visit_queue().
+
+   SAMPLE CALL
+
+   insert_queue();
+
+   AUTHOR/AUDITOR/TESTER
+   
+   Author.... Richard C. Malingkas (rcm), 10 Dec 1992
+   Auditor... 
+   Tester.... Richard C. Malingkas (rcm), 10 Dec 1992 
+
+   MODIFICATIONS (most recent to least)
+
+ ********************************************************************/
+
+insert_queue() {
+
+  struct task_list *t1;  /* temporary pointers */
+  struct task_node *t2;
+
+  init_queue();        /* initialize the queue */
+
+  t1 = get_main_task_list();
+  if (t1 != NULL) {        /* process only if the main task list exist */
+    init_marker(t1->head);
+    t2 = t1->head;
+    if (t2) queue[0] = t2;         /* insert the 1st task to the queue */
+    else return;
+    
+    /* for each dependent of the 1st task ... */
+    t1 = t2->data->dependents;
+    for(t2 = t1->head; t2 != NULL; t2 = t2->next) 
+      if (t2->data->number_of_visits == 0) {
+	queue[++head] = t2;             /* insert task into the queue */
+	t2->data->number_of_visits++;
+      }
+    visit_queue(queue[++tail]);    /* visit each of task in the queue */
+  }
+}  /* end of insert_queue() */ 
+
+
+/* FUNCTION visit_queue **************************************
+
+   PURPOSE
+
+   For each task in the queue, generate all the child tasks, and
+   insert those child tasks into te queue, until there is no more
+   task left (end of task list is reached).
+
+   SAMPLE CALL
+
+   visit_queue(pointer);
+
+   INPUTS
+
+   pointer --- A pointer to a task node
+
+   AUTHOR/AUDITOR/TESTER
+   
+   Author.... Richard C. Malingkas (rcm), 10 Dec 1992
+   Auditor... 
+   Tester.... Richard C. Malingkas (rcm), 10 Dec 1992 
+
+   MODIFICATIONS (most recent to least)
+
+ ********************************************************************/
+
+visit_queue(struct task_node *pointer) {
+
+  struct task_list *t1;  /* temporary pointers */
+  struct task_node *t2;
+
+  if (pointer == NULL) return;         /* reached end of task list ? */
+  
+  /* if all the tasks in the queue have been processed .. */
+  if (head >= database_size - 1) return;  
+  
+  /* for each dependents of current task ... */
+  t1 = pointer->data->dependents;
+  if(t1 != NULL) {
+    for(t2 = t1->head; t2 != NULL; t2 = t2->next)
+      if (t2->data->number_of_visits == 0) {
+	queue[++head] = t2;    /* insert the child tasks into the queue */
+	t2->data->number_of_visits++;
+      }
+    visit_queue(queue[++tail]); /* process next task in the queue */
+  }
+}  /* end of visit_queue() */
+
+
+/* FUNCTION calc_y_coord **************************************
+
+   PURPOSE
+
+   Calculate the y-coordinate of each PERT box.
+   Boxes with the same x-coordinate will be aligned sequentially
+   along the y-coordinate.
+
+   SAMPLE CALL
+
+   calc_y_coord();
+
+   AUTHOR/AUDITOR/TESTER
+   
+   Author.... Richard C. Malingkas (rcm), 10 Dec 1992
+   Auditor... 
+   Tester.... Mark M. Lacey (mml), 10 Dec 1992 
+
+   MODIFICATIONS (most recent to least)
+
+ ********************************************************************/
+
+calc_y_coord() {
+  
+  int i, 
+  x=1,    /* start with x-coord = 1 */
+  y=-1;   /* so the first y is 0 */
+  struct task_list *t1;   /* temporary pointers */
+  struct task_node *t2;
+  
+  insert_queue();   /* insert tasks into the queue */
+  
+  for(i=0; i < database_size; i++) {   /* for each task ... */
+    /* fix so that it will only continue if queue[i] != NULL) */
+    /* Mark 12-10 9:20 */
+    if (queue[i] != NULL) {
+      /*----------------------------------------------------------- 
+	if this task has the same x-coord with the prev one,
+	move it down one y-coord, else (meaning different x-coord),
+	move it up to y=0 coordinate, and update x-coordinate.
+	-----------------------------------------------------*/
+      if(x == queue[i]->data->x_pert) 
+	y++;
+      else {
+	y = 0;
+	x = queue[i]->data->x_pert;
+      }
+      queue[i]->data->y_pert = y;   /* store the value in the database */
+    }
+  }
+}  /* end of calc_y_coord() */
+@
+
+
+1.4
+log
+@The file we did our final demo with.
+@
+text
+@d1 31
+d36 1
+a36 1
+static struct task_node **queue;   /* array of pointer to task list */
+d38 3
+a40 3
+  head,   /* head of the queue */
+  tail;   /* tail of the queue */
+static int database_size;
+d42 22
+d66 1
+a66 1
+  struct task_list *t1;
+d69 4
+a72 1
+  if (t1 != NULL) {
+a76 1
+}
+d78 25
+d105 1
+a105 1
+  struct task_list *t1;
+d108 1
+a108 1
+  init_queue();
+d111 1
+a111 1
+  if (t1 != NULL) {
+d114 1
+a114 1
+    if (t2) queue[0] = t2; 
+d116 2
+d119 1
+a119 1
+    for(t2 = t1->head; t2 != NULL; t2 = t2->next)
+d121 1
+a121 1
+	queue[++head] = t2;
+d124 1
+a124 1
+    visit_queue(queue[++tail]);
+d126 1
+a126 1
+}  
+d128 27
+d157 1
+a157 1
+  struct task_list *t1;
+d160 6
+a165 2
+  if (pointer == NULL) return;
+  if (head >= database_size - 1) return;
+a167 1
+
+d170 1
+a170 1
+	queue[++head] = t2;
+d173 1
+a173 1
+    visit_queue(queue[++tail]);
+d175 1
+a175 1
+}
+a176 1
+calc_y_coord() {
+d178 1
+a178 3
+  int i, x=1, y=-1;
+  struct task_list *t1;
+  struct task_node *t2;
+d180 1
+a180 1
+  insert_queue();
+d182 45
+a226 12
+  for(i=0; i < database_size; i++) {
+     /* fix so that it will only continue if queue[i] != NULL) */
+     /* Mark 12-10 9:20 */
+     if (queue[i] != NULL) {
+	if(x == queue[i]->data->x_pert) 
+	  y++;
+	else {
+	   y = 0;
+	   x = queue[i]->data->x_pert;
+	}
+	queue[i]->data->y_pert = y;
+     }
+d228 1
+a228 1
+}
+@
+
+
+1.3
+log
+@removed printf()
+@
+text
+@d74 11
+a84 7
+    if(x == queue[i]->data->x_pert) 
+      y++;
+    else {
+      y = 0;
+      x = queue[i]->data->x_pert;
+    }
+    queue[i]->data->y_pert = y;
+@
+
+
+1.2
+log
+@*** empty log message ***
+@
+text
+@d29 1
+a29 1
+ printf("insert queue\n"); 
+d50 1
+a50 1
+printf("visit queue\n");
+d55 1
+a55 1
+printf("visit queue ----- not NULL !\n");
+d72 1
+a72 1
+printf("calc y coord\n");
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d51 1
+@

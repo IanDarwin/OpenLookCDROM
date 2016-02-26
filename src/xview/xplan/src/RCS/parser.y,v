@@ -1,0 +1,1542 @@
+head	1.14;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.14
+date	92.12.13.07.14.33;	author lacey;	state Exp;
+branches;
+next	1.13;
+
+1.13
+date	92.12.12.03.48.58;	author lacey;	state Exp;
+branches;
+next	1.12;
+
+1.12
+date	92.12.11.15.55.38;	author lacey;	state Exp;
+branches;
+next	1.11;
+
+1.11
+date	92.12.10.09.15.09;	author lacey;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	92.12.03.14.58.25;	author lacey;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	92.12.02.14.06.03;	author lacey;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	92.11.27.20.36.41;	author lacey;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	92.11.24.01.05.05;	author gaubert;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	92.11.19.07.30.32;	author gaubert;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	92.11.03.03.57.36;	author lacey;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	92.11.03.01.14.31;	author gaubert;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	92.10.27.07.56.53;	author gaubert;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	92.10.26.09.07.39;	author lacey;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	92.10.26.04.58.29;	author lacey;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.14
+log
+@*** empty log message ***
+@
+text
+@/* FILE parser.y *******************************************************
+ *
+ * xplan - project planning tool
+ * Copyright (C) 1992 Brian Gaubert, Mark M. Lacey, Richard Malingkas,
+ * and Mike Marlow.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License (distributed with this program in the file
+ * COPYING) for more details.
+ * 
+ * If you did not received a copy of the GNU General Public License
+ * along with this program, write to the Free Software Foundation,
+ * Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * 
+ * Since this was a project for a one semester software engineering
+ * course, the authors will not be offering support for the product
+ * after its release.
+ * 
+ *  DESCRIPTION OF CONTENTS
+ * 
+ *  This file contains the format for the yyparse routine used
+ *  in parsing a file.
+ *  
+ * AUTHOR/AUDITOR/TESTER
+ *  
+ * Authors & Testers
+ *    Mark M. Lacey, ? Nov 1992 --- grammar and some productions
+ *    Brian Gaubert, ? Nov 1992 --- remaining productions
+ *
+ * Undocumented productions with no actions specified are for
+ * structure only and cannot be removed.
+ *
+ * FILE parser.y */
+
+%{
+#include <stdio.h>
+#include "db.h"
+#include "semantic_stack.h"
+#include "string_table.h"
+
+char *name;        /* name of the task */
+char *desc;        /* task description */
+unsigned duration;            /* the duration, in days */
+unsigned planned_start_date;  /* All of the following dates are */
+                              /* stored in Julian format */
+unsigned planned_end_date;
+unsigned actual_start_date;
+unsigned actual_end_date;
+unsigned forecast_start_date;
+unsigned forecast_end_date;
+unsigned earliest_start_date;
+unsigned earliest_end_date;
+unsigned latest_start_date;
+unsigned latest_end_date;
+
+unsigned float_time;              /* the float time, in days */
+
+enum boolean milestone;           /* does this completion of this task */
+      			          /* mean we have hit a milstone? */
+enum boolean deliverable;         /* does the completion of this task */
+                                  /* yield a deliverable? */
+
+struct resource_list *resources; /* list of resources that are to */
+                                 /* be employed in completing this */
+				 /* task */
+
+struct resource_node *resnode;
+struct resource_info *resinfo;
+
+struct task_list *subtasks;     /* list of sub-tasks that are a */
+				/* part of this task */
+
+struct task_node *parent;       /* if this task is a subtask, then */
+				/* this points to the task that */
+				/* this is a subtask of --- */
+				/* otherwise this is NULL */
+
+struct task_list *dependencies; /* those tasks that need to be */
+				/* complete before this task can be */
+			        /* started */
+
+struct task_list *dependents;   /* those tasks that depend on this */
+				/* tasks being complete before they */
+                                /* can be started */
+ 
+unsigned number_of_dependents;  /* used in checking for dependency */
+                                /* loops */
+
+
+
+static struct task_info *new_task;
+static struct task_node *node, *new_node;
+
+static unsigned x_pert = 0;
+static unsigned y_pert = 0;
+
+static unsigned x_gantt = 0;
+static unsigned y_gantt = 0;
+
+static unsigned length = 0;
+
+%}
+%token TASK
+%token NAME
+%token DESCRIPTION
+%token PARENT
+%token DEPENDENCIES
+%token RESOURCES
+%token STRING
+%token DURATION
+%token FLOAT
+%token PLANNEDSTART
+%token ACTUALSTART
+%token FORECASTSTART
+%token EARLIESTSTART
+%token LATESTSTART
+%token PLANNEDEND
+%token ACTUALEND
+%token FORECASTEND
+%token EARLIESTEND
+%token LATESTEND
+%token MILESTONE
+%token DELIVERABLE
+%token UNSIGNED
+%token TRUE
+%token FALSE
+%token BEG
+%token END
+%token TASKS
+%%
+project 
+	: tasklist		    
+{ 
+   YYACCEPT;
+}
+	;
+
+tasklist
+	: taskblock '.'
+        ;
+
+taskblock
+        : taskblockhead taskblocktail
+        ;
+
+taskblockhead
+        : BEG TASKS { clear_temps(); }
+        ;
+
+taskblocktail
+        : tasksublist END TASKS
+        | END TASKS
+	;
+
+
+tasksublist
+	: atask tasksublist			
+        | atask
+	;
+
+atask 
+	: TASK '=' '{' alist '}'		
+{
+   /* search for node in task list */
+   node = find_task(get_main_task_list(), name);
+
+   /* if it doesn't exist, add it */
+   if (!node) {
+      new_task = create_task_info(name, desc,
+				  duration,
+				  planned_start_date, planned_end_date,
+				  actual_start_date, actual_end_date,
+				  forecast_start_date, forecast_end_date,
+				  earliest_start_date, earliest_end_date,
+				  latest_start_date, latest_end_date,
+				  float_time, milestone, deliverable,
+				  resources, subtasks, parent,
+				  dependencies, dependents,
+				  number_of_dependents, x_pert, y_pert,
+				  x_gantt, y_gantt, length);
+      
+      new_node = create_task_node(new_task, NULL, NULL);
+      add_task_to_end(get_main_task_list(), new_node);
+   } else {
+      /* make a copy of the data and disconnect it from the list */
+      /* temporarily */
+      new_node = create_task_node(node->data, NULL, NULL);
+      remove_task_node(get_main_task_list(), node);
+
+      /* change the information */
+      change_task_info(new_node->data, name, desc,
+		       duration,
+		       planned_start_date, planned_end_date,
+		       actual_start_date, actual_end_date,
+		       forecast_start_date, forecast_end_date,
+		       earliest_start_date, earliest_end_date,
+		       latest_start_date, latest_end_date,
+		       float_time, milestone, deliverable,
+		       resources, subtasks, parent,
+		       dependencies, dependents,
+		       number_of_dependents, x_pert, y_pert,
+		       x_gantt, y_gantt, length);
+
+      /* add it back to the list, at the end */
+      add_task_to_end(get_main_task_list(), new_node);
+   }
+   
+   /* clear our temporaries */
+   clear_temps();
+}
+        ;
+
+alist
+	: assignment ';' alist
+	| assignment ';'			
+	;
+
+assignment
+	: stringassign				
+	| dependencylist			
+	| resourcelist				
+	| numberassign				
+	| booleanassign				
+	| taskblock				
+{
+   fprintf(stderr, "Nested subtasks not implemented!\n");
+}
+	;
+
+stringassign 
+	: NAME '=' STRING			
+{
+   name = $3.str;
+}
+        | DESCRIPTION '=' STRING		
+{
+   desc = $3.str;
+}
+
+	| PARENT '=' STRING			
+{
+   parent = NULL;
+   subtasks = NULL;
+}
+	;
+
+
+dependencylist
+	: dependhead dependencytail		
+	;
+
+dependhead
+	: BEG DEPENDENCIES			
+	;
+
+dependencytail
+	: dependency END DEPENDENCIES 		{
+	   /* create a dependency list for this task */
+	   dependencies = create_task_list(NULL, NULL, NULL);
+	   node = find_task(get_main_task_list(), $1.str);
+	   /* if the dependency is not already in the task list, */
+	   /* create it */
+	   if (!node) {
+	      new_task = create_task_info($1.str, NULL, 0,
+					  0, 0, 0, 0, 0, 0, 0, 0,
+					  0, 0, 0, 0, 0,
+					  NULL, NULL, NULL,
+					  NULL, NULL,
+					  0,
+					  x_pert, y_pert, x_gantt,
+					  y_gantt, length);
+
+	      node = create_task_node(new_task, NULL, NULL);
+	      add_task_to_beginning(get_main_task_list(), node);
+	   }
+	   new_node = create_task_node(node->data, NULL, NULL);
+	   /* always add to the beginning since this is a */
+	   /* right-recursive production */
+	   add_task_to_beginning(dependencies, new_node);
+	}
+	| dependency ',' dependencytail		{
+	   /* same as above, but don't create the list */
+	   node = find_task(get_main_task_list(), $1.str);
+	   if (!node) {
+	      new_task = create_task_info($1.str, NULL, 0,
+					  0, 0, 0, 0, 0, 0, 0, 0,
+					  0, 0, 0, 0, 0,
+					  NULL, NULL, NULL,
+					  NULL, NULL,
+					  0,
+					  x_pert, y_pert, x_gantt,
+					  y_gantt, length);
+
+	      node = create_task_node(new_task, NULL, NULL);
+	      add_task_to_beginning(get_main_task_list(), node);
+	   }
+	   new_node = create_task_node(node->data, NULL, NULL);
+	   add_task_to_beginning(dependencies, new_node);
+	}
+        ;
+
+dependency
+	: STRING				
+	;
+
+resourcelist
+	: resourcehead resourcetail		
+	;
+
+resourcehead
+	: BEG RESOURCES				{
+	   
+	}
+	;
+
+resourcetail
+	: resource END RESOURCES 		{
+	   /* create a new resource list and add resources to it */
+	   resources = create_resource_list(NULL, NULL, NULL);
+	   resinfo = create_resource_info($1.str);
+	   resnode = create_resource_node(resinfo, NULL, NULL);
+	   add_resource_to_beginning(resources, resnode);
+	}
+	| resource ',' resourcetail		{
+	   /* add resource to our list */
+	   resinfo = create_resource_info($1.str);
+	   resnode = create_resource_node(resinfo, NULL, NULL);
+	   add_resource_to_beginning(resources, resnode);
+	}
+	;
+
+resource
+	: STRING				
+	;
+
+numberassign 
+	: DURATION '=' UNSIGNED			
+{ 
+   duration = $3.uint;
+}
+	| FLOAT '=' UNSIGNED			
+{ 
+   float_time = $3.uint;
+}
+	| PLANNEDSTART '=' UNSIGNED		
+{
+   planned_start_date = $3.uint;
+}
+	| ACTUALSTART '=' UNSIGNED		
+{
+   actual_start_date = $3.uint;
+}
+	| FORECASTSTART '=' UNSIGNED		
+{
+   forecast_start_date = $3.uint;
+}
+	| EARLIESTSTART '=' UNSIGNED		
+{
+   earliest_start_date = $3.uint;
+}
+	| LATESTSTART '=' UNSIGNED		
+{
+   latest_start_date = $3.uint;
+}
+	| PLANNEDEND '=' UNSIGNED		
+{
+   planned_end_date = $3.uint;
+}
+	| ACTUALEND '=' UNSIGNED		
+{
+   actual_end_date = $3.uint;
+}
+	| FORECASTEND '=' UNSIGNED		
+{
+   forecast_end_date = $3.uint;
+}
+	| EARLIESTEND '=' UNSIGNED		
+{
+   earliest_end_date = $3.uint;
+}
+	| LATESTEND '=' UNSIGNED        	
+{
+   latest_end_date = $3.uint;
+}
+	;
+
+booleanassign 
+	: MILESTONE '=' boolean			
+{
+   milestone = $3.uint;
+}
+        | DELIVERABLE '=' boolean		
+{
+   deliverable = $3.uint;
+}
+	;
+
+boolean
+	: TRUE                                  
+{ 
+   $$.uint = true;
+}
+	| FALSE					
+{ 
+   $$.uint = false;
+}
+	;
+%%
+int yyerror(char *s)
+{
+}
+
+clear_temps()
+{
+   name = NULL;
+   desc = NULL;
+   duration = 0;
+   float_time = 0;
+   planned_start_date = 0;
+   planned_end_date = 0;
+   actual_start_date = 0;
+   actual_end_date = 0;
+   forecast_start_date = 0;
+   forecast_end_date = 0;
+   earliest_start_date = 0;
+   earliest_end_date = 0;
+   latest_start_date = 0;
+   latest_end_date = 0;
+   milestone = 0;
+   deliverable = 0; 
+   resources = NULL;
+   subtasks = NULL;
+   parent = NULL;
+   dependencies = NULL;
+   dependents = NULL;
+   number_of_dependents = 0;
+ }
+@
+
+
+1.13
+log
+@Fixed bug with resources
+@
+text
+@d30 9
+d170 1
+d172 2
+d196 1
+d210 1
+a210 1
+      /* add it back to the list */
+d214 1
+d264 1
+d267 2
+d283 2
+d288 1
+d324 1
+d331 1
+@
+
+
+1.12
+log
+@Parser with resources added.
+@
+text
+@d304 1
+a304 1
+	   resources = create_task_list(NULL, NULL, NULL);
+@
+
+
+1.11
+log
+@*** empty log message ***
+@
+text
+@d64 3
+a126 1
+%token RESOURCES
+d297 3
+a299 1
+	: BEG RESOURCES				
+d303 11
+a313 2
+	: resource END RESOURCES 		
+	| resource ',' resourcetail		
+@
+
+
+1.10
+log
+@Latest revisions before practice demo.
+@
+text
+@d3 13
+a15 1
+ *   DESCRIPTION OF CONTENTS
+d17 10
+a84 1
+static struct task_list *list;
+d86 1
+a86 1
+static struct task_node *new_node;
+d88 2
+a89 1
+static unsigned unused = 0;
+d91 5
+d142 1
+a142 1
+        : BEG TASKS
+d146 2
+a147 1
+        : tasksublist END TASKS	
+d153 1
+a153 8
+{
+   add_task_to_beginning(list, $1.node);
+}
+        | atask					
+{
+   list = get_main_task_list();
+   add_task_to_beginning(list, $1.node);
+}
+d159 22
+a180 14
+   new_task = create_task_info(name, desc,
+			       duration,
+			       planned_start_date, planned_end_date,
+			       actual_start_date, actual_end_date,
+			       forecast_start_date, forecast_end_date,
+			       earliest_start_date, earliest_end_date,
+			       latest_start_date, latest_end_date,
+			       float_time, milestone, deliverable,
+			       resources, subtasks, parent,
+			       dependencies, dependents,
+			       number_of_dependents, unused, unused,
+			       unused, unused, unused);
+ 
+   $$.node = create_task_node(new_task, NULL, NULL);
+d182 17
+d204 1
+a204 1
+	: assignment ';' alist			
+d247 38
+a284 3
+	: dependency END DEPENDENCIES 		
+	| dependency ',' dependencytail		
+	;
+@
+
+
+1.9
+log
+@Revision before Mark re-did certain aspects.
+@
+text
+@d16 14
+a29 24
+struct temp_task {
+   char name[MAXNAMELEN];
+   char description[MAXDESCLEN];
+   unsigned duration;
+   unsigned ft;
+   unsigned planned_start_date;
+   unsigned planned_end_date;
+   unsigned actual_start_date;
+   unsigned actual_end_date;
+   unsigned forecast_start_date;
+   unsigned forecast_end_date;
+   unsigned earliest_start_date;
+   unsigned earliest_end_date;
+   unsigned latest_start_date;
+   unsigned latest_end_date;
+   enum boolean milestone;
+   enum boolean deliverable;   
+   struct resource_list *resources;
+   struct task_list *subtasks;
+   struct task_node *parent;
+   struct task_list *dependencies;
+   struct task_list *dependents;
+   unsigned number_of_dependents;
+ } read_task;
+d31 1
+d33 4
+d38 3
+a40 5
+struct stack {
+  struct temp_task *in_stack;
+  struct stack *next;
+  };
+char *temp;
+d42 2
+d45 4
+a48 2
+struct task_node *tmp;
+struct stack *begin, *tail;
+d50 3
+a52 3
+struct task_list *list;
+struct task_info *new_task;
+struct task_node *start, *prev, *next, *current, *ta, *new_node;
+d54 6
+a59 3
+struct resource_list *r_list;
+struct resource_info *new_resource;
+struct resource_node *rstart, *rprev, *rnext, *rcurrent, *rtail, *rnew_node;
+a60 5
+int flag = 0;
+int resource_flag = 0;
+int dependant_flag = 0;
+int task_flag = 0;
+unsigned dummy = 0;
+d62 7
+d101 3
+a103 5
+		{ print_rule(1);  YYACCEPT;
+		}
+	|					
+		{ print_rule(2); 
+		}
+d108 1
+a108 2
+		{ print_rule(3); 
+		}
+a111 2
+                { print_rule(4);
+		}
+d116 1
+a116 3
+              {
+		print_rule(5);
+	      }
+a119 3
+		{
+		  print_rule(5); 
+		}
+d125 8
+a132 7
+		{
+		  print_rule(5); 
+		}
+	| atask					
+		{
+		  print_rule(6); 
+		}
+d138 14
+a151 1
+  print_rule(7);
+d153 1
+a153 48
+  if ( task_flag == 0)
+   {
+     new_task = create_task_info(read_task.name, read_task.description,\
+	      read_task.duration,\
+	      read_task.planned_start_date, read_task.planned_end_date, \
+	      read_task.actual_start_date, read_task.actual_end_date,\
+	      read_task.forecast_start_date, read_task.forecast_end_date,\
+	      read_task.earliest_start_date, read_task.earliest_end_date,\
+	      read_task.latest_start_date, read_task.latest_end_date,\
+	      read_task.ft, read_task.milestone, read_task.deliverable,\
+              read_task.resources, read_task.subtasks, read_task.parent,\
+	      read_task.dependencies, read_task.dependents,\
+	      read_task.number_of_dependents, dummy, dummy, dummy, dummy,\
+	      dummy);
+
+     new_node = create_task_node(new_task, NULL, NULL);
+
+     start = new_node;
+     ta = NULL;
+     task_flag = 1;
+/*     list = create_task_list(start, ta, NULL);*/
+     list = get_main_task_list();
+     add_task_to_end(list, new_node);
+/*     set_main_task_list(list);*/
+     clear_read_task();
+     dependant_flag = 0;
+   }
+  else
+   {
+     new_task = create_task_info(read_task.name, read_task.description,\
+	      read_task.duration,\
+	      read_task.planned_start_date, read_task.planned_end_date, \
+	      read_task.actual_start_date, read_task.actual_end_date,\
+	      read_task.forecast_start_date, read_task.forecast_end_date,\
+	      read_task.earliest_start_date, read_task.earliest_end_date,\
+	      read_task.latest_start_date, read_task.latest_end_date,\
+	      read_task.ft, read_task.milestone, read_task.deliverable,\
+              read_task.resources, read_task.subtasks, read_task.parent,\
+	      read_task.dependencies, read_task.dependents,\
+	      read_task.number_of_dependents, dummy, dummy, dummy, dummy,\
+	      dummy);
+     new_node = create_task_node(new_task, NULL, NULL);
+     add_task_to_end(list, new_node);
+     clear_read_task();
+     dependant_flag = 0;     
+   }
+     
+  
+a158 3
+		{
+		  print_rule(8); 
+		}
+a159 3
+		{
+		  print_rule(9); 
+		}
+a163 3
+		{
+		  print_rule(10); 
+		}
+a164 3
+		{
+		  print_rule(11); 
+		}
+a165 3
+		{
+		  print_rule(12); 
+		}
+a166 3
+		{
+		  print_rule(13); 
+		}
+a167 3
+		{
+		  print_rule(14); 
+		}
+d169 3
+a171 3
+		{
+		  print_rule(15); 
+		}
+d177 1
+a177 3
+  print_rule(16);
+  strncpy(read_task.name, $3.str_table->str_const+1, $3.str_table->size-2);
+  read_task.name[$3.str_table->size-2] = '\0';
+a178 1
+
+d181 1
+a181 4
+  print_rule(17);
+  strncpy(read_task.description, $3.str_table->str_const+1,
+	  $3.str_table->size-2);
+  read_task.description[$3.str_table->size-2] = '\0';
+d186 2
+a187 3
+  print_rule(18);
+  read_task.parent = NULL;
+  read_task.subtasks = NULL;
+a193 3
+		{
+		  print_rule(19); 
+		}
+a197 3
+		{
+		  print_rule(20); 
+		}
+a201 2
+		{ print_rule(21); 
+		}
+a202 3
+{
+  print_rule(22);
+}
+a206 31
+{ 
+  print_rule(23);		  
+/*  if (task_flag == 0)
+   {
+     printf(" There can't be any dependancies before the first task\n");
+   }
+  else
+   {
+     if (dependant_flag == 0)
+      {
+        tmp = find_task(list,$1.str_table->str_const);
+        read_task.dependencies = create_task_list(start, ta, NULL);
+        add_task_to_end(read_task.dependencies,tmp);
+	dependant_flag = 1;
+      }
+     else
+      {
+	tmp = tmp->next;
+        tmp = find_task(list,$1.str_table->str_const);
+        if (tmp == NULL)
+	 {
+	   printf(" TMP is NULL \n");
+	 }
+	else
+	 {
+        add_task_to_end(read_task.dependencies,tmp);
+         }
+      }
+   }*/
+	  
+}
+a210 2
+		{ print_rule(24); 
+		}
+a214 4
+		{
+		  print_rule(25);
+		  resource_flag = 0;
+		}
+a218 4
+		{
+		  print_rule(26);
+		  
+		}
+a219 3
+		{
+		  print_rule(27);
+		}
+a223 24
+	{ struct string_table *tmp;
+	  int j;
+	  print_rule(28);
+
+	  if (resource_flag == 0)
+	   { 
+             /*new_resource = create_resource_info($1.str_table->str_const);*/
+	     rnew_node = create_resource_node(new_resource, NULL, NULL);
+	     rstart = rnew_node;
+	     rtail = NULL;
+	     r_list = create_resource_list(rstart, rtail, NULL);
+	     add_resource_to_end(r_list, rnew_node);
+	     read_task.resources = r_list;
+	     resource_flag = 1;
+	   }
+          else
+	   {
+	     /*new_resource = create_resource_info($1.str_table->str_const);*/
+	     rnew_node = create_resource_node(new_resource, NULL, NULL);
+	     add_resource_to_end(r_list, rnew_node);
+	   }
+
+
+	}
+d228 3
+a230 4
+		{ print_rule(29);
+		  read_task.duration = $3.uint;
+		  /*printf(" task duration %d \n",read_task.duration);*/
+		}
+d232 3
+a234 4
+		{ print_rule(30);
+		  read_task.ft = $3.uint;
+		  /*printf(" task float %d \n",read_task.ft);*/
+		}
+d236 3
+a238 6
+                {
+		  print_rule(31);
+		  read_task.planned_start_date = $3.uint;
+		  /*printf(" task planned start %d \n",read_task.planned_start_date);*/
+		  
+		}
+d240 3
+a242 5
+		{
+		  print_rule(32);
+		  read_task.actual_start_date = $3.uint;
+		  /*printf(" task actual start %d \n",read_task.actual_start_date);*/
+		}
+d244 3
+a246 5
+		{
+		  print_rule(33); 
+		  read_task.forecast_start_date = $3.uint;
+		  /*printf(" task forecast start %d \n",read_task.forecast_start_date);*/
+		}
+d248 3
+a250 6
+		{
+		  print_rule(34);
+		  read_task.earliest_start_date = $3.uint;
+		  /*printf(" task earliest start %d \n",read_task.earliest_start_date);*/
+		}
+
+d252 3
+a254 5
+		{
+		  print_rule(35);
+		  read_task.latest_start_date = $3.uint;
+		  /*printf(" task latest start %d \n",read_task.latest_start_date);*/
+		}
+d256 3
+a258 5
+		{
+		  print_rule(36);
+		  read_task.planned_end_date = $3.uint;
+		  /*printf(" task planned end %d \n",read_task.planned_end_date);*/
+		}
+d260 3
+a262 5
+		{
+		  print_rule(37);
+		  read_task.actual_end_date = $3.uint;
+		  /*printf(" task actual end %d \n",read_task.actual_end_date);*/
+		}
+d264 3
+a266 5
+		{
+		  print_rule(38);
+		  read_task.forecast_end_date = $3.uint;
+/*		  printf(" task fporecast end %d \n",read_task.forecast_end_date);*/
+		}
+d268 3
+a270 5
+		{
+		  print_rule(39);
+		  read_task.earliest_end_date = $3.uint;
+		  /*printf(" task earliest end %d \n",read_task.earliest_end_date);*/
+		}
+d272 3
+a274 5
+		{
+		  print_rule(40);
+		  read_task.latest_end_date = $3.uint;
+		  /*printf(" task latest end %d \n",read_task.latest_end_date);*/
+		}
+d279 7
+a285 11
+		{
+		  print_rule(41);
+		  read_task.milestone = $3.uint;
+		  /*printf(" task milestone %d \n",read_task.milestone);*/
+		}
+	| DELIVERABLE '=' boolean		
+		{
+		  print_rule(42);
+		  read_task.deliverable = $3.uint;
+		  /*printf(" task deliverable %d \n",read_task.deliverable);*/
+		}
+d290 3
+a292 3
+		{ print_rule(43);
+			$$.uint = true;
+		}
+d294 3
+a296 3
+		{ print_rule(44);
+			$$.uint = false;
+		}
+d299 1
+a299 9
+/* FUNCTION create_stack() ***************************************************
+ *
+ * Description:
+ *   This function will create a stack which is to be used to store all of the
+ *   tasks ans subtasks before it writes it to the database.
+ *
+ * FUNCTION create_stack() */
+  
+create_stack()
+a300 4
+  begin = (struct stack *) malloc(sizeof *begin);
+  tail = (struct stack *) malloc(sizeof *tail);
+  begin->next = tail;
+  tail->next = NULL;
+d303 1
+a303 2
+
+struct stack *pop()
+d305 22
+a326 61
+  struct stack *z;
+  
+  z = (struct stack *) malloc(sizeof *z);
+  z = begin->next;
+  begin->next = z->next;
+  return z;
+}
+
+push( struct temp_task *t )
+{
+  struct stack *z;
+
+  z = (struct stack *) malloc(sizeof *z);
+  z->in_stack = t;
+  z->next = begin->next;
+  begin->next = z; 
+}
+
+void print_stack()
+{
+  begin = begin->next;
+  while( begin->next != NULL )
+   {
+     printf("This is the task name of what is on the stack %s \n",\
+	    begin->in_stack->name);
+     begin = begin->next;
+   }
+}
+    
+int yyerror( char *s)
+{
+}
+print_rule(int num)
+{
+  /* printf("reduction %d\n", num);*/
+}
+
+clear_read_task()
+{
+   read_task.name[0] = '\0';
+   read_task.description[0] = '\0';
+   read_task.duration = 0;
+   read_task.ft = 0;
+   read_task.planned_start_date = 0;
+   read_task.planned_end_date = 0;
+   read_task.actual_start_date = 0;
+   read_task.actual_end_date = 0;
+   read_task.forecast_start_date = 0;
+   read_task.forecast_end_date = 0;
+   read_task.earliest_start_date = 0;
+   read_task.earliest_end_date = 0;
+   read_task.latest_start_date = 0;
+   read_task.latest_end_date = 0;
+   read_task.milestone = 0;
+   read_task.deliverable = 0; 
+   read_task.resources = NULL;
+   read_task.subtasks = NULL;
+   read_task.parent = NULL;
+   read_task.dependencies = NULL;
+   read_task.dependents = NULL;
+   read_task.number_of_dependents = 0;
+@
+
+
+1.8
+log
+@*** empty log message ***
+@
+text
+@d11 1
+d167 2
+a168 1
+     list = create_task_list(start, ta, NULL);
+d170 1
+a170 1
+     set_main_task_list(list);
+d240 2
+a241 2
+  strncpy(read_task.name, $3.str_table->str_const, MAXNAMELEN);
+  read_task.name[MAXNAMELEN] = '\0';
+d247 3
+a249 2
+  strncpy(read_task.description, $3.str_table->str_const, MAXDESCLEN);
+  read_task.description[MAXDESCLEN] = '\0';
+@
+
+
+1.7
+log
+@*** empty log message ***
+@
+text
+@a13 3
+#include <stdio.h>
+#include <stdio.h>
+
+@
+
+
+1.6
+log
+@*** empty log message ***
+@
+text
+@d13 1
+d49 1
+d51 2
+d59 4
+d68 1
+a150 1
+     printf(" got here\n");
+d168 3
+a170 1
+     list = create_task_list(start, ta, new_node);
+d173 1
+d192 1
+a241 1
+  printf(" This is the value of the name %s \n",read_task.name);
+a248 1
+  printf("This is the value of the description %s \n",read_task.description);
+d255 2
+a256 1
+/*		  parent = find_task(task_list, $3.str);*/
+d260 1
+d280 3
+a282 2
+		{ print_rule(22); 
+		}
+d287 31
+a317 3
+		{
+		  print_rule(23);		  
+		}
+d329 2
+a330 1
+		  print_rule(25); 
+a342 1
+		  
+d348 24
+a371 4
+		{
+		  print_rule(28);
+		 /* strcpy($$.str_table.str_const,$1.str_table.str_const);*/
+		}
+d378 1
+a378 1
+		  printf(" task duration %d \n",read_task.duration);
+d383 1
+a383 1
+		  printf(" task float %d \n",read_task.ft);
+d389 1
+a389 1
+		  printf(" task planned start %d \n",read_task.duration);
+d396 1
+a396 1
+		  printf(" task actual start %d \n",read_task.actual_start_date);
+d402 1
+a402 1
+		  printf(" task forecast start %d \n",read_task.forecast_start_date);
+d408 1
+a408 1
+		  printf(" task earliest start %d \n",read_task.earliest_start_date);
+d415 1
+a415 1
+		  printf(" task latest start %d \n",read_task.latest_start_date);
+d421 1
+a421 1
+		  printf(" task planned end %d \n",read_task.planned_end_date);
+d427 1
+a427 1
+		  printf(" task actual end %d \n",read_task.actual_end_date);
+d433 1
+a433 1
+		  printf(" task fporecast end %d \n",read_task.forecast_end_date);
+d439 1
+a439 1
+		  printf(" task earliest end %d \n",read_task.earliest_end_date);
+d445 1
+a445 1
+		  printf(" task latest end %d \n",read_task.latest_end_date);
+d454 1
+a454 1
+		  printf(" task milestone %d \n",read_task.milestone);
+d460 1
+a460 1
+		  printf(" task duration %d \n",read_task.deliverable);
+d528 1
+a528 1
+   printf("reduction %d\n", num);
+@
+
+
+1.5
+log
+@*** empty log message ***
+@
+text
+@d1 8
+a8 1
+/* Top Level Code: Group 7 parser.y */
+d14 1
+d16 44
+a59 19
+static char name[MAXNAMELEN+1];
+static char desc[MAXDESCLEN+1];
+unsigned duration;
+unsigned planned_start_date;
+unsigned planned_end_date;
+unsigned actual_start_date;
+unsigned actual_end_date;
+unsigned forecast_start_date;
+unsigned forecast_end_date;
+unsigned earliest_start_date;
+unsigned earliest_end_date;
+unsigned latest_start_date;
+unsigned latest_end_date;
+unsigned float_time;
+enum boolean milestone;
+enum boolean deliverable;
+struct resource_list *resources;
+struct task_node *parent;
+struct task_list *dependencies;
+d91 2
+a92 2
+	: tasklist				
+		{ print_rule(1); 
+d118 2
+a119 1
+		{ print_rule(5); 
+d126 2
+a127 1
+		{ print_rule(5); 
+d130 2
+a131 1
+		{ print_rule(6); 
+d137 2
+a138 3
+		{ print_rule(7); 
+		}
+	;
+d140 47
+d189 2
+a190 1
+		{ print_rule(8); 
+d193 2
+a194 1
+		{ print_rule(9); 
+d200 2
+a201 1
+		{ print_rule(10); 
+d204 2
+a205 1
+		{ print_rule(11); 
+d208 2
+a209 1
+		{ print_rule(12); 
+d212 2
+a213 1
+		{ print_rule(13); 
+d216 2
+a217 1
+		{ print_rule(14); 
+d220 2
+a221 1
+		{ print_rule(15); 
+d227 15
+a241 11
+		{ print_rule(16);
+			strncpy(name, $3.val.str, MAXNAMELEN);
+			name[MAXNAMELEN] = '\0';
+			free($3.val.str);
+		}
+	| DESCRIPTION '=' STRING		
+		{ print_rule(17);
+			strncpy(desc, $3.val.str, MAXDESCLEN);
+			desc[MAXDESCLEN] = '\0';
+			free($3.val.str);
+		}
+d243 4
+a246 4
+		{ print_rule(18);
+/*			parent = find_task(task_list, $3.val.str);*/
+			free($3.val.str);
+		}
+d251 2
+a252 1
+		{ print_rule(19); 
+d258 2
+a259 1
+		{ print_rule(20); 
+d274 2
+a275 1
+		{ print_rule(23); 
+d287 2
+a288 1
+		{ print_rule(25); 
+d294 3
+a296 1
+		{ print_rule(26); 
+d299 3
+a301 1
+		{ print_rule(27); 
+d307 3
+a309 1
+		{ print_rule(28); 
+d316 2
+a317 1
+			duration = $3.val.uint;
+d321 2
+a322 1
+			float_time = $3.val.uint;
+d325 5
+a329 2
+		{ print_rule(31);
+			planned_start_date = $3.val.uint;
+d332 4
+a335 2
+		{ print_rule(32);
+			actual_start_date = $3.val.uint;
+d338 4
+a341 2
+		{ print_rule(33); 
+			forecast_start_date = $3.val.uint;
+d344 4
+a347 2
+		{ print_rule(34);
+			earliest_start_date = $3.val.uint;
+d349 1
+d351 4
+a354 2
+		{ print_rule(35);
+			latest_start_date = $3.val.uint;
+d357 4
+a360 2
+		{ print_rule(36);
+			planned_end_date = $3.val.uint;
+d363 4
+a366 2
+		{ print_rule(37);
+			actual_end_date = $3.val.uint;
+d369 4
+a372 2
+		{ print_rule(38);
+			forecast_end_date = $3.val.uint;
+d375 4
+a378 2
+		{ print_rule(39);
+			earliest_end_date = $3.val.uint;
+d381 4
+a384 2
+		{ print_rule(40);
+			latest_end_date = $3.val.uint;
+d390 4
+a393 2
+		{ print_rule(41);
+			milestone = $3.val.uint;
+d396 4
+a399 2
+		{ print_rule(42);
+			deliverable = $3.val.uint;
+d406 1
+a406 1
+			$$.val.uint = true;
+d410 1
+a410 1
+			$$.val.uint = false;
+d414 48
+d470 25
+@
+
+
+1.4
+log
+@Semantic hook added
+@
+text
+@d1 2
+@
+
+
+1.3
+log
+@*** empty log message ***
+@
+text
+@d70 2
+a71 2
+	: BEG TASKS tasksublist END TASKS	
+		{ print_rule(4); 
+d73 12
+d86 1
+@
+
+
+1.2
+log
+@*** empty log message ***
+@
+text
+@d267 3
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d4 1
+d6 2
+a7 2
+static char name[MAXNAMELEN];
+static char desc[MAXDESCLEN];
+d14 1
+d16 1
+d18 1
+d50 4
+d56 6
+a61 2
+	: tasklist				{ /* 1 */ }
+	|					{ /* 2 */ }
+d64 9
+a72 3
+tasklist 
+	: atask tasklist			{ /* 3 */ }
+	| atask					{ /* 4 */ }
+d75 9
+d85 3
+a87 1
+	: TASK '=' '{' alist '}'		{ /* 5 */ }
+d91 6
+a96 2
+	: assignment ';' alist			{ /* 6 */ }
+	| assignment ';'			{ /* 7 */ }
+d100 18
+a117 4
+	: stringassign				{ /* 8 */ }
+	| stringlistassign			{ /* 9 */ }
+	| numberassign				{ /* 10 */ }
+	| booleanassign				{ /* 11 */ }
+d121 17
+a137 3
+	: NAME '=' STRING			{ /* 12 */ }
+	| DESCRIPTION '=' STRING		{ /* 13 */ }
+	| PARENT '=' STRING			{ /* 14 */ }
+d140 4
+a143 3
+stringlistassign 
+	: DEPENDENCIES '=' stringlist		{ /* 15 */ }
+	| RESOURCES '=' stringlist		{ /* 16 */ }
+d146 4
+a149 3
+stringlist 
+	: STRING ',' stringlist			{ /* 17 */ }
+	| STRING				{ /* 18 */ }
+d152 42
+d195 48
+a242 12
+	: DURATION '=' UNSIGNED			{ /* 19 */ }
+	| FLOAT '=' UNSIGNED			{ /* 20 */ }
+	| PLANNEDSTART '=' UNSIGNED		{ /* 21 */ }
+	| ACTUALSTART '=' UNSIGNED		{ /* 22 */ }
+	| FORECASTSTART '=' UNSIGNED		{ /* 23 */ }
+	| EARLIESTSTART '=' UNSIGNED		{ /* 24 */ }
+	| LATESTSTART '=' UNSIGNED		{ /* 25 */ }
+	| PLANNEDEND '=' UNSIGNED		{ /* 26 */ }
+	| ACTUALEND '=' UNSIGNED		{ /* 27 */ }
+	| FORECASTEND '=' UNSIGNED		{ /* 28 */ }
+	| EARLIESTEND '=' UNSIGNED		{ /* 29 */ }
+	| LATESTEND '=' UNSIGNED        	{ /* 30 */ }
+d246 8
+a253 2
+	: MILESTONE '=' boolean			{ /* 31 */ }
+	| DELIVERABLE '=' boolean		{ /* 32 */ }
+d257 8
+a264 2
+	: TRUE                                  { /* 33 */ }
+	| FALSE					{ /* 34 */ }
+d267 4
+@

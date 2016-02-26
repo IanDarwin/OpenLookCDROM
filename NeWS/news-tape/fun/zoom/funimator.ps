@@ -1,0 +1,1069 @@
+%!
+% Animator window
+% By Don Hopkins, University of Maryland Human Computer Interaction Lab.
+%
+% This is a partially completed animator tool.
+% There's room to add all kinds of weird functionality.
+% Go for it!
+%
+% Copyright (C) 1988 by Don Hopkins. All rights reserved.
+% This program is provided for unrestricted use, provided that this 
+% copyright message is preserved. There is no warranty, and no author 
+% or distributer accepts responsibility for any damage caused by this 
+% program. 
+%
+
+systemdict begin
+
+systemdict /Item known not {(NeWS/liteitem.ps) LoadFile pop} if
+systemdict /PieMenu known not {(NeWS/piemenu.ps) LoadFile pop} if
+
+/Scrollodexbar SimpleScrollbar
+dictbegin
+  /StartX null def
+  /StartY null def
+  /DotX null def
+  /DotY null def
+  /NumbRadius 6 def
+  /SliceWidth 10 def
+dictend
+classbegin
+    % Bug: EraseBox used to try to call BoxPath with IPV of null
+    /EraseBox { % - => - (fill painted box with background color)
+        ItemPaintedValue null ne {
+	  ItemPaintedValue BoxPath ItemFillColor setcolor fill
+ 	} if
+    } def
+
+    /SetScrollMotion { % - => - (set ScrollMotion from event location)
+	CurrentEvent /Name get MenuButton eq {
+	    /ScrollMotion /Scrollodex def
+	    CurrentEvent begin
+	      /StartX XLocation /StartY YLocation
+	    end def def
+	} {
+	CurrentEvent /YLocation get			% y
+	dup ButtonSize le {
+	    /ScrollMotion /ScrollLineBackward def
+	} {
+	dup ItemHeight ButtonSize sub ge {
+	    /ScrollMotion /ScrollLineForward def
+	} {
+	    ItemPaintedValue ValueToY			% y yPainted
+	    2 copy le {
+		/ScrollMotion /ScrollPageBackward def
+	    } {
+	    2 copy BoxSize add ge {
+		/ScrollMotion /ScrollPageForward def
+	    } {
+		/ScrollMotion /ScrollAbsolute def
+	    } ifelse % 2 copy BoxSize add ge
+	    } ifelse % 2 copy le
+	    pop % pop yPainted
+
+	} ifelse % dup ItemHeight ButtonSize sub ge
+	} ifelse % dup ButtonSize le
+	pop % pop y
+        } ifelse
+    } def
+    
+    /ClientDown { % - => -
+      SetScrollMotion
+      CurrentEvent begin
+        gsave
+          fboverlay setcanvas
+	  /DotX XLocation /DotY YLocation
+	grestore
+      end def def
+      DoScroll
+    } def
+
+    /ClientUp { % - => - 
+        ItemValue ItemInitialValue ne {NotifyUser} if
+	ScrollMotion /Scrollodex eq {
+	  gsave
+	    fboverlay setcanvas erasepage
+	  grestore
+	} if
+    } def
+
+    /ClientDrag { % - => -
+        ScrollMotion dup /ScrollAbsolute eq exch /Scrollodex eq or
+	{DoScroll} if
+    } def
+
+    /DoScroll { % - => -
+        SetScrollValue
+        ItemValue ItemPaintedValue ne {
+	  EraseBox PaintBox
+	} if
+	ScrollMotion /Scrollodex eq {
+	  gsave
+	    fboverlay setcanvas
+	    erasepage
+	    newpath
+	    DotX DotY NumbRadius 0 360 arc
+	    closepath
+	    0 setgray fill
+	    DotX DotY moveto
+	    CurrentEvent begin XLocation YLocation end lineto
+	    stroke
+	  grestore
+	} if
+    } def
+
+    /SetScrollValueDict 10 dict dup begin
+	/Scrollodex		{CurrentEvent ScrollodexValue} def
+	/ScrollAbsolute		{CurrentEvent /YLocation get YToValue} def
+	/ScrollLineForward	{ItemValue BarLineValue add} def
+	/ScrollLineBackward	{ItemValue BarLineValue sub} def
+	/ScrollPageForward	{ItemValue BarPageValue add} def
+	/ScrollPageBackward	{ItemValue BarPageValue sub} def
+    end def
+
+  /ScrollodexValue { % event => value
+    10 dict begin
+      begin /X XLocation StartX sub /Y YLocation StartY sub end
+      def def
+      X dup mul Y dup mul add sqrt
+      NumbRadius le {
+        ItemValue
+      } {
+	X abs Y neg atan
+	SliceWidth sub 180 SliceWidth dup add sub div
+	BarMax BarMin sub mul
+	BarMin add
+      } ifelse
+    end
+  } def
+
+  % faster than setvalue
+  /updatevalue { % value => -
+    dup ItemValue ne {
+      gsave
+        /ItemValue exch def
+	ItemCanvas setcanvas
+        EraseBox PaintBox
+      grestore
+    } {pop} ifelse
+  } def
+
+  /updaterange { % [min max dLine dPg dView] => -
+    gsave
+      ItemCanvas setcanvas
+      EraseBox
+      /ItemPaintedValue null def
+      setrange
+      PaintBox
+    grestore
+  } def
+
+classend def
+
+/Animator ScrollWindow
+dictbegin
+    /Mag 1 def
+    /XOffset 0 def
+    /YOffset 0 def
+    /Pages [] def
+    /NewCan null def
+    /ParentCan null def
+    /SourceCan null def
+    /FlipProcess null def
+    /MaxFlipSleep 1 def
+    /FlipSleep MaxFlipSleep def
+    /SavedFlipSleep MaxFlipSleep def
+    /ThisPage null def
+    /ReverseTime false def
+    /FrameLabel (Animator) def
+    /IconImage /artist def
+    /PageNumbers null def
+    /DragX null def
+    /DragY null def
+    /Segments [] def
+    /ShowOverlay true def
+    /OverlayOn false def
+    /Overlay null def
+    /DragInterest null def
+    /Roundness .5 def
+    /Tool /rect def
+    /ToolReset? true def
+dictend
+classbegin
+
+  /CreateClientCanvas {
+    /CreateClientCanvas super send
+    FrameCanvas /Retained true put
+    /Overlay ClientCanvas createoverlay store
+  } def
+
+  /CreateFrameCanvas {
+    /CreateFrameCanvas super send
+    FrameCanvas /Retained true put
+  } def
+
+  /reshape {
+    /reshape super send
+    Overlay null ne {
+      /Overlay ClientCanvas createoverlay store
+    } if
+  } def
+
+  /createscrollbars {
+    /HScrollbar
+        [MaxFlipSleep  0  .01  .1  null] MaxFlipSleep
+	{/hscroll-notify ThisWindow send}
+	FrameCanvas /new Scrollodexbar send
+      dup /ClientDrag { /ClientDrag ParentDict supersend NotifyUser } put
+      dup /BarVertical? false put
+    def
+
+    /VScrollbar
+        [0 1 .01 .1 null] 0
+	{/vscroll-notify ThisWindow send}
+	FrameCanvas /new Scrollodexbar send
+      dup /ClientDrag { /ClientDrag ParentDict supersend NotifyUser } put
+    def
+  } def
+
+  /vscroll-notify {
+    Pages length 0 ne {
+      VScrollbar /ItemValue get
+      floor 0 max Pages length 1 sub min
+      change-page
+    } if
+  } def
+
+  /hscroll-notify {
+    FlipProcess null ne {
+      FlipProcess killprocess } if
+    /FlipSleep
+      HScrollbar /ItemValue get def
+    FlipSleep MaxFlipSleep lt {
+      /FlipProcess { 
+        { FlipSleep 60 div sleep pause 
+          flip-page } loop
+      } fork def
+    } if
+  } def
+
+  /this-page { % - => can
+    ThisPage dup null ne {
+      Pages exch get
+    } if
+  } def
+
+  /page-size { % - => width height
+    ThisPage null eq {0 0} {
+      gsave
+        Pages ThisPage get /can get setcanvas
+        clippath pathbbox points2rect
+	4 2 roll pop pop
+      grestore
+    } ifelse
+  } def
+
+  /change-page { % n => -
+    dup ThisPage ne {
+      /ThisPage exch def %
+      paint-this-page
+    } {pop} ifelse
+  } def
+
+  /update-vscroller {
+    FlipSleep 0 ne {
+      ThisPage /updatevalue VScrollbar send
+    } if
+  } def
+
+  /erase-old-image {
+  } def
+
+  /clip-page {
+    newpath clip-page-func
+    emptypath not {clip} if
+  } def
+
+  /clip-page-func {
+    shape-clip
+  } def
+
+  /image-page { imagecanvas } def
+
+  /flash-cursor { % can => -
+%    begin-this-page
+      0 setgray 5 setrasteropcode
+      0 0 1 1 rectpath fill
+%      .5 .5 .5 0 360 arc fill
+      0 0 1 1 rectpath fill
+%      .5 .5 .5 0 360 arc fill
+%    end-this-page
+  } def
+
+  /begin-this-page {
+    gsave
+        Pages ThisPage get begin
+          can setcanvas
+          clippath pathbbox points2rect
+          ClientCanvas setcanvas
+	  XOffset floor YOffset floor translate
+          scale pop pop
+	  Mag 1 ne {
+	    Mag dup scale
+	  } if
+  } def
+
+  /end-this-page {
+    end grestore
+  } def
+
+%  /po-matrix matrix def
+%
+%  /erase-overlay {
+%    gsave
+%      Overlay setcanvas
+%      overlayerase erasepage
+%    grestore
+%  } def
+%
+%  /paint-overlay {
+%    Segments length 0 ne  ShowOverlay and {
+%      gsave
+%        po-matrix currentmatrix
+%        Overlay setcanvas
+%	overlayerase erasepage
+%	overlaydraw 1 setgray
+%        setmatrix
+%        0 setlinewidth
+%        newpath
+%        Segments { exec } forall
+%        closepath
+%        stroke
+%      grestore
+%    } {
+%      erase-overlay
+%    } ifelse
+%  } def
+
+  /erase-overlay {
+    OverlayOn {
+      xor-overlay
+    } if
+  } def
+
+  /paint-overlay {
+    ShowOverlay OverlayOn not and {
+      xor-overlay
+    } if
+  } def
+
+  /xor-overlay {
+    /OverlayOn OverlayOn not store
+    Segments length 0 ne {
+      begin-this-page
+	initclip
+        0 setlinewidth
+	1 setgray 5 setrasteropcode
+        newpath
+        Segments { exec } forall
+        closepath
+        stroke
+      end-this-page
+    } if
+  } def
+
+  /EnterFrame {
+    /EnterFrame super send
+    paint-overlay
+  } def
+
+  /ExitFrame {
+    /ExitFrame super send
+    erase-overlay
+  } def
+
+  /paint-this-page {
+      ThisPage null eq {
+        gsave
+	  erase-overlay
+          ClientCanvas setcanvas erasepage
+        grestore
+      } {
+        erase-overlay
+        begin-this-page
+	  erase-old-image
+	  clip-page
+          can image-page
+	end-this-page
+        paint-overlay
+      } ifelse
+  } def
+
+  /update-last-page {
+    ThisPage Pages length 1 sub eq {
+      paint-this-page
+    } if
+  } def
+
+  /flip-page {
+    Pages length 0 ne {
+      ReverseTime {
+        ThisPage 1 sub
+        dup 0 lt { pop Pages length 1 sub } if
+      } {
+        ThisPage 1 add
+        dup Pages length ge { pop 0 } if
+      } ifelse
+      change-page
+      update-vscroller
+    } if
+  } def
+
+  /new-page { % - => can
+    gsave
+      /NewCan ClientCanvas newcanvas def
+      NewCan /Transparent false put
+      NewCan /Retained true put
+      ClientCanvas setcanvas
+      clippath NewCan reshapecanvas
+      NewCan dup add-page
+    grestore
+  } def
+
+  /push-page {
+    add-page update-last-page
+  } def
+
+  /copy-page { % source => -
+    gsave
+    /SourceCan exch def
+    new-page
+    setcanvas
+%    clippath pathbbox points2rect 4 -2 roll translate scale
+    clippath pathbbox points2rect scale pop pop
+    5 { pause } repeat
+    SourceCan imagecanvas
+    5 { pause } repeat
+    /SourceCan null def
+    update-last-page
+    grestore
+  } def
+
+  /update-scrollbar {
+    Pages length dup 0 ne {
+      VScrollbar /ItemValue ThisPage put
+      [exch 1 sub 1 max  0  1  8  1 Pages length div]
+      /updaterange VScrollbar send
+    } { pop } ifelse
+  } def
+
+  /page-dict-size 64 def
+
+  /add-page { % can => -
+    page-dict-size dict begin
+      /can exch def
+      % For mapping from canvas => page#
+      PageNumbers  can  Pages length  put
+%      /Segments [] def
+      currentdict
+    end
+    /Pages [ Pages aload pop counttomark 3 add -1 roll ] def
+    Pages length 1 eq {
+      /ThisPage 0 def
+    } if
+    ThisPage Pages length 2 sub eq
+    ReverseTime not and {
+      /ThisPage Pages length 1 sub def
+    } if
+    update-scrollbar
+  } def
+
+  /delete-page { % - => -
+    Pages length 0 eq {/ThisPage null def} if
+    ThisPage null ne {
+      /Pages Pages ThisPage arraydelete store
+      /PageNumbers 512 dict store
+      0 Pages { % page can-dict
+	/can get PageNumbers exch 2 index put
+	1 add
+      } forall
+      pop
+      ThisPage
+      ReverseTime not { 1 sub } if
+      Pages length 1 sub  min  0 max
+      Pages length 0 eq {
+        pop null
+      } if
+      change-page
+      update-scrollbar
+    } if
+  } def
+
+  /new {
+    /new super send begin
+      /ZoomMenu [
+        (Big) {PieDistance PieRadius le /zoom-big ThisWindow send}
+	(Reset) {/zoom-reset ThisWindow send}
+	(Small) {PieDistance PieRadius le /zoom-small ThisWindow send}
+	(Window) {/zoom-window ThisWindow send}
+      ] /new PieMenu send def
+
+      /ClipMenu [
+        (Time Shreds) {ThisWindow /clip-page-func {time-shreds} put}
+	(Square) {ThisWindow /clip-page-func {square-clip} put}
+	(Circle) {ThisWindow /clip-page-func {circle-clip} put}
+	(Time Blobs) {ThisWindow /clip-page-func {time-blobs} put}
+	(None) {ThisWindow /clip-page-func {} put}
+	(Shape) {ThisWindow /clip-page-func {shape-clip} put}
+      ] /new PieMenu send def
+
+      /ControlMenu [
+	(Show Overlay) {{/ShowOverlay true def paint-overlay} ThisWindow send}
+        (Delete) {/delete-page ThisWindow send}
+	(No Overlay) {{erase-overlay /ShowOverlay false def} ThisWindow send}
+	(Reset) {/all-reset ThisWindow send}
+      ] /new PieMenu send def
+
+      /RenderMenu [
+        (Image) {ThisWindow /image-page {imagecanvas} put}
+	(White) {ThisWindow
+		 /image-page {1 setgray true exch imagemaskcanvas}
+		 put}
+	(Nothing) {ThisWindow
+		   /image-page {pop flash-cursor} put}
+	(Black) {ThisWindow
+		 /image-page {0 setgray false exch imagemaskcanvas}
+		 put}
+      ] /new PieMenu send def
+
+      /EraseMenu [
+        (White) {/erase-to-white ThisWindow send}
+	(Black) {/erase-to-black ThisWindow send}
+      ] /new PieMenu send def
+      EraseMenu /PieInitialAngle 0 put
+
+      /MoreMenu [
+	(Clip...) ClipMenu
+	(Control...) ControlMenu
+	(Render...) RenderMenu
+	(Erase...) EraseMenu
+      ] /new PieMenu send def
+
+      /ToolMenu [
+	(Gone) {}
+	(Fishing) {}
+      ] /new PieMenu send def
+
+      /FlipMenu [
+        (Reverse) {ThisWindow /ReverseTime true put}
+	(Start) {/start-flip ThisWindow send}
+	(Forward) {ThisWindow /ReverseTime false put} 
+	(Stop) {/stop-flip ThisWindow send}
+      ] /new PieMenu send def
+
+      /ClientMenu  [
+        (Zoom...) ZoomMenu
+	(More...) MoreMenu
+	(Tool...) ToolMenu
+	(Flip...) FlipMenu
+      ] /new PieMenu send def
+
+      /PageNumbers 512 dict def
+
+    currentdict end
+  } def
+
+  /set-zoom {
+   erase-overlay
+   .001 max 100 min
+   dup 1 sub abs .01 lt {pop 1} if
+   /Mag exch def
+   paint-overlay
+  } def
+
+  /zoom-big { % bool => -
+    { Mag 1.1 mul } { Mag 2 mul } ifelse
+    set-zoom
+%     paint-this-page
+  } def
+
+  /zoom-small { % bool => -
+    { Mag .9 mul } { Mag .5 mul } ifelse
+    set-zoom
+%     paint-this-page
+  } def
+
+  /zoom-window {
+% **** WRITE ME
+% Scale the image to fit in a (ClientWidth ClientHeight min) square
+  } def
+
+  /zoom-reset {
+    /Mag 1 def
+%     paint-this-page
+  } def
+
+  /erase-to-white {
+    gsave ClientCanvas setcanvas 1 fillcanvas grestore
+  } def
+
+  /erase-to-black {
+    gsave ClientCanvas setcanvas 0 fillcanvas grestore
+  } def
+
+  /all-reset {
+    /Mag 1 def
+    /XOffset 0 def
+    /YOffset 0 def
+    /ThisPage 0 def
+    flip-reset
+    paint-this-page
+  } def
+
+  /pan-reset {
+    /XOffset 0 def
+    /YOffset 0 def
+    paint-this-page
+  } def
+
+  /flip-reset {
+    stop-flip
+    Pages length 0 eq {null} {0} ifelse
+    change-page
+    update-vscroller
+  } def
+
+  /set-flip-sleep {
+    /updatevalue HScrollbar send
+    hscroll-notify
+  } def
+
+  /stop-flip {
+    MaxFlipSleep set-flip-sleep
+  } def
+
+  /start-flip {
+    0 set-flip-sleep
+  } def
+
+  /flipiconic { % - => -
+    /flipiconic super send
+    Iconic? {
+      /SavedFlipSleep FlipSleep def
+      stop-flip
+    } {
+      SavedFlipSleep set-flip-sleep
+    } ifelse
+  } def
+
+  /destroy {
+    unmap
+    /Pages null def
+    /PageNumbers null def
+    /destroy super send
+  } def
+
+  /CreateFrameInterests {
+    /CreateFrameInterests super send
+    FrameInterests begin
+      /PagePointEvent
+        PointButton /PointProc
+	DownTransition ClientCanvas eventmgrinterest def
+      /PageAdjustEvent
+        AdjustButton /AdjustProc
+	DownTransition ClientCanvas eventmgrinterest def
+    end
+    /DragInterest
+      MouseDragged /DragProc
+      null ClientCanvas eventmgrinterest store
+  } def
+
+  /start-dragging {
+    DragInterest expressinterest
+  } def
+
+  /stop-dragging {
+    DragInterest revokeinterest
+  } def
+
+  /ToolDict dictbegin
+    /rect {
+      do-rect
+    } def
+    /round {
+      do-round
+    } def
+    /poly {
+      do-poly
+    } def
+    /draw {
+      do-draw
+    } def
+    /oval {
+      do-oval
+    } def
+    /curve {
+      do-curve
+    } def
+  dictend def
+
+  /PointProc {
+   ThisPage null ne {
+    true
+    CurrentEvent /KeyState get {
+      { /Shift { pop do-move false exit }
+        /Meta { pop do-drag false exit }
+	/Control { pop pop-dlist false exit }
+      } case
+    } forall
+    { ToolDict Tool known {
+        ToolDict Tool get cvx exec
+      } {
+        do-drag
+      } ifelse
+    } if
+   } if
+  } def
+
+  /use-tool {
+    /ToolReset? true def
+    /Tool exch def
+    mark-dlist
+  } def
+
+  /AdjustProc {
+   ThisPage null ne {
+    true
+    CurrentEvent /KeyState get {
+      { /Shift { pop do-move false exit }
+        /Meta { pop do-drag false exit }
+        /Control { pop paint-this-page false exit }
+      } case
+    } forall
+    {do-drag} if
+   } if
+  } def
+
+  /do-move {
+    10 dict begin
+      /image-page {pop flash-cursor} def
+      do-drag
+    end
+  } def
+
+  /do-drag {
+    gsave
+      erase-overlay
+      ClientCanvas setcanvas
+      CurrentEvent begin
+        /DragX XLocation XOffset sub  /DragY YLocation YOffset sub
+      end store store
+      [
+          [PointButton AdjustButton MenuButton] /do-drag-finish
+            [UpTransition DownTransition] null eventmgrinterest
+	    dup /Exclusivity true put
+          MouseDragged /do-drag-move
+            null null eventmgrinterest
+      ]
+      forkeventmgr waitprocess pop
+    grestore
+  } def
+
+  /do-drag-move {
+      erase-overlay
+      CurrentEvent begin
+        /XOffset XLocation DragX sub  /YOffset YLocation DragY sub
+      end store store
+      begin-this-page
+	  erase-old-image
+	  clip-page
+          can image-page
+      end-this-page
+      paint-overlay
+  } def
+
+  /do-drag-finish {
+    do-drag-move
+    paint-overlay
+    currentprocess killprocess
+  } def
+
+  /do-rect {
+    begin-this-page
+      matrix currentmatrix
+      ClientCanvas createoverlay setcanvas
+      setmatrix
+      currentcursorlocation
+      2 copy /y0 exch def /x0 exch def
+      { x0 y0 x y points2rect rectpath }
+      getanimated waitprocess aload pop
+      /y exch def /x exch def
+      [ /closepath cvx
+        x0 y0 x y points2rect /rectpath cvx
+      ] cvx bind
+      add-dlist
+    end-this-page
+  } def
+
+  /roundpath { % x y w h radius => -
+    2 index 2 index min 2 div mul 5 1 roll rrectpath
+  } def
+
+  /do-round {
+    begin-this-page
+      matrix currentmatrix
+      ClientCanvas createoverlay setcanvas
+      setmatrix
+      currentcursorlocation
+      2 copy /y0 exch def /x0 exch def
+      { x0 y0 x y points2rect Roundness roundpath }
+      getanimated waitprocess aload pop
+      /y exch def /x exch def
+      [ /closepath cvx
+        x0 y0 x y points2rect
+	Roundness /roundpath cvx
+      ] cvx bind
+      add-dlist
+    end-this-page
+  } def
+
+  /do-poly {
+    erase-overlay
+    begin-this-page
+      matrix currentmatrix
+      ClientCanvas createoverlay setcanvas
+      setmatrix
+      currentcursorlocation
+      2 copy /y0 exch def /x0 exch def
+      ToolReset? {
+        [ /closepath cvx x0 y0 /moveto cvx ] cvx bind add-dlist
+      } if
+      { newpath Segments {exec} forall x y lineto
+        ToolReset? not {closepath} if }
+      getanimated waitprocess aload pop
+      /y exch def /x exch def
+      [ x y /lineto cvx ] cvx bind
+      add-dlist
+      /ToolReset? false store
+    end-this-page
+  } def
+
+  /do-draw {
+    erase-overlay
+    begin-this-page
+      matrix currentmatrix
+      ClientCanvas createoverlay setcanvas
+      setmatrix
+      currentcursorlocation
+      2 copy /y0 exch def /x0 exch def
+      ToolReset? {
+        /ToolReset? false store
+        [ /closepath cvx x0 y0 /moveto cvx ] cvx bind add-dlist
+      } if
+      { [ x y /lineto cvx ] cvx bind add-dlist
+	newpath Segments {exec} forall closepath }
+        getanimated waitprocess aload pop
+    end-this-page
+  } def
+
+  /do-oval {
+    begin-this-page
+      matrix currentmatrix
+      ClientCanvas createoverlay setcanvas
+      setmatrix
+      currentcursorlocation
+      2 copy /y0 exch def /x0 exch def
+      { closepath
+        matrix currentmatrix 
+        x x0 add 2 div  y y0 add 2 div  translate
+        x x0 sub abs 2 div  y y0 sub abs 2 div  scale
+        0 0 1 0 360 arc
+        setmatrix
+      }
+      getanimated waitprocess aload pop
+      /y exch def /x exch def
+      [ /closepath cvx
+        [1 0 0 1 0 0] cvx /currentmatrix cvx
+        x x0 add 2 div  y y0 add 2 div  /translate cvx
+        x x0 sub abs 2 div  y y0 sub abs 2 div  /scale cvx
+        0 0 1 0 360 /arc cvx
+        /setmatrix cvx
+      ] cvx bind
+      add-dlist
+    end-this-page
+  } def
+
+  /do-curve {
+    erase-overlay
+    begin-this-page
+      matrix currentmatrix
+      ClientCanvas createoverlay setcanvas
+      setmatrix
+      currentcursorlocation
+      2 copy /y0 exch def /x0 exch def
+      ToolReset? {
+        /ToolReset? false store
+        [ /closepath cvx x0 y0 /moveto cvx ] cvx bind
+        add-dlist
+      } if
+      { newpath Segments {exec} forall
+        currentpoint
+        x y Roundness controlpoint
+        y exch sub y add exch
+	x exch sub x add exch
+	lineto
+        closepath }
+      getanimated waitprocess aload pop
+      /y exch def /x exch def
+      [ x y Roundness /controlpoint cvx ] cvx bind
+      add-dlist
+    end-this-page
+  } def
+
+  /PaintClient {
+    paint-this-page
+  } def
+
+  /set-dlist { % dlist => -
+    erase-overlay
+    /Segments exch def
+    paint-overlay
+  } def
+
+  /get-dlist { % - => dlist
+    /Segments load
+  } def
+
+  /clear-dlist {
+    erase-overlay
+    /Segments [] store
+    /ToolReset? true store
+  } def
+
+  /pop-dlist {
+    Segments length 0 ne {
+      erase-overlay
+      /Segments [ Segments aload pop pop ] store
+      dlist-marked? {
+        /ToolReset? true store
+      } if
+      paint-overlay
+    } if
+  } def
+
+  /add-dlist { % func => -
+    erase-overlay
+    /Segments [
+      Segments aload pop
+      counttomark 3 add -1 roll
+    ] store
+    paint-overlay
+  } def
+
+  /mark-dlist {
+    dlist-marked? not {
+      /Segments [
+        Segments aload pop nullproc
+      ] store
+    } if
+  } def
+
+  /dlist-marked? {
+    Segments length 0 eq dup not {
+      pop Segments dup length 1 sub get nullproc eq
+    } if
+  } def
+
+% Page clipping functions
+
+  /shape-clip {
+    Segments length 0 ne {
+      Segments { exec } forall
+    } if
+  } def
+
+  /circle-clip {
+    .5 .5 .5 0 360 arc
+    closepath
+  } def
+
+  /square-clip {
+    0 0 1 1 rectpath
+  } def
+
+  /time-shreds {
+    5 {
+      random  random % x y
+      random dup add 1 sub % x y w
+      random dup add 1 sub % x y w h
+      rectpath %
+    } repeat
+  } def
+
+  /time-blobs {
+    2 {
+      random  random random % x y r
+      0 360 arc closepath
+    } repeat
+  } def
+
+%!
+% Date: Thu, 21 Apr 88 04:03:37 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Re:  Sun logo in PostScript?
+% From: sunpeaks!denali!bill@Sun.COM (Bill Meine [Sun Rocky Mtn TSE])
+% 
+% Here's the one I use.  Some of the transformations are fairly ugly
+% (it was derived from someone elses code).  It acts as a primitive
+% that requires a newpath before and adds a sun logo to the currentpath
+% to use for whatever (even a canvas boundary).
+
+/Sunlogo { % xcenter ycenter s = -
+ 3 1 roll               	% s xcenter ycenter
+ matrix currentmatrix 4 1 roll	% matrix s xcenter ycenter
+ translate        		% matrix s
+ 16 dup mul 2 div sqrt div	% s will now represent total height
+ dup scale			% matrix
+ 0 3 dup mul 2 mul sqrt neg translate	% new starting point from center
+ 45 rotate
+        /Uchar {
+                 -.1 0 moveto
+                 0 0 .1 180 360 arc
+                 0 2.9 rlineto
+                 .8 0 rlineto
+                 0 -2.9 rlineto
+                 0 0 .9 0 180 arcn
+                 0 2.9 rlineto
+                 .8 0 rlineto
+                closepath
+                } def
+        /2Uchar { Uchar matrix currentmatrix
+		  4 4 translate Uchar setmatrix
+                } def
+ 4 { 2Uchar 6 0 translate 90 rotate } repeat
+ setmatrix		% restore original CTM
+ } def
+
+  /sun {
+    .5 .5 1 Sunlogo
+  } def
+
+classend def
+
+/CamWindow Animator def
+
+/anim {
+    /Win framebuffer /new Animator send def
+    /reshapefromuser Win send
+    /map Win send
+
+    /grab {
+      20 { pause } repeat
+      currentfile readcanvas
+      /copy-page Win send
+    } def
+} def
+
+/cam /anim load def
+
+end % systemdict

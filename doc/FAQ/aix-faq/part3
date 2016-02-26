@@ -1,0 +1,1652 @@
+From: jwarring@aol.net (Jeff Warrington)
+Newsgroups: comp.unix.aix,comp.answers,news.answers
+Subject: AIX Frequently Asked Questions (Part 3 of 4)
+Date: 13 May 1995 05:18:18 GMT
+Organization: America Online, Inc.
+Approved: news-answers-request@MIT.EDU
+Expires: 28 Jun 95 01:23:45 GMT
+Message-ID: <4032@aol.net>
+Reply-To: jwarring@aol.net
+Summary: This posting contains AIX Frequently Asked Questions 1.6 - 2.06
+         and their answers.  AIX is IBM's version of Unix.
+Keywords: AIX RS/6000 questions answers
+
+Archive-name: aix-faq/part3
+Last-modified: May 12, 1995
+Version: 4.30
+
+
+Frequently Asked Questions about AIX and the IBM RS/6000 Section 3
+__________________________________________________________________
+
+1.600: My named dies frequently, why?
+
+Running on 3.2, named dies frequently on network's primary name server.
+
+From: jpe@ee.egr.duke.edu (John P. Eisenmenger)
+
+Try the following:
+
+     stopsrc -s named		# stop running named
+     setenv MALLOCTYPE 3.1	# use 3.1 memory allocation algorithm
+     /etc/named ...		# don't use smit to start named
+
+You might be able to use startsrc/smit after setting MALLOCTYPE and get
+the same effect, but I'm not sure.
+
+[According to John, the problem is malloc() in the named code. He
+ also suggests using Berkeley's bind, which he has ported and can be
+ ftp'ed from ftp.egr.duke.edu, /archives/network/bind-4.8.3.tar.Z. -ed]
+
+Two ptfs should fix this problem. Get U412332 and U414752.
+
+Christophe Wolfhugel <Christophe.Wolfhugel@grasp.insa-lyon.fr> reports
+that bind 4.9 works fine on AIX 3.2 and without MALLOCTYPE=3.1.
+
+
+1.601: How do I trace ethernet packets on an AIX system?
+From: afx@muc.ibm.de (Andreas Siegert)
+
+Do the following:
+
+     iptrace -i en0 /tmp/ipt
+
+The iptrace backgrounds.  Find its process id and kill it when you are
+ready.  Then run
+
+     ipreport -rns /tmp/ipt >/tmp/ipr
+
+and look at the output.  The current version of Info does not document
+the r, n and s options but they are quite useful for layering the output.
+
+
+1.602 What is the authorized way of starting automount at boot time?
+From: curt@ekhadafi.austin.ibm.com (Curt Finch)
+
+I put this in my /etc/inittab:
+
+automount:2:once:/usr/etc/automount -T -T -T -v >/tmp/au.se 2>&1
+
+I hereby dub it authorized.
+
+
+1.603: How do I set a tty port for both dial-in and dial-out?
+
+Set the mode of the tty to be either 'shared' or 'delayed'. 
+
+
+1.604: How to move or copy whole directory trees across a network
+
+The following command will move an entire directory tree across a network 
+while preserving permissions, uids and gids.
+
+      $rsh RemoteHost "cd TargetDir; tar -cBf - ." | tar -xvBf -
+
+Explanation:
+
+The tar-create is rsh'd to the remote system and is written to
+stdout (the pipe).
+
+The local system is extracting the tar that is being read from
+stdin (the pipe).
+
+
+1.605: How can I send mail to hosts that cannot be pinged?
+From: jupiter.sun.csd.unb.ca!dedourek (John DeDourek)
+
+AIX 3.2 as shipped is configured to only send mail to mail addresses
+which include a host name.  Many organizations use a mail address whose
+"host name" part is not a host name (technically an MX name).  To change
+the configuration of the AIX mailer, login as root.  Then edit the file
+/etc/sendmail.cf to remove the comment marker ("# ") at the beginning of
+the line which reads:
+    # OK MX
+
+Now rebuild the machine readable form of the configuration with
+    sendmail -bz
+
+and finally restart signal sendmail to load the new configuration by one
+of the following:
+     reboot
+or
+     stopsrc -s sendmail
+     startsrc -s sendmail
+or 
+     kill -1 `cat /etc/sendmail.pid`
+
+
+1.606: How to configure dialup SLIP
+
+IBM's WWW page <URL:http://www.ibm.com/> can lead you to a helpful document
+<URL:http://www.austin.ibm.com/pub/www/services/aix_service/faxes/SLIP.DOC.zap>
+
+From: marvin@tornado.oche.de (Christian Bode)
+
+If you don't have problems with slattach you should have PTF 
+bos.obj 3.2.0.0.U411505 installed.  I assume that you did the right
+ifconfig commands to setup your slip-device (for example sl0).
+
+1. Create a group called slip.
+
+2. Create a user slip with smit like this:
+                                                     [Entry Fields]
+* User NAME                                          [slip]
+  ADMINISTRATIVE User?                                true
+  User ID                                            []
+  LOGIN user?                                         true
+  PRIMARY group                                      [slip]
+  Group SET                                          [slip]
+  ADMINISTRATIVE groups                              [system]
+  SU groups                                          [slip]
+  HOME directory                                     [/home/slip]
+  Initial PROGRAM                                    [/bin/sh]
+  User INFORMATION                                   [SLIP-Dialup]
+  Another user can SU to user?                        false
+  User can RLOGIN?                                    true
+  TRUSTED PATH?                                       nosak
+  Valid TTYs                                         [/dev/tty1]
+  AUDIT classes                                      []
+  PRIMARY authentication method                      [SYSTEM]
+  SECONDARY authentication method                    [NONE]
+  Max FILE size                                      [2097151]
+  Max CPU time                                       [-1]
+  Max DATA segment                                   [262144]
+  Max STACK size                                     [65536]
+  Max CORE file size                                 [2048]
+  Max physical MEMORY                                [65536]
+  File creation UMASK                                [022]
+  EXPIRATION date (MMDDhhmmyy)                       [0]
+
+3. Create a tty with getty on it:
+                                   Add a TTY
+                                               [Entry Fields]
+  TTY type                                     tty
+  TTY interface                                rs232
+  Description                                  Asynchronous Terminal
+  Parent adapter                               sa0
+* PORT number                                  [s1]
+  BAUD rate                                    [38400]
+  PARITY                                       [none]
+  BITS per character                           [8]
+  Number of STOP BITS                          [1]
+  TERMINAL type                                [dumb]
+  STATE to be configured at boot time          [available]
+  DMA                                          on
+  Read Trigger                                 0,1,2,3
+  Transmit buffer count                        [16]
+  Name of initial program to run               [/etc/getty]
+
+  Note: The following attributes are only applicable if /etc/getty is
+        specified as the initial program to run.
+
+  Enable program?                              respawn
+  Run level                                    2
+  Enable LOGIN                                 share
+  TIME before advancing to next port setting   [0]
+  STTY attributes for RUN TIME                 [hupcl,cread,brkint>
+  STTY attributes for LOGIN                    [hupcl,cread,echoe,>
+  RUN shell activity manager                   no
+  Optional LOGGER name                         []
+
+4. Change the hardware characteristics so that it uses NO XON/XOFF handshake
+   section 1.613 also talks about tty flow control.
+
+5. Here is the the .profile for User slip to manage dialups
+
+PATH=/usr/bin:/etc:/usr/sbin:/usr/ucb:$HOME/bin:/usr/bin/X11:/sbin:/usr/local/bin:.
+
+ENV=$HOME/.kshrc
+HISTSIZE=128
+
+export PATH ENV HISTSIZE
+#
+# Search for a LCK-File for our tty if there is one
+#
+
+if test -f /etc/locks/LCK..tty1
+then
+  SHPID=`cat /etc/locks/LCK..tty1`
+else
+ echo `date` " No LCK-File !!!" >>slip.log
+ exit 64
+fi
+
+#
+# Search for our own Shell to get the PID for checking against LCK-File
+#
+
+SH2PID=`ps -aef |
+        sed -n -e 's/^ *slip  *\([0-9][0-9]*\) .*-sh *$/\1/p`
+
+#
+# Is it the the same PID as in the LCK File so that we can start working ??
+#
+
+if test $SHPID = $SH2PID
+then
+#  remove the LCK-File because slattach does not like it.
+   rm -rf /etc/locks/LCK..tty1
+#  Add RTS/CTS Handshakeing to our own tty
+   stty add rts
+#  Startup slattach. Slattach has to have mode 4755 to be started up !!!
+   /usr/sbin/slattach tty1
+#  Just say that we are up.
+   echo `date` " Starting up slip-daemon " >>slip.log
+#  leave slattach enough time to startup
+   sleep 4
+else
+# Something must be wrong with the LCK-File
+  SH3PID=`ps -aef | awk ' {print $2}' | grep $SHPID`
+
+  if test ."$SH3PID" = .""
+  then
+    SH3PID="NO_SUCH_PROCESS"
+  fi
+
+  if test $SHPID = $SH3PID
+    then
+#  There is a living process which owns the LCK-File !!
+       echo `date` " Can't remove LCK-File, not owner !!!" >>slip.log
+       exit 64
+    else
+#   Who the hell didn't remove the LCK-File (should never happen)
+       echo `date` " LCK-File with no owner found !!!" >>slip.log
+       exit 64
+    fi
+fi
+
+# Get the pid of slattch so that we can kill him later on.
+SLPID=`ps -aef |
+ sed -n -e 's/^ *slip  *\([0-9][0-9]*\) .*-.*\/usr\/sbin\/slattach tty1 *$/\1/p`
+
+# Kill slattach if we get a signal 1 (Carrier Lost ? / Otherside-slattach
+# terminated )
+trap "kill $SLPID; exit 0" 1
+
+# We  will have a nice sleep and nice dreamings
+while sleep 256
+do
+:
+done
+
+Here's another scenario:
+From: oosten@angelo.ee.ualberta.ca (Brian Oostenbrink)
+
+Operating System: IBM AIX 3.2.1 and 3.2.3
+
+Configuring two RS6000s via a Serial Line Interface Protocol (SLIP) 
+connection over two US Robotics Sportster 14,400 modems.
+
+The AIX implementation of SLIP is slightly different from most others. 
+The ifconfig command is used to bring up a serial interface, and the
+slattach command is used to connect the interface to the serial port
+used for the connection.  Dialer device commands can also be issued when
+invoking the slattach command, using UUCP chat syntax.
+
+The following describes a connection between two machines:
+
+     local.j.k.l
+         ethernet IP address 129.128.127.21
+         slip interface IP address 129.1.2.1
+
+     remote.a.b.c
+         ethernet IP address 129.11.22.44
+         slip interface address 129.11.22.1
+
+1. Interface configuration
+
+Each machine must have a separate IP address dedicated to the SLIP
+interface. On remote.j.k.l, start the SLIP interface with:
+
+         ifconfig sl0 129.11.22.1 129.128.127.1  up
+
+and on local.a.b.c:
+
+         ifconfig sl0 129.128.127.1 129.11.22.1  up
+
+It is important in later versions of AIX 3.2.3+ to use the same SLIP
+interface # as the ptty port #, ie. if you use tty12, use ifconfig sl12
+instead of sl0.
+
+At this point the interfaces are ready to be connected.
+
+2. tty configuration
+   The tty ports on both machines were configured in an identical manner
+   using smit.
+                                                 [Entry Fields]
+ TTY type                                           tty
+ TTY interface                                      rs232
+ Description                                        Asynchronous Terminal
+ Parent adapter                                     sa0
+ PORT number                                        []                       +
+ BAUD rate                                          [38400]                  +
+ PARITY                                             [none]                   +
+ BITS per character                                 [8]                      +
+ Number of STOP BITS                                [1]                      +
+ TERMINAL type                                      [dumb]
+ STATE to be configured at boot time                [available]              +
+ DMA                                                on                       +
+ Read Trigger                                       0,1,2,3
+ Transmit buffer count                              [16]                      #
+ Name of initial program to run                     [etc/getty]
+
+ Note: The following attributes are only applicable if /etc/getty is specified
+ as the initial program to run.
+
+ Enable program?                                    respawn
+ Run level                                          2
+ Enable LOGIN                                       disable                  +
+ TIME before advancing to next port setting         [0]                      +#
+ STTY attributes for RUN TIME                       [hupcl,cread,brkint,icr>
+ STTY attributes for LOGIN                          [hupcl,cread,echoe,cs8,>
+ RUN shell activity manager                         no                       +
+ Optional LOGGER name                               []
+
+On older versions of AIX, we encountered some problems disabling getty, and
+resorted to changing the /etc/inittab file directly. For example, change
+
+   tty0:2:respawn:/etc/getty /dev/tty0
+to
+   tty0:2:off:/etc/getty /dev/tty0
+
+This will disable getty from running. After creating the SLIP tty device,
+you will need to change its hardware configuration to disable Xon/Xoff
+flow control. Software flow control should not be used for SLIP. Type
+'smit chtty', and then select sub item 2: Hardware settings.
+
+Most of the parameters in the tty configuration are the defaults.
+
+3. Modem Configuration
+
+   The modems were configured as follows:
+
+   RTS/CTS flow control enabled.
+   Xon/Xoff software flow control disabled. Usually this is automatic if
+      RTS/CTS is enabled.
+   Data rate, terminal to modem = fixed.
+      This is the baud rate from the tty port to the modem. We used a
+      fixed modem-port transfer rate, set to the fastest speed supported
+      by both the tty port and the modem. Newer modems can use a higher
+      transfer rate between the modem and serial port than the modem to
+      modem rate, which is necessary to use data compression effectively.  
+      In our setup, we used 14.4 kBaud modems with a port speed of 38.4
+      kBaud. If your modem supports this feature, use it, otherwise set
+      the port speed equal to the modem connection rate. On the USR
+      Sportster at&b1 fixes the serial port rate to that of the last
+      AT command. The speed parameter of the slattach command can be
+      used to ensure that this rate is that set in the tty configuration.
+   Error Correction enabled - not mandatory, but a good idea
+   Data Compression - not required, but it helps, especially for text
+      transfers.
+   Auto Answer - If the SLIP connection is to be initiated from either
+      machine, both modems should be set to auto answer, otherwise, just
+      the answering modem.
+
+   It is a good idea to configure the modem and then save the settings
+   to NVRAM, so that the correct settings can always be restored by the
+   slattach command.
+
+4. UUCP configuration files
+
+   /usr/lib/uucp/Devices
+   /usr/lib/uucp/Dialers
+
+   The Devices file must contain an entry with the tty and serial port
+   speed used for the interface. In our example,
+      Direct tty0 38400 slipdialer
+
+   The keyword 'slipdialer' is merely an index into the Dialers file.
+   For our purposes, the slipdialer entry in the Dialers file is simply:
+
+      slipdialer
+
+   This entry can also contain UUCP chat commands, or the chat commands
+   can be included in the slattach command.
+
+5. slattach invocation
+
+   slattach connects the device on the tty port to the SLIP interface
+   created by ifconfig, and sends any commands to the tty device if
+   needed. For our example, remote.j.k.l would never initiate a call,
+   only answer incoming calls. Therefore we execute:
+
+         slattach tty0 38400 '"" ATZ OK ""'
+
+   which connects the tty at 38400 baud. We could also simply run
+
+         slattach tty0
+
+   ie. without any modem commands, but the modem to port speed may not
+   be correctly set this way. In addition, the ATZ command ensures the
+   modem is set to the NVRAM settings.
+
+   On local.a.b.c type:
+
+         slattach tty0 38400 '"" ATZ OK \pATDT4925871 BIS ""' 4
+
+   This establishes the link at 38400 baud, and executes the dial string
+   as shown. The dial string is a UUCP chat string and are configured
+   in an expect send expect send ... format. The string:
+
+         '"" ATZ OK \pATDT4925871 BIS ""'
+
+   is interpreted as:
+   expect "" (null string) from modem
+   send   ATZ              to modem
+   expect OK               from modem
+   send   \pATDT4925871    to modem
+   expect BIS              from modem
+
+   BIS is the end of the CONNECT STRING. You could use any portion of
+   the string returned by the modem upon a connection as the expect
+   string. It may be wiser to simply expect CONNECT since all
+   connections should return this string.
+   The null strings are necessary because the first parameter of the
+   UUCP is an expected string from the modem, which can only be a null
+   string until the modem has been given a command.
+
+   The last parameter (4) of the slattach command is the debug level. 
+   A debug level of 4 displays the UUCP chat strings, which is useful
+   for checking the modem status.
+
+6. Routing
+   ifconfig is sufficient if all you want to do is talk between the
+   two hosts.  If you are running SLIP so that you can talk to more
+   than just that one other host you have to advertise your address.
+   
+   1) arp -s 802.5 iago 10:00:5a:b1:49:d8 pub
+        where 802.5 is a token-ring network the hardware address can
+        be obtained with `netstat -v` and iago was the SLIP client (My
+        PC at home :)  pub is the important part it means "published"
+        You may want to run this at boot time. 
+
+   Routing through the SLIP link is similiar to routing of any gateway. 
+   Invoking the ifconfig command automatically sets up a route between
+   the two SLIP machines. An entry in /etc/hosts or the named database
+   should be made, with the same machine name used for the SLIP address
+   as the ethernet address on each machine. For example, in /etc/hosts
+   on remote.a.b.c (and any other machine on remote.a.b.c ethernet):
+
+     129.11.22.44 remote.a.b.c # ethernet address
+     129.11.22.1  remote.a.b.c # slip address
+
+   It is preferable to place the ethernet address in the hosts file
+   before the SLIP address so remote.a.b.c will resolve to the
+   ethernet address. When using named, it is important to have both
+   addresses in the reverse file with the same name. We experienced
+   difficulties with NFS mounting over the slip link, owing to some
+   machine interpreting NFS requests from one of the two SLIP machines
+   as coming from the SLIP address, while the SLIP machine believed it
+   was sending the request from the ethernet address. This problem was
+   eliminated by having both addresses reverse resolve to the same name.
+
+7. Performance
+   At a modem speed of 14.4 kBaud and a port speed of 38.4 kBaud, we
+   realized a transfer rate through ftp of about 3.5 kB/s for text
+   files, and 1.3 kB/s for compressed files.
+
+
+1.607: Where is DCE discussed?
+
+DCE is the Distributed Computing Environment, which is roughly a
+flexible client-server architecture for heterogenous platforms.
+For more information, take a look in comp.soft-sys.dce.
+
+
+1.608: How do I make /var/spool/mail mountable?
+From: petersen@pi1.physik.uni-stuttgart.de (Joerg Petersen)
+
+In our cluster we share a /usr/local disk. We have a directory
+/usr/local/spool/mail and /var/spool/mail is soft-linked to it.
+
+From: fred@hal6000.thp.Uni-Duisburg.DE (Fred Hucht)
+
+Several problems has been reported on sharing the mail directory via
+NFS. The problems may occur when two or more sendmail daemons and/or
+mail readers access a user's mail file simultanously, because of NFS'
+file locking mechanism.
+
+We use another method here: Every user has one line in his/her
+$HOME/.forward file that reads
+
+xxx@mainserver.domain.name
+
+where xxx is the user node and mainserver.domain.name is the full
+hostname of one of the machines. Then all incoming mail to all machines
+is forwarded to mainserver, while mainserver ignores this line.
+
+
+1.609: getty spawning too rapidly 
+thanks to aslam@abaseen.lums.edu.pk (Sohail Aslam)
+
+The problem can occur due a number of modem settings. The most
+frequent is that the echo is not disabled on modems that are to
+accept incoming calls. In hayes language, ATE0 disables echo.
+If echo is enabled, the login prompt sent by the DTE (computer)
+is echoed back to it. It then issues "password:" prompt which
+the modem conveniently echoes back again. And the cycle goes on.
+
+Another setting to check is the Q registers which controls the
+modem's response to the DTE. The hayes command ATQ0 enables
+results codes. The Q register in conjunction with the X and
+the V registers, reports back to the DTE the status of the incoming
+or outgoing call, and the type of connection established. For
+outgoing calls, one would want to enable result codes but not
+for incoming calls. If codes are enabled (via ATQ0), when a
+call comes in, the modem will send strings (if ATV1 and ATX4 set)
+"RINGING", "CONNECTED" etc. to the local DTE. The getty will think
+some one is trying to login. It will send password prompt. Trouble
+again. Telebit and other intelligent modems has ATQ2 setting
+which says "reports codes only when calling out." For others,
+you will need to disable it (ATQ1) and enable when calling out.
+
+The DSR setting can be a source of problem. Ideally, modem should
+raise DSR only when CD is detected and modem raises CTS. Computer,
+such as the VAX, wait 30 seconds after the modem raises DSR. If
+CD is not on by that time, the computer will drop DTR causing the
+modem to reset. The DSR should be set to be raised only when
+carrier has been detected. The hayes setting is AT&S1.
+
+The DCD setting should be such that it reflects the true nature of
+the carrier. The CD can be forced on at all times (AT&C0). This
+is not good. Set it to AT&C1.
+
+Most modems can reload saved settings from non-volatile memory
+on a DTR transition. This is useful for resetting the modem
+when a call drops. Use AT&D3 to get this effect. 
+
+For dial in, thus, set AT E0 Q1 &C1 &D3 &S1 &W. The &W stores the
+settings in memory. They will be reloaded due to &D3.
+
+
+1.610: Does AIX support Compressed SLIP (CSLIP)?
+
+No.  That means no VJ compression either :)  See PPP in section 5.07 
+if you want more than standard SLIP.
+
+
+1.611: How do I setup anonymous ftp on my AIX system?
+(stolen from Peter Klee <klee@dhdibm1.bitnet> posting)
+
+Have a look at '/usr/lpp/tcpip/samples/anon.ftp'. It is a shell script
+and will set up a anonymous ftp site on your local RS/6000.  Note: the
+ftpd that comes with AIX does not support the display messages every
+time a user changes a directory or even when they login.
+
+1.612: Talk, getting notification.
+
+If you are not getting notification (that someone wants to talk to
+you), use (swcons `tty` && mesg y) in one window.
+
+There are many variations of 'talk' and finding compatible versions
+for multiple operating systems can be tricky.
+
+1.613: Disabling software flow control; using RTS/CTS.
+
+Different versions of AIX 3.2.5 respond differently to attempts to
+enable flow control (RTS/CTS signals).  This section is an attempt to
+compile a list of different approaches.
+
+The most straight forward is:
+   chdev -l ttyxx -a rts=yes
+   [ Note: ix40410 for AIX 3.2.5 should give you this functionality.  
+   PTF U426113 and numerous other superceding ptfs should provide this.]
+
+If carrier signal is high (its connected) you can try
+   stty add rts </dev/ttyxx 
+
+There is also a program that I first saw on the 800-IBM-4FAX number,
+also found in INFO that will remedy the situation in some cases.  Note
+that this code ignores the return code from ioctl (which on my machine
+is <0 :)
+
+/* This program is an adaptation of a program provided by IBM Defect Support.
+   It is provided without warrantee, or support.
+
+   The syntax of the command is:
+
+	setrts tty [tty [tty [...]]]
+
+   The program will loop through each tty provided on the command line, and 
+   turn on the 'rts' line discipline.  The program does not require that
+   the Carrier Detect signal be held high to keep the serial device from 
+   blocking on the attempt to open it.  The program works for all valid ttys.
+
+   BUGS: None that are known; however, using the program to set 'ptys' may
+   cause the 'pty' to become unusable.
+
+   This program was written by Robin D. Wilson, Pencom Software (with the
+   specific 'ioctl()' call provided by the IBM Defect Support Center.
+
+   I call it: "setrts"
+   
+   To compile:
+   cc -O -o setrts setrts.c
+   strip setrts
+   
+   (Funny, but if you strip with the compiler (i.e., cc -s), you end up with
+   120 extra bytes in the executable...)
+*/
+
+#include <stdio.h>
+#include <fcntl.h>
+#include <termios.h>
+#include <sys/tty.h>
+#include <string.h>
+#include <sys/param.h>
+#include <unistd.h>
+
+#define DEVDIR		"/dev/"
+#define	LINEDISP	"rts"
+
+main (argc, argv)
+int argc;
+char **argv;
+{
+	int tty;
+	char ttyname[MAXPATHLEN];
+
+/*	Give a 'usage' recommendation if they don't provide an argument */
+	if (argc < 2) {
+	   fprintf(stderr, "usage: %s <ttyn> [ttyn [ttyn [...]]]\n",argv[0]);
+	   exit(-1);
+	}
+ /*	Otherwise, loop through all the arguments... */
+	else while (--argc >= 1) {
+		argv++;
+ /*	Check to see if they input the 'tty' names with the DEVDIR on them...
+ *	If not, put it on...
+ */
+		if (strncmp(DEVDIR, argv[0], strlen(DEVDIR)) != 0) {
+			strcpy(ttyname, DEVDIR);
+			strcat(ttyname, argv[0]);
+		}
+		else
+			strcpy(ttyname, argv[0]);
+
+/*	Open the tty.  Use the non-blocking open (O_NDELAY) to open without a 
+ *	carrier (CD) present on the line...
+ */
+		if ((tty = open(ttyname, O_RDWR|O_NDELAY)) < 0) {
+		   fprintf(stderr, "%s: couldn't open tty device.\n",ttyname);
+		   exit (-2);
+		}
+ /*	Add the 'rts' line discipline... */
+		(void)ioctl(tty, TXADDCD, LINEDISP);
+		(void)close(tty);
+	}
+}
+
+
+1.614+ NIS security
+Ole.H.Nielsen@fysik.dtu.dk (Ole Holm Nielsen)
+
+SUMMARY: AIX 3.2.4 and above includes support for a more secure setup
+of the ypserv NIS daemon.  You can prevent any random host on the
+entire Internet from reading your NIS maps, as is possible with the
+default AIX setup.
+ 
+The details:
+------------
+After starting the ypserv daemon, I noticed in the syslog the following line:
+Jan 17 12:01:18 zeise syslog: /usr/etc/ypserv: no /var/yp/securenets file 
+This indicates that ypserv is looking for the mentioned configuration
+file, but did not find it, and hence will deliver the NIS maps to
+anyone on the net who can guess the NIS domainname.  I installed the
+/var/yp/securenets file and restarted ypserv, and it works !  Any
+illegal attempt to read NIS maps will result in the following getting
+logged to syslog (example):
+Jan 18 13:37:27 zeise syslog: ypserv: access denied for 129.142.6.79 
+
+How to enable this NIS security option:  
+Install the /var/yp/securenets file, for example:
+
+# /var/yp/securenets file
+#
+# The format of this file is one of more lines of
+# netmask netaddr
+# Both netmask and netaddr must be dotted quads.
+#
+# Note that for a machine with two Ethernet interfaces (i.e. a gateway
+# machine), the IP addresses of both have to be in /var/yp/securenets.
+#
+# for example:
+#255.255.255.0 128.185.124.00
+# Loopback interface
+255.255.255.255 127.0.0.1
+
+Uncommenting the last line would limit access to hosts on the
+128.185.124.*  net, only.  The loopback interface must be included, as
+shown above.
+
+To log violations, have a /etc/syslog.conf file containing the proper
+events.  We use this line:
+
+*.err;kern.debug;auth.notice;user.none          /var/adm/messages
+
+Caveat emptor:  This works for us, and you will have to verify it at
+your own installation.  Don't complain to us if you have troubles.  
+I do not know what PTF level our AIX 3.2.4 is at.  Our ypserv daemon 
+looks like this:
+
+zeise> strings /usr/lib/netsvc/yp/ypserv | head -2
+@(#)16
+1.12  com/cmd/usr.etc/yp/ypserv.c, cmdnfs, nfs325, 9334325a 5/4/93 19:44:41
+
+If your AIX doesn't have securenets support, ask your support centre
+for the PTF which includes APAR IX32328.  That seems to have included
+the securenets support.
+
+
+1.615: Why can't non-anonymous users login using WU-FTP?
+From: swcxt@boco.co.gov (Shane Castle)
+
+You must create a file named /etc/shells (this is the real /etc not a
+subdirectory of your false root), that contains all the shells that
+are defined on your system.  Get the list from
+/etc/security/login.cfg.  Also, if having proper group authentication
+is important to you, apply the following patch:
+
+--- ftpd.c.dist	Wed Apr 13 15:17:18 1994
++++ ftpd.c	Tue Jan 17 13:29:58 1995
+@@ -1153,7 +1153,13 @@
+        setgroups(NULL, NULL);
+        if (setpriv(PRIV_SET|PRIV_INHERITED|PRIV_EFFECTIVE|PRIV_BEQUEATH,
+                    &priv, sizeof(priv_t)) < 0 ||
+-           setuidx(ID_REAL|ID_EFFECTIVE, (uid_t)pw->pw_uid) < 0 ||
++           initgroups(pw->pw_name, (gid_t)pw->pw_gid) < 0 ||
++           setgidx(ID_REAL|ID_EFFECTIVE, (gid_t)pw->pw_gid) < 0 ||
++           setegid((gid_t)pw->pw_gid) < 0) {
++               reply(550, "Can't set gid (AIX3).");
++               goto bad;
++       }
++       if (setuidx(ID_REAL|ID_EFFECTIVE, (uid_t)pw->pw_uid) < 0 ||
+            seteuid((uid_t)pw->pw_uid) < 0) {
+                reply(550, "Can't set uid (AIX3).");
+                goto bad;
+
+
+1.616: NIS users can't login, do I need '*' in /etc/passwd?
+From: ohnielse@fysik.dtu.dk (Ole Holm Nielsen)
+
+Aparently at least one version of AIX InfoExplorer suggests
+administrators use "+:*:0:0:::" as the last entry in the /etc/passwd
+file of NIS clients for security reasons.  If the configuration SMIT
+is done using SMIT it will actually append "+::0:0:::" which works and
+does not compromise security.  Using the '*' in the passwd field
+actaully prevents NIS users from logging in.
+
+"+::0:0:::" should not allow you to login as user "+" and without a
+password even when NIS is disabled, but it never hurts to double
+check.
+
+rbogue@entropy.phy.ilstu.edu (Ross Bogue) has suggested that
+"+::-2:-2:::/bin/false" is even more secure.
+
+
+1.617: HP JetDirect cards and virtual printers?  mkvirprt problems?
+(stolen from many)
+
+Since the release of AIX 3.2.5 adding a queue for JetDirect cards is
+as easy as creating a virtual printer using "smit mkvirprt" or
+/etc/mkvirprt.  If the command hangs make sure you are using an
+HFT, aixterm or vt100 terminal.  The entire procedure is available
+from the IBM FAX "Information Line" (800 IBM-4-FAX).
+
+
+1.618: How can I hack libc.a to alter how hostnames are resolved?
+(From: <mlarsen@ptdcs2.intel.com> "L. Mark Larsen")
+
+[ 
+  Editors note:  The implications of corrupting libc.a should not be
+  understated.  While recovering from a corrupt libc.a should be a
+  matter of booting from floppy I wouldn't wish that on anyone with a 
+  supervisor or users to support :)
+
+  enough of the weak kneed quiverring...
+]
+
+Nate Itkin (a colleague) is the individual who did the initial work.
+I suspect he would rather not be troubled with any questions you may
+have in this area and I can probably answer them just as easily.  The
+motivation for this was to use DNS for MX records (we are using IDA
+sendmail) but NIS for most hostname lookups.
+
+Secondly, warnings:  IBM has not given any sort of stamp of approval on what
+we have done (though they appear to have integrated resolv+ into AIX 4 based
+on some release notes I saw).  While we have been using it successfully for
+about one year and have seen no problems, we can't and won't promise the same
+for you.  This procedure plays around with libc.a which, as you probably know,
+is an XCOFF shared library under AIX and hence a critical part of the running
+system.  You assume all the risk if you try to install this.  All the usual
+disclaimers about liability, etc. apply - there is no warranty associated with
+any of this.
+
+Furthermore, know that any PTF you subsequently install that updates/replaces
+libc.a implies that you have to execute most of these procedures again.
+
+To use resolv+ under AIX 3 (we've only done this under 3.2.5 but I would
+think it should work for all point releases), here is what you have to do:
+
+1. get the resolv+ source (I see a copy on ftp.uu.net in networking/ip/dns
+   and there are likely copies elsewhere).  We are using version 2.1.1,
+   which appears to be the latest available.  gethostnamadr.c needs a couple
+   of additions:
+
+	23a24,26
+	> #ifdef _AIX
+	> #include <sys/time.h>
+	> #endif
+	35a39,41
+	> #ifdef _AIX
+	> #include <sys/ioctl.h>         /* for SIOCGIFCONF */
+	> #else
+	36a43
+	> #endif
+
+2. Use the following instead of the supplied shlib/Makefile:
+
+LIBP=	gethostnamadr.o herror.o res_data.o res_query.o res_mkquery.o \
+	sethostent.o res_send.o res_debug.o res_comp.o res_init.o
+CFLAGS=	-O -D_BSD=43 -D_NO_PROTO -DNIS -DDEBUG -U__STR__
+
+all: shr.o 
+
+shr.o:	$(LIBP) setup 
+	ld -o $@ /lib/syscalls.exp $(LIBP) tmp.o -bM:SRE -bE:shr.exp -bE:/lib/syscalls.exp -bI:crypt.imp -H512 -T512 -bh:4 -lc
+
+setup:
+	rm -f libc.a crypt.imp
+	cp /lib/libc.a .
+	chmod 755 libc.a
+	ar xv libc.a shr.o
+	/bin/dump -nv shr.o | grep EXP | awk '{print $$NF}' > shr.exp
+	ld -o tmp.o -bnso shr.o -r
+	@ echo '#!' > crypt.imp
+	@ echo __crypt >> crypt.imp
+	@ echo __setkey >> crypt.imp
+	@ echo __encrypt >> crypt.imp
+	
+clean:
+	rm -f shr.o tmp.o crypt.imp shr.exp $(LIBP) libc.a
+
+install_libc:	install_libc.c
+	cc -o $@ install_libc.c -bnso -bI:/lib/syscalls.exp
+
+herror.o: ../herror.c
+	$(CC) $(CFLAGS) -c ../herror.c
+
+res_comp.o: ../res_comp.c
+	$(CC) $(CFLAGS) -c ../res_comp.c
+
+res_debug.o: ../res_debug.c
+	$(CC) $(CFLAGS) -c ../res_debug.c
+
+res_data.o: ../res_data.c
+	$(CC) $(CFLAGS) -c ../res_data.c
+
+res_init.o: ../res_init.c
+	$(CC) $(CFLAGS) -c ../res_init.c
+
+res_mkquery.o: ../res_mkquery.c
+	$(CC) $(CFLAGS) -c ../res_mkquery.c
+
+res_query.o: ../res_query.c
+	$(CC) $(CFLAGS) -c ../res_query.c
+
+res_send.o: ../res_send.c
+	$(CC) $(CFLAGS) -c ../res_send.c
+
+gethostnamadr.o: ../gethostnamadr.c
+	$(CC) $(CFLAGS) -c ../gethostnamadr.c
+
+sethostent.o: ../sethostent.c
+	$(CC) $(CFLAGS) -c ../sethostent.c
+
+strpbrk.o: ../strpbrk.c
+	$(CC) $(CFLAGS) -c ../strpbrk.c
+
+strerror.o: ../strerror.c
+	$(CC) $(CFLAGS) -c ../strerror.c
+
+3. As shipped, IBM's /lib/syscalls.exp contains an entry for fork().  This
+   needs to be removed as it will cause the new shr.o to use the system call
+   entry point rather than the library wrapper and this can cause some rather
+   odd behavior.  For example, I ran across one using the '!' command in vi
+   where the error/informational messages were corrupted.
+
+4. You can use "ar r libc.a shr.o" but that will leave a big hole in libc.a,
+   since the new shr.o is slightly bigger than the original.  I always extract
+   all the .o's from libc.a and build a brand new one - suit yourself.
+
+5. Before the next step, you'll want to set up the two configuration files.
+   The first is /etc/resolv.conf and it is basically the same as before
+   except for the new keyword "search" - intended to replace the "domain".  See
+   the resolver.5 manual page for details (included with the resolv+ source).
+   The other file is /etc/host.conf, which is where you set the order of
+   search.  See resolv+.8 for information on this.
+
+6. Now, the only tricky part left is to get the new libc.a installed.  You'll
+   note the Makefile has a target for install_libc.  Just put the following
+   in install_lib.c and run "make install_libc" to build.
+
+------------------------------- begin install_libc.c -------------------------
+#include <stdio.h>
+
+static char *nodns[] = { "/usr/ccs/lib/libc.a" , "/usr/ccs/lib/libc.a.ORIG" };
+static char *hasdns[] = { "/usr/ccs/lib/libc.a.NEW" , "/usr/ccs/lib/libc.a" };
+
+#define OLD     (0)
+#define NEW     (1)
+
+main()
+{
+
+	if(link(nodns[OLD],nodns[NEW])) {
+		perror("link");
+		exit(1);
+	}
+
+	if(unlink(nodns[OLD])) {
+		perror("unlink");
+		exit(1);
+	}
+
+	if(link(hasdns[OLD],hasdns[NEW])) {
+		perror("link");
+		exit(1);
+	}
+
+	if(unlink(hasdns[OLD])) {
+		perror("unlink");
+		exit(1);
+	}
+
+	exit(0);
+}
+------------------------------- end install_libc.c ---------------------------
+
+7. You'll want to do this on a quiet machine.  Move the new libc.a to
+   /usr/ccs/lib/libc.a.NEW, then run install_libc.  It is probably a good
+   idea to reboot afterwords (though not strictly required).  We have a similar
+   program called restore_libc (exercise for the reader) for backing out the
+   change.
+
+   Rather than do this on every machine (we have 170+ RS/6000's), I simply
+   put this new libc.a into my network-installable image, which I blasted
+   out over the year-end holiday break (I created a method for loading a new
+   image onto machines without having to boot off of floppies and turn keys).
+
+   Of course, for the really cautious, you can always make the change after
+   booting off of the maintenance floppies...
+
+
+______________________________________________________________________________
+1.701: How do I shrink /usr?
+From: mike@bria.UUCP (Michael Stefanik) and Richard Hasting
+
+FOR AIX 3.1
+-----------
+
+ 1) Make a backup of /usr
+
+        find /usr -print | backup -ivf /dev/rmt0 (or appropriate device)
+
+ 2) shutdown to maintenance mode
+
+        shutdown -Fm
+ 
+ 3) export LANG=C
+ 
+ 4) remove the filesystem and the logical volume
+    ignore an error about the "dspmsg" command not found
+
+        umount /usr
+        rmfs /usr
+
+ 5) make a new logical volume hd2 and place it on rootvg with desired size
+
+        mklv -yhd2 -a'e' rootvg NNN 
+
+   where NNN is the number of 4 meg partitions
+
+ 6) create a filesystem on /dev/hd2
+
+        crfs -vjfs -dhd2 -m'/usr' -Ayes -p'rw'
+
+ 7) mount the new /usr filesystem and check it
+
+        /etc/mount /usr
+        df -v
+
+ 8) restore from the tape; system won't reboot otherwise
+
+        restore -xvf/dev/rmt0
+
+ 9) Sync and reboot the system; you now have a smaller /usr filesystem
+
+FOR AIX 3.2
+-----------
+
+ 0)  Experiances posted to comp.unix.aix lead me to suggest that
+     many administrators find the following piece of information 
+     useful after completing this procedure.  I thought some of you
+     might like to read it BEFORE getting yourself into this
+     predicament.  
+
+     Call 1-800-IBM-4FAX and request document 2503 dated 1/26/94.  
+     Title is "How to recover if all files are owned by root after
+     restoration from a mksysb tape".
+
+ 1) Remove any unneeded files from /usr.
+
+ 2) Make sure all filesystems in the root volume group are mounted. If
+    not, they will not be included in the re-installed system.
+
+ 3) Type mkszfile. This will create /.fs.size that contains a list of
+    the active filesystems in the root volume group that will be
+    included in the installation procedure.
+
+ 4) Edit .fs.size. Change the size of /usr to what you want.
+
+    Example: This .fs.size file shows /usr to be 40MB.
+
+	rootvg 4 hd2 /usr 10 40 jfs
+
+    The 10 is the number of physical partitions for the filesystem and
+    the 40 is 40 MB. Most systems have a physical partition size of 4 MB.
+    Therefore, the second number (40) will always be 4 times the
+    previous number (10). Note, however, that a model 320 with a 120 MB
+    drive will have a physical partition size of only 2 MB, and the
+    total MB is twice the number of physical partitions. The first
+    number (4) in the .fs.size file represents the PP size.
+
+    If you want to reduce the size of /usr from 40 MB to 32 MB, edit the
+    /usr entry to:
+
+        rootvg 4 hd2 /usr 8 32 jfs
+
+    IMPORTANT: Make sure that you DO NOT enter a value which is less
+    than the size of the filesystem required to contain the current
+    data. Doing so will cause the re-installation procedure to fail.
+
+ 5) chdev -l rmt0 -a block=512 -T
+
+ 6) Unmount all filesystems that are NOT in the root volume group.
+ 
+ 7) Varyoff all user-defined volume groups, if any
+
+        varyoffvg VGname
+
+ 8) Export the user-defined volume groups, if any
+
+        exportvg VGname
+
+ 9) With a tape in the tape drive, type
+
+        mksysb /dev/rmt0
+
+     This will do a complete system backup, which will include
+     information (in the .fs.size file) for the installation procedure
+     on how large the filesystems are to be created.
+
+ 10) Follow the instructions in the Installation Kit under "How to
+     Install and perform maintenance from Diskettes" (reportedly now 
+     called "BOS Installation from a System Backup") using the
+     diskettes and tape that you created in the previous steps.
+
+     [ pre AIX 325: DO NOT select the option "Reinstall AIX with
+     Current System Settings". Instead use "Install AIX with Current
+     System Settings" for the logical volume size changes to take affect. ]
+
+     [ w/ AIX 325: Select "Install from a mksysb image" ]
+
+ 11) When the installation is complete, you may then import any
+     user-defined volume groups.
+
+         importvg -y VGname PVname
+
+     where "VGname" is the name of the volume group, and "PVname" is
+     the name of any one of the physical volumes in the volume group.
+
+ 12) Varyon your user-defined volume groups
+
+         varyonvg VGname
+
+ The reduction of the filesystems is now complete.
+
+
+1.702: How do I make a filesystem larger than 2Gb?
+
+With AIX 4.1 IBM allows filesystems up to 64Gb (reference:
+<URL:http://www.austin.ibm.com/announce.0725.html>).  Individual files are
+still limited to 2Gb.
+
+If you are having trouble creating a file greater than 1Mb it maybe
+because that is the default limit for your account, see 'smit users'
+or /etc/security/limit.
+
+The largest filesystem under AIX is 2 Gigabytes because the largest
+signed integer is 2**31 - 1.  This means that AIX 3.2.5 an versions
+preceeding it are limited to 2Gb filesystems.  This obviously does not
+include "non-filesystems"
+
+
+1.703: Chlv warning.  Is the first 4k of a LV safe?
+
+The first 4k of a raw LV are used to store control block.
+Applications that write to the raw disk can overwrite this section
+(common applications that do this are Oracle and Sybase).  Commands
+that call getlvcb will generate a warning but succeed (since the
+control block exists in ODM.  Don't run synclvodm unless you really
+want to erase the first 4k and replace it with the info from the ODM.
+
+shieh@austin.ibm.com (Johnny Shieh) has kindly provided the following
+explanation:
+
+The logical volume control block (lvcb) is the first 512 bytes of a
+logical volume.  This area holds important information such as the
+creation date of the logical volume, information about mirrored
+copies, and possible mount points in a journaled filesystem.  Certain
+LVM commands are required to update the lvcb, as part of completeness
+algorithms in LVM.  The old lvcb area is first read and analyzed to
+see if it is a valid lvcb.  If the information is verified as valid
+lvcb information, then the lvcb is updated.  If the information is not
+valid, then the lvcb update is not performed and the user is given the
+warning message:
+
+	Warning, cannot write lv control block data
+
+Most of the time, this is a result of database programs accessing the
+raw logical volumes (and thus bypassing the journaled filesystem) as
+storage media.  When this occurs, the information for the database is
+literally written over the lvcb.  Although this may seem fatal, it is
+not the case.  Once the lvcb has been overwritten, the user can still:
+
+	1) Extend a logical volume
+	2) Create mirrored copies of a logical volume
+	3) Remove the logical volume
+	4) Create a journaled filesystem with which to mount the logical
+		volume (note that this will destroy any data sitting in
+		the lvcb area)
+
+However, there is a limitation caused by this deletion of the lvcb.
+The logical volumes with deleted lvcb's face possible, incomplete
+importation into other AIX systems.  During an "importvg", the LVM
+command will scan the lvcb's of all defined logical volumes in a
+volume group for information concerning the logical volumes.
+Surprisingly, if the lvcb is deleted, the imported volume group will
+still define the logical volume to the new AIX system which is
+accessing this volume group, and the user can still access the raw
+logical volume.  However, any journaled filesystem information is lost
+and the logical volume and its associated mount point won't be
+imported into the new AIX system.  The user must create new mount
+points and the availability of previous data stored in the filesystem
+is NOT assured.  Additionally, all copies of the logical volume
+(mirrors), except the original copy are lost and the user must
+recreate the logical volume copies.  Finally, with an erased lvcb, the
+output from the "lslv" command might be misleading or unreliable.
+
+
+1.704: What's the limit on Physical Partitions Per Volume Group?
+From: shieh@austin.ibm.com (Johnny Shieh)
+
+In the design of LVM, each Logical Partition maps to one Physical
+Partition.  And, each Physical Partition maps to a number of disk
+sectors.  The design of LVM limits the number of Physical Partitions
+that LVM can track per disk to 1016.  In most cases, not all the
+possible 1016 tracking partitions are used by a disk.  The default
+size of each Physical Partition during a "mkvg" command is 4 MB, which
+implies that individual disks up to 4 GB can be included into a volume
+group.
+
+If a disk larger than 4 GB is added to a volume group (based on usage
+of the default 4 MB size for Physical Partition) the disk addition
+will fail with a warning message the the Physical Partition size needs
+to be increased.* There are two instances where this limitation will
+be enforced.  The first case is when the user tries to use "mkvg" to
+create a volume group where the number of physical partitions on one
+of the disks in the volume group would exceed 1016.  In this case, the
+user must pick from the available Physical Partition ranges of:
+
+1, 2, (4), 8, 16, 32, 64, 128, 256
+
+Megabytes and use the "-s" option to "mkvg".  The second case is where
+the disk which violates the 1016 limitation is attempting to join a
+pre-existing volume group with the "extendvg" command.  The user can
+either recreate the volume group with a larger Physical Partition size
+(which will allow the new disk to work with the 1016 limitation) or
+the user can create a standalone volume group (consisting of a larger
+Physical Partition size) for the new disk.
+
+In AIX 4.1 and 3.2.5, if the install code detects that the rootvg
+drive is larger than 4 GB, it will change the "mkvg -s" value until
+the entire disk capacity can be mapped to the available 1016 tracks.**
+This install change also implies that all other disks added to rootvg,
+regardless of size, will also be defined at that new Physical
+Partitions size.
+
+* This bug was fixed in apar ix48926.  Current AIX 3.2.5 and 4.1.1,
+which do not have this fix on applied, will allow the creation of
+volume groups with more than 1016 partitions.  The implication of this
+bug allowing more than 1016 physical partitions is that the user may
+access all portions of the logical volume.  However during disk
+mirroring, the status of partitions beyond the 1016 limit will not be
+tracked correctly.  If mirrors beyond the 1016 range become "stale",
+LVM will not be aware of their condition and data consistency may
+become an issue for those partitions.  Additionally, the "migratepv"
+command creates mirrors and deletes them as a method for moving
+logical volumes around within/between disks.  If the 1016 limit is
+violated, then the "migratepv" command may not behave correctly.
+
+** This bug was fixed for AIX 3.2.5 rootvg install in apars ix46862
+and ix46863.  This bug does not exist in AIX 4.1.1.
+
+
+1.705: Why am I having trouble adding another disk to my VG?
+From: shieh@austin.ibm.com (Johnny Shieh)
+
+In some instances, the user will experience a problem adding a new
+disk to an existing volume group or in the creation of a new volume
+group.  The warning message provided by LVM will be:
+
+	Not enough descriptor space left in this volume group.  Either
+	try adding a smaller PV or use another volume group.
+
+On every disk in a volume group, there exists an area called the
+Volume Group Descriptor Area (VGDA).  This space is what allows the
+user to take a volume group to another AIX system and "importvg" that
+volume group into that AIX system.  The VGDA contains the names of
+disks that make up the volume group, their physical sizes, partition
+mapping, logical volumes that exist in the volume group, and other
+pertinent LVM management information.
+
+When the user creates a volume group, the "mkvg" command defaults to
+allowing the new volume group to have a maximum of 32 disks in a
+volume group.  However, as bigger disks have become more prevalent,
+this 32 disk limit is usually not achieved because the space in the
+VGDA is used up faster, as it accounts for the capacity on the bigger
+disks.  This maximum VGDA space, for 32 disks, is a fixed size which
+is part of the LVM design.  Large disks require more management
+mapping space in the VGDA, which causes the number and size of
+available disks to be added to the existing volume group to shrink.
+When a disk is added to a volume group, not only does the new disk get
+a copy of the updated VGDA, but all existing drives in the volume
+group must be able to accept the new, updated VGDA.
+
+The exception to this description of the maximum VGDA is rootvg.  In
+order to provide AIX users more free space, when rootvg is created,
+"mkvg" does not use the maximum limit of 32 disks that are allowed
+into a volume group.  Instead, the number of disks picked in the
+install menu of AIX is used as the reference number by "mkvg -d"
+during the creation of rootvg.  This limit does not mean the user
+cannot add more disks to rootvg in the post-install phase.  The amount
+of free space left in a VGDA, and thus the number of size of the disks
+added to a volume group, depends on the size and number of disks
+already defined for a volume group.  However, this smaller size during
+rootvg creation implies that the user will be able to add fewer disks
+to rootvg than compared to a non-rootvg volume group.
+
+If the customer requires more VGDA space in the rootvg, then they
+should use the "mksysb" and "migratepv" commands to reconstruct and
+reorganize their rootvg (the only way to change the "-d" limitation is
+recreation of the rootvg).
+
+Note:  It is always strongly recommended that users do not place user data
+onto rootvg disks.  This separation provides an extra degree of system
+integrity.
+
+
+1.706: What are the limits on a file, filesystem?
+
+There are other limits but these come up most often.  Logical Volumes
+do not _have_ to contain Journaled File Systems and therefore can be
+larger than 2GB even in 3.2.5.
+
+	File	jfs-Filesystem
+3.2.5	2GB	2GB
+4.1.x	2GB	64GB
+
+
+______________________________________________________________________________
+
+1.800: How do I control how hostnames are resolved?
+From: AIX 4.1.2 Infoexplorer (posted by <kraem@ibm.de> Frank Kraemer)
+
+The default order can be overwritten by creating the configuration file,
+/etc/netsvc.conf and specifying the desired order. Both the default and
+/etc/netsvc.conf can be overwritten with the environment variable,
+NSORDER. If either the /etc/netsvc.conf file or environment variable,
+NSORDER are defined, then at least one value must be specified along with
+the option.
+
+examples: 
+    echo hosts = local,nis,bind >/etc/netsvc.conf
+    NSORDER=local,bind; export NSORDER
+
+
+______________________________________________________________________________
+1.900: SCSI-1 and SCSI-2 "interoperability" got you confused?  
+
+A.  SCSI-1 devices are supported on a SCSI-2 adapter.  This
+    config will provide SCSI-1 performance.
+
+B.  SCSI-2 devices are supported on a SCSI-1 adapter.  This
+    config will provide SCSI-1 performance.
+
+C.  A mix of SCSI-2 and SCSI-1 devices are supported on a SCSI-1
+    adapter.  All devices will have SCSI-1 performance.
+
+D.  A mix of SCSI-2 and SCSI-1 devices are supported on a SCSI-2
+    adapter.  SCSI-2 devices will have SCSI-2 performance (10 MB/sec)
+    and SCSI-1 devices will have SCSI-1 performance (4-5 MB/sec).
+
+
+1.901: How to get your keyboard back after unplugging it from the 6000
+From: Mickey Coggins and Anne Serre and L. Mark Larsen
+
+When you unplug your keyboard from a running system, and plug it back
+in, the key mapping is wrong.  For example, keys like Caps Lock and Ctrl
+don't work as designed.
+
+Solution: Type at the command line
+
+        /usr/lpp/diagnostics/da/dkbd
+
+Your screen goes black, you hear a few beeps, and your keyboard is reset.
+It works with any environment, Xwindows, hft, NLS...
+
+For Models 220, 230 and M20, use the following commands:
+
+/usr/lpp/diagnostics/da/dkbd
+/usr/lpp/diagnostics/da/dkbdsal   (for the 220)
+
+After running the keyboard diagnostics to reset keyboard mappings, the
+repeat rate is also reset to some slow value (11, according to the man
+page).  If the user is in X, you need to open an hft window.  Do this
+with "xopen /bin/csh".  Once you have an hft window, run "chhwkbd -r30".
+
+
+1.902: How do I set up pcsim, the DOS emulator?
+
+You must have a bootable DOS diskette to install pcsim. Either DOS 3.3, 
+4.x, or 5.0 will work. IBM do not officially support DOS 5.0 for pcsim
+but I have no problems with it. Just don't try to be fancy with the UMB 
+and memory manager stuff.
+
+With a bootable DOS disk in the drive, do:
+$touch /u/dosdrive (this is the AIX file for DOS emulation)
+$pcsim -Adiskette 3 -Cdrive /u/dosdrive
+You would now get an A prompt. Type:
+A> fdisk
+Create the virtual C drive of whatever size you choose. Make it large 
+enough for your needs since you cannot enlarge it later.
+A> format c: /s (to format the virtual C drive)
+Now exit from pcsim with ESCpcsim (Esc key followed by pcsim).
+
+Now create a simprof file. Following is a starter:
+
+Adiskette   : 3
+Cdrive      :/u/dosdrive
+lpt1        : name of printer queue
+refresh     : 50
+dmode       : V
+mouse       : com1
+
+You can now start pcsim anytime by typing pcsim. Make sure no floppies
+are in the drive. For further information, refer to publication
+SC23-2452, Personal Computer Simulator/6000 Guide and Reference.
+       
+
+1.903: How do I transfer files between AIX and DOS disks?
+
+In one of the bos extensions are commands for transferring files between
+DOS diskettes and AIX. The commands are dosread, doswrite, dosdir, dosdel,
+and dosformat. Many users have mentioned that the mtools package from
+prep.ai.mit.edu is better than the native AIX programs.
+
+
+1.904: Where is the crypt program?
+
+You can use PGP or crypt depending on your needs both require that you 
+are a United States citizen and you reside in the United States.
+Crypt is availible from your IBM marketing branch office.
+
+The United States government classifies encryption technology as a
+munition, meaning that you need an arms license to sell it overseas or
+to non-US nationals.
+
+
+1.905: How do I play audio CDs?
+From: woan@austin.ibm.com (Ronald S. Woan)
+
+Get xmcd by anonymous FTP from ftp.x.org in /contrib/applications/xmcd/
+<URL:ftp://ftp.x.org/contrib/applications/xmcd/>
+
+
+1.906: How can I get the mouse back after unplugging it?
+
+/usr/lpp/diagnostics/da/dmousea
+
+
+_____________________________________________________
+2.00: C/C++
+
+Contrary to many people's belief, the C environment on the RS/6000 is
+not very special.  The C compiler has quite a number of options that can
+be used to control how it works, which "dialect" of C it compiles, how
+it interprets certain language constructs, etc.  InfoExplorer includes a
+Users Guide and a Reference Manual.
+
+The compiler can be invoked with either xlc for strict ANSI mode and cc
+for RT compatible mode (i.e. IBM 6150 with AIX 2).  The default options
+for each mode are set in the /etc/xlc.cfg file, and you can actually add
+another stanza and create a link to the /bin/xlc executable.
+
+The file /usr/lpp/xlc/bin/README.xlc has information about the C
+compiler, and the file /usr/lpp/bos/bsdport contains useful information,
+in particular for users from a BSD background.
+
+The file /etc/xlc.cfg also shows the symbol _IBMR2 that is predefined,
+and therefore can be used for #ifdef'ing RS/6000 specific code.
+
+
+2.01: I cannot make alloca work
+
+A famous routine, in particular in GNU context, is the allocation
+routine alloca().  Alloca allocates memory in such a way that it is
+automatically free'd when the block is exited.  Most implementations
+does this by adjusting the stack pointer.  Since not all C environments
+can support it, its use is discouraged, but it is included in the xlc
+compiler.  In order to make the compiler aware that you intend to use
+alloca, you must put the line
+
+#pragma alloca
+
+before any other statements in the C source module(s) where alloca is
+called.  If you don't do this, xlc will not recognize alloca as anything
+special, and you will get errors during linking.
+
+For AIX 3.2, it may be easier to use the -ma flag.
+
+
+2.02: How do I compile my BSD programs?
+
+The file /usr/lpp/bos/bsdport contains information on how to port
+programs written for BSD to AIX 3.1.  This file may be very useful for
+others as well.
+
+A quick cc command for most "standard" BSD programs is:
+  
+  $ cc -D_BSD -D_BSD_INCLUDES  -o [loadfile] [sourcefile.c] -lbsd
+
+If your software has system calls predefined with no prototype
+parameters, also use the -D_NO_PROTO flag.
+
+
+2.03: Isn't the linker different from what I am used to?
+
+Yes.  It is not at all like what you are used to:
+
+- The order of objects and libraries is normally _not_ important.  The
+  linker reads _all_ objects including those from libraries into memory
+  and does the actual linking in one go.  Even if you need to put a
+  library of your own twice on the ld command line on other systems, it
+  is not needed on the RS/6000 - doing so will even make your linking slower.
+
+- One of the features of the linker is that it will replace an object in
+  an executable with a new version of the same object:
+
+  $ cc -o prog prog1.o prog2.o prog3.o		# make prog
+  $ cc -c prog2.c				# recompile prog2.c
+  $ cc -o prog.new prog2.o prog			# make prog.new from prog
+						# by replacing prog2.o
+  
+- The standard C library /lib/libc.a is linked shared, which means that
+  the actual code is not linked into your program, but is loaded only
+  once and linked dynamically during loading of your program.
+
+- The ld program actually calls the binder in /usr/lib/bind, and you can
+  give ld special options to get details about the invocation of the
+  binder.  These are found on the ld man page or in InfoExplorer.
+
+- If your program normally links using a number of libraries (.a files),
+  you can 'prelink' each of these into an object, which will make your
+  final linking faster.  E.g. do:
+
+  $ cc -c prog1.c prog2.c prog3.c
+  $ ar cv libprog.a prog1.o prog2.o prog3.o
+  $ ld -r -o libprog.o libprog.a
+  $ cc -o someprog someprog.c libprog.o
+
+This will solve all internal references between prog1.o, prog2.o and
+prog3.o and save this in libprog.o Then using libprog.o to link your
+program instead of libprog.a will increase linking speed, and even if
+someprog.c only uses, say prog1.o and prog2.o, only those two modules
+will be in your final program.  This is also due to the fact that the
+binder can handle single objects inside one object module as noted above.
+
+If you are using an -lprog option (for libprog.a) above, and still want
+to be able to do so, you should name the prelinked object with a
+standard library name, e.g. libprogP.a (P identifying a prelinked
+object), that can be specified by -lprogP.  You cannot use the archiver
+(ar) on such an object.
+
+You should also have a look at section 3.01 of this article, in
+particular if you have mixed Fortran/C programs.
+
+Dave Dennerline (d.dennerline@bull.com) claims that his experiences
+in prelinking on AIX does not save much time since most people have
+separate libraries which do not have many dependencies between them,
+thus not many symbols to resolve.
+
+
+2.04: How do I statically link my program?
+
+  cc -o prog -bnoso -bI:/lib/syscalls.exp obj1.o obj2.o obj3.o
+
+will do that for a program consisting of the three objects obj1.o, etc.
+
+From: Marc Pawliger (marc@sti.com)
+
+As of AIX 3.2.5, you can install a speedup for AIXwindows called
+Shared Memory Transport.  To static link an X application after the
+SMT PTF has been installed, you must link with
+-bI:/usr/lpp/X11/bin/smt.exp and the executable will NOT run on a
+machine where SMT is not installed.  See /usr/lpp/X11/README.SMT
+
+
+2.05: How do I make my own shared library?
+
+To make your own shared object or library of shared objects, you should
+know that a shared object cannot have undefined symbols.  Thus, if your
+code uses any externals from /lib/libc.a, the latter MUST be linked with
+your code to make a shared object.  Mike Heath (mike@pencom.com) said it
+is possible to split code into more than one shared object when externals
+in one object refer to another one.  You must be very good at
+import/export files.  Perhaps he or someone can provide an example. 
+
+Assume you have one file, sub1.c, containing a routine with no external
+references, and another one, sub2.c, calling stuff in /lib/libc.a.  You
+will also need two export files, sub1.exp, sub2.exp.  Read the example
+below together with the examples on the ld man page. 
+
+---- sub1.c ----
+    int addint(int a, int b)
+    {
+      return a + b;
+    }
+---- sub2.c ----
+    #include <stdio.h>
+
+    void printint(int a)
+    {
+      printf("The integer is: %d\n", a);
+    }
+---- sub1.exp ----
+    #!
+    addint
+---- sub2.exp ----
+    #!
+    printint
+---- usesub.c ----
+    main()
+    {
+      printint( addint(5,8) );
+    }
+
+The following commands will build your libshr.a, and compile/link the
+program usesub to use it.  Note that you need the ld option -lc for
+sub2shr.o since it calls printf from /lib/libc.a.
+
+  $ cc  -c sub1.c
+  $ ld -o sub1shr.o sub1.o -bE:sub1.exp -bM:SRE -T512 -H512 
+  $ cc  -c sub2.c
+  $ ld -o sub2shr.o sub2.o -bE:sub2.exp -bM:SRE -T512 -H512  -lc
+  $ ar r libshr.a sub1shr.o sub2shr.o
+  $ cc -o usesub usesub.c -L: libshr.a
+  $ usesub
+  The integer is: 13
+  $
+
+
+2.06: Linking my program fails with strange errors.  Why?
+
+Very simple, the linker (actually called the binder), cannot get the
+memory it needs, either because your ulimits are too low or because you
+don't have sufficient paging space.  Since the linker is quite different
+>from normal Unix linkers and actually does much more than these, it also
+uses a lot of virtual memory.  It is not unusual to need 10000 pages (of
+4k) or more to execute a fairly complex linking.
+
+If you get 'BUMP error', either ulimits or paging is too low, if you get
+'Binder killed by signal 9' your paging is too low.
+
+First, check your memory and data ulimits; in korn shell 'ulimit -a' will
+show all limits and 'ulimit -m 99999' and 'ulimit -d 99999' will
+increase the maximum memory and data respectively to some high values. 
+If this was not your problem, you don't have enough paging space.
+
+If you will or can not increase your paging space, you could try this:
+
+- Do you duplicate libraries on the ld command line? That is never
+  necessary.
+
+- Do more users link simultaneously? Try having only one linking going
+  on at any time.
+
+- Do a partwise linking, i.e. you link some objects/libraries with the
+  -r option to allow the temporary output to have unresolved references,
+  then link with the rest of your objects/libraries.  This can be split
+  up as much as you want, and will make each step use less virtual memory.
+
+  If you follow this scheme, only adding one object or archive at a
+  time, you will actually emulate the behavior of other Unix linkers.
+
+If you decide to add more paging space, you should consider adding a new
+paging space on a second hard disk, as opposed to just increasing the
+existing one.  Doing the latter could make you run out of free space on
+your first harddisk. It is more involved to shrink a paging space
+but easier to delete one.
+
+

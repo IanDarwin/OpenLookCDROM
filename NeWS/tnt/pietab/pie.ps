@@ -1,0 +1,1325 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Pie Menus for the NeWS toolkit
+% Version 3.0.1
+%
+% Copyright (C) 1991, by Don Hopkins. All rights reserved.
+% This program is provided for unrestricted use, provided that this 
+% copyright message is preserved. There is no warranty, and no author 
+% or distributer accepts responsibility for any damage caused by this 
+% program. 
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% This file implements pie menus for the NeWS toolkit.
+% It should work with TNT2.0fcs on OW2.0fcs and TNT3.0beta on OW3.0beta.
+% This code and the ideas behind it were developed over time by Don Hopkins 
+% at the University of Maryland, UniPress Software, and Sun Microsystems. 
+% Pie menus and tab windows and NOT patented or restricted, and the
+% interface and algorithms may be freely copied and improved upon. 
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+openwinversion 0 get 51 eq { % XXX: V3
+    /NeWS 3 0 findpackage beginpackage
+    /TNTCore 3 0 findpackage beginpackage
+    /TNT 3 0 findpackage dup beginpackage
+    dup beginautoload begin
+        /CVSEC { aload pop 1000000 div add } def
+	/SUBTIMEVAL { timeval subtimeval } def
+} { % XXX: V2
+    systemdict begin
+        /CVSEC { 60 mul } def
+	/SUBTIMEVAL { sub } def
+} ifelse
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ClassPieMenu
+%
+
+/ClassPieMenu [ClassCanvas ClassControl] [
+    /Direction /Distance
+    /SliceWidth /Radius
+    /CurrentValue /PaintedValue
+] classbegin
+
+% Canvas defaults:
+
+    /SaveBehind		true def
+    /Transparent	false def
+    /Mapped		false def
+    /Retained		false def
+
+% Class variables:
+
+    /BaseMenu?		false def
+    /SkipNextDamage?	false def
+    /Label		null def
+    /ItemList		nullarray def
+    /ItemListValid?	false def
+    /Invoker		null def	% Object that invoked the menu
+    /Border		3 def
+    /Gap		6 def
+    /Pad		1 def
+    /InactiveRadius	4 def
+    /RadiusMin		15 def
+    /RadiusExtra	2 def
+    /RadiusStep		2 def
+    /Clockwise?		true def
+    /InitialAngle	90 def % up
+    /Sliced?		true def
+    /Spiffy?		true def
+    /ThrowSec		.25 def
+
+    /TextFont		/LucidaSans-Bold findfont 12 scalefont
+			false printermatchfont
+			/ISOLatin1Encoding encodefont def
+
+% Existential stuff:
+
+    /NewInit {	% parent => instance
+	/NewInit super send
+	/Radius 0 def
+	GlobalEventMgr /activate self send
+    } def
+
+    /destroy { % - => -
+        null /setinvoker self send
+	/destroy super send
+    } def
+
+% Label stuff:
+
+    /label { % - => (label)
+	Label
+    } def
+
+    /setlabel { % (label) => -
+	/Label exch promote
+    } def
+
+% Item stuff:
+
+    /List { % - => ItemList
+        ItemList
+    } def
+
+    /Move { % x y item => -
+        begin 
+            /ItemY exch def
+            /ItemX exch def
+        end
+    } def
+
+    /Size { % item | self => width height
+        dup self eq {
+            /size exch send
+        }{
+           begin ItemWidth ItemHeight end
+        } ifelse
+    } def
+
+    /Location { % item | self => x y
+        dup self eq {
+            pop 0 0
+        }{
+            begin ItemX ItemY end
+        } ifelse
+    } def
+
+    /ResolveReference { % self | item-index => self | item
+        dup type /integertype eq {
+            ItemList exch get
+        } if
+    } def
+
+    /setitemlist { % [item0 ...] => -
+        /invalidate self send
+        /ItemListValid? unpromote
+       dup length dup array /ItemList exch promote
+       1 sub 0 1 3 2 roll {
+	    2 copy get
+	    /NewItem self send
+	    ItemList 3 1 roll put
+	    pause
+	} for
+	pop
+    } def
+
+    /insertitem { % item-index item
+        /invalidate self send
+        /ItemListValid? unpromote
+        /NewItem self send
+        ItemList 3 1 roll arrayinsert
+        /ItemList exch promote
+    } def
+
+    /deleteitem { % item-index => -
+        /invalidate self send
+        /ItemListValid? unpromote
+        ItemList exch arraydelete
+        /ItemList exch promote
+    } def
+
+    /replaceitem { % item-index item => -
+        /invalidate self send
+        /ItemListValid? unpromote
+        /NewItem self send
+        ItemList 3 1 roll 			% il i# i
+	put					
+    } def
+
+    /appenditem { % item => -
+        /invalidate self send
+        /ItemListValid? unpromote
+        /NewItem self send
+
+        ItemList exch arrayappend
+        /ItemList exch promote 
+    } def   
+
+    % Translate an external item representation to an internal item dict.
+    % di can be a display item, or a dictionary (isobject? = false).
+    % The dictionary must contain the keys /DisplayItem and /SubMenu
+    % or /Notifier.
+    %
+    /NewItem { % string | [displayitem] | [di notify] | [di submenu] => item
+	dictbegin
+	    dup type /stringtype eq {		% string
+		/DisplayItem exch def		% -
+	    }{					%  [ di stuff(opt.) ]
+		dup 0 get /DisplayItem exch def
+		dup length 1 eq {pop}{
+		    1 get dup isobject? {
+			/SubMenu exch def
+		    }{
+			/Notifier exch def
+		    } ifelse
+		} ifelse
+            } ifelse
+	dictend					% item
+    } def     
+
+    /itemsize { % item-index => width height
+        /?validate self send
+        ItemList exch get begin
+            ItemWidth ItemHeight
+        end
+    } def
+
+    /itembbox { % item-index => x y width height
+        /?validate self send
+        ItemList exch get begin
+            ItemX ItemY ItemWidth ItemHeight
+        end
+    } def
+
+    /itemlocation { % item-index => x y 
+        /?validate self send
+        ItemList exch get begin
+            ItemX ItemY
+        end
+    } def
+
+    /itemlist { % - => [ item0 ... ]
+        /itemcount self send dup array
+        0 1 4 -1 roll 1 sub {
+            2 copy /item self send
+            exch 4 1 roll put
+            pause
+        } for
+    } def
+
+    /itemcount { % - => n
+        ItemList length
+    } def
+
+    /item { % index => string | [displayitem] | [di notify] | [di submenu]
+	/Item self send				% dict
+	dup /DisplayItem get /stringtype ne	% dict bool1
+	1 index /Notifier known			% dict bool1 bool2
+	2 index /SubMenu known			% dict bool1 bool2 bool3
+	2 copy 5 2 roll or or {			% dict bool2 bool3
+	    2 copy or {				% dict bool2 bool3
+		pop exch dup 3 -1 roll		% dict dict bool2
+		{ /Notifier } { /SubMenu } ifelse get % dict notify|submenu
+		exch /DisplayItem get		% notify|submenu di
+		exch 2 array astore		% [di notify|submenu]
+	    }{					% dict false false
+		pop pop /DisplayItem get 1 array astore % [di]
+	    } ifelse
+	}{					% dict bool2 bool3
+	    pop pop
+	    /DisplayItem get			% string
+	} ifelse
+    } def
+
+    /Item { % item-index => item
+        ItemList exch get
+    } def
+
+    /pointtoitem { % x y => item-index true | false
+        /?validate self send
+	Radius dup xysub
+	/SetCurrentValue self send
+	CurrentValue dup null eq { pop false } { true } ifelse
+    } def
+
+    /pointinitem? { % x y <item index> => boolean
+        /?validate self send
+        /PointInItem? self send
+    } def
+        
+    /PointInItem? { % x y <item index> => boolean
+	3 1 roll /pointtoitem self send eq
+    } def
+
+% Layout:
+
+    /clockwise? { % - => clockwise
+        Clockwise?
+    } def
+
+    /setclockwise { % clockwise => -
+        /Clockwise? exch promote
+	/invalidate self send
+    } def
+
+    /initialangle { % - => initialangle
+        InitialAngle
+    } def
+
+    /setinitialangle { % initialangle => -
+        /InitialAngle exch promote
+	/invalidate self send
+    } def
+
+    /radiusmin { % - => radiusmin
+        RadiusMin
+    } def
+
+    /setradiusmin { % radiusmin => -
+        /RadiusMin exch promote
+	/invalidate self send
+    } def
+
+    /inactiveradius { % - => inactiveradius
+	InactiveRadius
+    } def
+
+    /setinactiveradius { % inactiveradius => -
+	/InactiveRadius exch promote
+	/invalidate self send
+    } def
+
+    /sliced? { % - => bool
+        Sliced?
+    } def
+
+    /setsliced { % bool => -
+        /Sliced? exch promote
+    } def
+
+    /minsize { % - => w h
+        /?validate self send
+	Radius dup add dup
+    } def
+
+    /validate { % - => -
+	/Layout self send
+	/validate super send
+	gsave
+	    Parent setcanvas
+	    /minsize self send
+	    2 copy /size self send
+	    3 -1 roll ne 3 1 roll ne or {
+	        /location self send 4 2 roll /reshape self send
+	    } { pop pop } ifelse
+	    /Valid? true def % XXX
+	grestore
+    } def
+
+    /Layout { % - => -
+	PieGSave self setcanvas
+
+	    % Deflate the menu.
+	    /Radius 0 def
+	    % Figure the slice width.
+	    /SliceWidth 360 /itemcount self send 1 max div def
+	    % Point the initial slice in the initial angle.
+	    /ThisAngle InitialAngle store
+
+	    % Loop through the items, validating each one.
+	    ItemList {
+		begin % item
+
+		    % Measure the label.
+		    /DisplayItem load DisplayItemSize
+		    /ItemHeight exch def
+		    /ItemWidth exch def
+
+		    % Remember the angle and the direction.
+		    /Angle ThisAngle def
+		    /DX Angle cos def
+		    /DY Angle sin def
+
+		    % Figure the offset from the tip of the inner radius 
+		    % spoke to the lower left label corner, according to 
+		    % the direction of the item.
+		    %
+		    % Labels at the very top (bottom) are centered on their
+		    % bottom (top) edge. Labels to the left (right) are
+		    % centered on their right (left) edge.
+		    %
+		    DX abs .05 lt { % tippy top or bippy bottom
+
+			% Offset to the North or South edge of the label.
+			/XOffset ItemWidth -.5 mul def
+			/YOffset
+			    DY 0 lt {ItemHeight neg} {0} ifelse
+			def
+
+		    } { % left or right
+
+			% Offset to the East or West edge of the label.
+			/XOffset
+			    DX 0 lt {ItemWidth neg} {0} ifelse
+			def
+			/YOffset ItemHeight -.5 mul def
+
+		    } ifelse
+
+		    % Twist around to the next item.
+		    /ThisAngle
+		        ThisAngle SliceWidth
+			Clockwise? {sub} {add} ifelse
+			NormalAngle
+		    store
+
+		end % item
+	    } forall
+
+	    % Figure the inner label radius, at least enough to prevent 
+	    % the labels from overlapping.
+	    /LabelRadius RadiusMin def
+	    /itemcount self send 3 gt { % No sweat if 3 or less.
+
+		% Check each item label against its following neighbor.
+		0 1 /itemcount self send 1 sub {
+
+		    /I exch def
+		    /NextI I 1 add /itemcount self send mod def
+
+		    % See if these two labels overlap.
+		    % If they do, keep pushing the label radius out
+		    % by RadiusStep until they don't.
+		    {   I /CalcRect self send
+			NextI /CalcRect self send
+			rectsoverlap not {exit} if % They don't overlap!
+
+			% They overlap. Push them out a notch and try again.
+			/LabelRadius LabelRadius RadiusStep add def
+		    } loop
+
+		} for
+		% Now that we've gone around once checking each pair,
+		% none of them overlap any more!
+	    } if
+
+	    % Add in some more space to be nice.
+	    /LabelRadius LabelRadius RadiusExtra add def
+
+	    % Now we need to calculate the outer radius, based on the radius
+	    % of the farthest label corner. During the loop, Radius actually
+	    % holds the square of the radius, since we're comparing it against
+	    % squared label corner radii anyway. 
+	    /Radius LabelRadius dup mul def
+	    ItemList {
+		begin % item
+
+		    % Remember the location to center the label edge.
+		    /x DX LabelRadius mul def
+		    /y DY LabelRadius mul def
+
+		    % Remember the location of the label's SouthWest corner.
+		    /ItemX x XOffset add round def
+		    /ItemY y YOffset add round def
+
+		    % Figure the distance of the label's farthest corner.
+		    % This is easy 'cause we can fold all the labels into
+		    % the NorthEast quadrant and get the same result.
+		    DX abs .05 lt { % tippy top or bippy bottom
+
+			% (|x|,|y|) is South edge: radius^2 of NorthEast corner
+			x abs ItemWidth .5 mul add dup mul
+			y abs ItemHeight add dup mul add
+
+		    } { % left or right
+
+			% (|x|,|y|) is West edge: radius^2 of NorthEast corner
+			x abs ItemWidth add dup mul
+			y abs ItemHeight .5 mul add dup mul add
+
+		    } ifelse
+
+		    % Remember the maximum corner radius seen so far.
+		    Radius max /Radius exch store
+		end % item
+	    } forall
+
+	    % Take the square root and add some extra space.
+	    /Radius
+		Radius sqrt Gap add Border add ceiling cvi
+	    store
+
+	grestore % Whew, we're done! Time to party!
+    } def
+
+    /CalcRect { % item-number => x y w h
+	/Item self send begin
+	    LabelRadius DX mul XOffset add Pad sub
+	    LabelRadius DY mul YOffset add Pad sub
+	    ItemWidth Pad dup add add ItemHeight Pad dup add add
+	end
+    } def
+
+    /NormalAngle { % angle => angle
+	dup 0 lt {
+	    dup 360 sub 360 div cvi 360 mul sub
+	} if
+	dup 360 ge {
+	    dup 360 div cvi 360 mul sub
+	} if
+    } def
+
+    /PieGSave { % - => -
+	gsave
+	    self setcanvas
+	    Radius dup translate
+	    TextFont setfont
+    } def
+
+% Painting:
+
+    /FixAll { % - => -
+	SkipNextDamage? {
+	    /SkipNextDamage? unpromote
+	    damagepath newpath
+	} {
+	    /FixAll super send
+        } ifelse
+    } def
+
+    /Paint { % - => -
+        gsave
+	    TextFont setfont
+	    Radius dup translate
+	    /PaintFrame self send
+	    /PaintItems self send
+	    true CurrentValue PaintSlice
+	grestore
+    } def
+
+    /PaintFrame { % - => -
+	0 0 Radius 1 add 45 225 arc closepath
+	0 0 Radius Border sub 45 225 arc closepath
+	3D? { BG0 } { 2DFG } ifelse setcolor eofill
+	0 0 Radius 1 add 225 45 arc closepath
+	0 0 Radius Border sub 225 45 arc closepath
+	3D? { BG3 } { 2DFG } ifelse setcolor eofill
+	0 0 Radius Border sub .9 add 0 360 arc closepath
+	BackgroundColor setcolor fill
+    } def
+
+    /PaintItems { % - => -
+	ForegroundColor setcolor
+	ItemList {
+	    begin
+		ItemX ItemY moveto
+		/DisplayItem load DisplayItemPaint
+		Sliced? {
+		    newpath
+		    Angle SliceWidth .5 mul sub
+		    matrix currentmatrix
+		    exch rotate
+		    InactiveRadius 0 moveto
+		    LabelRadius Gap sub 0 lineto
+		    ForegroundColor setcolor
+		    stroke
+		    setmatrix
+		} if
+	    end
+	} forall
+    } def
+
+    /PaintCurrentValue { % - => -
+	false PaintedValue PaintSlice
+	true CurrentValue PaintSlice
+	/PaintedValue CurrentValue store
+    } def
+
+    % Paint highlighting on a menu slice. If it's null, then do nothing.
+    %
+    /PaintSlice { % draw key => -
+	dup null eq {pop pop} {
+	    PieGSave 
+		10 dict begin % localdict
+		    exch /Hilite? exch def
+		    /Item self send begin
+			% Highlight the key
+			Hilite? {
+			    -2 ItemX ItemY ItemWidth ItemHeight insetrect
+			    3D? { true Paint3DBox } { false Paint2DBox } ifelse
+			    ForegroundColor setcolor
+			} {
+			    BackgroundColor setcolor
+			    -3 ItemX ItemY ItemWidth ItemHeight insetrect
+			    rectpath fill
+			    ForegroundColor setcolor
+			} ifelse
+			ItemX ItemY moveto /DisplayItem load
+		    end % keydict
+		end % localdict
+		DisplayItemPaint
+	    grestore
+	} ifelse
+    } def
+
+    /path { % x y w h => -
+	ovalpath
+    } def
+
+% Tracking:
+
+    /showat { % posname event => -
+	/BaseMenu? true def
+	Parent setcanvas
+	dup 3 1 roll begin			% event posname
+	    XLocation YLocation			% event posname x y
+	end
+	/popup self send			% event
+	/PieStart self send		%
+    } def
+
+    /popup { % posname x y => -
+        /?validate self send
+	/PaintedValue null def
+	/CurrentValue null def
+	Parent setcanvas
+	Radius dup xysub
+	/move self send
+	/totop self send
+	pop
+    } def
+
+    /?Reveal {
+        Mapped not { /Reveal self send } if
+    } def
+
+    /Reveal { % - => -
+	/SkipNextDamage? true promote
+	/ClearOverlay self send
+	gsave Parent setcanvas
+	    10 dict begin % localdict
+		% Force menu on screen
+		/bbox self send rect2points		% x0 y0 x1 y1
+		/y1 exch def /x1 exch def		% x0 y0
+		/y0 exch def /x0 exch def		%
+		/size Parent send			% w h
+		/h exch def /w exch def			%
+
+		x0 0 lt {
+		    x0 neg				% dx=-x0
+		} {
+		    x1 w gt {
+			w x1 sub			% dx=w-x1
+		    } { 0 } ifelse			% dx=0
+		} ifelse				% dx
+
+		y0 0 lt {
+		    y0 neg				% dx dy=-y0
+		} {
+		    y1 h gt {
+			h y1 sub			% dx dy=h-y1
+		    } { 0 } ifelse			% dx dy=0
+		} ifelse				% dx dy
+	    end % localdict
+
+	    2 copy 0 eq exch 0 eq and {
+		pop pop					%
+	    } {						% dx dy
+		2 copy /location self send xyadd	% dx dy dx+x dy+y
+		/move self send				% dx dy
+		/CurrentMenu PieMenuService send
+		self ne { pop pop } {
+		    currentcursorlocation xyadd		% dx+cx dy+cy
+		    setcursorlocation			%
+		} ifelse
+	    } ifelse
+
+	    Spiffy? {
+		/ThrowPie self send
+	    } {
+		/map self send
+		/paint self send
+	    } ifelse
+	grestore
+    } def
+
+    /ThrowPie { % - => -
+	{ 100 dict begin gsave
+	    /c self newcanvas def
+	    c /Mapped false put
+	    c /Transparent false put
+	    c /Retained true put
+	    self setcanvas
+	    clippath
+	    c reshapecanvas
+	    c setcanvas
+	    /PaintedValue null store
+	    Radius dup translate
+	    TextFont setfont
+	    /PaintFrame self send
+	    /PaintItems self send
+	    /map self send
+	    self setcanvas
+	    Radius dup translate
+
+	    /top? /CurrentMenu PieMenuService send self eq def
+	    /t0 currenttime def
+	    /spin 0 def
+	    top? {
+		currentcursorlocation
+		1 index dup mul 1 index dup mul add sqrt
+		InactiveRadius le {
+		    /spin 360 def
+		    pop pop 90
+		} { exch atan } ifelse
+	    } {
+		Direction
+	    } ifelse
+	    /a exch def
+	    {   /i
+		  currenttime t0 SUBTIMEVAL CVSEC ThrowSec div
+		  .9 mul .1 add
+		def
+		i 1 ge { exit } if
+		gsave
+		    a rotate
+		    i i mul .02 max
+		    i .02 max
+		    scale
+		    1 i sub spin mul a sub rotate
+		    Radius neg dup translate
+		    newpath Radius dup dup 0 360 arc closepath
+		    clip newpath
+		    c imagecanvas
+		grestore
+	    } loop
+
+	    Radius neg dup translate
+	    c imagecanvas c /Retained false put
+
+	    self setcanvas Radius dup translate
+	    top? {
+		currentcursorlocation /SetCurrentValue self send
+	    } if
+	    /PaintCurrentValue self send
+	} fork pop
+    } def
+
+    /popdown { % event notify? => -
+	/unmap self send
+	{ /PieStop self send } { /PieCancel self send } ifelse
+	BaseMenu? {
+	    currentcanvas
+		/CurrentClient PieMenuService send dup setcanvas
+		self /PieMenuStop 3 -1 roll send
+		/BaseMenu? unpromote
+	    setcanvas
+	} if
+	/PaintedValue null store
+    } def
+
+    /UnPaintValue { % - => -
+	PaintedValue null ne {
+	    false PaintedValue PaintSlice
+	    /PaintedValue null store
+	} if
+    } def
+
+    /PieStart { % event => -
+    	/PieMotion self send
+    } def
+
+    /PieMotion { % event => -
+	PieGSave
+	    begin XLocation YLocation end
+	    /SetCurrentValue self send
+	    Mapped {
+		PaintedValue CurrentValue ne {
+		    /PaintCurrentValue self send
+		} if
+	    } {
+	        Overlay setcanvas erasepage
+	        CurrentValue null ne {
+		    /location self send Radius dup xyadd translate
+		    0 0 moveto
+		    0 0 Radius
+		    ItemList CurrentValue get /Angle get
+		    SliceWidth .5 mul sub
+		    dup SliceWidth add
+		    arc
+		    closepath
+		    stroke
+		} if		
+	    } ifelse
+	grestore
+    } def
+
+    /PieStop { % event => -
+        /PieMotion self send
+        /ClearOverlay self send
+	CurrentValue null ne {
+	    CurrentValue /NotifyItem self send
+	} if
+    } def
+
+    /PieCancel { % event => -
+        pop /ClearOverlay self send
+    } def
+
+    /Overlay { % - => can
+        Parent createoverlay
+	/Overlay 1 index promote
+    } def
+
+    /ClearOverlay { % - => -
+        /Overlay promoted? {
+	    Overlay setcanvas erasepage
+	    /Overlay unpromote
+	} if
+    } def
+
+    /Notifier {pop pop} def
+
+    /NotifyItem { % index => -
+	dup /Item self send				% index child
+	begin /Notifier load end			% index proc
+	/ExecuteNotifier self send			% -
+    } def
+
+    /SetCurrentValue { % dx dy => -
+	/Distance
+	    2 index cvr dup mul 2 index cvr dup mul add sqrt def
+	Distance 0 eq { pop pop 0 } { neg exch atan } ifelse
+	/Direction exch def
+	/CurrentValue
+	    Distance InactiveRadius le { null } {
+		SliceWidth .5 mul  InitialAngle
+		Clockwise? { add } { sub } ifelse
+		Direction add NormalAngle
+		SliceWidth div cvi
+	    } ifelse
+	def
+    } def
+
+    /submenu { % event => false | menu true
+        gsave
+	    self setcanvas
+	    begin XLocation YLocation end
+	    /pointtoitem self send {			% index
+		[1 index] /setvalue self send
+		/Item self send
+		dup /SubMenu known {
+		    /SubMenu get true
+		} {
+		    pop false
+		} ifelse
+	    } {
+		false
+	    } ifelse
+	grestore
+    } def
+
+    /invoker { % - => object
+	Invoker
+    } def
+
+    /setinvoker { % object|null => -
+	dup Invoker ne {
+	    Invoker null ne {
+		Invoker self /removeclient ObsoleteService send
+	    } if
+	    /Invoker exch soften def
+	    Invoker null ne {
+	    	Invoker self /addclient ObsoleteService send
+	    } if
+	} {
+	    pop
+	} ifelse
+    } def
+
+    /HandleObsoleteTarget { % object => -
+	dup Invoker eq {
+	    null /setinvoker self send
+	} if
+	/HandleObsoleteTarget super send
+    } def
+
+    /eventmgr { % - => process
+	/eventmgr Invoker send
+    } def
+
+    /target { % - => object
+	/target super send dup null eq {
+	    pop /DefaultTarget self send
+	} if
+    } def
+
+    /DefaultTarget { % - => object
+	Invoker null eq {null} {
+	    /target /understands? Invoker send {
+		/target Invoker send
+	    }{
+		Invoker
+	    } ifelse
+	} ifelse
+    } def
+
+% Demo:
+
+    /demo {
+	userdict begin
+	    /pie0 framebuffer /new ClassPieMenu send def
+	    [ (a)(b)(c)(d)(e)(f)(g)[(h) {{beep}fork pop pop pop}]
+	    ] /setitemlist pie0 send
+	    /pie framebuffer /new ClassPieMenu send def
+	    [ [(foo...) pie0] (bar) (baz) [(yow) {{beep}fork pop pop pop}]
+	    ] /setitemlist pie send
+	    /can framebuffer /new ClassPieMenuCanvas send def
+	    /minsize { 200 200 } /promote can send
+	    pie /setpiemenu can send
+	    /win can framebuffer /new ClassBaseWindow send def
+	    (Pie Menu Demo) /setlabel win send
+	    /mgr /new ClassEventMgr send def
+	    mgr /activate win send
+	    /place win send /map win send
+	end % userdict
+    } def
+
+classend def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ClassPieMenuService
+%
+
+/ClassPieMenuService [
+    ClassNotifyInterest ClassFullScreenInterest
+] [
+    /CurrentMenu	% which canvas we're currently tracking in
+    /MenuList		% array of active menus not including CurrentMenu
+    /ButtonDict		% which up/downs to watch for during tracking
+    /PressedDownAt	% [x y] of cursor at button down
+
+    % The state machine:
+    /MouseDragged
+    /UpTransition
+    /DownTransition
+]
+classbegin
+
+% Class variables:
+
+    /PointName PointButton def
+    /AdjustName AdjustButton def
+    /MenuName MenuButton def
+
+% Methods:
+
+    % intialize the menu interest; create and install its dependents
+    %
+    /NewInit { % - => -
+	/Exclusivity true def
+	/Priority MenuButtonPriority .9 add def
+		% ensures that dependent interest in mouse-down is higher
+	growabledict /DownTransition TriggerName
+	    /NewInit super send
+
+	/CurrentMenu null def
+	/MenuList nullarray def
+	/ButtonDict 10 dict def
+	/RevealEvent createevent def
+	RevealEvent /Name /PieMenuReveal put
+	CreateDependents
+
+	self /addclient GlobalEventMgr send
+    } def
+    
+    /destroy { % - => -
+	Active? { /CancelNotify self send } if
+    } def
+
+    % the Default NotifyInterest name
+    %
+    /TriggerName 2 dict dup begin
+	MenuName {
+	    /trigger /SendInContext 2 index /Interest get send
+	} def
+	AdjustName MenuName load def
+    end def
+
+    % Override: Popdown all menus, remove any references to them.
+    %
+    /CancelNotify { % - => -
+	CurrentMenu null ne {
+	    createevent false /popdown CurrentMenu send
+	    /CurrentMenu null def
+	} if
+	MenuList {
+	    createevent false /popdown 4 -1 roll send
+	} forall
+	/MenuList nullarray def
+    	/CancelNotify super send
+    } def
+
+    /NullActionUnblock { % event => -
+	pop unblockinputqueue
+    } def
+
+    % Include the stopped/Unwind stuff in the executable matches rather
+    % than having to include it in every procedure that might get stored
+    % as one of the DownTransition/UpTransition/MouseDragged methods.
+    %
+    /MenuAction 2 dict dup begin
+	/DownTransition {
+	    {{gsave DownTransition grestore} stopped {grestore Unwind} if}
+	    1 index /Interest get /NotifyInterest get send
+	} def
+	/UpTransition {
+	    {{gsave UpTransition grestore} stopped {grestore Unwind} if}
+	    1 index /Interest get /NotifyInterest get send
+	} def
+    end def
+
+    /MotionName 1 dict dup begin
+	/MouseDragged {
+	    {{gsave MouseDragged grestore} stopped {grestore Unwind} if}
+	    1 index /Interest get /NotifyInterest get send
+	} def
+    end def
+
+    /RevealName 1 dict dup begin
+        /PieMenuReveal {
+	    {{gsave Reveal grestore} stopped {grestore Unwind} if}
+	    1 index /Interest get /NotifyInterest get send
+	} def
+    end def
+
+    % Create a set of dependent interests that can manage a menu
+    %
+    /CreateDependents { % - => -
+	/MenuClick
+	    null MenuAction ButtonDict DepCreate
+	    dup /Priority MenuButtonPriority 1 add put
+	    dup /Synchronous true put
+	    dup /Exclusivity true put
+	    pop
+	/MenuMotion
+	    null null MotionName DepCreate
+	    dup /Priority MenuButtonPriority 1 add put
+	    dup /Synchronous true put
+	    dup /Exclusivity true put
+	    pop
+	/MenuReveal
+	    CurrentClient null RevealName DepCreate
+	    dup /Priority MenuButtonPriority 1 add put
+	    dup /Synchronous true put
+	    dup /Exclusivity true put
+	    pop
+    } def
+
+    % Utility that ensures ButtonDict contains only the given name.
+    %
+    /ButtonDictDef { % name => -
+    	ButtonDict MenuName undef
+    	ButtonDict PointName undef
+    	ButtonDict AdjustName undef
+    	ButtonDict exch dup put
+    } def
+
+    /ActivateDependents { % event => -
+	CurrentClient /Center 3 -1 roll		% invoker posname event
+	/PieMenuStart CurrentClient send {	% invoker posname event pie
+	    % REMIND: Placeholder for null menu.  For now, just swallow the
+	    % event.  Later, want to change it to start a tracker with no
+	    % menu showing, and add an interface to allow belated installation
+	    % of the menu associated with this mouse-down event.
+	    dup null ne {
+		/activatefullscreen self send
+		1 index 5 1 roll		% ev invoker posname ev pie
+		/StartMenuTracking self send	% event
+		/ActivateDependents super send	% -
+	    }{					% invoke posname event null
+	    	pop pop pop pop
+	    	/CancelNotify self send
+	    } ifelse
+	}{					% invoker posname event
+	    /CancelNotify self send
+	    dup /Canvas null put
+	    % Let event continue up the canvas tree; the Canvas field got
+	    % set to this particular canvas when it was distributed to it.
+	    % REMIND: Do we need to be hairy like the ReceptionService and
+	    % avoid having modified the Canvas field in the first place (to
+	    % avoid marking the event as /Synthetic)?
+	    redistributeevent
+	    pop pop
+	} ifelse
+    } def
+
+    /DeactivateDependents { % - => -
+	/deactivatefullscreen self send
+	RevealEvent recallevent
+	/DeactivateDependents super send
+    } def
+
+
+    /Reveal { % event => -
+        pop unblockinputqueue
+	/RevealNow self send
+    } def
+
+    /RevealNow { % - => -
+	RevealEvent recallevent
+	null blockinputqueue
+	null MenuList aload pop CurrentMenu
+	{   dup null eq { pop exit } if
+	    /?Reveal exch send
+	} loop
+	unblockinputqueue
+    } def
+
+    openwinversion 0 get 51 eq { % XXX: V3
+	/RevealDelay [0 750000] def
+	/RevealLater { % - => -
+	    RevealEvent dup recallevent
+	    dup /TimeStamp
+	      currenttime RevealDelay [0 0] addtimeval
+	    put
+	    sendevent
+	} def
+    } { % XXX: V2
+	/RevealDelay .5 60 div def
+	/RevealLater { % - => -
+	    RevealEvent dup recallevent
+	    dup /TimeStamp
+	      currenttime RevealDelay add
+	    put
+	    sendevent
+	} def
+    } ifelse
+
+    /StartMenuTracking { % invoker posname event pie => -
+	/CurrentMenu exch def
+	/MenuList 0 array def			% invoker posname event
+
+	gsave
+	    dup /Name get ButtonDictDef
+
+	    /showat CurrentMenu send		% invoker
+	    /RevealLater self send
+
+	    /setinvoker CurrentMenu send	%
+
+	    /framebufferof CurrentMenu send setcanvas
+	    dup /Coordinates get /PressedDownAt exch promote
+
+	    /MouseDragged /PieTrack load def
+	    /UpTransition /CheckClick load def
+
+	    /DownTransition /NullActionUnblock load def
+	grestore
+    } def
+
+    /PieTrack { % event => -
+	CurrentMenu dup null eq { pop pop } {
+	  dup setcanvas
+	  /PieMotion exch send
+	} ifelse
+	unblockinputqueue
+    } def
+
+    /ClickDown { % event => -
+	CurrentMenu null eq { pop } {
+	    dup /Name get MenuName ne {
+		CurrentMenu setcanvas
+		/Radius CurrentMenu send dup setcursorlocation
+		% the cursor dissappears in V2 lego, so we force it to appear:
+		CurrentMenu /Cursor 2 copy get put
+	    } if
+	    /MouseDragged /PieTrack load def
+	    /UpTransition /CheckClick load def
+	    /DownTransition /NullActionUnblock load def
+	    % Watch for uptransitions only on the button that just went down
+	    dup /Name get ButtonDictDef
+	    /framebufferof CurrentMenu send setcanvas
+	    dup /Coordinates get /PressedDownAt exch promote
+	    CurrentMenu   				% event menu
+	    dup setcanvas
+	    /PieStart exch send			%
+	} ifelse
+    	unblockinputqueue
+    } def
+
+    /CheckClick { % event => -
+	/MouseDragged /PieTrack load def
+	/UpTransition /NullActionUnblock load def
+	/DownTransition /ClickDown load def
+	% If we keep tracking we want to watch for either button going down
+	ButtonDict PointName dup put
+	ButtonDict AdjustName dup put
+	ButtonDict MenuName dup put
+
+	CurrentMenu setcanvas
+	dup /PieTrack self send
+
+	dup /Name get MenuName ne
+	CurrentMenu /CurrentValue get null eq  and {
+	    MenuList length 0 eq {
+		/CancelNotify self send
+		unblockinputqueue
+	        pop
+	    } {
+		dup false /popdown CurrentMenu send
+		/CurrentMenu MenuList dup length 1 sub get def
+		/MenuList MenuList 0 1 index length 1 sub getinterval def
+		/PieTrack self send
+	    } ifelse
+	} {
+	    dup /submenu CurrentMenu send {
+		CurrentMenu /setinvoker 2 index send	% event submenu
+		/MenuList MenuList CurrentMenu arrayappend def
+		/CurrentMenu exch def			% event
+
+		/framebufferof CurrentMenu send setcanvas
+		begin XLocation YLocation end		%
+		2 copy
+		/Default 3 1 roll /popup CurrentMenu send
+
+		% Was this the result of a click? If so, map now.
+		% Otherwise we were moving with the button down, so map later.
+		PressedDownAt aload pop xysub abs exch abs max
+		4 le {
+		    /RevealNow self send
+		} {
+		    /RevealLater self send
+		} ifelse
+	    } {
+		MenuList length 0 eq {
+		    { CurrentValue null eq Mapped not and
+		    } CurrentMenu send {
+			/RevealNow self send
+			pop
+		    } {
+			/ExecDone self send
+		    } ifelse
+		} {
+		    /ExecDone self send
+		} ifelse
+	    } ifelse
+	    unblockinputqueue
+	} ifelse
+    } def
+
+    /ExecDone { % event => -
+	CurrentMenu setcanvas
+	dup true /popdown CurrentMenu send
+	dup MenuList arrayreverse {			% ev ev menu
+	    false /popdown 3 -1 roll send		% ev
+	    dup
+	} forall					% ev ev
+	pop						% ev
+
+	/MenuList nullarray def
+	/CurrentMenu null def
+	/untrigger self send
+    } def
+
+classend def
+
+systemdict /PieMenuService 2 copy known {	% dict name
+    2 copy get type /eventtype ne		% dict name buildIt?
+} { true } ifelse				% dict name buildIt?
+{ /new ClassPieMenuService send put		%
+} { pop pop } ifelse				%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ClassPieMenuCanvas
+%
+
+/ClassPieMenuCanvas ClassCanvas []
+classbegin
+    /PieMenuable? true def
+
+    /PieMenu null def
+
+    /activate {
+	/activate super send
+	EventMgr null ne {
+	   PieMenuable? {self /addclient PieMenuService send} if
+	} if
+    } def
+
+    /deactivate {
+	EventMgr null ne {
+	    PieMenuable? {self /removeclient PieMenuService send} if
+	} if
+	/deactivate super send
+    } def
+
+    /piemenuable? { % - => bool
+	PieMenuable?
+    } def
+
+    /setpiemenuable { % bool => -
+	EventMgr null ne {
+	    self 1 index {/addclient} {/removeclient} ifelse
+	    PieMenuService send
+	} if
+	/PieMenuable? exch def 
+    } def
+
+    /PieMenuStart { % invoker pos event => invoker' pos' event' pie true |
+		    % invoker pos event => invoker pos event false
+	PieMenu dup null eq { pop false } {
+	    /InitPieMenu self send
+	    true
+	} ifelse
+    } def
+
+    /PieMenuStop { % pie => -
+	pop
+    } def
+
+    /InitPieMenu % invoker pos event pie => invoker' pos' event' pie' =>
+        nullproc
+    def
+
+    /piemenu { % - => pie
+	PieMenu
+    } def
+
+    /setpiemenu { % pie => -
+	/PieMenu exch promote
+    } def
+
+classend def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+openwinversion 0 get 51 eq { % XXX: V3
+    currentdict endautoload end % TNT
+    endpackage endpackage endpackage
+} { % XXX: V2
+    end % systemdict
+} ifelse
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

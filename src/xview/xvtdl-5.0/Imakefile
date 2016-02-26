@@ -1,0 +1,132 @@
+#
+#              Imakefile for xvtdl
+#
+#     Copyright 1992 Rainer Klute, Dortmund University
+#          <klute@irb.informatik.uni-dortmund.de>
+#
+# Simply compile and install with the following commands:
+#   xmkmf
+#   make includes
+#   make depend
+#   make
+#   make install
+#   make install.man
+
+# The path where OpenWindows is installed on your machine:
+OPENWINHOME = /usr/openwin
+
+# Toolkit version: Specify the version of the XView toolkit (2 or 3)
+# you have.
+XVIEW = 3
+
+# The directory where the PostScript prolog files should be installed:
+XVTDLDIR = $(LIBDIR)/xvtdl
+
+# The help directory:
+HELPDIR = $(XVTDLDIR)
+
+# The mail program you want to use. It should be able to take a "-s" option
+# for a subject.
+MAILPGM = mail
+
+# Do you need additional libs for Solaris 2.x (leave blank for SunOS 4.x)
+SVR4LIBS = -lintl
+
+# Set these to use different LEX and YACC utilities if you need 'em
+LEX = lex
+YACC = yacc
+
+
+# Below this point no modifications should be necessary.
+
+
+# Include X11R5 specific Imake rules if needed:
+#if ProjectX < 5
+#include <X11R5.rules>
+#endif
+
+         DEFINES = -DPRINT_PROLOG1=\"$(XVTDLDIR)/prolog1.ps\" \
+                   -DPRINT_PROLOG2=\"$(XVTDLDIR)/prolog2.ps\" \
+		   -DHELPDIR=\"$(HELPDIR)\" \
+		   -DMAILPGM=\"$(MAILPGM)\" \
+                   -DXVIEW$(XVIEW)
+        INCLUDES = -I$(OPENWINHOME)/include
+   SYS_LIBRARIES = -L$(OPENWINHOME)/lib -lxview -lolgx $(XLIB) -ll $(SVR4LIBS)
+
+    OVERLAY_SRCS = calendar.c deadline.c list.c print.c recur.c file.c \
+                   display.c category.c xdefaults.c
+    OVERLAY_OBJS = calendar.o deadline.o list.o print.o recur.o file.o \
+                   display.o category.o xdefaults.o
+TDL_OVERLAY_SRCS = calendar-tdl.c deadline-tdl.c list-tdl.c print-tdl.c \
+                   recur-tdl.c file-tdl.c display-tdl.c category-tdl.c \
+                   xdefaults-tdl.c
+TDL_OVERLAY_OBJS = calendar-tdl.o deadline-tdl.o list-tdl.o print-tdl.o \
+                   recur-tdl.o file-tdl.o display-tdl.o category-tdl.o \
+                   xdefaults-tdl.o
+        TDL_SRCS = tdl.c tdl_utils.c
+        TDL_OBJS = tdl.o tdl_utils.o
+      XVTDL_SRCS = control.c create_windows.c deadline_ui.c entry_ui.c \
+		   logedit_ui.c logger.c main.c print_ui.c properties.c \
+		   props_ui.c category_ui.c gfm_ui.c gfm_load_dir.c \
+         gfm.c group.c group_data.c gcm.c gcc.c gcc_ui.c colors.c
+      XVTDL_OBJS = control.o create_windows.o deadline_ui.o entry_ui.o \
+		   logedit_ui.o logger.o main.o print_ui.o properties.o \
+		   props_ui.o category_ui.o gfm_ui.o gfm_load_dir.o \
+         gfm.o group.o group_data.o gcm.o gcc.o gcc_ui.o colors.o
+     COMMON_SRCS = y.tab.c
+     COMMON_OBJS = y.tab.o
+
+AllTarget(xvtdl tdl)
+
+DependTarget3($(XVTDL_SRCS) $(TDL_SRCS),$(OVERLAY_SRCS),$(COMMON_SRCS))
+
+NormalProgramTarget(xvtdl,$(XVTDL_OBJS) $(OVERLAY_OBJS) $(COMMON_OBJS), \
+                    $(DEPLIBS),$(LOCAL_LIBRARIES),)
+InstallProgram(xvtdl,$(BINDIR))
+InstallNonExecFile(prolog1.ps,$(XVTDLDIR))
+InstallNonExecFile(prolog2.ps,$(XVTDLDIR))
+InstallNonExecFile(help/xvtdl_deadline.info,$(HELPDIR))
+InstallNonExecFile(help/xvtdl_entry.info,$(HELPDIR))
+InstallNonExecFile(help/xvtdl_logedit.info,$(HELPDIR))
+InstallNonExecFile(help/xvtdl_main.info,$(HELPDIR))
+InstallNonExecFile(help/xvtdl_print.info,$(HELPDIR))
+InstallNonExecFile(help/xvtdl_props.info,$(HELPDIR))
+InstallNonExecFile(help/xvtdl_recurring.info,$(HELPDIR))
+InstallManPage(xvtdl,$(MANDIR))
+
+NormalProgramTarget(tdl,$(TDL_OBJS) $(TDL_OVERLAY_OBJS) $(COMMON_OBJS),$(DEPLIBS),$(LOCAL_LIBRARIES),)
+InstallProgram(tdl,$(BINDIR))
+InstallManPage(tdl,$(MANDIR))
+
+# Rules to generate overlay sources for tdl:
+ObjectFromSpecialSource(calendar-tdl,calendar,-DTDL)
+ObjectFromSpecialSource(deadline-tdl,deadline,-DTDL)
+ObjectFromSpecialSource(list-tdl,list,-DTDL)
+ObjectFromSpecialSource(print-tdl,print,-DTDL)
+ObjectFromSpecialSource(recur-tdl,recur,-DTDL)
+ObjectFromSpecialSource(file-tdl,file,-DTDL)
+ObjectFromSpecialSource(display-tdl,display,-DTDL)
+ObjectFromSpecialSource(category-tdl,category,-DTDL)
+ObjectFromSpecialSource(xdefaults-tdl,xdefaults,-DTDL)
+
+# Rules to generate sources which must be present in the "make depend" step.
+# They are created by "make includes" or automatically during "xmkmf -a".
+includes:: lex.yy.c y.tab.c $(TDL_OVERLAY_SRCS)
+
+lex.yy.c: todo.l
+	$(LEX) todo.l
+
+# The following hack is neccessary because of a bug in the SunOS yacc which
+# will make gcc 2.2.2 (or any ANSI C compiler) moan:
+#if defined (SunArchitecture) && defined (HasGcc2) && HasGcc2
+y.tab.c: todo.y
+	$(YACC) todo.y
+	sed -e 's/^extern char \*malloc(), \*realloc();//g' y.tab.c >tmp.y.tab.c
+	$(MV) tmp.y.tab.c y.tab.c
+#else
+y.tab.c: todo.y
+	$(YACC) todo.y
+#endif
+
+clean::
+	$(RM) y.tab.c 

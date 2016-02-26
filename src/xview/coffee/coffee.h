@@ -1,0 +1,30 @@
+/*
+ * Header for xcoff -- show the coffee pot status.
+ * $Id: coffee.h,v 1.1 92/08/27 14:41:41 ian Exp $
+ */
+
+enum coff_stat { UNINIT = 0, FULL, HALF, UGHH, EMPTY };
+#define	SSIZE 4
+extern char states[][SSIZE+1];
+#define NSTATES 5		/* must be #defined, alas */
+
+#define	STAT_FILE	"/tmp/.coffee/stat"
+
+#define	HALFLIFE	(30*60)		/* time from full to half */
+#define	DEATHTIME	(45*60)		/* older than 45 mins is dead. */
+
+/* The only routines that the window system interface provides */
+void WSinit(), WSrun();
+void WSset_icon();
+void WSiconify();
+
+struct info {
+	char *uname;
+	enum coff_stat nstat;
+	char *sstat;
+	long /*time_t*/ mtime;
+};
+
+struct info *get_info();
+
+extern char* progname;

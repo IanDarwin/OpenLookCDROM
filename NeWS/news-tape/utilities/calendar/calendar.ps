@@ -1,0 +1,247 @@
+#!/usr/NeWS/bin/psh
+%
+% Original From: patwood@unirot.UUCP (Patrick Wood)
+% 
+% The following is a PostScript program to print calendars.  It doesn't
+% work on or before 1752.
+% 
+% Shell stuff added 3/9/87 by King Ables
+% 
+% Made pretty by tjt 1988
+%
+% Cheezily adapted for NeWS by Don Hopkins, Oct 31 '88
+
+% PostScript program to draw calendar
+% Copyright (C) 1987 by Pipeline Associates, Inc.
+% Permission is granted to modify and distribute this free of charge.
+
+% /month should be set to a number from 1 to 12
+% /year should be set to the year you want
+% you can change the title and date fonts, if you want
+% we figure out the rest
+% won't produce valid calendars before 1800 (weird stuff happened
+% in September of 1752)
+
+/month ($1 10) cvi def % psh argument #1 or default 10
+/year ($2 1988) cvi % psh argument #2 or default 1988
+   dup 100 lt {1900 add} if % Assume they meant this century ...
+def
+/titlefont /Times-Bold def
+/dayfont /Helvetica-Bold def
+
+/month_names [ (January) (February) (March) (April) (May) (June) (July)
+		(August) (September) (October) (November) (December) ] def
+
+/prtnum { 3 string cvs show} def
+
+/drawgrid {		% draw calendar boxes
+	dayfont findfont 28 scalefont setfont
+	0 1 6 {
+		dup dup 100 mul 40 moveto
+		[ (Sun) (Mon) (Tue) (Wed) (Thu) (Fri) (Sat) ] exch get
+		100 center
+		100 mul 35 moveto
+		1.0 setlinewidth
+		0 1 5 {
+			gsave
+			100 0 rlineto 
+			0 -80 rlineto
+			-100 0 rlineto
+			closepath stroke
+			grestore
+			0 -80 rmoveto
+		} for
+	} for
+} def
+
+/drawnums {		% place day numbers on calendar
+	dayfont findfont 32 scalefont setfont
+	/start startday def
+	/days ndays def
+	start 100 mul 5 add 10 rmoveto
+	1 1 days {
+		/day exch def
+		gsave
+		day start add 7 mod 0 eq
+		{
+			submonth 0 eq
+			{
+				.8 setgray
+			} if
+		} if
+		day start add 7 mod 1 eq
+		{
+			submonth 0 eq
+			{
+				.8 setgray
+			} if
+		} if
+		day prtnum
+		grestore
+		day start add 7 mod 0 eq
+		{
+			currentpoint exch pop 80 sub 5 exch moveto
+		}
+		{
+			100 0 rmoveto
+		} ifelse
+	} for
+} def
+
+/drawfill {		% place fill squares on calendar
+	/start startday def
+	/days ndays def
+	0 35 rmoveto
+	1.0 setlinewidth
+	0 1 start 1 sub {
+		gsave
+		.9 setgray
+		100 0 rlineto 
+		0 -80 rlineto
+		-100 0 rlineto
+		closepath fill
+		grestore
+		100 0 rmoveto
+	} for
+	submonth 1 eq
+	{
+		/lastday 42 def
+		600 -365 moveto
+	}
+	{
+		/lastday 40 def
+		400 -365 moveto
+	} ifelse
+	lastday -1 ndays start 1 add add
+	{
+		/day exch def
+		gsave
+		.9 setgray
+		100 0 rlineto 
+		0 -80 rlineto
+		-100 0 rlineto
+		closepath fill
+		grestore
+		day 7 mod 1 eq
+		{
+			600 -365 80 add moveto
+		}
+		{
+			-100 0 rmoveto
+		} ifelse
+	} for
+} def
+
+/isleap {		% is this a leap year?
+	year 4 mod 0 eq		% multiple of 4
+	year 100 mod 0 ne 	% not century
+	year 1000 mod 0 eq or and	% unless it's a millenia
+} def
+
+/days_month [ 31 28 31 30 31 30 31 31 30 31 30 31 ] def
+
+/ndays {		% number of days in this month
+	days_month month 1 sub get
+	month 2 eq	% Feb
+	isleap and
+	{
+		1 add
+	} if
+} def
+
+/startday {		% starting day-of-week for this month
+	/off year 2000 sub def	% offset from start of "epoch"
+	off
+	off 4 idiv add		% number of leap years
+	off 100 idiv sub	% number of centuries
+	off 1000 idiv add	% number of millenia
+	6 add 7 mod 7 add 	% offset from Jan 1 2000
+	/off exch def
+	1 1 month 1 sub {
+		/idx exch def
+		days_month idx 1 sub get
+		idx 2 eq
+		isleap and
+		{
+			1 add
+		} if
+		/off exch off add def
+	} for
+	off 7 mod		% 0--Sunday, 1--monday, etc.
+} def
+
+/center {		% center string in given width
+	/width exch def
+	/str exch def width str 
+	stringwidth pop sub 2 div 0 rmoveto str show
+} def
+
+/calendar
+{
+	titlefont findfont 48 scalefont setfont
+	0 90 moveto
+	/month_name month_names month 1 sub get def
+	month_name show
+	/yearstring year 10 string cvs def
+	700 90 moveto
+	yearstring rshow
+
+	0 0 moveto
+	drawnums
+
+	0 0 moveto
+	drawfill
+
+	0 0 moveto
+	drawgrid
+} def
+
+/paint-calendar {
+  gsave
+    ClientCanvas setcanvas
+    erasepage
+    false setprintermatch
+    ClientWidth 720 div ClientHeight 600 div scale
+    10 450 translate
+    /submonth 0 def
+    calendar
+  grestore
+} def
+
+/win framebuffer /new DefaultWindow send def
+/reshapefromuser win send
+{
+  /PaintClient {paint-calendar} def
+  /MonthMenu
+    month_names
+  [
+    {/month MenuValue 1 add store
+     /PaintClient ThisWindow send}
+  ] /new DefaultMenu send def
+  /YearMenu [
+    (1988) (1989) (1990) (1991) (1992) (1993) (1994) (1995)
+    (1996) (1997) (1998) (1999) (2000) (2001) (2002) (2003)
+    % Add your favorite years here...
+  ] [
+    {/year currentkey cvi store
+     /PaintClient ThisWindow send}
+  ] /new DefaultMenu send def
+  /ClientMenu [
+    (Year) YearMenu
+    (Month) MonthMenu
+  ] /new DefaultMenu send def
+  /IconImage /scroll def
+  /PaintIconLabel {
+    % Fix this to be prettier. Make it redraw upon icon close.
+    gsave
+      IconTextColor setcolor IconFont setfont
+      IconWidth .6 mul IconHeight .6 mul moveto
+      /month_name month_names month 1 sub get def
+      month_name cshow
+      IconWidth .6 mul IconHeight .3 mul moveto
+      /yearstring year 10 string cvs def
+      yearstring cshow
+    grestore
+  } def
+} win send
+/map win send

@@ -1,0 +1,110 @@
+# Generated automatically from Makefile.in by configure.
+# Makefile for wwwish
+
+SHELL = /bin/sh
+
+#### Start of system configuration section. ####
+
+srcdir = .
+VPATH = .
+
+CC = cc
+INSTALL = cp
+INSTALL_PROGRAM = $(INSTALL)
+
+CFLAGS = -O
+LDFLAGS = -O
+DEFINES =  -DUSE_DIRENT -DSTDC_HEADERS=1 -DNO_GETWD=1
+
+prefix = /usr/local
+exec_prefix = ${prefix}
+
+# Where to install the executable.
+bindir = $(exec_prefix)/bin
+
+XINCLUDES =  -I/usr/openwin/include
+XLIBSW = -L/usr/openwin/lib -lX11
+TCL_INCDIR =  -I/usr/local/include
+TK_INCDIR = 
+TCL_LIBDIR = -L/usr/local/lib
+TK_LIBDIR = 
+
+INCLUDES = -I$(srcdir) $(TCL_INCDIR) $(TK_INCDIR) \
+	$(XINCLUDES) -I$(srcdir)/../../Library/Implementation
+
+ALL_CFLAGS= $(DEFINES) $(INCLUDES) $(CFLAGS)
+
+WWW_LIB= ../Library/libwww.a
+
+LIBS= $(TCL_LIBDIR) $(TK_LIBDIR) -ltk -ltcl $(XLIBSW)  -lelf -lsocket -lnsl -lm
+
+TEST_LIBS=$(TCL_LIBDIR) -ltcl -lm
+
+objs =  TkWWWCmds.o HText.o HTML.o HTFile.o HTAlert.o HTFormat.o TkWWWBitmap.o
+
+srcs =  TkWWWCmds.c HText.c HTML.c HTFile.c HTAlert.c HTFormat.c TkWWWBitmap.c
+
+distfiles = $(srcs)
+
+all: libtkwww.a
+
+interp: wwwish 
+
+.c.o:
+	$(CC) -c $(ALL_CFLAGS) $<
+
+wwwish:	TclAppInit.o $(objs)
+	$(CC) -o $@ $(LDFLAGS) TclAppInit.o $(objs) $(WWW_LIB) $(LIBS)
+
+wwwtest: TclAppTest.o $(objs)
+	$(CC) -o $@ $(LDFLAGS) TclAppTest.o $(objs) $(WWW_LIB) $(TEST_LIBS)
+
+libtkwww.a: $(objs)
+	ar r libtkwww.a $(objs)
+	-ranlib libtkwww.a
+
+saber:  TclAppTest.c $(srcs)
+	saber $(LDFLAGS) TclAppTest.c $(srcs) $(TEST_LIBS) $(INCLUDES)
+
+Makefile: $(srcdir)/Makefile.in 
+	$(SHELL) config.status
+
+interpinstall:	all
+	$(INSTALL_PROGRAM) wwwish $(bindir)/wwwish
+
+install:
+
+TAGS:	$(srcs)
+	etags $(srcs)
+
+clean:
+	rm -f sed *.o core
+
+mostlyclean: clean
+
+distclean: clean
+	rm -f Makefile config.status
+
+realclean: distclean
+	rm -f TAGS
+
+dist:	$(distfiles)
+	echo sed-`sed -e '/version_string/!d' -e 's/[^0-9.]*\([0-9.]*\).*/\1/' -e q sed.c` > .fname
+	rm -rf `cat .fname`
+	mkdir `cat .fname`
+	ln $(distfiles) `cat .fname`
+	tar chZf `cat .fname`.tar.Z `cat .fname`
+	rm -rf `cat .fname` .fname
+
+dist.afs: $(distfiles)
+	echo sed-`sed -e '/version_string/!d' -e 's/[^0-9.]*\([0-9.]*\).*/\1/' -e q sed.c` > .fname
+	rm -rf `cat .fname`
+	mkdir `cat .fname`
+	cd `cat .fname`; \
+	for file in $(distfiles); do ln -s ../"$$file" .; done; \
+	cd ..
+	tar chf `cat .fname`.tar `cat .fname`
+	gzip `cat .fname`.tar
+	rm -rf `cat .fname` .fname
+
+

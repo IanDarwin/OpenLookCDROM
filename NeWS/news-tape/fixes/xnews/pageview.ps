@@ -1,0 +1,742 @@
+%!
+% From wind!naughton@sun.com Tue Oct 31 20:36:49 1989
+% Date: 30 Oct 89 18:51:37 GMT
+% From: wind!naughton@sun.com  (Patrick Naughton)
+% Subject: PageView's missing .ps file
+% To: news-makers@brillig.umd.edu
+% 
+% Here is the NeWS toolkit code for PageView, (pageview.ps) that was
+% inadvertantly omitted from the client source in OpenWindows 1.0.
+% 
+% -Patrick
+% 
+% 
+%%Title: pageview
+%%SccsId: @(#)pageview.ps 22.1 89/08/09
+%
+%
+
+/ScrollPane ClassCanvas
+dictbegin
+    /canw		0 def
+    /canh		0 def
+    /depth		0 def
+    /orient		0 def
+    /width		0 def
+    /height		0 def
+    /dpi		0 def
+    /ccan		null def
+    /animator		null def
+    /image_x		0 def
+    /image_y		0 def
+    /last_x		0 def
+    /last_y		0 def
+    /abs_x		0 def
+    /abs_y		0 def
+dictend
+classbegin
+    /FillColor .5 dup dup rgbcolor def
+
+    /newinit {	% - => -
+	/newinit super send
+
+	initDPI initWidth initHeight /setpagedims self send
+    } def
+
+    /killanimator {
+	animator null ne {
+	    animator
+	    /animator null store
+	    killprocess
+	} if
+    } def
+    
+    /destroy {
+	/killanimator self send
+	/ccan null def
+	/destroy super send
+    } def
+    
+    /restart { % - => -
+% given that width, height, dpi, or orientation has changed, restart the LW.
+	/ccan null def
+	/canw width dpi mul def
+	/canh height dpi mul def
+	/depth monochromecanvas dpi maxColorDPI gt or {1} {8} ifelse def
+	
+	canw canh dpi depth orient
+	RESTART_TAG tagprint
+	typedprint typedprint typedprint typedprint typedprint
+    } def
+    
+    /setpagedims { % dpi w h => -
+	/height exch def
+	/width exch def
+	/dpi exch def
+	/restart self send
+    } def
+    
+    /setdpi { % dpi => -
+	/dpi exch def
+	/restart self send
+    } def
+    
+    /setsize { % w h => -
+	2 copy height eq exch width eq and { 
+	    pop pop
+	} { 
+	    /height exch def
+	    /width exch def
+	    /restart self send
+	} ifelse
+    } def
+    
+    /setpagesize { % page format. (0..3)
+	{
+	    0 { 8.5 11 }
+	    1 { 8.5 14 }
+	    2 { 8.5 4 }
+	} case
+	orient 1 and 1 eq { exch } if
+	/setsize self send
+    } def
+    
+    /setorientation { % 0..3 (up, left, down, right) => -
+	dup orient ne {
+	    orient
+	    /orient 2 index def
+	    xor 1 and 1 eq {
+		height width /setsize self send
+	    } {
+		/restart self send
+	    } ifelse
+	} {
+	    pop
+	} ifelse
+    } def
+    
+    /Print { % 0..2 (thispage, wholedoc, bits)
+	{
+	    0 { 0 PRINT_TAG tagprint typedprint }
+	    1 { 1 PRINT_TAG tagprint typedprint }
+	    2 { ccan setcanvas
+		{ currentpage filename } /parent self send send
+		(/tmp/%.page-%.ras) sprintf writecanvas }
+	} case
+    } def
+    
+    /PaintCanvas {
+	FillColor /FillCanvas self send
+	/PaintPannedImage self send
+    } def
+    
+    /PanAbsPage {			% event => -
+	/canvas self send setcanvas
+	begin XLocation YLocation end
+	dup Height div canh mul sub exch
+	dup Width div canw mul sub exch
+	/image_y exch def /image_x exch def
+	/PaintPannedImage self send
+	/last_x image_x def
+	/last_y image_y def
+	/animator [
+	MouseDragged {
+	    begin XLocation YLocation end
+	    dup Height div canh mul sub exch
+	    dup Width div canw mul sub exch
+	    /image_y exch def /image_x exch def
+	    /PaintPannedImage self send
+	    /last_x image_x def
+	    /last_y image_y def
+	} null null eventmgrinterest
+	
+	null {
+	    pop /killanimator self send
+	} /UpTransition null eventmgrinterest
+	] forkeventmgr store
+    } def
+    
+    /PanPage {				% event => -
+	begin XLocation YLocation end
+	/abs_y exch def
+	/abs_x exch def
+	/animator [
+	    MouseDragged {
+		begin XLocation YLocation end
+		2 copy
+		abs_y sub /image_y exch image_y add def
+		abs_x sub /image_x exch image_x add def
+		/abs_y exch def /abs_x exch def
+		/PaintPannedImage self send
+		/last_x image_x def
+		/last_y image_y def
+	    } null null eventmgrinterest
+	
+	    null {
+		pop /killanimator self send
+	    } /UpTransition null eventmgrinterest
+	] forkeventmgr store
+    } def
+    
+    /PaintPannedImage {
+	ccan null ne {
+	    gsave
+		Canvas setcanvas
+		gsave
+		    0 0 moveto Width Height rect clip
+		    image_x image_y moveto
+		    canw canh rect
+		    eoclip
+		    FillColor FillCanvas
+		grestore
+		initclip
+		image_x image_y translate
+		dpi 72 div dup scale
+		0 setgray
+		ccan imagecanvas
+	    grestore
+	} if
+    } def
+    
+    /SetFilename { % string => -
+	CHANGE_FILE_TAG tagprint typedprint
+    } def
+    
+    /GrabAndStuffSelection { % selection -> bool
+	false exch			% assume fails
+	dup null ne {
+	    dictbegin
+	    /ContentsAscii null def
+	    dictend
+	    /request 3 -1 roll send
+	    dup null ne {
+		/ContentsAscii get dup /UnknownRequest ne {
+		    /SetFilename self send
+		    pop true		% successfull
+		} {
+		    pop
+		} ifelse
+	    } {
+		pop
+	    } ifelse
+	} {
+	    pop
+	} ifelse
+    } def
+    
+    /DoTransfer {	% event => -
+	dup /Action get					    % ev Act
+	dup /Source get dup 3 1 roll			    % ev sel Act sel
+	/GrabAndStuffSelection self send {		    % ev sel Act
+	    pop pop pop
+	} {
+	    pop pop redistributeevent
+	} ifelse
+    } def
+    
+    /paintpage {
+	/canvas self send setcanvas
+	/PaintPannedImage self send
+    } def
+    
+    /SetLWCanvas { % ev => -
+	/ClientData get /ccan exch def
+	/paintpage self send
+    } def
+    
+    /MakeInterests {
+	/MakeInterests super send
+	
+	createevent dup begin
+	    /Name currentprocess 100 string cvs
+	    (0x) search pop pop pop
+	    (,) search pop exch pop exch pop def
+	    Name ID_TAG tagprint typedprint
+	    /Action 1 dict dup begin
+	        /LWCanvas /SetLWCanvas self soften buildsend def
+	    end def
+	end
+	
+	AdjustButton { /PanAbsPage } BuildCanvasSend
+	/DownTransition /canvas self send eventmgrinterest
+	
+	PointButton { /PanPage } BuildCanvasSend
+	/DownTransition /canvas self send eventmgrinterest
+	
+	/TransferSelection /DoTransfer self soften buildsend
+	null Canvas eventmgrinterest
+	dup /Exclusivity true put
+    } def
+    
+classend def
+    
+    
+/PageViewTextControl OpenLookTextControl []
+classbegin
+
+    /CallNotify? { pop true } def
+    
+    /newinit { 
+	/newinit super send
+	null 18 null /settextparams self send
+    } def
+    
+classend def
+
+
+/PageViewNumeric OpenLookNumeric []
+classbegin
+
+    /CallNotify? { pop true } def
+    
+classend def
+
+
+/SliderGroup ClassBag [/Minvalue /Maxvalue /clientnotifyproc /Label /BX /w]
+classbegin
+
+    /Initvalue 1 def		% inital value of slider
+    /Gap 8 def			% spacing between slider
+
+    /newinit { % string /notifyproc min max => -
+	/newinit super send
+
+	/Maxvalue exch def
+	/Minvalue exch def
+	/clientnotifyproc exch cvx def
+	/Label exch def
+
+% Create Label Graphic
+	/blabel [
+	    Label /new OpenLookLabelGraphic send
+	] /addclient self send
+
+% Create Numeric Contol
+	/bnumber [
+	    /NumericCallback self soften buildsend
+	    framebuffer /new PageViewNumeric send
+	    Minvalue Maxvalue /setrange 3 index send
+	    0 /setincrement 2 index send
+	    0 /setdisplaychars 2 index send
+	    Initvalue /setvalue 2 index send
+	] /addclient self send
+
+% Create Minimal Value Graphic
+
+	/bmin [
+	    Minvalue NumberString /new OpenLookLabelGraphic send
+	] /addclient self send
+
+% Create Slider
+	/slider [
+	    /SliderCallback self soften buildsend
+	    framebuffer /new OpenLookHorizontalSlider send
+	    1 /setnormalization 2 index send
+	    [ /Line 1 ] /setdelta 2 index send
+	    Minvalue Maxvalue /setrange 3 index send
+	] /addclient self send
+
+% Create Maximum Value Graphic
+	/bmax [
+	    Maxvalue NumberString /new OpenLookLabelGraphic send
+	] /addclient self send
+    } def
+
+    /HorLayout { % yval /thing
+	BX 3 -1 roll
+	/minsize 3 index SendMessage
+	/w 2 index def
+	/reshape 5 index SendMessage
+	/BX BX w add Gap add def
+	pop
+    } def    
+
+    /Layout { % - => -
+	/Layout super send
+	/BX Gap def
+
+	0 /blabel /HorLayout self send
+
+	-4 /bnumber /HorLayout self send
+
+	0 /bmin /HorLayout self send
+	BX -1
+	/BX Width /minsize /bmax SendMessage pop 2 mul sub Gap sub def
+	BX
+	0 /bmax /HorLayout self send
+	2 index sub Gap sub
+	/minsize /slider SendMessage exch pop
+	/invalidate /slider SendMessage
+	/reshape /slider SendMessage
+    } def
+
+% override
+    /StrokeAndFillCanvas { pop pop pop } def
+
+    /SendMessage { /sendclient self send } def
+
+    /SliderCallback { % slider => -
+	/value exch send
+	/setvalue /bnumber SendMessage
+	self clientnotifyproc
+    } def
+
+    /NumericCallback { % textctrl => -
+	/value exch send
+	/setvalue /slider SendMessage
+	self clientnotifyproc
+    } def
+
+    /NumberString { 10 string cvs } def
+
+    /value { % - => number
+	/value /slider SendMessage
+    } def
+
+    /setvalue { % number => -
+	dup /setvalue /slider SendMessage
+	/setvalue /bnumber SendMessage
+    } def
+
+    /setrangeandval { % val min max
+	/Maxvalue exch def
+	/Minvalue exch def
+	Minvalue Maxvalue /setrange /bnumber SendMessage
+	Minvalue Maxvalue /setrange /slider SendMessage
+	Minvalue NumberString /setthing /bmin SendMessage
+	Maxvalue NumberString /setthing /bmax SendMessage
+	/setvalue self send
+    } def
+
+classend def
+
+
+/PageViewBag ClassBag
+dictbegin
+    /numberofpages 0 def
+    /currentpage 1 def
+    /filename (noname) def
+    /BX	0 def
+    /BY	0 def
+    /Gap 8 def
+    /LabelWidth 0 def
+    /PaneX 0 def
+    /PaneY 0 def
+    /PaneW 0 def
+    /PaneH 0 def
+    /ConnectionFile null def
+    /ButtonWidth 0 def
+    /ButtonHeight 0 def
+dictend
+classbegin
+    /SliderHeight 14 def
+    
+    /geticoninfo { % - => filename can w h
+	filename
+	{ ccan canw canh dpi }
+	/PaneView /sendclient self send
+    } def
+
+    /destroy {
+	/destroy super send
+	ConnectionFile closefile
+    } def
+    
+    /newinit {
+	/newinit super send
+	/ConnectionFile currentfile def
+
+	/PageButton [
+	    (Page)
+	    [ (next) (first) (prev) (last) ]
+	    null {
+		/value self send /changepage /sendtarget 4 -1 roll send
+	    } framebuffer /newdefault ClassMenu send
+	    null OpenLookButtonStack
+	] /addclient self send
+	
+	/SizeButton [
+	    (Size)
+	    [ (USLetter) (Legal) (Envelope) ]
+	    [/Exclusive] { 
+		/value self send /setpagesize /sendtarget 4 -1 roll send
+	    } framebuffer /newdefault ClassMenu send
+	    null OpenLookButtonStack
+	] /addclient self send
+	
+	/DpiButton [
+	    (DPI)
+	    [ (36 dpi) (72 dpi) (100 dpi) (150 dpi) (300 dpi) (400 dpi) ]
+	    [/Exclusive] {
+		/valuething self send cvx token pop exch pop
+		/setdpi /sendtarget 4 -1 roll send
+	    } framebuffer /newdefault ClassMenu send
+	    null OpenLookButtonStack
+	] /addclient self send
+	
+	/OrientationButton [
+	    (Rotation)
+	    [ (Upright) (Landscape Left) (UpsideDown) (Landscape Right) ]
+	    [/Exclusive] {
+		/value self send /setorientation /sendtarget 4 -1 roll send
+	    } framebuffer /newdefault ClassMenu send
+	    null OpenLookButtonStack
+	] /addclient self send
+	
+	/PrintButton [
+	    (Print)
+	    [ (This Page on LaserPrinter) (Whole Document on LaserPrinter)
+	      (This Page To RasterFile) ]
+	    null {
+		/value self send /Print /sendtarget 4 -1 roll send
+	    } framebuffer /newdefault ClassMenu send
+	    null OpenLookButtonStack
+	] /addclient self send
+
+	/Label [
+	    (Load File: ) /new OpenLookLabelGraphic send
+	] /addclient self send
+	
+	/Text [
+	    /handletextvalue self soften buildsend PageViewTextControl
+	] /addclient self send
+	
+	/PaneView [ ScrollPane ] /addclient self send
+	
+	/PageSlider [
+	    (Page: ) /handlepageslider self soften buildsend 1 10 SliderGroup
+	] /addclient self send
+	
+	/PaneView getbyname pop /settarget
+	/OrientationButton /sendclient self send
+	
+	/PaneView getbyname pop /settarget
+	/PrintButton /sendclient self send
+	
+	/PaneView getbyname pop /settarget
+	/SizeButton /sendclient self send
+	
+	/PaneView getbyname pop /settarget
+	/DpiButton /sendclient self send
+
+	self /settarget	/PageButton /sendclient self send
+    } def
+    
+    /paintpage {
+	/paintpage /PaneView /getbyname self send {send} if
+    } def
+
+    /setfooter { % name currentpage npages => -
+	dup 1 eq numberofpages 1 eq and {
+	    pop pop
+	    /filename exch def
+	} { 
+	    /numberofpages exch def
+	    /currentpage exch def
+	    /filename exch def
+	    numberofpages 1 ne {
+		/PageSlider /getbyname self send {
+		    currentpage 1 numberofpages /setrangeandval 5 -1 roll send
+		} if
+		/PageButton /getbyname self send {
+		    /enable exch send
+		} if
+	    } { 
+		/PageButton /getbyname self send {
+		    /disable exch send
+		} if
+	    } ifelse
+	    /invalidate self send
+	    /paint self send
+	} ifelse
+	(Name: ) filename append
+	(Page: % of %) [ currentpage numberofpages ] sprintf
+	/setfooter /Parent self send send
+    } def
+    
+    /newpage { % int => -
+	/currentpage exch store
+	PAGE_TAG tagprint currentpage typedprint
+	null (Page: % of %) [ currentpage numberofpages ] sprintf
+	/setfooter /Parent self send send
+	/PageSlider /getbyname self send {
+	    currentpage /setvalue 3 -1 roll send
+	} if
+    } def
+    
+    /changepage { % 0..3 (next)(first)(prev)(last)
+	{
+	    0 {
+		currentpage 1 add dup numberofpages gt {
+		    pop
+		} {
+		    newpage
+		} ifelse
+	    }
+	    1 { 1 newpage }
+	    2 { currentpage 1 sub dup 0 eq { pop } { newpage } ifelse }
+	    3 { numberofpages newpage }
+	} case
+    } def
+
+    /handletextvalue { % cv => -
+	currentinputfocus /Text /getbyname self send pop eq { 
+	    /value exch send
+	    /SetFilename /PaneView /getbyname self send {send} if
+	} { 
+	    pop
+	} ifelse
+    } def
+    
+    /handlepageslider { % cv => -
+	/value exch send
+	newpage
+    } def
+
+    /LayoutClient { % name [x y w h] angle [Tx Ty] => -
+	gsave
+	aload pop translate rotate aload pop	% name x y w h
+	/reshape 6 -1 roll /sendclient self send
+	grestore
+    } def
+    
+    /PlaceButton {
+	BX ButtonWidth Gap add dup add add
+	/size self send pop lt {
+	    /BX BX ButtonWidth Gap add add def
+	} {
+	    /BX Gap def
+	    /BY BY ButtonHeight Gap add sub def
+	} ifelse	
+    } def
+    
+    /Layout { % - => -
+	ButtonWidth 0 eq { 
+	    /minsize /PageButton /sendclient self send	% w h
+	    [/DpiButton /SizeButton /OrientationButton /PrintButton] {
+		/minsize exch /sendclient self send	% w h w' h'
+		exch 4 -1 roll max 3 1 roll max		% max(w,w') max(h,h')
+	    } forall
+	    /ButtonHeight exch store
+	    /ButtonWidth exch store
+
+	} if
+
+	/BX Width def
+	/BY Height def
+	[/PageButton /DpiButton /SizeButton /OrientationButton /PrintButton]
+	{
+	    PlaceButton
+	    [0 0 ButtonWidth ButtonHeight] 0 [BX BY] LayoutClient
+	} forall
+	
+	/BX Gap def
+	/BY BY ButtonHeight Gap add sub def
+	/LabelWidth /minsize /Label /sendclient self send pop def
+	/Label [ BX BY LabelWidth ButtonHeight ] 0 [ 0 0 ] LayoutClient
+	/Text [ 0 0 Width Gap 3 mul sub LabelWidth sub ButtonHeight ] 0
+	      [ BX LabelWidth add Gap add BY ] LayoutClient
+	
+	/PaneX Gap def
+	/PaneY Gap def
+	/PaneW Width Gap 2 mul sub def
+	/PaneH BY Gap 2 mul sub def
+	
+	numberofpages 1 gt {
+	    /PaneH PaneH Gap sub SliderHeight sub def
+	    /PaneY PaneY Gap add SliderHeight add def
+
+	    /PageSlider [ 0 0 PaneW SliderHeight ] 0 [Gap Gap] LayoutClient
+	} { 
+	    /PageSlider [ 0 0 PaneW SliderHeight ] 0 [Width Gap] LayoutClient
+	} ifelse
+	/PaneView [ 0 0 PaneW PaneH ] 0 [ PaneX PaneY ] LayoutClient
+    } def
+    
+    /minsize {
+	ButtonWidth 2 mul Gap 3 mul add 1 add
+	ButtonHeight Gap add 5 mul SliderHeight add 64 add
+	/minsize super send
+	3 -1 roll add
+	3 -2 roll add exch
+    } def
+    
+    /PaintCanvas {
+	FillColor /FillCanvas self send
+	
+	monochromecanvas not {
+	    gsave
+	    4 dict begin
+	    /x PaneX 2 sub def
+	    /y PaneY 1 sub def
+	    /w PaneW 3 add def
+	    /h PaneH 3 add def
+	    
+	    FillColor colorhsb pop 1 hsbcolor setcolor
+	    x 1 add y moveto
+	    w 1 sub 0 rlineto
+	    0 h 1 sub rlineto
+	    stroke
+	    
+	    FillColor colorhsb pop .6666 hsbcolor setcolor
+	    x 2 add y 1 add moveto
+	    w 3 sub 0 rlineto
+	    0 h 3 sub rlineto
+	    stroke
+	    
+	    FillColor colorhsb pop 0 hsbcolor setcolor
+	    x y moveto
+	    0 h rlineto
+	    w 0 rlineto
+	    stroke
+	    
+	    FillColor colorhsb pop .3333 hsbcolor setcolor
+	    x 1 add y 1 add moveto
+	    0 h 2 sub rlineto
+	    w 2 sub 0 rlineto
+	    stroke
+	    end
+	    grestore
+	} if
+    } def
+    
+    
+classend def
+
+/PageViewFrame /defaultclass ClassBaseFrame send []
+classbegin
+
+classend def
+
+/win [PageViewBag] [] framebuffer /newdefault PageViewFrame send def
+
+{
+    gsave
+	FillColor FillCanvas
+	gsave
+	    /client /sendsuperframe /parent self send send
+	    /geticoninfo exch send	% filename can w h dpi
+	    0 0 translate
+	    72 div dup scale
+	    64 exch div exch 64 exch div exch scale
+	    imagecanvas
+	grestore
+	TextColor setcolor
+	/Lucida-Bright findfont 12 scalefont setfont
+	32 4 moveto
+	cshow
+    grestore
+} /seticon win send
+    
+null /seticonlabel win send
+(PageView) /setlabel win send
+    
+framex framey framewidth frameheight /reshape win send
+/map win send
+/activate win send
+
+--->8--- end of pageview.ps --->8---
+    ______________________________________________________________________
+    Patrick J. Naughton				    ARPA: naughton@sun.com
+    Window Systems Group			    UUCP: ...!sun!naughton
+    Sun Microsystems, Inc.			    AT&T: (415) 336 - 1080

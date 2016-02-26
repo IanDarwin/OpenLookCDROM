@@ -1,0 +1,975 @@
+#!/usr/NeWS/bin/psh
+%
+% Date: Tue, 16 Aug 88 23:17:30 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Macpaint-like psh script (source included)
+% From: mahendo!wlbr!mh@elroy.jpl.nasa.gov  (Mike Hoegeman)
+% 
+% I started whipping this up over last weekend but had
+% to stop once monday rolled around
+% and I had to start doing real work again.
+% Whenever I add anything substantial I'll repost it.
+% Below are some comments that I gleaned from section of code further down.
+% You should be able to run this whole file thru psh.
+% comments, suggestions, flames can be mailed to me at
+% 
+% 	mike@etn-wlv.eaton.com or ...ihnp4|scgvax!wlbr!mh
+% 
+% -Mike Hoegeman
+% 
+
+% paintdemo.ps
+% Author: Mike Hoegeman (mike@etn-wlv.eaton.com)
+% Function: simple window dressing for demoing the PaintCan object with
+%
+% Notes:
+% The Calling syntax is as follows...
+%	paintdemo [rasterfilename]
+% if <rasterfilename> is not supplied, a dialog box pops up to
+% allow the user to read in an input file.
+
+% paintcan.ps
+% Function:
+%
+% Beginnings of macpaint-like canvas object. Definitely not finished but is does
+% work. PaintCan is intentionally not a window so you can wrap it in any kind of
+% window dressing (har-dee-har-har) you prefer. The paintprog module is a
+% simple example...
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+/FILENAME ($1) def
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%+
+% createcolormenu:	proc => -
+% Function: creates a color menu which executes proc with the selected color on the stack
+%-
+/createcolormenu {
+    [
+	%% make a row of greyscale type color boxes
+	1 dup dup rgbcolor [exch {colorsquare}]
+	.925 dup dup rgbcolor [exch {colorsquare}]
+	.875 .125 neg .250 {
+	    dup dup rgbcolor [exch {colorsquare}]
+	} for
+	%% then extract the colors out of colordict
+	ColorDict {
+	    exch pop [exch {colorsquare}]
+	} forall
+    ]
+    [
+	{currentkey 0 get user_proc exec}
+    ] /new LitePullRightMenu send dup
+    {
+	%%  => user_proc inst
+	/user_proc 3 -1 roll cvx def
+	/colorsquare {
+	    % parallax board likes eofill much better!
+	    /paint eq { 20 20 rect setcolor eofill } { pop 20 20 } ifelse
+	} def
+	/LayoutStyle [7 ColorDict length 1 index div ceiling exch 1 add] def
+        /StrokeSelection? true def
+        /CellHorizGap	2 def
+        /CellVertGap	2 def
+        %%/RetainCanvas?	true def
+    }
+    exch send
+} def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%+
+% Module: paintcan.ps
+% Author: Mike Hoegeman
+% Function:
+%
+% Beginnings of macpaint-like canvas object. Definitely not finished but is does
+% work. PaintCan is intentionally not a window so you can wrap it in any kind of
+% window dressing (har-dee-har-har) you prefer. The paintprog module is a
+% simple example...
+%
+% You may have to change some of the file names below...
+%
+% Notes:
+% Modification History:
+% Date		Author		Reason
+% -------------------------------------------------------------
+% 10Jun88	MCH		Initial Release.
+% -------------------------------------------------------------
+%-
+
+%RUN%(/u/mike/paint/menu.ps) run
+
+/PaintCan Object
+dictbegin
+%+
+% Instance variables
+% ------------------
+%-
+    /EventMgr	nulldict def	%% contains event mgr process
+    /Interests	nulldict def
+    /User 	nulldict def 	%% place for user to stash things if they wish
+    /OperationMenu nulldict def
+    /MiscMenu	nulldict def
+    /TopMenu	nulldict def		%% Top level menu for paintcanvas...
+    /XMenu	nulldict def 		%% child menus...
+    /PointMenu  nulldict def
+    /ToolMenu	nulldict def
+    /ColorMenu	nulldict def
+    /ModeMenu   nulldict def
+
+    /InputFile (/usr/tmp/paintfile) def
+    /OverLayCanvas	nulldict def 	%%
+    /DisplayCanvas	nulldict def 	%% Display Canvas
+    /DetailCanvas	nulldict def 	%% used when in detail mode (not implemented yet....)
+    /BufCanvas 	nulldict def		%% Buffer Canvas
+    /ParentCanvas	nulldict def	%% Parent to DisplayCanvas and BufCanvas
+    /ObjPath { rectpath } def 		%% proc which builds shape of the paintcan
+    /MsgProc { dbgprintf } def		%%
+
+%+
+% The SaveStyle instance variable designates when automatic saves are to be done.
+% The following are valid:
+%
+% /before_each_operation	-
+% /at_toolchange		-
+%-
+    /SaveStyle /at_toolchange def
+
+    /ObjX 	0 def			%% x y w and h of the paintcan
+    /ObjY 	0 def
+    /ObjW 	0 def
+    /ObjH 	0 def
+
+    %% These guys hold the current painting parameters
+    /RoundOff	1 def
+    /PointSize  1 def
+    /ForeColor	0 0 0 hsbcolor def %% current color
+    /LineCap	1 def
+    /LineJoin   1 def
+    /LineMitre	1 def
+
+    %% describes the current painting operation we are doing
+    %% current ops available are...
+    %% /do_stroke /do_fill
+    %%
+    /CurrentOperation /do_stroke def
+
+    %% describes the way we perform CurrentOp
+    %% current tools available are...
+    %% /pencil /oval /rectangle /line /polygon
+    %%
+    /CurrentTool /pencil def
+
+    %% All Operations are started by a /DownTranstion on PointButton
+    %% defines what Op to do when a mouse down is hit for PointButton
+    %%
+    /StartOpProc { CurrentOperation CurrentTool FollowDrag } def
+
+dictend
+classbegin
+
+% ---- Class variables
+% ---- Methods
+
+/MenuClass LitePullRightMenu def
+
+/RXLocation { XLocation RoundOff neg and } def
+/RYLocation { YLocation RoundOff neg and } def
+
+/LineWidth { PointSize } def
+
+/drawbegin {
+    gsave
+    DisplayCanvas setcanvas
+
+    %% line stuff
+    1 setlinequality
+    30 setmiterlimit
+    LineCap setlinecap
+    LineJoin setlinejoin
+    LineWidth setlinewidth
+
+    %% color stuff
+    ForeColor setcolor
+
+} def
+
+/drawend {
+    grestore
+} def
+
+
+%% filename | null => -
+%%
+/read {
+1 dict begin
+    /inputfile exch dup null eq { pop InputFile } if def
+    CheckCanvases
+    gsave
+	DisplayCanvas setcanvas clippath pathbbox scale pop pop
+	{ inputfile readcanvas pause } errored {
+	    pop (error reading file %\n) [inputfile] MsgProc
+	} {
+	    imagecanvas
+	} ifelse
+    grestore
+end
+} def
+
+%% filename | null => -
+%%
+/write {
+1 dict begin
+/outfile exch dup null eq { pop InputFile } if def
+    gsave
+	{ newpath DisplayCanvas setcanvas outfile writecanvas } errored {
+	    (could not write to file %\n) [outfile] MsgProc
+	} {
+	    %%
+	} ifelse
+    grestore
+end
+} def
+
+%+
+%-
+/savetobuffer {
+    gsave
+	BufCanvas setcanvas clippath pathbbox scale pop pop
+	DisplayCanvas imagecanvas
+    grestore
+} def
+
+/save? {
+    SaveStyle eq { savetobuffer } if
+} def
+
+/undo {
+    1 dict begin
+	/tmp DisplayCanvas def
+	/DisplayCanvas BufCanvas store
+	/BufCanvas tmp store
+    end
+
+    DisplayCanvas /Mapped true put
+    BufCanvas /Mapped false put
+    CreateInterests
+    CreateOverLayCanvas
+} def
+
+/CreateMenus {
+    TopMenu nulldict eq {
+	/ToolMenu [
+	    (Pencil)
+		{{/at_toolchange save? /CurrentTool /pencil def} ThisPaintCan send}
+	    (Line)
+		{{/at_toolchange save? /CurrentTool /line def}    ThisPaintCan send}
+	    (Rectangle)
+		{{/at_toolchange save? /CurrentTool /rectangle def} ThisPaintCan send}
+	    (Polygon)
+		{{/at_toolchange save? /CurrentTool /polygon def}   ThisPaintCan send}
+	    (Oval)
+		{{/at_toolchange save? /CurrentTool /oval def}  ThisPaintCan send}
+	] /new MenuClass send def
+	{
+	    /RowMajor? false def
+	    /StrokeSelection? true def
+	    /CenterItems? false def
+	}  ToolMenu send
+
+	/OperationMenu [
+	    (Stroke) { {/CurrentOperation /do_stroke def} ThisPaintCan send }
+	    (Fill)   { {/CurrentOperation /do_fill def}   ThisPaintCan send }
+	] /new MenuClass send def
+	{
+	    /RowMajor? false def
+	    /StrokeSelection? true def
+	    /CenterItems? false def
+	} OperationMenu send
+
+	/MiscMenu [
+	    (Set Grid) { { /RoundOff PointSize def } ThisPaintCan send }
+	    (Save) { /savetobuffer ThisPaintCan send } %% SaveMenu
+	] /new MenuClass send def
+	{
+	    /CenterItems? false def
+	} MiscMenu send
+
+	/ColorMenu
+	    { {/ForeColor exch store} ThisPaintCan send } createcolormenu store
+
+	XMenu nulldict eq {
+	    /XMenu [
+		(Undo) { /undo ThisPaintCan send }
+		(Save To Buffer) { /savetobuffer ThisPaintCan send }
+	    ] /new MenuClass send def
+	} if
+
+	/PointMenu
+	    [(1) (2) (4) (6) (8) (10) (12) (14) (16) (18) (20) (24) (32) (64)]
+	    [
+		{ currentkey  cvi {/PointSize exch store} ThisPaintCan send }
+	    ]
+	/new MenuClass send def
+	{   /LayoutStyle	[2 7] def
+	    /CellHorizGap	5 def
+	} PointMenu send
+
+	/TopMenu [
+		(Point Size)		PointMenu
+		(Tool)			ToolMenu
+		(Operation)		OperationMenu
+		(Colors)		ColorMenu
+		(Misc)			MiscMenu
+		/sun30			XMenu
+	] /new MenuClass send store
+	{
+	    /LayoutStyle	/Horizontal def
+	    /CellHorizGap	4 def
+	    /PullRightDelta	0 def
+	    /Border		2 def
+	    /CenterItems?	true def
+	}  TopMenu send
+
+    } if
+} def
+
+/CreateOverLayCanvas {
+    /OverLayCanvas DisplayCanvas createoverlay def
+} def
+
+/CreateCanvases {
+    BufCanvas nulldict eq {
+	    /DisplayCanvas ParentCanvas newcanvas store
+	    DisplayCanvas begin
+		/Retained true def
+		/Transparent false def
+	    end
+	    /BufCanvas ParentCanvas newcanvas store
+	    BufCanvas begin
+		/Retained true def
+		/Transparent false def
+	    end
+	    gsave ParentCanvas setcanvas
+		ObjX ObjY translate
+		0 dup ObjW ObjH rectpath DisplayCanvas reshapecanvas
+		0 dup ObjW ObjH rectpath BufCanvas reshapecanvas
+	    grestore
+	    CreateOverLayCanvas
+    } if
+} def
+
+/do_stroke { stroke } def
+/do_fill { eofill } def
+
+/rectangle { { points2rect rectpath } bb } def
+/oval { { points2rect ovalpath } bb } def
+/line { { 4 2 roll moveto lineto } bb } def
+
+%+
+% bb:		event operation pathproc => bool
+% Function:	back-end to the /rectangle, /oval, and /line procs...
+%-
+/bb {
+2 dict begin
+    /pathproc exch def
+    /operation exch def
+    begin
+
+    EventMgrDict /x0 known {
+
+	Name PointButton eq Action /UpTransition eq and {
+
+	    erasepage
+	    %% got the terminating mouse up so we are all done dragging ,
+	    %% now figure out what we are supposed to do with the bounding box
+	    %% we've built..
+	    operation {
+		/do_fill /do_stroke {
+		    DisplayCanvas setcanvas
+		    EventMgrDict begin x0 y0 end RXLocation RYLocation
+		    pathproc operation cvx exec
+		}
+		/Default {}
+	    } case
+
+	    false %% tell FollowDrag to stop..
+	}{
+	    OverLayCanvas setcanvas erasepage
+	    EventMgrDict begin x0 y0 end RXLocation RYLocation
+	    pathproc stroke
+
+	    true %% tell FollowDrag to keep going
+	} ifelse
+
+    }{
+
+	%% set the x0,y0 of the bounding box we are building...
+	%%
+	Name PointButton eq Action /DownTransition eq and {
+	    EventMgrDict dup /x0 RXLocation put /y0 RYLocation put
+	} if
+
+	true %% keep going..
+    } ifelse
+
+    end % event
+
+end
+} def
+
+%% event operation => bool
+/pencil {
+1 dict begin
+    /operation exch def
+
+    begin %eventdict
+
+    Name /MouseDragged eq
+    EventMgrDict /LastX known and {
+
+	operation /do_stroke eq {
+	    EventMgrDict begin LastX LastY end
+	    moveto RXLocation RYLocation lineto stroke
+	} {
+	    gsave
+	    EventMgrDict begin LastX LastY end
+	    moveto RXLocation RYLocation lineto stroke
+	    grestore
+	    RXLocation RYLocation lineto
+	} ifelse
+    } {
+
+	operation /do_stroke ne { RXLocation RYLocation moveto } if
+    } ifelse
+
+    %% See if we are done penciling.
+    %% If we are not doing a stroke we've been constructing a path
+    %% and drawing it on an overlay. now we gotta take the path
+    %% and perform the desired operation on the display
+    %%
+    Action /UpTransition eq Name PointButton eq and
+
+    % if we're done and we're not stroking....
+    dup operation /do_stroke ne
+    and {
+	%% operation uses the currentpath
+	operation cvx exec
+    } if
+
+    not %% our return value for FollowDrag....
+
+    EventMgrDict dup /LastX RXLocation put /LastY RYLocation put
+
+    end % eventdict
+
+end %scope dict
+} def
+
+/polygon {
+    {} poly_bb
+} def
+
+%%%% utilities used by poly_bb
+
+%+
+% poly_buildpath:	[ [x y].... [xN yN] ] => -
+% Function: take an array of x y points and build a line segment path out of them
+%-
+/poly_buildpath {
+    dup 0 get aload pop moveto
+    0 arraydelete { aload pop lineto } forall
+} def
+
+/ending_segment {
+%% (ending polygon segment...\n) [] MsgProc
+    erasepage
+    EventMgrDict begin
+	%% add the segment we just finished to the
+	%% polygon path that we are building..
+	currentcanvas
+	DisplayCanvas setcanvas
+	/points points [[RXLocation RYLocation]] append def
+	setcanvas
+    %% paint what we've got so far on the Overlay..
+    points poly_buildpath
+    end %% EventMgrDict
+    operation cvx exec
+} def
+
+%+
+% poly_bb:	event operation pathproc => bool
+% Function:
+%-
+/poly_bb {
+3 dict begin
+    /pathproc exch def
+    /operation exch def
+
+    begin % event
+
+    %% 'till we get a mouse down on the point button, don't do anything...
+    EventMgrDict /points known {
+
+	Name [
+
+	    MenuButton {
+		%% hitting the menu button while constructing the polygon cancels the construction
+		erasepage
+
+		false %% return val
+	    }
+
+	    PointButton {
+		Action /DownTransition eq {
+		    ending_segment
+		} if
+
+		true %% return val
+	    }
+
+	    AdjustButton {
+
+		Action /DownTransition eq {
+		    ending_segment
+		    %% (polygon end...\n) [] MsgProc
+		    erasepage
+
+		    DisplayCanvas setcanvas
+
+		    %% build the path
+		    EventMgrDict /points get poly_buildpath
+
+		    %% paint the path...
+		    operation cvx exec
+
+		} if
+
+		false %% return val
+	    }
+
+	    MouseDragged {
+		%% (polygon feedback...\n) [] MsgProc
+
+		%DisplayCanvas setcanvas
+		%EventMgrDict begin x0 y0 end RXLocation RYLocation
+		%OverLayCanvas setcanvas
+		%erasepage
+		%gsave pathproc stroke grestore
+
+		true %% return val
+	    }
+
+	    /Default {
+		%% Some event we don't care about (at the moment)
+		(??? % % [%-%] \n\n) [Name Action XLocation YLocation] MsgProc
+
+		true %% return val
+	    }
+
+	] case
+
+    }{
+
+	Name PointButton eq Action /DownTransition eq and {
+	    %%% (% % polygon init...\n) [Name Action] MsgProc
+
+	    %% starting the polygon
+	    DisplayCanvas setcanvas
+	    EventMgrDict  /points [ [RXLocation RYLocation] ] put
+	    OverLayCanvas setcanvas
+
+	} if
+
+	true %% return val
+
+    } ifelse
+
+    end %% event
+
+end %% scope dict
+} def
+
+/FollowDrag {
+4 dict begin
+    /proc exch cvx def
+    /operation exch def
+
+    /EventMgrInit { drawbegin } def
+
+    %% if at any time proc returns false we stop this event tracking
+    %% process
+
+    .03 blockinputqueue
+    [
+
+	%% also give proc any ensuing mouse drags and mouse ups
+	[PointButton  AdjustButton]
+	{
+	    operation proc exec not {
+		currentprocess killprocess
+	    }{
+	    } ifelse
+	}
+	[/DownTransition /UpTransition]
+	DisplayCanvas
+	    eventmgrinterest
+
+	/MouseDragged
+	{
+	    operation proc exec not { currentprocess killprocess } if
+	}
+	null
+	DisplayCanvas
+	    eventmgrinterest
+
+    ] forkeventmgr
+    %% => event process
+    exch unblockinputqueue redistributeevent waitprocess
+
+end
+} def
+
+/CreateInterests {
+
+    EventMgr nulldict ne {
+	%% kill any old event mgr...
+	EventMgr killprocess /EventMgr nulldict store
+    } if
+
+    /Interests 4 dict begin %% leave room for subclassing...
+	/MenuEvent
+	    MenuButton %% event name
+	    {/showat TopMenu send} %% eventproc
+	    /DownTransition %% Action
+	    DisplayCanvas %%  canvas
+	eventmgrinterest def
+
+	/StartOpEvent
+	    PointButton
+	    {
+		%% => event
+		%% turn off this interest while we do StartOpProc
+		Interests /StartOpEvent get /Name /__funky_stuff__ put
+		Interests /MenuEvent get /Name /__funky_stuff__ put
+
+		    /before_each_operation save?
+		    StartOpProc
+
+		Interests /StartOpEvent get /Name PointButton put
+		Interests /MenuEvent get /Name MenuButton put
+	    }
+	    /DownTransition
+	    DisplayCanvas
+
+	eventmgrinterest def
+
+    currentdict end def
+    /EventMgr Interests forkeventmgr def
+} def
+
+%+
+% new:		x y w h parentcanvas => -
+%-
+/new {
+    /new super send begin
+	/ParentCanvas exch def
+	/ObjH exch def
+	/ObjW exch def
+	/ObjY exch def
+	/ObjX exch def
+    currentdict end
+} def
+
+/map {
+    CheckCanvases DisplayCanvas /Mapped true put
+} def
+
+/unmap {
+    DisplayCanvas null ne { DisplayCanvas /Mapped true put } if
+} def
+
+%+
+% Function: return the bounding box of the displaycanvas
+%+
+/bbox {
+    ObjX ObjY ObjW ObjH
+} def
+
+/destroy {
+    DisplayCanvas nulldict ne {
+	DisplayCanvas nukeinterests % to insure we GC everything...
+	[/BufCanvas /DisplayCanvas /User] {
+	    nulldict exch store
+	} forall
+	EventMgr killprocess
+    } if
+} def
+
+%+
+% Function: Implements deferred initialization of the canvases
+%-
+/CheckCanvases {
+    DisplayCanvas nulldict eq {
+	CreateCanvases
+	CreateMenus
+	CreateInterests
+    } if
+} def
+
+%+
+% reshape:	x y w h => -
+%-
+/reshape {
+    /ObjH exch def
+    /ObjW exch def
+    /ObjY exch def
+    /ObjX exch def
+    gsave
+	ParentCanvas setcanvas
+	ObjX ObjY translate
+	[BufCanvas DisplayCanvas] { 0 0 ObjW ObjH ObjPath reshapecanvas } forall
+    grestore
+} def
+
+%+
+% move:		x y => -
+% function:	Move the canvas to location x y (relative to it's parent)
+%-
+/move {
+    gsave
+    initmatrix
+    /ObjY exch def /ObjX exch def
+    ObjX ObjY DisplayCanvas setcanvas movecanvas
+    grestore
+} def
+
+classend def %% end of class definition
+
+%+
+% Utilities
+%-
+/ThisPaintCan {
+    null sendstack {
+	dup /DisplayCanvas known {
+	    exch pop exit
+	} {
+	    pop
+	} ifelse
+    } forall
+} def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%+
+% nuke-interests:	can => -
+% recursively cleans up any interests left laying around for any
+% canvas "can" and all it's children. good for use before destroying a
+% object. (courtesy of Don Hopkins)
+%-
+/nukeinterests {
+begin
+    %% Clear out the parent
+    Interests {revokeinterest} forall
+
+    %% Clear out each child (recursively)
+    TopChild {
+	dup null eq {pop exit} if
+	dup nukeinterests
+	/CanvasBelow get
+    } loop
+end
+} def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%+
+% Module: paintdemo
+% Author: Mike Hoegeman (mike@etn-wlv.eaton.com)
+% Function: simple window dressing for demoing the PaintCan object with
+%
+% Notes:
+% The Calling syntax is as follows...
+%	paintdemo [rasterfilename]
+% if <rasterfilename> is not supplied, a dialog box pops up to allow the user to read
+% in an input file.
+%
+% Modification History:
+% Date		Author		Reason
+% -------------------------------------------------------------
+% 10Feb88	MCH		Initial Release.
+% -------------------------------------------------------------
+%-
+%RUN%(/u/mike/paint/paintcan.ps) run
+
+/PaintWindow  LiteWindow
+[]
+classbegin
+    %% Methods
+    /destroy {
+	%% make sure we get everything GC'ed
+	FrameCanvas nukeinterests
+	/destroy super send
+    } def
+classend def
+
+/main {
+    /win  framebuffer /new PaintWindow send def
+    {
+	/FrameLabel (PaintCan Demo) def
+	/PaintClient {ColorDict /LightGrey get fillcanvas} def
+	/BorderLeft 4 def
+	/BorderRight 4 def
+	/BorderBottom 4 def
+    } win send
+    0 0 656 508 /reshape win send
+    /map win send
+    {
+	/reshape {} def
+	/reshapefromuser {} def
+	%% make the paint canvas..
+	pause
+	/PCan 4 4 640 480 ClientCanvas /new PaintCan send def
+	{
+	    %% some menu mashing here to redo the Xmenu
+	    %% redefine XMenu
+	    /XMenu [
+		(Undo) { /undo ThisPaintCan send }
+		(Save To Buffer) { /savetobuffer ThisPaintCan send }
+		(Read From File) { { self /read do-read-write-window } ThisPaintCan send }
+		(Save To File)   { { self /write do-read-write-window } ThisPaintCan send }
+	    ] /new DefaultMenu send store
+	} PCan send
+	/map PCan send
+    } win send
+} def %% main
+
+/rwwin nulldict def
+
+%%  paintcan /read | /write => -
+/do-read-write-window {
+    rwwin nulldict eq { /rwwin make_rwwin store } if
+    {
+	/Operation exch def
+	/PCan exch def
+	items /doitbutton get /ItemLabel Operation 64 string cvs put
+    } rwwin send
+    currentcursorlocation
+	rwwin /FrameHeight get 2 div sub 0 max
+	exch rwwin /FrameWidth get 2 div sub 0 max exch
+	    /move rwwin send
+    /map rwwin send
+    /totop rwwin send
+} def
+
+/make_rwwin {
+1 dict begin
+    %% create the window...
+    /window framebuffer /new PaintWindow send def
+
+    {
+	/PCan nulldict def
+	/Operation {} def
+
+	%% set the stuff we need to set before the reshape takes place...
+	%% (make it look sorta like a dialog box)
+	/FrameFillColor FrameTextColor def
+	/BorderTop 4 def
+	/BorderLeft 4 def
+	/BorderRight 4 def
+	/BorderBottom 4 def
+	/FramePath {
+	    4 5 1 roll rrectpath
+	} def
+
+    } window send
+
+    %% shape it
+    0 0 356 100 /reshape window send
+
+    {
+	%% disable the menu's
+	[/ClientMenuEvent /FrameMenuEvent] {
+	    dup
+	    FrameInterests exch known {
+		FrameInterests exch undef
+	    } {
+		pop
+	    } ifelse
+	} forall
+
+	%% install all the stuff needed for the items
+	/PaintClient { ColorDict /Yellow get fillcanvas items paintitems} def
+
+	%% define liteitem notifier procs for the items that will live in the window...
+	/nullnotify {} def
+
+	%% make the liteitems
+	4 dict begin
+	    /doitbutton (Do It) /doitnotify ClientCanvas 64 0 /new ButtonItem send
+		dup /ItemBorderColor .5 .5 .5 rgbcolor put
+		72 4 /move 3 index send def
+	    {
+		/doitnotify {
+		    rwwin /Operation get {
+			/read /write {
+			    rwwin /items get /dir_item get /ItemValue get (/) append
+			    rwwin /items get /file_item get /ItemValue get append
+			    {
+				Operation PCan send
+				/Operation {} def
+				/PCan nulldict def
+			    } rwwin send
+			    /unmap rwwin send
+			}
+			/Default { }
+		    } case
+		} def
+	    } doitbutton send
+
+	    /cancelbutton (Cancel!) /cancelnotify ClientCanvas 64 0 /new ButtonItem send
+		dup /ItemBorderColor .5 .5 .5 rgbcolor put
+		4 4 /move 3 index send def
+	    {
+		/cancelnotify {
+		    {
+			/Operation {} def
+			/PCan nulldict def
+		    } rwwin send
+		    /unmap rwwin send
+		} def
+	    } cancelbutton send
+
+	    /dir_item (Directory:) (HOME) getenv /Right /nullnotify ClientCanvas 340 0
+		/new TextItem send 4 72 /move 3 index send def
+	    {
+		/nullnotify {} def
+	    } dir_item send
+
+	    /file_item (File:) FILENAME /Right /nullnotify ClientCanvas 164 0
+		/new TextItem send 4 50 /move 3 index send def
+	    {
+		/nullnotify {} def
+	    } file_item send
+
+	currentdict end /items exch def
+	/itemmgr items forkitems def
+
+    } window send
+
+window
+end %localscope
+
+} def %% makerwwin
+
+%% fire up the paint window
+main
+
+%% if no file name supplied, ask user for one..
+FILENAME () eq { win /PCan get /read do-read-write-window } if

@@ -1,0 +1,1333 @@
+#! /bin/sh
+#set -x
+#
+# @(#)4.5_Template   4.5   10/11/90 	
+#	Copyright (c) 1990, Sun Microsystems, Inc.  All Rights Reserved.
+#	Sun considers its source code as an unpublished, proprietary
+#	trade secret, and it is available only under strict license
+#	provisions.  This copyright notice is placed here only to protect
+#	Sun in the event the source is deemed a published work.  Dissassembly,
+#	decompilation, or other means of reducing the object code to human
+#	readable form is prohibited by the license agreement under which
+#	this code is provided to the user or company in possession of this
+#	copy.
+#
+# RESTRICTED RIGHTS LEGEND: Use, duplication, or disclosure by the 
+# Government is subject to restrictions as set forth in subparagraph 
+# (c)(1)(ii) of the Rights in Technical Data and Computer Software 
+# Clause at DFARS 252.227-7013 (Oct. 1988) and FAR 52.227-19 (c) 
+# (June 1987). Sun Microsystems, Inc., 2550 Garcia Avenue, Mountain 
+# View, California 94043   
+#
+# Name: 4.5_Template
+#
+# Description: 
+# It is called from the script "install_unbundled".
+# This is the unbundled installation script template.  It contains features
+# that were compiled from various groups requests.
+# The variables have been separated into the file install_parameters.
+# Read the comments in install_parameters to determine how to customize
+# the scripts for your product.
+#
+# 
+# USAGE:
+#       4.5_Template [-dDEVICE]  [-rREMOTE_HOST]  [-mMOUNT_POINT] [-pPRODUCT_NAME] [-DEFAULT]
+#
+#
+#    MOUNT_POINT = Mount point of CD-ROM
+#    PRODUCT_NAME = Product directory on CD-ROM to install from
+#    DEVICE = media device
+#    REMOTE_HOST = host of remote tape drive
+#    DEFAULT = use all default values
+#
+#
+#  History:  updated   peggy jenq     4/6/90
+#                      jdk - contains support for CDrom installation 9/7/90
+#            updated   peggy jenq     10/11/90 - bug fix 
+#
+#
+#####################################################
+#####  Static Variables (Do not change these) #######
+#####################################################
+# Install directory and Log file for installation
+PATH=/usr/ucb:/bin:/usr/bin:/etc:/usr/etc
+export PATH
+PARAM_FILE="install_parameters"
+SH_NAME=`basename ${0}`
+install_dir="/usr/tmp/unbundled" 
+LOGFILE="${install_dir}/$SH_NAME.log"
+# This is the online software list, updated after each successfull installation
+UNBUNDLED_INVENTORY="${install_dir}/Unbundled_Inventory"
+
+################################################################
+# RUN_TIME VARIABLES (determined by environment or user input) #
+################################################################
+# Operating System
+SOS_LEVEL=`strings /vmunix \
+        | egrep '^Sun UNIX|^SunOS (Release)' \
+        | sed -e 's/.*Release \([^ ][^ ]*\) .*/\1/'`
+# Just the OS release number, with decimal point, but w/o ALPHA/BETA/whatever.
+SOS_RELEASE=`echo $SOS_LEVEL | sed -e 's/[a-zA-Z].*//'`
+# Strip the decimal out of release number
+SOS_NUMERIC=`echo $SOS_LEVEL | sed -e 's/\.//'` 
+# Strip out any alpha characters (e.g. 40BETA)
+SOS_NUMERIC=`expr substr $SOS_NUMERIC 1 2` 
+# login of installer
+INSTALLER=`whoami`
+
+# host machine architecture
+#ARCH=`arch -k`
+ARCH=`arch`
+
+# available disk space
+DISK_AVAIL=`df $DESTDIR | awk '/\$DESTDIR/ {print $4 }'`
+
+# standalone installation
+STANDALONE="N"
+
+# server installation
+SERVER=""
+#########################
+# Other Misc. variables #
+#########################
+CD="cd"
+DD="dd"
+MT="mt"
+TAR="tar"
+BAR="bar"
+
+TAPE_LOC=""
+REMOTE_HOST=""
+REMOTE=0
+DEFAULT=0
+DEV_SPEC=0
+Pre=0
+USAGE="$SH_NAME [-dDEVICE]  [-rREMOTE_HOST]  [-mMOUNT_POINT] [-pPRODUCT_NAME] [-DEFAULT] "
+ANS=""
+DISK=0
+#	Directory Name of Mount point
+MOUNT_POINT=""
+
+#	Indicates CD-ROM is mounted
+DEVICEISMOUNTED=0
+
+#	Indicates CD-ROM is to be used for installation
+CDROM=0
+
+#	Indicates mount point has been specified
+DEV_MP=0
+
+#	Directory Name of product to be installed
+PRODUCT_NAME=""
+
+#	Indicates product directory has been specified
+PRODUCT=0
+
+#	Indicates environment variable for product
+CDINSTALLDIR=${INSTALLAPPDIR:-""}
+
+#	Indicates script mounted the CD-ROM
+PROGMOUNTEDDEVICE=0
+
+##############################
+# Function for logging Stdin #
+##############################
+stdin_log () {
+	read $1
+	eval echo \"\$"$1"\" >> $LOGFILE
+}
+
+############################################
+# Functions for asking yes or no questions #
+############################################
+# $1 is a response that causes us to return 0
+# $2, $3, ... is the question to ask
+yes_or_no(){
+    GUDANZER="$1"; shift
+    question=
+    while [ $# -ge 1 ]
+    do
+	question="$question
+$1"
+	shift
+    done
+    Answer=""
+    while [ "$Answer" = "" ]
+    do
+    	echo -n "$question [y|n] "
+    	stdin_log Answer
+        case "$Answer" in
+	"$GUDANZER"*)	return 0;;
+    	[yn]*)		return 1;;
+    	*)   		echo
+			echo "Enter \"y\" or \"n\""
+    	     		Answer="";;
+        esac
+    done
+}
+says_yes(){
+    yes_or_no y "$@"
+}
+says_no(){
+    yes_or_no n "$@"
+}
+
+###############################
+# Function for building paths #
+###############################
+mkpath() {
+    path_to_make=
+    for i in `echo $1 | tr / ' '`
+    do
+	path_to_make=$path_to_make/$i
+	if [ -d $path_to_make ] || mkdir -p  $path_to_make
+	then : the directory exists
+	else
+	    echo
+	    echo "$SH_NAME: Failed to create destination directory: $DESTDIR"
+	    echo "	Check permissions."
+	    return 1
+	fi
+    done
+}
+
+###############################################################
+# Function for checking whether or not $DESTDIR is reasonable #
+###############################################################
+# DESTDIR and partition is actually interchangeable since the "df" will
+# pull out the partition part for space checking.
+#
+# Returns 0 if okay (and user said to create directory).
+# Returns 1 if okay (and no warnings were printed).
+# Returns 2 if okay (but warnings were printed).
+# Returns 3 if not okay.
+space_test () {
+	RETURN=1
+	DESTDIR=$1
+	echo ""
+	echo "Currently, the destination directory for the $PRODUCT_NAME: $DESTDIR "
+	#
+	# Make sure $DESTDIR exists
+	#
+	if [ ! -d "$DESTDIR" ]
+	then
+	    if says_yes "The destination directory $DESTDIR does not exist." \
+			"Do you want to create this directory?"
+	    then
+		mkpath $DESTDIR || return 3
+		RETURN=0
+	    else
+		DISK_AVAIL=0
+		return 3
+	    fi
+	fi
+	#
+	# Make sure "$DESTDIR" is in the same partition as any previously
+	# specified directories.
+	#
+	partition=`df $DESTDIR | awk 'NR==2 {x=$6}
+				      NR==3 {x=$5}
+				      END   {print x}'`
+	for i
+	do
+	    i_partition=`df $i | awk 'NR==2 {x=$6}
+				      NR==3 {x=$5}
+				      END   {print x}'`
+	    if [ $partition != $i_partition ]
+	    then
+		echo
+		echo "The destination directory $DESTDIR is in"
+		echo "the filesystem $partition, but the destination"
+		echo "directory $i is in the filesystem $i_partition."
+		echo 
+		echo "All components of $Prod must be installed into the same filesystem."
+		return 3
+	    fi
+	done
+
+	#
+	# Make sure $DESTDIR contains sufficient space
+	#
+	DISK_AVAIL=`df $DESTDIR | awk 'NR==2 {x=$4}
+				       NR==3 {x=$3}
+				       END   {print x}'`
+	if [ $DISK_AVAIL -lt $SOFT_SIZE ]
+	then
+		echo
+		echo "There is insufficient space available in $partition;"
+		echo "$SOFT_SIZE kbytes are required, but only $DISK_AVAIL kbytes are available."
+		return 3
+	fi
+	#
+	# Check if $DESTDIR is local or NFS-mounted
+	#
+	if df $DESTDIR 2>/dev/null | egrep -s '^/dev/'
+	then : $DESTDIR is local
+	else
+	    echo
+	    echo "The destination directory $DESTDIR is in"
+	    echo "the NFS-mounted filesystem $partition."
+	    if $LOCAL_FS_ONLY
+	    then
+		echo "You cannot install $PRODUCT_NAME into NFS-mounted filesystems;"
+		echo "you can only install onto local filesystems."
+		return 3
+	    fi
+	    RETURN=2
+	fi
+# 	done
+
+	#
+	# Check if DESTDIR isn't empty
+	#
+	if [ "" != "`ls -A $DESTDIR`" ]
+	then
+	    echo
+	    echo "The destination directory $DESTDIR is not empty."
+	    echo "It contains:"
+	    ls -Al $DESTDIR
+	    RETURN=2
+	fi
+	return $RETURN
+}
+
+
+#Set all the unique variables for this product from install_parameters
+. ${install_dir}/${PARAM_FILE}
+###################  Begin Installation Script ##############################
+echo "$SH_NAME : Begin Installation of $PRODUCT_NAME" >> $LOGFILE
+
+# work-around to free up the /tmp space used when uncompressing files with
+# the bar command
+\rm -f /tmp/tmp_*.Z
+###################################################
+#  Added extract_unbundled code here so it works  # 
+#  with or without the front-end script.          #
+###################################################
+# Parse the arguments
+if [ $# -gt 0 ]
+then
+    for param in $*;
+    do
+	PARAMS="$PARAMS $param"
+        case "$param" in
+        -d*)
+	    DEVROOT=`expr $param : '-d\(.*\)' '|' "1"` 
+	    if [ $DEVROOT -eq 1 ]
+	    then
+		echo "$SH_NAME : Invalid device name $param"
+            	echo "            USAGE : $USAGE"
+		exit 1
+	    fi
+	    DEV_SPEC=1 ;;
+        -r*)
+	    REMOTE_HOST=`expr $param : '-r\(.*\)' '|' "1"` 
+	    if [ $REMOTE_HOST -eq 1 ]
+	    then
+		echo "$SH_NAME : Invalid Host name $param"
+            	echo "            USAGE : $USAGE"
+		exit 1
+	    fi
+            REMOTE=1 ;;
+        -m*)
+            MOUNT_POINT=`expr  $param : '-m\(.*\)' '|' "1"`
+            if [ $MOUNT_POINT -eq 1 ]
+            then
+                echo
+                echo "$SH_NAME : Invalid mount point"
+                echo "            USAGE : $USAGE"
+                exit 1
+            fi  
+# jdk assume that if a mount point is specified, then we are using CDROM, and
+# the installation is local
+            TAPE_LOC="local"
+            DEV_MP=1
+            DEVROOT="mounted"
+            DEVICEISMOUNTED=1
+            OPTIONS="xvfp"
+            DEV_SPEC=1;;
+       -p*)
+           PRODUCT_NAME=`expr  $param : '-p\(.*\)' '|' "1"`
+           if [ $PRODUCT_NAME -eq 1 ]
+           then
+               echo
+               echo "$SH_NAME : Invalid product name"
+               echo "            USAGE : $USAGE"
+               exit 1
+           fi
+           PRODUCT=1;;
+        -DEFAULT)
+	    STANDALONE="Y"
+	    DEST_SETABLE="N"
+	    ANS="y"
+            DEFAULT=1 ;;
+        -f) Pre=1 ;;
+        *)  echo USAGE : $USAGE
+	    exit 1;;
+        esac
+    done
+fi
+
+# Prompt user for device name
+while [ "$TAPE_LOC" =  "" ]
+do
+    if [ $REMOTE -eq 0 ]
+    then
+	if [ $DEFAULT -eq 0 -a $Pre -eq 0 ]
+	then
+	    while [ "$TAPE_LOC" = "" ]
+	    do
+		echo
+		echo -n "Enter media drive location (local | remote): "
+		stdin_log TAPE_LOC
+	    done
+	else
+		TAPE_LOC="local"
+	fi
+    else
+	TAPE_LOC="remote"
+    fi
+        case "$TAPE_LOC" in 
+	r*)     while [ "$REMOTE_HOST" = "" ]
+		do
+			echo 
+			echo -n "Enter hostname of remote drive: "
+			stdin_log REMOTE_HOST
+		done
+		REMOTE=1
+#               Test to see if remote host responds
+		rsh  -n $REMOTE_HOST "echo 0 > /dev/null"
+		if [ "$?" -ne 0 ]
+		then
+			echo "$SH_NAME : Problem with reaching remote host $REMOTE_HOST"
+			exit 1
+		fi;;
+	l*) ;;
+	*)   echo
+	     echo "$SH_NAME : Incorrect response, use \"local\" or \"remote\""
+	     TAPE_LOC="" ;;
+	esac
+done
+#  if the device was not specified in the argument line or as "default".
+if [ $DEV_SPEC -eq 0 ]
+then
+#   This one will loop until a correct device is chosen.
+    while [ "$DEVROOT" = "" ] 
+    do
+	echo ""
+	echo -n "Enter Device Name (e.g. sr0, st0, mt0, fd0c, mounted ) : "
+	stdin_log DEVROOT
+	case  "$DEVROOT" in
+	    st*) OPTIONS="xvfbp"
+		  BS=126;;
+	    mt*) OPTIONS="xvfbp"
+		  BS=20;;
+	    fd*) if [ $REMOTE -eq 1 ]
+                  then
+                       echo "$SH_NAME : Remote option cannot be used with diskette installation"
+                       exit 1
+                  fi
+		  OPTIONS="xvfbpTZ"
+		  BS="18"
+		  DISK=1;;
+	    ar*) OPTIONS="xvfbp"
+		  BS=126;;
+            mo*) if [ $REMOTE -eq 1 ]
+                  then
+                      echo "$SH_NAME: Remote option invalid for CD-ROM installation." 
+                      echo "Please mount device locally"
+                      exit 1
+                  fi
+                  OPTIONS="xvfp"
+                  DEVICEISMOUNTED=1;;
+            sr*) if [ $REMOTE -eq 1 ]
+                  then
+                      echo "$SH_NAME: Remote option invalid for CD-ROM installation." 
+                      echo "Please mount device locally"
+                      exit 1
+                  fi
+                  OPTIONS="xvfp"
+                  CDROM=1;;
+	    *)    echo "$SH_NAME : Invalid device name $DEVROOT"
+		  DEVROOT="";;
+	esac
+    done
+else
+#   This one will exit if an incorrect device is chosen.
+    case  "$DEVROOT" in 
+        st*)   OPTIONS="xvfbp"
+    	      	BS=126;;
+        mt*)   OPTIONS="xvfbp"
+	      	BS=20;;
+        fd*)   if [ $REMOTE -eq 1 ]
+                then
+                        echo "$SH_NAME : Remote option cannot be used with diskette installation"
+                        exit 1
+                fi
+		OPTIONS="xvfbpTZ"
+	      	BS="18"
+		DISK=1;;
+        ar*)   OPTIONS="xvfbp"
+	      	BS=126;;
+        mo*) if [ $REMOTE -eq 1 ]
+              then
+                echo "$SH_NAME: Remote option invalid for CD-ROM installation."                echo "Please mount device locally"
+                exit 1
+              fi
+              OPTIONS="xvfp"
+             DEVICEISMOUNTED=1;;
+       sr*) if [ $REMOTE -eq 1 ]
+             then
+                echo "$SH_NAME: Remote option invalid for CD-ROM installation."                echo "Please mount device locally"
+                exit 1
+             fi
+                  OPTIONS="xvfp"
+                  CDROM=1;;
+    esac
+fi
+# if the front-end "extract_unbundled" hasn't been run do the following
+if [ $DEVICEISMOUNTED -eq 0 ]
+then
+        if [ $CDROM -eq 1 ]
+        then
+                DEVPATH="/dev/${DEVROOT}"
+        elif [ $DISK -eq 1 ]
+        then
+                DEVPATH="/dev/r${DEVROOT}"
+        else
+                DEVPATH="/dev/nr${DEVROOT}"
+        fi
+
+	if [ $Pre -eq 0 ]
+	then
+		echo ""
+		echo "** Please mount the release media if you haven't done so already. **"
+		if [ $DEFAULT -eq 0 ]
+		then 
+			echo
+			echo -n "Press return when ready:"
+			read ans
+		fi
+# Wait for media to load.
+		sleep 8
+# For Tape devices only since diskettes cannot be used remotely
+# Rewind tape, just to be sure
+	fi
+fi
+if [ $DEV_MP -eq 0 ]
+then
+   if [ \( $DEVICEISMOUNTED -eq 1 \) -o \( $CDROM -eq 1 \) ]
+   then
+###Check if user wants to use default mount point
+ 
+        if [ -n "$CDINSTALLDIR" ]
+        then
+                ans=""
+                echo
+                echo -n "OK to use default mount point - $CDINSTALLDIR [y|n]? "
+                        read ans
+                        if [ $ans = "y" ]
+                        then
+                                MOUNT_POINT=$CDINSTALLDIR
+                        else
+                                CDINSTALLDIR=""
+                        fi
+        fi
+        if [ -z "$CDINSTALLDIR" ]
+        then
+####### Ask the user for the CD-ROM mount point.
+ 
+                echo
+                echo -n "Please enter mount point [e.g. /cdrom]: "
+                read MOUNT_POINT
+        fi
+####### Check existence of mount point.
+ 
+        if [ ! -d "$MOUNT_POINT" ]
+        then
+ 
+### if mount point doesn't exist but user says device is mounted, there
+### is definitely a problem - exit
+ 
+                if [ $DEVICEISMOUNTED -eq 1 ]
+                then
+                        echo
+                        echo "$0: Device specified as mounted, but mount point is nonexistent, exiting"
+                        exit 1
+                fi
+### If the mount point doesn't exist, no need to ask if device is
+### mounted later on
+ 
+                askmount=0
+                mkdir -p  $MOUNT_POINT
+                if [ $? -ne 0 ]
+                then
+                        echo
+                        echo "$0 : Error making mount point, exiting"
+                        exit 1
+                fi
+        else
+                askmount=1
+        fi
+####### Mount CD-ROM if needed.
+        if [ $DEVICEISMOUNTED -eq 0 ]
+        then
+                if [ $askmount -eq 1 ]
+                then
+                        ans=""
+                        echo
+                        echo -n "Is CD-ROM already mounted [y|n]? "
+                        read ans
+                else
+                        ans="n"
+                fi
+                if [ $ans = "n" ]
+                then
+                        PROGMOUNTEDDEVICE=1
+                        /etc/mount -r $DEVPATH $MOUNT_POINT 2> /dev/null
+                        if [ $? -ne 0 ]
+                        then
+                                echo
+                                echo "$0 : Error mounting CD-ROM, exiting"
+                                exit 1
+                        fi
+                fi
+        fi
+        DEV_MP=1
+        DEVICEISMOUNTED=1
+   fi
+fi
+if [ $Pre -eq 0 ]
+then
+        if [ $DEV_MP -eq 0 ]
+        then
+
+		if [ $REMOTE -eq 1 ]
+		then
+        		stat=""
+			stat=`rsh -n ${REMOTE_HOST} "$MT -f ${DEVPATH} rew; echo \\$status"`
+			case $stat in
+				[1-9]* | 1[0-9]* )
+					echo
+					echo "$SH_NAME : Problem with accessing tape drive, exiting"
+					exit 1;;
+				*)      continue;;	
+			esac
+		else
+  	        	if [ $DISK -eq 0 ]
+    	        	then
+	        		$MT -f ${DEVPATH} rew
+	         		if [ "$?" -ne  0 ]
+		        	then
+		        		echo
+		        		echo "$SH_NAME : Problem with accessing tape drive, exiting"
+		         		exit 1
+		 	        fi
+	    	        fi
+	         fi
+	fi
+	# Print copyright to the screen for further verification
+	clear
+	echo "The following product will be installed:"
+        if [ $DEV_MP -eq 0 ]
+        then
+		if [ $REMOTE -eq 1 ]
+		then
+	    		rsh -n ${REMOTE_HOST} $DD if=${DEVPATH} > /tmp/cp.tmp
+		    	if [ "$?" -ne 0 ]
+	    		then
+				echo
+				echo $SH_NAME : Problem with reading copyright file on release tape.
+				exit 1
+	    		fi
+	    		cat /tmp/cp.tmp | more 
+        	else
+	    		if [ $DISK -eq 0 ]
+            		then 
+				echo " $DD if=${DEVPATH} > /tmp/cp.tmp"
+				$DD if=${DEVPATH} > /tmp/cp.tmp
+				if [ "$?" -ne 0 ]
+				then
+					echo
+					echo $SH_NAME : Problem with reading copyright file on release tape.
+					exit 1
+				fi
+				cat /tmp/cp.tmp  | more 
+	    		else
+	        		$BAR ${OPTIONS} ${DEVPATH} ${BS} +install/copyright.d > /dev/null
+                		if [ "$?" -ne 0 ]
+                		then
+                    			echo $0 : Problem with reading copyright file on release tape.
+                    			exit 1
+                		fi                           
+                		cat +install/copyright.d  | more 
+				\cp +install/copyright.d /tmp/cp.tmp
+				\rm -rf +install
+            		fi    
+		fi
+        else
+                more $MOUNT_POINT/$PRODUCT_NAME/_install/copyright.r
+                if [ $? -ne 0 ]
+                then
+                        echo
+                        echo "$SH_NAME : Problem accessing media, exiting"
+                        if [ $PROGMOUNTEDDEVICE=1 ]
+                        then
+                                /etc/umount $MOUNT_POINT 2>/dev/null
+                                if [ $? -ne 0 ]
+                                then
+                                        echo
+                                        echo $0: Problem unmounting device
+                                fi
+                        fi
+                        exit 1
+                fi
+        fi
+ 
+	while [ "$ANS" = "" ]
+	do
+		echo
+		echo -n "Do you want to continue [y|n]? "
+		stdin_log ANS
+		echo ""
+	    case $ANS in
+		y*)  continue;;
+		n*)  echo $SH_NAME : Terminating installation...
+		     exit 0;;
+		*)   
+		     echo 
+		     echo "Enter \"y\" or \"n\""
+		     ANS="";;
+	    esac
+	done
+fi
+#check for correct login for installation
+#
+case "$REQ_LOGIN" in
+	"$INSTALLER" | none)
+		;; 
+	*) echo
+	   echo "$SH_NAME : Incorrect login for installation, you must be $REQ_LOGIN"
+	   \rm -f /tmp/cp.tmp
+   	   exit 1 ;;
+esac
+####################################
+#  Display Informational Lists :   #
+####################################
+if [ $DEFAULT -eq 0 ]
+then
+	answer=""
+	while [ "$answer" = "" ]
+	do
+		echo ""
+		echo -n "Do you want to see a description of this installation script [y|n]? "
+		stdin_log answer
+		case $answer in
+		    y* ) echo ""
+			 echo "$SCRIPT_DESC"
+			 echo "";;
+		    n* ) continue;;
+		    * )  
+			 echo 
+			 echo "Enter \"y\" or \"n\""
+			 answer="";;
+		esac
+	done
+#
+# remove any or all of the following 4 displays, if not applicable
+#
+	echo "The following are Software Requirements for $PRODUCT_NAME:"
+	echo "          $SOFT_REQ"
+	echo "The following are Hardware Requirements for $PRODUCT_NAME:"
+	echo "          $HARD_REQ"
+	echo "The following are Optional Software for $PRODUCT_NAME:"
+	echo "          $SOFT_OPT"
+	echo "The following are Optional Hardware for $PRODUCT_NAME:"
+	echo "          $HARD_OPT"
+
+	echo ""
+	echo "Installation should take approximately $INSTALL_TIME."
+	echo ""
+###################################
+# Display disk usage information  #
+###################################
+	echo ""
+	echo "Here is the Current Free Disk space:"
+        df | egrep '(/dev|Filesystem)'
+	echo ""
+	echo "This software requires $SOFT_SIZE kbytes of disk space"
+	answer=""
+	while [ "$answer" = "" ]
+	do
+		echo ""
+		echo -n "Do you want to continue [y|n]? "
+		stdin_log answer
+	    case $answer in
+		y* ) continue;;
+		n* ) echo "$SH_NAME : Exiting..."
+		     \rm -f /tmp/cp.tmp
+		     exit 0;;
+		* ) 
+		     echo 
+		     echo "Enter \"y\" or \"n\""
+		     answer="";;
+	    esac
+	done
+fi
+###################################################
+# Check the OS level compatibility (if necessary) #
+# Comment out this section if future OS           #
+# compatability is unknown.			  #
+###################################################
+for SOS in $SOS_COMPAT
+do
+	case $SOS_LEVEL in
+                ${SOS}* )
+# match found
+                        SOS_ok=0
+                        break;;
+                * )
+# no match found
+                        SOS_ok=1;;
+        esac
+done
+		
+# no match was found
+if [ $SOS_ok -eq 1 ]
+then
+	echo ""
+	echo "$SH_NAME : This software is not compatible with the current operating system"
+	echo ""
+	echo "     This is the list of compatible operating systems:"
+	for SOS in $SOS_COMPAT
+	do
+		echo "         $SOS"
+	done
+	\rm -f /tmp/cp.tmp
+	exit 1
+fi
+
+################################### 
+# Architecture Compatibility Test #
+###################################
+# no match found (not compatible)
+ARCH_not_ok=true
+for archtype in $ARCH_COMPAT
+do
+	case $ARCH in
+                ${archtype})
+			# match found
+                        ARCH_not_ok=false
+			break
+			;;
+        esac
+done
+
+####################################################
+#  Set up for Standalone or Server installation    #
+###################################################
+DEST_LIST=""
+MACHINE=""
+heter="n"
+###########################################################
+# Set up default values if this was run in -DEFAULT mode. #
+###########################################################
+if [ $DEFAULT -eq 1 ]
+then
+	if  ${ARCH_not_ok}
+	then
+	    echo ""
+	    echo "$SH_NAME : This software is not compatible with the $ARCH architecture"
+            echo ""
+            echo "     This a list of compatible architectures:"
+            for archtype in $ARCH_COMPAT
+            do
+               		echo "         $archtype"
+            done
+	    \rm -f /tmp/cp.tmp
+            exit 1
+	fi
+	MACHINE="standalone"
+	DEST_LIST=$DESTDIR
+fi
+while [ "$MACHINE" = "" ] 
+do
+    echo ""
+    echo -n "Enter system type [standalone | server]: "
+    stdin_log MACHINE
+    case "$MACHINE" in
+    st* )
+	if  ${ARCH_not_ok}
+	then
+	    echo ""
+	    echo "$SH_NAME : This software is not compatible with the $ARCH architecture"
+            echo ""
+            echo "     This a list of compatible architectures:"
+            for archtype in $ARCH_COMPAT
+            do
+               		echo "         $archtype"
+            done
+	    \rm -f /tmp/cp.tmp
+            exit 1
+	fi
+	space_test $DESTDIR
+	DEST_LIST=$DESTDIR
+        STANDALONE="Y" ;;
+    se* )
+	 servertype=""
+         while [ "$servertype" = "" ]
+	 do
+             echo
+             echo -n "Enter server type [homo | heter]: "
+             stdin_log servertype
+             case "$servertype" in
+               ho* )
+		    if ${ARCH_not_ok}
+		    then
+		        echo ""
+			echo "$SH_NAME : This software is not compatible with the $ARCH architecture"
+		        echo ""
+			echo "     This a list of compatible architectures:"
+			for archtype in $ARCH_COMPAT
+			do
+			    echo "         $archtype"
+			done
+			\rm  -f /tmp/cp.tmp
+			exit 1
+		    fi
+		    space_test $DESTDIR
+	  	    DEST_LIST=$DESTDIR
+                    break ;;
+               he* )
+		    heter="y";;
+		*)
+		    echo ""
+                    echo "$SH_NAME: Invalid server type \"${servertype}\"."
+		    echo ""
+                    echo "Enter \"homo\" or \"heter\""
+		    servertype="";;
+             esac
+         done;;
+     * )  
+	echo
+	echo "$SH_NAME : Invalid system type, use \"standalone\" or \"server\""
+	MACHINE="" ;;
+    esac
+done
+######################################################################
+#  Set up correct Destination Directories for Heterogeneous servers. #
+#  Assuming the machine is configured to be a server already	     #
+######################################################################
+# Greater than 4.0, means it will go in /export/exec/sun2|3|4
+if [ $heter = "y" ]
+then
+    if [ "$SOS_LEVEL" = "Sys4" -o $SOS_NUMERIC -lt 40 ]
+    then 
+	 . ${install_dir}/3.x_install
+    else
+    for client in $ARCH_COMPAT
+    do
+	answer=""
+	while [ "$answer" = "" ]
+	do
+		echo ""
+		echo -n "Will this be for a $client client [y|n]? "
+		stdin_log answer
+		case "$answer" in
+		  y* )
+			DESTDIR="/export/exec/$client"
+			if [ ! -d "$DESTDIR" ]
+			then
+			    echo ""
+			    echo "$SH_NAME : Directory $DESTDIR does not exist"
+			    echo ""
+			    echo "    This machine does not have a standard server"
+			    echo "     configuration for a $client client."
+			    echo ""
+			    echo "    You can either"
+			    echo "    restart for \"standalone\" installation"
+			    echo "    or"
+			    echo "    make the partition and directory for $DESTDIR"
+			    echo "    then restart for \"server\" installation."
+			    echo ""
+		    	    echo "$SH_NAME : Terminating..."
+			    \rm  -f /tmp/cp.tmp
+			    exit 0
+			fi
+			space_test $DESTDIR
+			DEST_LIST="$DEST_LIST $DESTDIR";;
+		  n* )
+			continue;;
+		  * )
+			echo
+			echo "Enter \"y\" or \"n\""
+			answer="";;
+		esac
+	    done
+	done
+    fi
+# If no client was selected default to standalone installation to $DESTDIR
+    if [ "$DEST_LIST" = "" ]
+    then
+	answer=""
+	while [ "$answer" = "" ]
+	do
+	    echo ""
+	    echo "No client was selected, installation will default to directory $DESTDIR"
+  	    echo -n "Do you want to continue [y|n]? "
+	    stdin_log answer
+		case "$answer" in
+		 y* )
+		    space_test $DESTDIR
+		    DEST_LIST="$DESTDIR";;
+		 n* )
+		    echo $SH_NAME : Terminating installation...
+		    \rm  -f /tmp/cp.tmp
+       		    exit 0;;
+		 * )
+		    echo ""
+		    echo "Enter \"y\" or\"n\""
+		    answer="";;
+		esac
+	done
+    fi
+fi
+######################################################################
+#  if Destination directory is changeable and this is a standalone   #
+#  installation.  Set up for new Destination directory.              #
+######################################################################
+if [ $DEST_SETABLE = "Y"  -a $STANDALONE = "Y" ]
+then
+    answer=""
+    while [ "$answer" = "" ]
+    do
+	    echo ""
+	    echo "Currently the destination directory is $DEST_LIST"
+	    echo "Currently there is $DISK_AVAIL kbytes available in the $DEST_LIST partition"
+	    echo -n "Do you want to change the destination directory [y|n]? "
+	    stdin_log answer
+    	case $answer in
+    	y*)
+		echo ""
+	        echo "These are the available partitions and free disk space:"
+		df | egrep /dev | awk '{print "    " $6 "    " $4}'
+		partition=""
+		while [ "$partition" = "" ]
+		do
+		    echo ""
+		    echo -n "Enter the partition you would like the software installed in: "
+		    stdin_log DESTDIR
+		    tmp=`df $DESTDIR 2>/dev/null | egrep /dev`
+	    	    if [ "$?" -ne 0 ]
+		    then
+			echo
+		   	echo "$SH_NAME : Nonexistent partition $partition"
+		   	partition=""
+		    else
+			space_test $DESTDIR
+			echo
+                       	echo -n "Enter the destination directory for the product: $DESTDIR"
+                       	stdin_log new_destdir
+        	       	if [ -d "$DESTDIR$new_destdir" ]
+                       	then
+                            DEST_LIST="$DESTDIR$new_destdir"
+			else
+			    answer=""
+			    while [ "$answer" = "" ]
+			    do
+			        echo
+			        echo  "$DESTDIR$new_destdir does not exist;"
+			        echo -n "do you want to create that directory [y|n]? "
+			        stdin_log answer
+				case $answer in
+		                y*)
+                               	    mkdir -p $DESTDIR$new_destdir
+                	            if [ "$?" -ne 0 ]
+                		    then
+				         echo
+                        	         echo "$SH_NAME : Failed to create destination directory, check permissions: $DESTDIR$new_destdir"
+					 \rm  -f /tmp/cp.tmp
+				         exit 1
+				    fi
+                               	    DEST_LIST="$DESTDIR$new_destdir";;
+		                n*)
+			 	    new_destdir="";;
+				*)  echo
+				    echo "$SH_NAME : Enter \"y\" or \"n\""
+				    answer="";;
+				esac
+			    done
+			fi
+		    fi
+	    done;;
+	n*) continue;;
+	*)  echo
+	    echo "Enter \"y\" or \"n\""
+	    answer="";;
+	esac
+    done
+fi
+####################################
+#  Finally, tar off the software   #
+####################################
+for dest_dir in $DEST_LIST
+do
+    if [ $DEFAULT -eq 0 ]
+    then
+# Test for pre-existent version of software
+        if [ -d "$dest_dir/$SOFT_PRETEST" -o -f "$dest_dir/$SOFT_PRETEST" ]
+
+        then
+                answer=""
+                while [ "$answer" = "" ]
+                do
+                    echo
+                    echo "There is pre-existing version of this software." 
+                    echo -n "Do you want to overwrite [y|n]? "
+                    stdin_log answer
+                    case $answer in
+                       y*) continue;;
+                       n*)
+                           echo ""
+                           echo "$SH_NAME : Terminating Installation"
+                           echo ""
+                           \rm  -f /tmp/cp.tmp
+                           exit 0;;
+                       *)
+                           echo
+                           echo "Enter \"y\" or \"n\""
+                           ANS="";;
+                    esac
+                done
+        fi
+	echo "Ready to install $PRODUCT_NAME in $dest_dir,"
+	ANS=""
+	while [ "$ANS" = "" ]
+	do
+	    echo
+	    echo -n "Do you want to continue [y|n]? "
+	    stdin_log ANS
+	    echo ""
+	    case $ANS in
+		y*) continue;;
+		n*) 
+		    echo
+		    echo "$SH_NAME : Terminating Installation"
+	    	    exit 0;;
+		*)  
+		    echo
+		    echo "Enter \"y\" or \"n\""
+		    ANS="";;
+	    esac
+	done
+    fi
+# change to the DESTDIRectory and tar off the files
+#
+	cd $dest_dir
+### special for Sun386i, mount /usr with write permission ###
+#	$MAKE_DIR_RW
+    if [ $DEV_MP -eq 0 ]
+    then
+	if [ $REMOTE -eq 1 ]
+	then
+		stat=""
+		stat=`rsh -n $REMOTE_HOST "$MT -f $DEVPATH rew; echo \\$status"`
+		stat=`rsh -n $REMOTE_HOST "$MT -f $DEVPATH fsf 2; echo \\$status"`
+		if [ "$stat" = "1" ]
+        	then
+       			echo "$SH_NAME : Error in Extracting Software.  Check Tape."
+                        \rm  -f /tmp/cp.tmp
+        		exit 1
+		fi
+		echo "Extracting software... "
+        	rsh -n $REMOTE_HOST $DD if=$DEVPATH bs=${BS}b | ${TAR} xBvfbp - ${BS}
+		if [ "$?" -ne 0 ]
+        	then
+       			echo "$SH_NAME : Error in Extracting Software.  Check Tape."
+                        \rm  -f /tmp/cp.tmp
+        		exit 1
+		fi
+	else
+	    if [ $DISK -eq 0 ]
+	    then
+		$MT -f $DEVPATH rew
+		$MT -f $DEVPATH fsf 2
+		echo "Extracting software... "
+		$TAR $OPTIONS $DEVPATH $BS
+		if [ "$?" -ne 0 ]
+		then
+       			echo "$SH_NAME : Error in Extracting Software.  Check Tape."
+       	 		$MT -f $DEVPATH rewind
+                        \rm  -f /tmp/cp.tmp
+        		exit 1
+		fi
+	    else
+		$BAR ${OPTIONS} ${DEVPATH} ${BS}
+                if [ "$?" -ne 0 ]
+                then
+                        echo
+                        echo $0 : Error in Extracting Software.  Check the media.
+			\rm  -f /tmp/cp.tmp
+                        exit 1
+                fi
+		\rm -rf +install
+	    fi
+	fi
+    else
+###############################################################
+#CD-ROM installation########################################
+# Use either tar or cp to transfer all or a subset of your 
+# product's files from the CD to the users hard disk
+###############################################################
+#cp -r $MOUNT_POINT/$PRODUCT_NAME/bin/* .
+
+# tar command if needed instead of cp to preserve symlinks
+
+ ### cd $MOUNT_POINT/$PRODUCT_NAME; tar vcf - . | (cd  $dest_dir; tar xvpfB -)
+ # use command below to copy everything including the +install directory
+ # even when installing from cdrom or via NFS mount point.  normally,
+ # the tar command above would be used to just install the product to
+ # the customers destdir
+
+ cd $MOUNT_POINT; tar vcf - . | (cd  $dest_dir; tar xvpfB -)
+
+
+        if [ "$?" -ne 0 ]
+        then
+                echo "$SH_NAME : Error in Extracting Software."
+                exit 1
+        fi
+    fi
+done
+########################################################################
+# Optional Software : May or may not apply		               #
+#   If it exists optional software will be the third file on the tape. #
+#   Cannot be used with diskettes since optional software cannot be    #
+#   separated on the diskette.					       #
+########################################################################
+if [ "$OPT_REL" = "Y" ]
+then
+    if [ $DEFAULT -eq 0 ]
+    then
+	. ${install_dir}/Opt_software
+    fi
+fi
+
+##############################################################
+# Log Languages Software installation in /usr/lib/lang_info. #
+##############################################################
+for install_dir in $DEST_LIST
+do
+    case "$PROD_NAME" in
+    c | lint | pascal | fortran | modula2 )
+        TAB="   "
+        LANG_INFO=$install_dir/lib/lang_info
+        # make an installation log entry in the /usr/lib/lang_info file.
+ 
+        if [ ! -f ${LANG_INFO} ]
+        then
+                echo "****${TAB}Installing on a pre-4.0FCS system;"
+                echo "${TAB}${LANG_INFO} is not present."
+                echo "${TAB}Installation aborted."
+		\rm  -f /tmp/cp.tmp
+                exit 1
+        fi
+ 
+        if [ ! -w ${LANG_INFO} ]
+        then
+                echo "****${TAB}${LANG_INFO} is not writable."
+                echo "${TAB}Installation aborted."
+		\rm  -f /tmp/cp.tmp
+                exit 1
+        fi
+ 
+	ex - ${LANG_INFO} <<-!EOF
+		g/^${PROD_NAME}${TAB}/d
+		\$a
+		${PROD_NAME}${TAB}${PROD_RELEASE}${TAB}${PROD_BASE_SOS_RELEASE}
+		.
+		wq
+		!EOF
+	;;
+
+    * )
+	# nothing to do here.
+	;;
+    esac
+done
+
+if [ $DEV_MP -eq 0 ]
+then
+
+
+	if [ $DISK -eq 0 ]
+	then
+    		if [ $REMOTE -eq 1 ]
+    		then
+			echo "$SH_NAME : rewinding tape..."
+			stat=""
+        		stat=`rsh -n $REMOTE_HOST "$MT -f $DEVPATH rew; echo \\$status"`
+			case $stat in
+               		[1-9]* | 1[0-9]* )
+                       		echo "$SH_NAME : Error in tape rewind."
+                       		exit 1;;
+               		*)      continue;;
+        		esac
+    		else
+			echo "$SH_NAME : rewinding tape..."
+			$MT -f $DEVPATH rew
+			if [ "$?" -ne 0 ] 
+			then
+        			echo "$SH_NAME : Error in tape rewind."
+				exit 1
+			fi
+    		fi
+	fi
+fi
+#####################################################
+# Log the Software release in the  Inventory list   # 
+#####################################################
+echo ----------------------------------- >> $UNBUNDLED_INVENTORY
+date >> $UNBUNDLED_INVENTORY
+if [ -f /tmp/cp.tmp ]
+then
+	head -5 /tmp/cp.tmp >> $UNBUNDLED_INVENTORY
+	if [ "$?" -ne 0 ] 
+	then
+		echo "$SH_NAME : Error in logging software inventory"
+		exit 1
+	fi
+else # this is for the old style 1.X version of extract_unbundled #
+	if [ $DEV_MP -eq 0 ]
+	then
+# grab only the first part of copyright file w/o copyright info
+    		if [ $REMOTE -eq 1 ]
+    		then
+        		rsh -n $REMOTE_HOST "$DD if=$DEVPATH" >> $UNBUNDLED_INVENTORY
+        		stat=`rsh -n $REMOTE_HOST "$MT -f $DEVPATH rew; echo \\$status"`
+        		case $stat in
+                	[1-9]* | 1[0-9]* )
+                        	echo "$SH_NAME : Error in logging software inventory"
+                        	exit 1;;
+                	*)      continue;;
+        		esac
+    		else
+        		$DD if=$DEVPATH >> $UNBUNDLED_INVENTORY
+        		if [ "$?" -ne 0 ]
+        		then
+                		echo "$SH_NAME : Error in logging software inventory"
+                		exit 1
+        		fi
+    		fi
+	fi
+fi
+
+\rm -f /tmp/cp.tmp
+# work-around to free up the /tmp space used when uncompressing files with
+# the bar command.
+\rm -f /tmp/tmp_*.Z
+##########################################
+#  Log the installation entry and end.   #
+##########################################
+echo "$PROD Installation Complete" >> $LOGFILE
+echo "$SH_NAME : **** Installation Completed ****"

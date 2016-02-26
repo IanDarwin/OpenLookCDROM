@@ -1,0 +1,154 @@
+NeWS Distributed EMACS
+
+Roger Ove
+
+Introduction
+
+This distributed version of MicroEMACS is designed primarily for
+operation on machines where excessive keyboard interrupts are to be
+avoided, such as Cray supercomputers running UNICOS. It reduces the
+interrupt load to the level of a line editor, while providing some
+additional features over typical resident full-screen editors. It will
+function equally well on other unix machines, and as it also optimizes
+screen updates and reduces network packets it may be of use in some low
+bandwidth situations.
+
+MicroEMACS was originally written by Dave Conroy, and includes
+contributions from many people.  Most notable among the contributors is
+Daniel Lawrence, who also maintains the source.  This noncommercial
+implementation is derived from Lawrence's v3.9, to which he holds the
+copyright.
+
+Operation
+
+Some of the features of this distributed version include:
+
+	Efficient i/o handling while remaining completely seamless.
+
+	Mouse support (for cutting/pasting text and cursor movement).
+
+	Menu support for most of the features of emacs.
+
+	Usable on any workstation running the NeWS server without the
+	need for the user to obtain the front end module.  The front end
+	is automatically downloaded to the workstation when the editor is
+	invoked. 
+
+	All features of MicroEMACS 3.9 are supported, including multiple
+	buffers,  windows, and files.
+
+	The number of lines may be selected by the user when the editor is
+	invoked (-L40 for 40 lines), and the font size and the number of
+	columns is then set by the size of the window the user chooses
+	from the NeWS interface.
+
+The primary distribution mechanism used to offload i/o is selective time
+buffering. Printable text is displayed locally as it is issued by the
+user, being flushed to the remote machine (where the actual editor is
+running) after a suitable period has elapsed during which no input is
+received. For normal text this period is 2 seconds. Commands (control
+characters and escape sequences) are also buffered in time, with a
+period of .4 seconds. Certain prefixes are also defined (^X and escape),
+so that these characters are assigned long timeouts and the following
+character a short timeout. The editor controls this timing data, and has
+the capability to throw the system into "immediate" mode, where every
+character is treated as a command. This is done temporarily to support
+the incremental search and query replace functions of emacs. The
+protocol puts an absolute upper bound on the number of packets that can
+be transmitted per second, which would be 1 every .4 seconds if the user
+entered commands at exactly that rate. Issuing commands at a faster or
+slower rate will improve the performance (reduce the packet load).
+
+As local printable text is inserted, a different font is used to
+indicate that the remote machine has yet to confirm the entry. After a
+timeout has occurred and a packet of text and commands sent to the
+remote machine, the screen update will be done with the normal font.
+
+Screen updates are optimized so that an update is done only when
+absolutely necessary. To help with apparent performance in low bandwidth
+situations, the remote display driver will search for and optimize out
+any scrolls or reverse scrolls. Essentially what has been implemented
+here (in a limited fashion) is a NeWS distributed implementation of
+curses, although as yet no attempt has been made to obey the syntax of
+curses.
+
+The Mouse
+
+The mouse is used to position the cursor and for cutting and pasting
+text.  It should be used in preference to the motion keys because it is
+much more efficient, sending far fewer packets to the remote machine. 
+It should not be used in keyboard macros however, as it's movement
+commands are not relative. 
+
+Text is entered at the block cursor, NOT the mouse cursor.  To move the
+block cursor, move the mouse cursor to the desired position.  After the
+mouse has been motionless for 1/5 second, the remote machine will adjust
+the block cursor to match the mouse position.  While waiting for the
+remote machine to respond the mouse cursor takes the form of an
+hourglass, to indicate to the user that it is not safe to type. The
+alignment of cursors is not exact, since the text cursor positioning
+must take tabs into account and can't be placed past the end of a line. 
+This is a feature, not a bug
+
+The left mouse button is used for cutting out text.  To cut out a block
+of text, move the mouse cursor to the starting location, press the left
+button and move the mouse to the ending location (keeping the button
+depressed).  When the button is released the text will be wiped out
+(moved to the kill buffer).  The middle mouse button will yank text from
+the kill buffer and insert it at the current (mouse cursor) location.
+The right mouse button invokes a walking menu. This mouse behavior is
+not in the standard Sunview style, and as a result it is not (yet)
+possible to exchange information between the editor and other NeWS
+applications.
+
+Function Keys
+
+The user is free to bind the function keys to various emacs commands. If
+this is done, it is recommended that the definitions be kept in a file
+named .emacsrc to avoid retyping them (the file ..emacsrc is
+automatically read when the editor is invoked). The function keys can
+also be redefined on the fly using the menu. The shift and control keys
+have no effect when used with the function keys.
+
+Altering the definitions is only necessary if the default definitions
+are not satisfactory. The default definitions for the function keys are:
+
+	  top		  right
+
+1)	find file	page up
+2)	read file	top of file
+3)	insert file	reverse incremental search
+4)	view file	page down
+5)	save file	end of file
+6)	write file	incremental search
+7)	rename file	beginning of line
+8)	copy region	cursor up
+9)	get argument	end of line
+10)			cursor left
+11)			set mark
+12)			cursor right
+13)			previous word
+14)			cursor down
+15)			next word
+
+
+"Bugs" and Limitations
+
+At present the distribution mechanism is ignorant of key rebindings,
+that is, the emacs rebinding function does not alter the timing
+information. Care should be taken when binding characters to keys. In
+particular, be careful not to rebind the emacs prefix keys ^X or ESC.
+Also, since the menu entries send "normal" emacs sequences, rebinding
+these sequences should be avoided. Function keys are available for
+binding.
+
+If for some reason the editing process on the remote machine is killed
+by methods other than emacs commands, the window may not be eliminated
+(and NeWS might have to be restarted to get rid of it). Currently the
+only "correct" ways of terminating are with the window menu "quit" or
+"save & exit" choices, or with their equivalent emacs sequences (^X C
+and ESC Z). The frame or icon menu "Zap" function will also terminate
+the editor, but will not prompt the user for confirmation if changes
+have not been saved to files. Do not ^C or otherwise kill the remote
+editor.
+

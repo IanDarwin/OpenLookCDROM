@@ -1,0 +1,323 @@
+%!
+%
+% Date: Tue, 4 Oct 88 23:12:17 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: wbounce: drop everything (an animation)
+% From: jcricket!sjs@bellcore.com  (Stan Switzer)
+% 
+% Here's a little something I threw together several months ago:  It
+% bounces a spinning globe around in a window.
+% 
+% NeWS hacks may want to look at the code, as it contains a number of
+% vestigal features that are pretty simple to extract for other abuses.
+% Of greatest interest is an object that implements "bouncing things",
+% with the default thing (unless overriden) being a simple rectangle.
+% Also, the code illustrates a technique for using imagecanvas for
+% double-buffering.
+% 
+% Hack on,
+% 
+% Stan Switzer  sjs@ctt.bellcore.com
+% --------------------------------------------------
+
+% Drop Everything
+%
+% Copyright (C) 1988 by Stan Switzer. All rights reserved.
+% This program is provided for unrestricted use, provided that this
+% copyright message is preserved. There is no warranty, and no author
+% or distributer accepts responsibility for any damage caused by this
+% program.
+%
+
+% various useful GP utilities:
+/outside { % x lowx highx => false -or- closest true
+  dup 3 index lt
+    { 3 1 roll pop pop true }
+    { pop dup 2 index gt
+      { exch pop true }
+      { pop pop false } ifelse
+    } ifelse
+} def
+
+/decrease { % n decr => n'  -- decrease n toward zero, not beyond
+  exch dup 0 lt
+    { add dup 0 gt { pop 0 } if }
+    { exch sub dup 0 lt { pop 0 } if }
+    ifelse
+} def
+
+% Sleazy way to modify enclosing window variables
+/W+ { % /name incr =>
+  ThisWindow begin exch dup load 3 -1 roll add store end
+} def
+/W* { % /name factor =>
+  ThisWindow begin exch dup load 3 -1 roll mul store end
+} def
+/W= { % /name val =>
+  ThisWindow begin store end
+} def
+
+
+/BouncingThing DefaultWindow
+dictbegin
+  /ThingWidth 32 def
+  /ThingHeight 32 def
+  /SqueezeX 0 def
+  /SqueezeY 0 def
+  /UnSqueeze 3 def
+  /Xcount 0 def
+  /Ycount 0 def
+  /MaxCount 15 def
+  /X 0 def
+  /Y 0 def
+  /dX 16 def
+  /dY 0 def
+  /d2X 0 def
+  /d2Y -2 def
+  /dT .10 60 div def
+  /dragX 0 def
+  /dragY .25 def
+  /BackGroundColor 1 def
+  /ThingColor 0 def
+  /FrameLabel (Bouncing Thing) def
+  /CanW 0 def /CanH 0 def
+  /AnimateProcess null def
+  /PaintClient { BackGroundColor fillcanvas show-thing } def
+  /wheredrawn null def
+dictend
+classbegin
+  /new {
+    /new super send begin
+      /wheredrawn 4 array store
+      /ClientMenu [
+	(Bigger)	{ /ThingWidth  4 W+ /ThingHeight  4 W+ }
+	(Smaller)	{ /ThingWidth -4 W+ /ThingHeight -4 W+ }
+	(Flatter)	{ /ThingWidth  4 W+ }
+	(Taller)	{ /ThingHeight 4 W+ }
+        (Faster)	{ /dT 1 1.5 div W* }
+        (Slower)	{ /dT 1.5 W* }
+        (More Gravity)	{ /d2Y -1 W+ }
+        (Less Gravity)	{ /d2Y  1 W+ }
+        (More Drag)	{ /dragY  .05 W+ }
+        (Less Drag)	{ /dragY -.05 W+ }
+        (Zap)		{ /destroy ThisWindow send }
+      ] /new DefaultMenu send def
+    currentdict end
+  } def
+
+  /start {
+    true animate
+  } def
+
+  /stop {
+    false animate
+  } def
+
+  /animate {
+    { AnimateProcess null eq
+      { /AnimateProcess { animateproc } fork store }
+      { AnimateProcess continueprocess } ifelse
+    } {
+      AnimateProcess null ne
+      { AnimateProcess suspendprocess } if
+    } ifelse
+  } def
+
+  /reshape { % x y w h => -
+    /reshape super send
+    gsave
+      ClientCanvas setcanvas clippath pathbbox 4 -2 roll pop pop % w h
+      /CanH exch store /CanW exch store
+    grestore
+  } def
+
+  /erase-thing { % X Y Width Heigth => -
+    rectpath BackGroundColor setshade fill
+  } def
+
+  /compute-thing nullproc def % X Y Width Heigth => X Y Width Height
+
+  /draw-thing { % X Y Width Height => -  % intended to be overriden
+    rectpath fill
+  } def
+
+  /show-thing { % - => -
+    X cvi Y cvi Width cvi Height cvi
+    /compute-thing self send
+    wheredrawn aload pop /erase-thing self send
+    ThingColor setshade
+    4 copy wheredrawn astore pop
+      /draw-thing self send
+  } def
+
+  /animate-step { % - => -
+    % acceleration
+    /dX dX d2X add store
+    /dY dY d2Y add store
+    % velocity
+    /X X dX add store
+    /Y Y dY add store
+    % "friction"
+    /dX dX dragX decrease store
+    /dY dY dragY decrease store
+    % position (bounce off of walls)
+123
+    X 0 CanW Width  sub outside { % X rebound
+      /X exch store /dX dX neg store
+      Xcount 1 add dup /Xcount exch store MaxCount gt
+        { /dX dX kickX add X 0 ne { neg } if store } if
+      /SqueezeX ThingWidth .5 mul store
+      X 0 ne { /X X SqueezeX add store } if
+    } { % no rebound
+      /Xcount 0 store
+      /SqueezeX SqueezeX UnSqueeze sub dup 0 lt { pop 0 } if store
+    } ifelse
+    Y 0 CanH Height sub outside { % Y rebound
+      /Y exch store /dY dY neg store
+      Ycount 1 add dup /Ycount exch store MaxCount gt
+        { /dY dY kickY add Y 0 ne { neg } if store } if
+      /SqueezeY ThingHeight .5 mul store
+      Y 0 ne { /Y Y SqueezeY add store } if
+    } { % no rebound
+      /Ycount 0 store
+      /SqueezeY SqueezeY UnSqueeze sub dup 0 lt { pop 0 } if store
+    } ifelse
+    % draw it
+    ClientCanvas setcanvas
+    show-thing
+123 ne { ZZZ } if
+  } def
+
+  /kickX { CanW Width sub d2X mul abs dup add sqrt } def
+  /kickY { CanH Height sub d2Y mul abs dup add sqrt } def
+
+  /Width { ThingWidth SqueezeX sub } def
+  /Height { ThingHeight SqueezeY sub } def
+
+  /animateproc { % - => -
+    % initial conditions
+    /X 0 store
+    /Y CanH Height sub store
+    X Y ThingWidth ThingHeight wheredrawn astore pop
+
+    % create a timer event event interest
+    /TimerInterest createevent store
+    TimerInterest begin
+      /Name /DelayOver def
+    currentdict end dup expressinterest
+
+    % create a timer event and start it off
+    createevent copy begin
+      /TimeStamp currenttime dT add def
+    currentdict end sendevent
+
+    { % loop
+      awaitevent begin
+	/TimeStamp
+%         TimeStamp		% Makes up for lost time
+	  currenttime		% Accepts its loss
+	  dT add def
+      currentdict end sendevent
+      % and do a step
+      animate-step
+    } loop
+  } def
+classend def
+
+/BouncingWorld BouncingThing
+dictbegin
+  /BackGroundColor 0 def
+  /ThingColor ColorDisplay? { 0 1 0 rgbcolor } { 1 } ifelse def
+  /FrameLabel (Bouncing World) def
+  /NImages 30 def
+  /ImageNo 0 def
+  /ImageVec null def
+dictend
+classbegin
+  /new {
+    /new super send begin
+      /ImageVec [ 1 1 NImages { pop null } for ] store
+    currentdict end
+  } def
+
+  /LoadImage { % nbr => image  -- side-effect, saves image in vec
+    ImageVec exch dup 1 add
+    10 string cvs (/usr/NeWS/smi/globes/globe) exch append
+    (.im1) append readcanvas dup 4 1 roll put
+  } def
+
+  /Image { % - => image
+    ImageNo dup ImageVec exch get % nbr image-or-null
+    dup null eq { pop dup LoadImage } if % nbr image
+    exch 1 add dup NImages ge { pop 0 } if /ImageNo exch store % image
+  } def
+
+  /draw-thing { % X Y W H => -
+    gsave 4 2 roll translate scale
+      false Image imagemaskcanvas
+    grestore
+  } def
+classend def
+
+% Following is same w/ double-buffering.
+
+/FasterBouncingWorld BouncingWorld
+dictbegin
+  /FrameLabel (Double-Buffered Bouncing World) def
+  /TmpCan null def
+dictend
+classbegin
+  /new {
+    /new super send begin
+      /TmpCan framebuffer newcanvas store
+      TmpCan /Transparent false put
+      TmpCan /Retained true put
+    currentdict end
+  } def
+
+  /compute-thing { % X Y W H => X Y W H   -- precompute the image
+    gsave framebuffer setcanvas
+      0 0 moveto 2 copy rect TmpCan reshapecanvas
+      TmpCan setcanvas
+      BackGroundColor fillcanvas
+      ThingColor setshade
+      0 0 moveto 2 copy scale
+      false Image imagemaskcanvas
+    grestore
+  } def
+
+  /draw-thing { % X Y W H =>
+    gsave 4 2 roll translate scale
+      TmpCan imagecanvas
+    grestore
+  } def
+classend def
+
+% Tilted bouncing world
+
+/TiltedBouncingWorld BouncingWorld
+dictbegin
+  /FrameLabel (Tilted Bouncing World) def
+dictend
+classbegin
+  % draw it tilted
+  /draw-thing { % X Y W H => -
+    gsave 4 2 roll translate scale
+      .5 .5 translate -22.5 rotate -.5 -.5 translate
+      true Image imagemaskcanvas
+    grestore
+  } def
+
+  % eliminate screen sh*t
+  /erase-thing { % X Y Width Heigth => -
+    4 add 4 1 roll 4 add 4 1 roll 2 sub 4 1 roll 2 sub 4 1 roll
+    rectpath BackGroundColor setshade fill
+  } def
+
+classend def
+
+/win framebuffer /new FasterBouncingWorld send def
+/reshapefromuser win send
+/map win send
+/start win send
+% win begin AnimateProcess waitprocess  % to wait, if we want to use == for dbg

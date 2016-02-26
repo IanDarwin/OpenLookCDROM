@@ -1,0 +1,152 @@
+#!/bin/sh
+
+# mkvtxfont for VideoteXt
+#
+# Copyright (c) 1994-95 Martin Buck  <martin.buck@student.uni-ulm.de>
+# Read COPYING for more information
+
+# This little GAWK-script converts a font stored in a PBM-file into two BDF-files (single & double
+# height). The PBM-file must consist of 256 characters, 32 characters per line with fixed width &
+# height, no spaces between characters. The width & height of the characters are detected
+# automatically.
+
+
+if test $# -ne 3; then
+  echo Usage: $0 '<pbm-file> <bdf-normal> <bdf-doubleht>' >&2
+  exit 1
+fi
+
+gawk -v nfile=$2 -v dfile=$3 '
+function print_header(xsize, ysize, ptsize, width, file) { # Print BDF-File header
+  print "STARTFONT 2.1" > file
+  print "FONT -misc-videotext-medium-r-" width "--" ysize "-" ptsize "-75-75-c-" xsize * 10 "-misc-fontspecific" > file
+  print "SIZE " ptsize " 75 75" > file
+  print "FONTBOUNDINGBOX " xsize " " ysize " 0 0" > file
+  print "STARTPROPERTIES 5" > file
+  print "FONT_ASCENT " ysize > file
+  print "FONT_DESCENT 0" > file
+  print "DEFAULT_CHAR 32" > file
+  print "COPYRIGHT \"Copyright (c) " strftime("%Y") " Martin Buck\"" > file
+  print "NOTICE \"This font was created automatically from a PBM-File by mkvtxfont  DO NOT EDIT\"" > file
+  print "ENDPROPERTIES" > file
+  print "CHARS 256" > file
+}
+
+function print_charpref(char, xsize, ysize, file) { # Print prefix for each character-bitmap
+  print "STARTCHAR CHR" char > file
+  print "ENCODING " char > file
+  printf "SWIDTH %d 0\n", xsize / (ysize / 1000 * 75 / 72) > file
+  print "DWIDTH " xsize " 0" > file
+  print "BBX " xsize " " ysize " 0 0" > file
+  print "BITMAP" > file
+}
+
+function binhex(bin,  hex, dec, loop, bitpos, binlen) { #Convert bin to hex (big endian), pad with zeros
+  hex = ""
+  if (length(bin) % 8)
+    bin = bin substr("00000000", 1, 8 - (length(bin) % 8))
+  bitpos = 1
+  binlen = length(bin)
+  while (bitpos <= binlen) {
+    dec = 0
+    for (loop = 0; loop <= 3; loop++) {
+      dec = dec * 2 + substr(bin, bitpos, 1)
+      bitpos++
+    }
+    hex = hex sprintf("%X", dec)
+  }
+  return hex
+}
+
+
+BEGIN {
+  MAGIC = 0 # Constants for currently parsed sections
+  XSIZE = 1
+  YSIZE = 2
+  BITMAP = 3
+  finished = 1
+  bitpos = 0 # This is necessary, because it is used as array-index
+}
+
+
+/#/ { # Remove comments
+      gsub(/#.*$/, "")
+    }
+
+/\r/ { # Remove MS-LOSS CRs
+       gsub(/\r/, "")
+     }
+
+{
+  field = 1
+  while ($field != "") {
+    if (fieldtype == BITMAP && !finished) { # Parse character-bitmap
+      bits = bits $field           # Append new bits until enough for one character (xsize)...
+      if (length(bits) == xsize) { 
+        tmpbits[bitpos] = bits     # ... & store them (in the PBM-file they are in the wrong order)
+        bitpos++
+        bits = ""
+        if (bitpos == 32 * ysize) { # Start dumping bitmaps, if enough lines (ysize) have been read
+          for (char = 0; char <= 31; char++) {
+            printf "[" char + chroffs "] "
+            print_charpref(char + chroffs, xsize, ysize, nfile)
+            print_charpref(char + chroffs, xsize, ysize * 2, dfile)
+            for (line = 0; line < ysize; line++) {
+              hexval = binhex(tmpbits[char + line * 32])
+              print hexval > nfile
+              print hexval > dfile
+              print hexval > dfile
+            }
+            print "ENDCHAR" > nfile
+            print "ENDCHAR" > dfile
+          }
+          chroffs += 32 # Next row of characters
+          if (chroffs == 256) {
+            print "ENDFONT" > nfile
+            print "ENDFONT" > dfile
+            printf "\nAll characters processed\n"
+            finished = 1
+          }
+          bitpos = 0
+        }
+      }
+    } else if (fieldtype == MAGIC) { # Search for PBM-ASCII magic number
+      if ($field != "P1") {
+        print "Couldn\047t find magic number"
+        exit 1
+      }
+      fieldtype++
+    } else if (fieldtype == XSIZE) { # Search for width of image (must be divisible by 32
+      xsize = $field                 # -> 32 characters per line)
+      if (xsize % 32) {
+        print "PBM-File has invalid width"
+        exit 1
+      }
+      xsize /= 32
+      fieldtype++
+    } else if (fieldtype == YSIZE) { # Search for height of image (must be divisible by 8
+      ysize = $field                 # -> 8 lines of characters)
+      if (ysize % 8) {
+        print "PBM-File has invalid height"
+        exit 1
+      }
+      ysize /= 8
+      ptsize = int(ysize * 720 / 75)
+      print "This seems to be a " xsize "x" ysize " font"
+      print_header(xsize, ysize, ptsize, "normal", nfile)
+      print_header(xsize, ysize * 2, ptsize * 2, "half", dfile)
+      finished = 0
+      fieldtype++
+    }
+    field++
+  }
+}
+
+
+END {
+  if (!finished)
+    printf "\nUnexpected EOF\n"
+  close(nfile)
+  close(dfile)
+}
+' $1

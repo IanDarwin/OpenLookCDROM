@@ -1,0 +1,1264 @@
+%
+% BlankScreen: Lights out!
+%
+% Copyright (C) 1989 by Stan Switzer. All rights reserved.
+% This program is provided for unrestricted use, provided that this 
+% copyright message is preserved. There is no warranty, and no author 
+% or distributer accepts responsibility for any damage caused by this 
+% program.
+%
+% DESCRIPTION:
+%
+% BlankScreen quietly monitors your keyboard and mouse for activity,
+% invoking a screen-saver when there has been no activity in a user-
+% selectable time period.  If, after another user-selectable time period,
+% there has been no keyboard or mouse activity, BlankScreen quietly enters
+% a "lock" mode which demands your login password before releasing your
+% workstation.
+%
+% At invocation, the variables /BlankTime and /LockTime control the amount
+% of idle time that causes blanking and amount of blanked time that leads
+% to locking.  Changing these values later has no effect (to protect against
+% accidents).  The default times for these values are three minutes
+% and two minutes respectively.  If you find locking objectionable, you
+% can disable it by setting /LockTime to 0.
+%
+% When blankscreen is restarted, it kills any other running (but
+% unlocked) blankscreen processes.  This allows you to change the
+% timer parameters without compromising the security of the
+% locking function.
+%
+% If /BlankFKey is defined, it is the name of a function key to use to
+% blank the screen on demand.  Similarly for /LockFKey.  I use the following:
+%	/BlankFKey /FunctionF6 def  /LockFKey /FunctionF7 def
+%
+% The poem can be changed by assigning a different array of strings
+% to /Poetry before invoking blankscreen.  A value of "null" disables
+% the poetry entirely.
+%
+% The colors used in the blanking display can be changed by assigning values to
+% the appropriate variables before invocation.  Interested parties should
+% look at the first few lines of source.
+%
+% If you don't like the standard animation, there are other alternatives
+% You can define the procedure "CreateAnimationObject" to override the
+% default animation "PoetryThing".  The following definition will
+% result in a bouncing globe instead:
+%	/CreateAnimationObject { /new WorldBouncer send } def
+% A other alternatives can be found within.  If you don't like any of these,
+% you can write your own animation using any of the classes provided (since
+% this procedure is invoked after all of the classes are defined).  If you
+% need subclassing assistance, or have a nice animation you'd like to share,
+% mail me.  If I get enough animations, I'll maintain a library and forward
+% them to the the archives periodically.
+%
+% WARNINGS:
+%
+% This program checks passwords by trying to connect to your FTP
+% server (yes, this is a hack).  You would do well to see if you can
+% "ftp localhost" before you begin using this program.
+%
+% Additionally, either (USER) or (LOGNAME) must be in the environment
+% for the locking mode to know who you are.
+%
+% If either of these two assumptions fails to hold, setting "LockTime"
+% to 0 disables automatic locking, thus avoiding the problem.
+%
+% Because this program goes to great lengths to defeat the keyboard focus
+% manager, it depends on things perhaps that might easily change from one
+% release on NeWS to another.  I only know for sure that it works in
+% NeWS 1.1 with a Sun-3 keyboard.
+%
+% Finally, "forkunix" must work (I don't know about non-UNIX NeWS
+% implementations) and there must be a reasonably standard "date"
+% command.
+%
+% NeWS Notes:
+%
+% Apparently, mouse transitions caught by a non-canvas specific and
+% non-exclusive interests do not require redistribution, but key transitions
+% do.  Since this seems much too arbitrary, I use an exclusive
+% interest and redistribute everything.  Probably, I should be registering
+% interests relative to a framebuffer overlay instead of a null canvas.
+%
+% Interests having dictionaries of procs for both their Name and Action
+% do not execute either procedure but instead return both an event and array
+% from awaitevent.  The array contains the two procedures that should have
+% been executed.  Maybe I should have been using "forkeventmgr" anyway to
+% avoid all of this hassle (then again, for security reasons, maybe not).
+%
+% Because a newly created process tends to get the same process table
+% address as the last reclaimed dead process and because pending
+% process-specific events are not scrubbed when their process dies,
+% a process will occasionally receive an event sent to a previous
+% incarnation of itself.  This can be a pain if you get two shuttle events,
+% for instance, together driving a timing loop.  My solution is to include
+% a "uniquecid" value as the action in both the event and the interest so
+% that we can't get these bogus events.
+%
+% There are certain interesting techniques in here that you may feel free
+% to borrow.  My favorite is the "condition" handler.  A close runner-up
+% is the FTP password hack (thanks Don) and the date query.  Please
+% do not use the keyboard handling as a model for input handling since
+% this code intentionally subverts the very mechanisms you should
+% generally be using.
+%
+% ------------
+% Stan Switzer   sjs@ctt.bellcore.com
+%
+% 3/27/89 - SJS
+%	Release 1.0
+% 3/29/89 - SJS
+%	Cleaned up animation and timing mechanisms
+
+% Start a new dictionary here to prevent patching the locking code, prevent
+% unauthorized access to the /Password entry, and to avoid systemdict
+% namespace pollution.
+
+100 dict begin { end } pop    % { end } pop is to fool formatters!
+
+/default { % key val -> -   def into current dictionary, val is default
+    1 index where { 2 index get exch pop } if def
+} def
+
+/BlankTime 180 default
+/LockTime 120 default
+
+/Testing? false def
+% /Testing? true def
+
+/conprint { pop pop } def
+/Conprint { sprintf console exch writestring console flushfile } def
+% /conprint /Conprint load def
+
+% Colors:
+/SC { % key grayshade pastelhue-or-color -> -   set color
+    dup type /colortype ne { .35 1 hsbcolor } if % pastel hue
+    ColorDisplay? not 3 1 roll ifelse
+    dup type /colortype ne { dup dup rgbcolor } if % gray value
+    default
+} def
+/BlankColor 0 0 0 0 rgbcolor SC
+/HourColor 1 .5 SC
+/MinColor 1 .5  SC
+/ClockColor 1 .5 SC
+/TextColor 1 .5  SC
+/QuoteColor 1 .5  SC
+/QueryFillColor 1 1 1 1 rgbcolor SC
+/QueryTextColor 0 0 0 0 rgbcolor SC
+/RaspberryFillColor 1 1 1 1 rgbcolor SC
+/RaspberryTextColor 0 0 0 0 rgbcolor SC
+
+% Generally, I prefer that users wishing to change the displayed verses do
+% so by defining the new verses before "running" this file.  This way, we
+% can avoid unnecesary speciation of this program.
+
+/Poetry [
+    (`The time has come', the Walrus said,)
+    (       `To talk of many things:)
+    (Of shoes\320and ships\320and sealing wax\320)
+    (       Of cabbages\320and kings\320)
+    (And why the sea is boiling hot\320)
+    (       And whether pigs have wings.')
+    (                 \320 Lewis Carroll)
+] default
+
+% Likewise, I have defined hooks to specify your own animation.  Use them
+% if at all possible.  Redefine either proc, as convenient, to create or
+% select the animation.
+
+/CreateAnimationObject { % passed the canvas on which to animate
+    DefineAnimationClass % backward compatability
+    /new AnimationClass send
+} default
+
+/DefineAnimationClass {  % defines the default animation class
+    % /AnimationClass PoetryThing def
+    % /AnimationClass WorldBouncer def
+    % /AnimationClass WorldNeWSBouncer def
+    % /AnimationClass ClockThing def
+    % /AnimationClass BounceClockThing def
+    % /AnimationClass StarField def
+    % /AnimationClass SkyRockets def
+    % /AnimationClass PoetryAndBouncer def
+    % /AnimationClass WorldAndStars def
+    % /AnimationClass Circulator def
+    /AnimationClass Randomator def
+} default
+
+% We are going to be paranoid and hoist certain non-operator procs into
+% our private dictionary to prevent insertion of trojan horses in the
+% password collection and checking logic.  I know of a few holes here, but
+% I don't see the point of documenting them, if you get my drift.  Still,
+% considering how "append," for instance, is used in here, it is only
+% prudent to protect ourselves.
+
+/CopyProc { % proc -> proc'
+    dup type /arraytype eq { % array?
+	dup xcheck exch 0 exch { % forall -- exec? n item
+	    CopyProc exch 1 add
+	} forall
+	array astore exch { cvx } if
+    } if
+} def
+
+[ /append ] {  % hoist these global procs ...
+    dup load CopyProc def
+} forall
+
+/GetDate { % - -> (str) true -or- false
+    { 25 dict begin % fork (to keep events from being confused)
+	/Interest createevent dup begin
+	    /Name [ /TimeOut /Date ] def
+	end dup expressinterest def
+	/Timer Interest createevent copy dup begin
+	    /Name /TimeOut def
+	    /TimeStamp currenttime .25 add def
+	end dup sendevent def
+	(echo "createevent dup begin)
+	(         /Name /Date def /Action (`date`)) append
+	(      def end sendevent" | psh) append forkunix
+	awaitevent dup /Name get /TimeOut eq {
+	    pop [ false ]
+	} {
+	    Timer recallevent
+	    /Action get [ exch true ]
+	} ifelse
+    end } fork waitprocess aload pop
+} def
+% GetDate stack
+
+/GetHHMMSS { % - -> hh mm ss true -or- false
+    GetDate {
+	3 { ( ) search { % (true) post match pre
+	    { exch pop () ne { exit } if ( ) search not { exit } if } loop
+	} if } repeat
+	( ) search 4 2 roll pop pop pop
+	2 { (:) search pop exch pop cvi exch } repeat cvi
+	true
+    } {
+	false
+    } ifelse
+} def
+% GetHHMMSS
+
+/Midnight {
+    Midnightproc waitprocess pop
+    /Midnightproc null store
+    Midnight
+} def
+/Midnightproc { 
+    /Midnight currenttime GetHHMMSS
+    % try again if it didn't work (maybe server wasn't started yet)
+    true { GetHHMMSS } ifelse
+    % try still again if it didn't work (this time we'll wait a bit)
+    true { 1 sleep GetHHMMSS } ifelse
+    { % worked?
+	3 -1 roll 60 mul 3 -1 roll add exch 60 div add sub store true
+    } { % not worked?
+	pop pop false
+    } ifelse
+} fork def
+
+/Animator Object dictbegin
+    /AnimatorProc null	def
+    /CanW	  0	def
+    /CanH	  0	def
+    /Canvas	  null	def
+dictend classbegin
+    
+    % public methods:
+    /new { % canvas -> -
+	/new super send begin
+	    /Canvas exch def
+	    gsave Canvas setcanvas clippath pathbbox
+	    /CanH exch def /CanW exch def pop pop
+	    currentdict
+	end
+    } def
+    /animate { % bool -> -
+	AnimatorProc null ne {  % Don't dance!
+	    /AnimatorProc dup load killprocess null def
+	} if
+	{   % Dance!
+	    /AnimatorProc { %fork
+		Animate
+	    } fork def
+	} if
+    } def
+    /paint {
+	GSave gsave FillColor fillcanvas grestore
+	DoPaint grestore
+    } def
+    
+    % Painting methods:
+    /FillColor 0 def
+    /TextColor TextColor def
+    /Font currentfont def
+    /GSave {
+	gsave Canvas setcanvas TextColor setshade Font setfont
+    } def
+    /Paint nullproc def
+    /DoPaint { Paint } def
+    
+    % Animation methods:
+    /Interval 1 60 div def
+    /Animate {
+	InitAnimation
+	createevent dup begin
+	    /Name /Animator def
+	    % shouldn't have to do this but newly created process sometimes
+	    % spoofs as previous one and gets the old event even tho it is
+	    % process-specific!
+	    /Action uniquecid def
+	end dup expressinterest createevent copy
+	{
+	    AnimateStep
+	    dup begin
+		/TimeStamp pause currenttime Interval add def
+	    end sendevent
+	    awaitevent % leave event on stack
+	} loop
+    } def
+    /AnimateStep nullproc def
+    /InitAnimation nullproc def
+
+classend def
+
+/AnimatedThing Animator dictbegin
+    /X		  0	def
+    /Y		  0	def
+dictend classbegin
+    
+    % public methods:
+    /new { % canvas -> -
+	/new super send begin
+	    DoubleBuffer? { InstallDoubleBuffer } if
+	    currentdict
+	end
+    } def
+
+    % random motion (default):
+    /MoveRandom {
+	CanW CanH Size
+	3 -1 roll exch sub random mul cvi
+	3 1 roll sub random mul cvi exch
+	/Y exch store /X exch store
+    } def
+    /MoveThing /MoveRandom load def
+    
+    % Alternative bouncing motion scheme.
+    %   just override as follows:
+    %   /MoveThing { MoveBounce } def /InitAnimation { InitBounce } def
+    /dX  8 def       /dY 0 def		% velocity
+    /d2X 0 def       /d2Y -2 def    	% acceleration (default: down)
+    /bounceX -1 def  /bounceY -.95 def	% rebound factors
+    /countX 0 def    /countY 0 def     /maxCount 20 def
+    /da2v { % d a -> v	    -- distance accel -> velocity
+	mul dup 0 lt -2 2 ifelse mul sqrt cvi % (fizix 101)
+    } def
+    /Outside { % v x lowx highx -> false -or- closest true
+	dup 3 index lt
+	{ 4 1 roll pop pop 0 ge { true } { pop false} ifelse }
+	{ pop dup 2 index gt
+	    { exch pop exch 0 le { true } { pop false} ifelse }
+	    { pop pop pop false } ifelse
+	} ifelse
+    } def
+    /InitBounce { % reasonable way to intitialize a bounce
+	/X 0 def /Y CanH Size exch pop sub def /dY 0 def
+    } def
+    /MoveBounce {
+	/dX dX d2X   add  def   /dY dY d2Y   add  def  % acceleration
+	/X  X  dX    add  def   /Y  Y  dY    add  def  % velocity
+	Size % W H
+	dX X 0 CanW 6 -1 roll sub Outside { % X rebound
+	    /X exch def  /dX dX bounceX mul cvi def
+	    /countX countX 1 add def countX maxCount ge {
+		/dX CanW Size pop sub d2X da2v def
+	    } if
+	} { /countX 0 def } ifelse
+	dY Y 0 CanH 5 -1 roll sub Outside { % Y rebound
+	    /Y exch def  /dY dY bounceY mul cvi def
+	    /countY countY 1 add def countY maxCount ge {
+		/dY CanH Size exch pop sub d2Y da2v def
+	    } if
+	} { /countY 0 def } ifelse
+    } def
+
+    % Painting methods:
+    /FillColor 0 def
+    /TextColor TextColor def
+    /Font currentfont def
+    /GSave {
+	gsave Canvas setcanvas TextColor setshade Font setfont
+    } def
+    /DoPaint {
+	X Y moveto ComputeThing PaintThing
+    } def
+    /ComputeThing nullproc def
+    /PaintThing { Paint } def
+
+    % Double-buffering scheme:
+    %   (a good argument for multiple inheritance)
+    /DoubleBuffer? false def
+    /InstallDoubleBuffer {
+	BuildBufferCanvas
+	/PaintThing {
+	    gsave
+	    currentpoint translate Size scale
+	    BufferCanvas ImageToDisplay
+	    grestore
+	} def
+	/ComputeThing {
+	    gsave BufferCanvas setcanvas
+	    gsave FillColor fillcanvas grestore
+	    0 0 moveto Paint grestore
+	} def
+    } def
+    /ImageToDisplay { true exch imagemaskcanvas } def
+    /BuildBufferCanvas {
+	/BufferCanvas Size 1 [ 3 index 0 0 5 index neg 0 1 index ]
+	{ <00> } buildimage def
+    } def
+
+    % Animation methods:
+    /Interval 3 60 div def
+    /AnimateStep {
+	GSave
+	X Y Size  % for rectpath, after ComputeThing
+	MoveThing ComputeThing
+	rectpath currentcolor FillColor setshade fill setcolor
+	X Y moveto PaintThing
+	grestore
+    } def
+
+    % Default thing (a small rectangle)
+    /Size { 20 20 } def % totally arbitrary
+    /Paint {
+	Size rect fill % totally arbitrary (gotta do something!)
+    } def
+    
+classend def
+
+/ClockThing AnimatedThing [] classbegin
+    /ClockRad 36 def
+    /MinHand { ClockRad .8 mul cvi } def
+    /HourHand { ClockRad .45 mul cvi } def
+    /PaintHand { % deg r -> -
+	exch gsave rotate
+	-4 -4 moveto 4 -4 lineto 0 exch lineto closepath fill
+	grestore
+    } def
+    /PaintClock { % - -> -
+	gsave ClockRad dup rmoveto currentpoint translate
+	ClockColor setcolor
+	gsave 12 { 30 rotate 
+	    -2 ClockRad moveto 4 0 rlineto -2 -6 rlineto closepath fill
+	} repeat grestore
+	currenttime Midnight sub cvi dup 3600 mod 60 div
+	HourColor setcolor
+	-30 mul HourHand PaintHand
+	MinColor setcolor
+	60 mod -6 mul MinHand PaintHand
+	grestore
+    } def
+    /Paint /PaintClock load def
+    /Size { ClockRad dup add dup } def
+classend def
+
+/BounceClockThing ClockThing [] classbegin
+    /DoubleBuffer? true def
+    /MoveThing { MoveBounce } def
+    /InitAnimation { InitBounce } def
+    /Interval .1 60 div def
+classend def
+
+/PoetryThing ClockThing [] classbegin
+    /Font /Times-Roman findfont 92 scalefont def
+    /String (NeWS) def
+    /Verses Poetry def
+    /NVerses Verses null eq { 0 } { Verses length } ifelse def
+    /Poetry? NVerses 0 gt def
+    /ClockRad Poetry? 48 36 ifelse def
+    /Vfont /Times-Roman findfont 14 scalefont def
+    /LogoUp Poetry? 22 0 ifelse def
+    /VerseNo 0 def
+    /Verse { Verses VerseNo dup 0 lt 1 index NVerses ge or {
+	pop /VerseNo 0 store 0 } if get } def
+    /InitAnimation { /VerseNo -1 store } def
+    /MoveThing { NextVerse /MoveThing super send } def
+    /NextVerse { /VerseNo VerseNo 1 add store } def
+    /Size {
+	/Size super send exch
+	GSave
+	String stringwidth pop
+	Vfont setfont Verses { stringwidth pop max } forall
+	add exch
+	2 array astore cvx /Size exch def
+	Size
+    } def
+    /Paint {
+	PaintClock
+	ClockRad 2 mul 0 rmoveto
+	gsave 0 LogoUp rmoveto String show grestore
+	Poetry? {
+	    Vfont dup setfont fontdescent 0 exch rmoveto
+	    QuoteColor setcolor Verse show
+	} if
+    } def
+classend def
+
+/ImageBouncer AnimatedThing [ /ImageList /N ] classbegin
+    % NB: abstract superclass
+    /new { % imagelist canvas -> thing
+	/new super send begin
+	    /ImageList exch def
+	    /N 0 def
+	    currentdict
+	end
+    } def
+    % class method!
+    /genlist { % (prefix) (suffix) n -> [ imagelist ]
+	[ 4 1 roll 1 exch 1 exch { % for: mark ... (pre) (suf) i
+	    2 index exch (XXXX) cvs append 1 index append 3 1 roll
+	} for pop pop ]
+    } def
+    /DoubleBuffer? true def
+    /CurrImage { % - -> image
+	ImageList N get
+	dup type /stringtype eq {
+	    pause readcanvas pause
+	    ImageList N 2 index put
+	} if
+    } def
+    /MoveThing {
+	MoveBounce
+	/N N 1 add dup ImageList length ge { pop 0 } if def
+    } def
+    /InitAnimation { InitBounce } def
+    /ImageCanvas { false exch imagemaskcanvas } def
+    /Paint {
+	gsave currentpoint translate Size scale
+	CurrImage ImageCanvas
+	grestore
+    } def
+    /Interval .05 60 div def
+classend def
+
+/WorldBouncer ImageBouncer [] classbegin
+    /new { % canvas -> thing
+	(NEWSHOME) getenv (/smi/globes/globe) append (.im1) 30
+	/genlist super send
+	exch /new super send
+    } def
+    /Size { 64 64 } def
+classend def
+
+/WorldNeWSBouncer WorldBouncer [] classbegin
+    /Font {
+	/Times-Roman findfont /Size super send exch pop scalefont
+	/Font 1 index def
+    } def
+    /Size {
+	/Size super send exch
+	gsave Font setfont (NeWS) stringwidth pop grestore add exch
+	2 array astore cvx /Size exch def Size
+    } def
+    /Paint { 
+	gsave currentpoint translate
+	gsave Size exch pop dup scale CurrImage ImageCanvas grestore
+	Size exch pop 0 moveto (NeWS) show
+	grestore
+    } def
+classend def
+
+/StarField Animator dictbegin
+    /NStars 0 def
+    /Count 0 def
+dictend classbegin
+    /maxCount 15 def
+    /maxNStars 35 def
+    /minNStars 15 def
+    /AnimateStep {
+	NStars {
+	    CanW random mul cvi CanH random mul cvi moveto
+	    random .4 le {  % blank a patch
+		random 1 add 5.5 mul cvi 0
+	    } { % color a patch
+		random 1.2 mul 1 add cvi 1
+	    } ifelse
+	    setshade
+	    dup rect fill
+	} repeat
+	/Count Count 1 sub def
+	Count 0 lt {
+	    /Count maxCount def
+	    NStars minNStars gt { /NStars NStars 1 sub def } if
+	} if
+    } def
+    /InitAnimation {
+	/NStars maxNStars def
+	/Count maxCount def
+    } def
+    /DoPaint { InitAnimation } def
+    /Interval .1 60 div def
+classend def
+
+/SkyRockets AnimatedThing [ /State /dLim1 /dLim2 /explR ] classbegin
+    /Interval .05 60 div def
+    /InitAnimation { % Launch it:
+	/State /Ball def
+	/X CanW random mul cvi def
+	/dX 30 random .5 sub mul cvi def
+	/Y 0 def
+	/dY CanH Size exch pop sub d2Y da2v def % to top
+	/dY dY random 4 div .75 add mul cvi def % times .75 to 1.0
+	/dLim1 dY -.7 random mul mul cvi def % explode
+	/dLim2 dY -.85 random mul mul cvi def % fizzle
+	dLim1 dLim2 lt { /dLim2 dLim1 /dLim1 dLim2 def def } if
+    } def
+    /MoveThing {
+	MoveBounce
+	dY dLim1 lt { /State /Explode def /explR 4 def } if
+	dY dLim2 lt { InitAnimation } if
+    } def
+    /Size { 60 60 } def
+    /Paint {
+	gsave Size 2 idiv exch 2 idiv exch rmoveto currentpoint translate
+	State { % case
+	    /Ball {
+		% -2 -2 5 5 rectpath fill
+		0 0 3 0 360 arc fill
+	    }
+	    /Explode {
+		6 { 120 random mul cvi rotate
+		    explR random mul 0 moveto
+		    explR 2 mul random .5 add mul 0 lineto stroke
+		} repeat
+		/explR explR 4 add def
+	    }
+	} case
+	grestore
+    } def
+		
+classend def
+
+/Tandomator Object [ /Canvas /Animators ] classbegin % NB: abstract superclass
+    /new { % canvas classarray -> obj
+	/new super send begin
+	    exch /Canvas exch def
+	    /Animators exch [ exch { Canvas exch /new exch send } forall ] def
+	    currentdict
+	end
+    } def
+    /animate {
+	Animators { 1 index exch /animate exch send } forall pop
+    } def
+    /paint {
+	/paint Animators 0 get send
+    } def
+classend def
+
+/PoetryAndBouncer Tandomator [] classbegin
+    /new {
+	[ PoetryThing WorldBouncer ] /new super send
+    } def
+classend def
+
+/WorldAndStars Tandomator [] classbegin
+    /new {
+	[ StarField WorldBouncer ] /new super send
+    } def
+classend def
+    
+/Animations [ PoetryThing WorldBouncer WorldNeWSBouncer PoetryAndBouncer
+    WorldAndStars ClockThing BounceClockThing StarField SkyRockets ] def
+
+/Circulator Tandomator [ /Nanimators /Current /N ] classbegin
+    /new { % canvas -> obj
+	Animations /new super send begin
+	    /Nanimators Animators length def
+	    /N 0 def
+	    currentdict
+	end
+    } def
+    /Animations Animations def % default animation list
+    /animate {
+	Current null ne {
+	    false /animate Current send
+	    /Current null def
+	} if
+	{
+	    /Current Animators N get def
+	    true /animate Current send
+	    /N N 1 add def N Nanimators ge { /N 0 def } if
+	} if
+    } def
+    /paint {
+	Current null ne { /paint Current send } if
+    } def
+classend def
+
+/Randomator Circulator [] classbegin
+    /animate {
+	dup {
+	    /N Nanimators random mul cvi dup Nanimators ge { pop 0 } if def
+	} if
+	/animate super send
+    } def
+classend def
+
+DefineAnimationClass % define the chosen animation class
+
+% GetUserid: ->
+%		false   	 -- didn't work
+%		(userid) true	 -- got user id
+/GetUserid {
+    (USER) { getenv } stopped {
+	pop (LOGNAME) { getenv } stopped {
+	    pop false
+	} true ifelse
+    } true ifelse
+} def
+
+% Check password using ftp server (Don Hopkins thought of using FTP).
+%
+% CheckPW: (userid) (password) ->
+%		false   	 -- check didn't work
+%		ok? true	 -- OK? is true iff PW is correct
+%
+% NOTE: we wish to distinguish failure of the checking procedure from
+%	failure of the check itself.
+/CheckPW {
+    { 25 dict begin
+	/Password exch def
+	/User exch def
+	/S (%socketc21) (rw) file def	     % socket
+	/R { S exch readline } def	     % str -> str -- read from socket
+	/W { S exch writestring S flushfile } def % str -> - -- write socket
+	/SR { % (good) (bad) timeoutsec -> good? true -or- false -- srch
+	    /Time exch 60 div def
+	    /Interest createevent dup begin
+		/Name /DoneEvent def
+	    end dup expressinterest def
+	    /Bad exch def
+	    /Good exch def
+	    /Match1 { anchorsearch { pop pop true } { pop false } ifelse } def
+	    /Match {
+		dup type /arraytype eq {
+		    { Match1 { true exit } if } forall
+		} {
+		    Match1
+		} ifelse
+	    } def
+	    /Str 200 string def
+	    /Proc { % fork
+		{ %  loop
+		    Str R not { /Ugly exit } if
+		    dup Good Match { /Good exit } if
+		    dup Bad Match { /Bad exit } if
+		    pop
+		} loop exch pop
+		Interest createevent copy dup /Action 4 -1 roll put sendevent
+	    } fork def
+	    /Timer Interest createevent copy dup begin
+		/Action /TimeOut def
+		/TimeStamp currenttime Time add def
+	    end dup sendevent def
+	    awaitevent /Action get
+	    dup /TimeOut eq {
+		Proc killprocess
+		pop /Ugly
+	    } {
+		Timer recallevent
+	    } ifelse
+	    dup /Ugly eq {
+		pop false
+	    } {
+		/Good eq true
+	    } ifelse
+	    Interest revokeinterest 
+	} def
+	
+	{ % only once through:
+	    (220 ) (xxx ) 15 SR
+	    not { false exit } if not { false exit } if
+	    (user ) User append (\n) append W
+	    (331 ) [ (530 ) (500 ) ] 15 SR
+	    not { false exit } if not { false exit } if
+	    (pass ) Password append (\n) append W
+	    (230 ) [ (530 ) (500 ) ] 20 SR not { false exit } if
+	    true exit
+	} loop
+	dup 2 1 ifelse array astore
+	(quit\n) W
+	S closefile
+    end } fork exch pop exch pop waitprocess aload pop
+} def
+
+/UserID GetUserid not (Unknown User) if def
+
+Testing? {
+    /win framebuffer /new DefaultWindow send def
+    /reshapefromuser win send
+    /map win send
+    /CanvasToBlank /ClientCanvas win send def
+} {
+    /CanvasToBlank framebuffer def
+} ifelse
+
+/CoverCanvas { % canvas => canvas'
+    gsave dup setcanvas
+    newcanvas
+    dup begin
+	/Transparent false def
+	/Retained false def
+	/Mapped false def
+    end
+    clippath dup reshapecanvas
+    /nouse /nouse_m 2 index setstandardcursor
+    grestore
+} def
+
+/Blanket CanvasToBlank CoverCanvas def
+
+/Animation Blanket CreateAnimationObject def
+
+% Password query canvas:
+/QueryW 350 def /QueryH 85 def /QueryR 10 def
+/QueryMessage () def
+/QueryFont /Times-Roman findfont 18 scalefont def
+/QueryCanvas gsave Blanket dup setcanvas
+newcanvas dup begin
+    /Transparent false def
+    /Retained false def
+    /Mapped false def
+end
+clippath pathbbox 4 2 roll pop pop
+exch QueryW sub 2 div exch QueryH sub 2 idiv translate
+QueryR 0 0 QueryW QueryH rrectpath dup reshapecanvas
+grestore def
+
+% Error message canvas:
+/RaspberryW 350 def /RaspberryH 85 def /RaspberryR 10 def
+/Raspberry () def  % the error message
+/RaspberryFont /Times-Roman findfont 18 scalefont def
+/RaspberryCanvas gsave Blanket dup setcanvas
+newcanvas dup begin
+    /Transparent false def
+    /Retained false def
+    /Mapped false def
+end
+clippath pathbbox 4 2 roll pop pop
+exch RaspberryW sub 2 div exch RaspberryH sub 2 idiv translate
+RaspberryR 0 0 RaspberryW RaspberryH rrectpath dup reshapecanvas
+grestore def
+
+/PWstring 100 string def /PWpos 0 def
+/Password () def
+/AddPW {
+    PWpos PWstring length lt {
+	PWstring PWpos 3 -1 roll put
+	/PWpos PWpos 1 add store
+	/Password PWstring 0 PWpos getinterval store
+    } { pop } ifelse % Thanks Don
+} def
+/DelPW {
+    /PWpos PWpos 1 sub 0 max store
+    /Password PWstring 0 PWpos getinterval store
+} def
+/ClearPW {
+    /PWpos 0 store
+    /Password PWstring 0 PWpos getinterval store
+    0 1 Password length 1 sub { Password exch 0 put } for % zero PW string
+} def
+
+/seconds { 60 div } def
+
+/Member? { % item array -> bool
+    false 3 1 roll { % forall
+	1 index eq { exch pop true exch } if
+    } forall
+    pop
+} def
+
+/Secure? { State { /Lock /Query /Check /Raspberry } Member? } def
+
+/State null def
+
+% Timer while in state:
+/StateTimes 10 dict dup begin
+    /Sleep 15 BlankTime 2 div min seconds def
+    /Monitor BlankTime seconds def
+    /Blank LockTime seconds def
+    /Lock 0 def
+    /Query 30 seconds def
+    /Check 0 def
+    /Raspberry 5 seconds def
+end def
+
+/MonitorMouse? true default
+
+/Conditions [
+    dictbegin  % Keyboard and mouse monitoring:
+	/Condition  { State { /Monitor /Blank /Lock /Raspberry } Member? } def
+	/Enter {
+	    MonitorClicks expressinterest
+	    MonitorMouse? { MonitorMouseDrag expressinterest } if
+	} def
+	/Leave {
+	    MonitorClicks revokeinterest
+	    MonitorMouseDrag /IsInterest get {
+		MonitorMouseDrag revokeinterest
+	    } if
+	} def
+    dictend
+    dictbegin	% Mouse monitoring in "Monitor" state regardless:
+	/Condition { State /Monitor eq } def
+	/Enter {
+	    MonitorMouseDrag /IsInterest get not {
+		MonitorMouseDrag expressinterest
+	    } if
+	} def
+    dictend
+    dictbegin  % Screen is blanked:
+	/Condition {
+	    State { /Blank /Lock /Query /Check /Raspberry } Member?
+	} def
+	/Enter {
+	    true /animate Animation send pause
+	    Blanket canvastotop
+	    Blanket /Mapped true put
+	} def
+	/Leave {
+	    Blanket /Mapped false put
+	    false /animate Animation send
+	} def
+	/Remain	{ Blanket canvastotop } def
+    dictend
+    dictbegin  % Querying:
+	/Condition { State /Query eq } def
+	/Enter {
+	    ClearPW
+	    /QueryMessage  (Enter Password.) store
+	    QueryInterests /expressinterest load forall
+	} def
+	/Leave { QueryInterests /revokeinterest load forall } def
+    dictend
+    dictbegin  % Checking:
+	/Condition { State /Check eq } def
+	/Enter {
+	    /QueryMessage  (Checking Password.) store
+	    RepaintQuery
+	    CheckInterest expressinterest
+	} def
+	/Leave { CheckInterest revokeinterest } store
+    dictend
+    dictbegin  % Querying or checking:
+	/Condition { State { /Query /Check } Member? } def
+	/Enter { QueryCanvas /Mapped true put } def
+	/Leave { QueryCanvas /Mapped false put ClearPW } def
+    dictend
+    dictbegin  % Error Message
+	/Condition { State /Raspberry eq } def
+	/Enter { RaspberryCanvas /Mapped true put } def
+	/Leave { RaspberryCanvas /Mapped false put } def
+    dictend
+] def
+
+% General-purpose condition handler: monitors changes to boolean conditions
+% and invokes associated handling routines.
+
+/HandleConditions {
+    0 begin
+	Conditions { % forall
+	    begin
+		/Value Condition def % eveluate condition
+		Prev Value {
+		    { True Same Remain Was }	    % Is and was
+		    { True Different Enter WasNot } % Is and was not
+		} {
+		    { False Different Leave Was }   % Is not and was
+		    { False Same Desists WasNot }   % Is not and was not
+		} ifelse ifelse
+		/Prev Value def
+	    end
+	} forall
+    end
+} dup 0 dictbegin
+    /Prev false def 	     % initial value of the condition
+    /Condition {false} def   % Condition check proc
+    { /True /False /Enter /Leave /Same
+	/Different /Remain /Desists /Was /WasNot }
+    { nullproc def } forall
+dictend put def
+
+% Change to a new state:
+/newState { % state -> -
+    (>> % -> %\n) [ State 3 index ] conprint
+    /State exch store
+    HandleConditions
+    TimerEvent /IsQueued get {
+	TimerEvent recallevent
+    } if
+    StateTimes State get dup 0 eq { pop } {
+	(>> Time %\n) [ 2 index ] conprint
+	TimerEvent dup /TimeStamp 4 -1 roll
+	pause currenttime add put sendevent
+    } ifelse
+} def
+
+/PaintQuery {
+    QueryFillColor fillcanvas
+    QueryFont setfont
+    QueryTextColor setshade
+    12 60 moveto (Userid:  ) show UserID show
+    12 40 moveto (Password:  ) show
+    % Password show
+    (#%*&@!%&@#X?#No!*NeWS!*%$#@$@!) % cryptic missive
+    dup length 0 exch PWpos min getinterval show
+    2 0 rmoveto
+    5 -5 rlineto -11 0 rlineto closepath fill
+    30 15 moveto QueryMessage show
+} def
+
+/RepaintQuery {
+    gsave QueryCanvas setcanvas
+    PaintQuery
+    grestore
+} def
+
+/PaintRaspberry {
+    RaspberryFillColor fillcanvas
+    RaspberryFont setfont
+    RaspberryTextColor setshade
+    RaspberryW Raspberry stringwidth pop sub .5 mul
+    RaspberryH currentfont fontascent sub .5 mul moveto
+    Raspberry show
+} def
+
+/RepairCanvas { % proc canvas -> -
+    gsave setcanvas damagepath clipcanvas exec newpath clipcanvas grestore
+} def
+
+/ScreenBlank {
+    % What to do when the timer expires:
+    /TimerInterest createevent dup begin
+	/Name 2 dict dup begin
+	    /Timer {
+		State { % case
+		    /Sleep   { /Monitor newState }
+		    /Monitor { /Blank newState }
+		    /Default { /Lock newState }
+		} case
+	    } def
+	end def
+	% avoid spurious events from reuse of proocess tbl of killed proc:
+	/Action uniquecid def
+    end dup expressinterest def
+    
+    % External control:
+    /ControlInterest createevent dup begin
+	/Name /BlankScreen def
+	/Action 5 dict dup begin
+	    /Destroy {
+		Secure? not { currentprocess killprocessgroup } if
+	    } def
+	    /BlankOrLock {
+		State { % case
+		    /Sleep /Monitor { /Blank newState }
+		    /Default { /Lock newState }
+		} case
+	    } def
+	    /Blank {
+		Secure? not { /Blank newState } if
+	    } def
+	    /Lock {
+		/Lock newState
+	    } def
+	    /Query {
+		/Query newState
+	    } def
+	end def
+    end dup expressinterest def
+    
+    % We clone this event from the interest to get the /Process value:
+    /TimerEvent TimerInterest createevent copy dup begin
+	/Name /Timer def
+    end def
+    
+    /MonitorClicks createevent dup begin
+	/Priority 20 def
+	/Exclusivity true def
+	/Action 1 dict dup begin
+	    /DownTransition {
+		Secure? {
+		    /Query newState
+		} {
+		    dup redistributeevent pause
+		    /Sleep newState
+		} ifelse
+	    } def
+	end def
+    end def
+
+    /MonitorMouseDrag createevent dup begin
+	/Priority 5 def
+	/Name 1 dict dup begin
+	    /MouseDragged {
+		Secure? {
+		    /Query newState
+		} {
+		    /Sleep newState
+		} ifelse
+	    } def
+	end def
+    end def
+    
+    /DamageInterests [
+	createevent dup begin
+	    /Name 1 dict dup begin
+		/Damaged { {/paint Animation send} Blanket RepairCanvas } def
+	    end def
+	    /Canvas Blanket def
+	end dup expressinterest
+	createevent dup begin
+	    /Name 1 dict dup begin
+		/Damaged { {PaintRaspberry} RaspberryCanvas RepairCanvas } def
+	    end def
+	    /Canvas RaspberryCanvas def
+	end dup expressinterest
+    ] def
+
+    % It is important to understand that this is THE HARD WAY to get keyboard
+    % input and it is done this way solely to subvert the focus manager.
+    % Normally, you would want to cooperate with the focus manager and use
+    % addkbdinterests (which is MUCH simpler).
+    
+    /QueryInterests [
+	createevent dup begin
+	    /Name 1 dict dup begin
+		/Damaged { {PaintQuery} QueryCanvas RepairCanvas } def
+	    end def
+	    /Canvas QueryCanvas def
+	end
+	createevent dup begin
+	    /Priority 20 def
+	    /Name ascii_keymap def
+	    /Action 2 dict dup begin
+		/DownTransition {
+		    dup /Name get
+		    dup 32 ge 1 index 127 lt and { % printable ASCII
+			dup AddPW RepaintQuery
+		    } if
+		    dup 8 eq 1 index 127 eq or { % BS or DEL
+			DelPW RepaintQuery
+		    } if
+		    dup 24 eq 1 index 21 eq or { % ^X or ^U
+			ClearPW RepaintQuery
+		    } if
+		    dup 3 eq { % ^C
+			/Lock newState
+		    } if
+		    dup 10 eq 1 index 13 eq or { % CR or LF
+			/Check newState
+			{
+			    UserID Password ClearPW CheckPW { % worked
+				null (Bad Password) ifelse
+			    } (Check Failed) ifelse
+			    CheckInterest createevent copy begin
+				/Name /PWresult def
+				/Action exch def
+				currentdict
+			    end sendevent
+			} fork pop
+		    } if
+		    pop
+		} def
+	    end def
+	    /Exclusivity true def
+	end
+	createevent dup begin % Handle shifts here
+	    % priority below key processing
+	    /Priority 19 def
+	    /Name 20 dict dup begin
+		keyboard_positions { % forall
+		    dup 0 get type /arraytype ne { [ exch ] } if
+		    % Name [ [key class] [key class] ... ]
+		    { % forall
+			aload pop /shift_key ne { pop } { % Name key
+			    [	/dup cvx UI_private /begin cvx 5 index
+				/do_shift_key cvx /end cvx ] cvx
+			    % Name key { dup D begin Name do_shift_key end }
+			    def % in /Name entry of this this interest
+			} ifelse
+		    } forall
+		    pop
+		} forall
+	    end def
+	    /Exclusivity true def
+	end
+	createevent dup begin % absorb all other KB input
+	    % priority below shift processing
+	    /Priority 18 def
+	    /Exclusivity true def
+	    /Action /DownTransition def
+	end
+    ] def
+    
+    /CheckInterest createevent dup begin
+	/Name 1 dict dup begin
+	    /PWresult {
+		dup /Action get dup null eq { % OK
+		    pop	/Sleep
+		} {
+		    /Raspberry exch def /Raspberry
+		} ifelse newState
+	    } def
+	end def
+	/Canvas QueryCanvas def    % avoid fraud!
+    end def
+    
+    /Sleep newState
+    
+    { % Event processing loop:
+	awaitevent
+	dup type /arraytype eq {
+	    /exec load forall
+	} if
+	(>> Event % % % -> %\n) exch
+	[ exch begin Name Action Canvas end State ] conprint
+    } loop
+} def
+
+% kill our illustrious predecessors
+createevent dup begin
+    /Name /BlankScreen def
+    /Action /Destroy def
+end sendevent
+
+/BlankFKey where { pop
+    BlankFKey {
+	createevent dup begin
+	    /Name /BlankScreen def
+	    /Action /Blank def
+	end sendevent
+    } bindkey
+} if
+
+/LockFKey where { pop
+    LockFKey {
+	createevent dup begin
+	    /Name /BlankScreen def
+	    /Action /Lock def
+	end sendevent
+    } bindkey
+} if
+
+% let the dust settle before we enter the fray!
+pause pause
+
+BlankTime 0 ne { { newprocessgroup ScreenBlank } fork pop } if
+
+{ begin } pop end  % do it this way to fool formatters!

@@ -1,0 +1,404 @@
+#! /usr/NeWS/bin/psh
+%
+% Date: Mon, 5 Jun 89 18:14:37 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Jig-saw puzzle
+% From: leif@Sun.COM (Leif Samuelsson)
+% 
+% I stumbled on this old demo and realized that it probably
+% never made it out to the world.  It still needs some fine tuning
+% if anybody is interested. Enjoy!
+% 
+% Leif Samuelsson			leif@sun.com
+% Sun Microsystems, Inc
+% 
+% puzzle
+%
+% Puzzle is an interactive jig-saw puzzle program.
+% The pieces can be moved around with the middle mouse
+% button. The menu contains a "solve" command and also
+% allows for changing image in mid-game.
+%
+% 890604  Made public domain - posted to Usenet
+% 871022  Fixed bugs - works with NeWS 1.1
+% 870601  Rewrote using o.o.p.
+% 870416  Made it work with NeWS 1.0
+% 870127  First release
+%
+% Author: Leif Samuelsson, Sun Microsystems, Inc.
+
+8 setretainthreshold
+
+/NROWS 4 def
+/NCOLS { NROWS } def
+/NPIECES { NROWS NCOLS mul } def
+/BACKGROUND .9 def
+
+% Setting curve to false causes the pieces to be rectangular
+% instead of interlocking. This speeds up the program considerably.
+/curve false def
+
+/imagedirectory (/usr/NeWS/smi/) def
+
+/fileextension (.im8) def
+
+/picfile (man) def
+/picimage
+	currentcanvas newcanvas
+	dup makecanvasopaque
+	dup makecanvasretained
+def
+
+/readimage {
+    gsave
+	0 0 moveto
+	piecewidth NCOLS mul pieceheight NROWS mul rect
+	picimage
+	dup reshapecanvas
+	setcanvas
+	imagedirectory picfile append
+	fileextension append
+	readcanvas
+	wscale hscale scale
+	imagecanvas
+    grestore
+} def
+
+% Define a class "Piece" which knows how to draw
+% and move itself.
+%
+/Piece Object [/Row /Column /TheCanvas /EventMgr /Path] classbegin
+    /new {			% Row Column parentcanvas => inst.
+	/new super send begin
+	    /TheCanvas exch newcanvas store
+	    /Column exch store
+	    /Row exch store
+	    gsave
+		initmatrix
+		TheCanvas
+		dup makecanvasopaque
+		dup mapcanvas
+		dup makecanvasretained
+		random piecewidth NCOLS 3 mul 2 div 1 sub mul mul
+		random pieceheight NROWS 3 mul 2 div 1 sub mul mul
+		/xarc 48 def
+		translate
+		0 0  moveto
+		Row 0 ne curve and
+		    { piecewidth 2 div
+		      pieceheight 8 div
+		      pieceheight 6 div
+		      180 xarc add
+		      360 xarc sub
+		      arcn
+		    } if
+		piecewidth 0 lineto
+		Column NCOLS 1 sub ne curve and
+		    { piecewidth dup 8 div add
+		      pieceheight 2 div
+		      piecewidth 6 div
+		      270 xarc sub
+		      90 xarc add
+		      arc
+		    } if
+		piecewidth pieceheight lineto
+		Row NROWS 1 sub ne curve and
+		    { piecewidth 2 div
+		      pieceheight dup 8 div add
+		      pieceheight 6 div
+		      360 xarc sub
+		      180 xarc add
+		      arc
+		    } if
+		0 pieceheight lineto
+		Column 0 ne curve and
+		    { piecewidth 8 div
+		      pieceheight 2 div
+		      piecewidth 6 div
+		      90 xarc add
+		      270 xarc sub
+		      arcn
+		    } if
+		closepath
+		/Path currentpath store
+		reshapecanvas
+	    grestore
+	    /EventMgr [
+		    currentdict			% piece
+		    TheCanvas			% piece can
+		    MiddleMouseButton		% piece can name
+			[ /move			% piece can name [ /move
+			5 -1 roll		% can name [ /move piece
+			/send cvx ] cvx		% can name proc
+			DownTransition		% can name proc action
+			4 -1 roll		% name proc action can
+			eventmgrinterest
+	    ] forkeventmgr store
+	    currentdict
+	end
+    } def
+
+    /killeventmgr {
+	EventMgr /EventMgr null store killprocess
+    } def
+
+    /paint {
+	TheCanvas setcanvas
+	gsave
+	    Column piecewidth mul neg
+	    Row pieceheight mul neg
+	    translate
+	    wscale hscale scale
+	    picimage imagecanvas
+	grestore
+%	0 strokecanvas
+    } def
+
+    /slidehome {
+	{
+	    can setcanvas
+	    1 1 22 {
+		gsave
+		    TheCanvas getcanvaslocation		% x y
+		    TheCanvas setcanvas
+		    Column .5 add piecewidth mul
+		    Row .5 add pieceheight mul		% x y x' y'
+		    3 -1 roll				% x x' y' y
+		    dup add add 3 div round		% x x' y"
+		    3 1 roll exch			% y" x' x
+		    dup add add 3 div round		% y" x"
+		    exch
+		    movecanvas
+		grestore
+		pause
+	    } for
+	    TheCanvas setcanvas
+	    Column .5 add piecewidth mul
+	    Row .5 add pieceheight mul
+	    movecanvas
+	} fork
+    } def
+
+    /center {
+	TheCanvas setcanvas
+	wscale 2 div hscale 2 div  movecanvas
+    } def
+
+    /qsolve {
+	TheCanvas setcanvas
+	Column .5 add piecewidth mul
+	Row .5 add pieceheight mul
+	movecanvas
+    } def
+
+    /randomize {
+	TheCanvas setcanvas
+	random piecewidth NCOLS 3 mul 2 div 1 sub mul mul
+	random pieceheight NROWS 3 mul 2 div 1 sub mul mul
+	movecanvas
+    } def
+
+    /move {
+	15 dict begin
+	    /xo null def /yo null def
+	    gsave
+		    can setcanvas
+		    TheCanvas getcanvaslocation		% x y
+		    initmatrix
+		    can setcanvas
+		    currentcursorlocation		% x y x' y'
+		    3 -1 roll				% x x' y' y
+		    sub /yo exch store
+		    exch sub /xo exch store
+		    BACKGROUND setgray
+		    0 0 {
+			gsave
+			    TheCanvas setcanvas
+			    yo sub exch xo sub exch
+			    movecanvas
+			grestore
+		    } xgetanimated waitprocess aload pop
+	    grestore
+	end
+    } def
+classend def		% End of class "Piece"
+
+/Pieces NPIECES array def
+
+/piecewidth 0 def
+/pieceheight 0 def
+
+/wscale { piecewidth NCOLS mul } def
+/hscale { pieceheight NROWS mul } def
+
+/restart {
+    Pieces { /killeventmgr exch send } forall
+    /Pieces NPIECES array store		% This causes g.c. of old pieces
+    pause
+    newpieces
+    paintpieces
+    /paint win send
+} def
+
+/xgetanimated {
+    10 dict begin
+    /proc exch  def /y0 exch def /x0 exch def
+    currentcursorlocation /y exch def /x exch def
+    GA_constraint null ne GA_value null eq and {
+	/GA_value currentcursorlocation GA_constraint 1 eq {exch} if pop store
+    } if
+    {	createevent dup begin
+	  /Action [UpTransition DownTransition] def
+	  end expressinterest
+	createevent dup /Name /MouseDragged put expressinterest
+	{   
+	    GA_constraint 0 eq {/x GA_value def} if
+	    GA_constraint 1 eq {/y GA_value def} if
+	    x0 y0 moveto x y /proc load exec
+	    awaitevent begin
+	      Action UpTransition eq { end exit } if
+	      /x XLocation store /y YLocation store
+	    end
+	} loop
+	/GA_constraint null store
+	/GA_value null store
+	[x y] 
+    } fork
+    end
+} def
+
+/newpieces {			% - newpiece piece
+    2 dict begin
+	can setcanvas
+	clippath pathbbox
+	    /pieceheight exch 2 mul 3 div NROWS div round store
+	    /piecewidth exch 2 mul 3 div NCOLS div round store
+	    pop pop
+	readimage
+	0 1 NROWS 1 sub {
+	    /i exch def
+	    0 1 NCOLS 1 sub {
+		/j exch def
+		i j can /new Piece send
+		Pieces exch i NCOLS mul j add exch put
+	    } for
+	} for
+    end
+}def
+
+/paintpieces {
+    Pieces {/paint exch send} forall
+} def
+
+/menuselect {
+    /picfile MenuKeys MenuValue get store
+    readimage
+    paintpieces
+} def
+
+/davincipicturemenu [
+    (angel)
+    (ermine)
+    (lady)
+    (man)
+    (mona-face)
+    (mona-hands)
+    (mona-smile)
+%    (mona-smile-hires)
+    (mona)
+    (stjerome)
+    (virgin)
+    (virginofrocks)
+] [{ menuselect }] /new DefaultMenu send def
+
+/japanesepicturemenu [
+    (cherries)
+    (fuji)
+    (geese)
+    (puppet)
+    (snow)
+    (stormy)
+    (washing)
+%    (washing-hires)
+    (writing)
+] [{ menuselect }] /new DefaultMenu send def
+
+/sunpicturemenu [
+    (founders)
+    (sun3110)
+    (sun3160c)
+    (sun3160m)
+    (sun3260h)
+    (sun350)
+    (sun352)
+    (sun352w)
+    (sunballs)
+    (suncase)
+    (sungame)
+    (sunnet)
+    (sunnfs)
+    (sunprism)
+] [{ menuselect }] /new DefaultMenu send def
+
+/travelpicturemenu [
+    (bryce)
+    (harem)
+    (joshua)
+    (lascruces)
+    (new_york)
+    (pagosa)
+    (saturn)
+    (shroom)
+    (taj-detail)
+    (taj)
+    (veggies)
+    (zion)
+] [{ menuselect }] /new DefaultMenu send def
+
+/winpicturemenu [
+    (Da Vinci =>)	davincipicturemenu
+    (Japanese =>)	japanesepicturemenu
+    (Sun =>)		sunpicturemenu
+    (Misc =>)	travelpicturemenu
+
+] /new DefaultMenu send def
+
+/piecesmenu
+    [ (1) (4) (9) (16) (25) (36) (49) (64)]
+    [{ /NROWS MenuValue 1 add store restart }]
+    /new DefaultMenu send def
+
+/win framebuffer /new DefaultWindow send def
+{
+	/FrameLabel (Puzzle) def
+	/PaintClient { 
+		ClientCanvas setcanvas
+		BACKGROUND fillcanvas
+	} def
+	/PaintIcon {
+	    gsave
+		IconCanvas setcanvas
+		clippath pathbbox scale pop pop
+		picimage imagecanvas
+		0 strokecanvas
+	    grestore
+	} def
+	/ClientMenu [
+		(Solve)			{ Pieces { /slidehome exch send } forall }
+		(Quick Solve)		{ Pieces { /qsolve exch send } forall }
+		(Scatter Pieces)	{ Pieces { /randomize exch send } forall }
+		(Stack Pieces)		{ Pieces { /center exch send } forall }
+		(Interlock On/Off) 	{ /curve curve not store restart } 
+		(Picture =>)		winpicturemenu
+		(No. of Pieces =>)	piecesmenu
+		(Zap)			{currentprocess killprocessgroup}
+	] /new DefaultMenu send def
+} win send
+
+/reshapefromuser win send
+/map win send
+/can win /ClientCanvas get def
+/paint win send
+pause
+newpieces
+paintpieces

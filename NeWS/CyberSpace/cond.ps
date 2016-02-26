@@ -1,0 +1,52 @@
+systemdict begin
+
+/setpacking {pop} ?def
+/currentpacking false ?def
+
+%
+% A "cond" (condition) statement: Consists of predicate-proc pairs.
+% The first predicate that evaluates to true executes its correnponding
+% procedure.  Thus:
+%
+%    2 {
+%        {dup 1 eq}	{(one)}
+%        {dup 2 eq}	{(two)}
+%        true		{(other)}
+%    } cond
+%
+% results in "2 (two)" being left on the stack.  Note "true" effects
+% a default branch.
+%
+% The implementation is very wierd.  Here are the author's notes:
+% Here's another entry in the cond-test.  It's like Owen & Jerry's last
+% ones in that it uses forall to step through all the elements, except
+% instead of leaving a boolean or integer on the top of the stack to tell
+% it what to do on the next iteration, it puts the code to be executed
+% itself.  Notice the mind-bending self referentiality:
+% 
+% NextProc contains the code to be executed the next time a test is to be
+% made, "exec null exit" gets executed in the clause after a true result,
+% "pop /NextProc" gets executed in the clause after a false result -
+% which is setting up for the next test.
+%
+% The "/NextProc" in the definition of /NextProc should really be
+% //NextProc except that NextProc isn't defined yet...
+% I then reach into the array and install it after /NextProc
+% is defined.
+% 
+currentpacking	    	% bool left on stack for later setpacking call
+false setpacking
+/NextProc { exec { { exec null exit } } { { pop /NextProc } } ifelse } def
+//NextProc 2 get 0 get 1 //NextProc put % replace placeholder by a recursion
+setpacking
+
+/cond { % args array => args
+    //NextProc			% args a nextproc
+    exch {			% args nextproc ai
+	exch exec		% args newnextproc
+    } forall
+    pop
+} ?def
+currentdict /NextProc undef
+
+end % systemdict

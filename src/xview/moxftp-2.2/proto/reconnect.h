@@ -1,0 +1,10 @@
+static void finish_cd_cb P_((DATA, int, CB*));
+static void finish_pass P_((struct _output*, int, DATA));
+static void finish_pwd_cb P_((DATA, int, CB*));
+static void finish_reconnect P_((struct _output*, int, DATA));
+static void finish_remote_cb P_((DATA, int, CB*));
+static void finish_type_cb P_((DATA, int, CB*));
+static void finish_user P_((struct _output*, int, DATA));
+static void start_pass P_((int, CB*));
+static void start_user P_((int, CB*));
+static void status P_((char*, int));

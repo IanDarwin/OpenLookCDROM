@@ -1,0 +1,391 @@
+head	1.5;
+access;
+symbols;
+locks; strict;
+comment	@% @;
+
+
+1.5
+date	92.10.28.07.13.46;	author lacey;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	92.10.28.04.47.05;	author lacey;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	92.10.27.20.35.44;	author lacey;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	92.10.27.03.45.49;	author lacey;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	92.10.27.03.41.20;	author lacey;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.5
+log
+@*** empty log message ***
+@
+text
+@%*****************************************************************************
+% Remember, you need to be as detailed as possible in the description
+% of the modules in order to facilitate the coding task. Do not leave any 
+% room for ambiguity.
+%*****************************************************************************
+%
+% For each module and major submodule complete the following
+% section and subsections
+%
+\subsection{\LaTeX\ Gantt Chart Generation Module}
+
+This module generates the \LaTeX\ commands that represent a Gantt chart
+of the task list given.
+
+% 
+% Include a data flow diagram for this module
+%
+\subsubsection{Data Flow Diagram}
+
+Refer to Figure~\ref{lt:gantt:dfd} on page~\pageref{lt:gantt:dfd} for
+an overview of the data flow for this module.
+
+\begin{figure}
+\centering
+\centerline{\psfig{figure=latganttdfd.ps,width=6in}}
+\caption[Data Flow Diagram for \LaTeX\ Gantt Chart Generation]{Data
+flow diagram for \LaTeX\ Gantt chart generation.}
+\label{lt:gantt:dfd}
+\end{figure}
+
+%
+% Include a Structure Chart for this module
+%
+\subsubsection{Structure Chart}
+
+To gain some insight into the calling structure of this module, refer
+to Figure \ref{lt:gantt:sc} on page \pageref{lt:gantt:sc}.
+
+\begin{figure}
+\centering
+\centerline{\psfig{figure=latganttsc.ps,width=6in}}
+\caption[Structure Chart for \LaTeX\ Gantt Chart Generation]{Structure
+chart for \LaTeX\ Gantt chart generation.}
+\label{lt:gantt:sc}
+\end{figure}
+
+%
+% Include a processing narrative for this module
+%
+\subsubsection{Narrative}
+
+The {\bf generate-gantt-chart} module is very similar to the {\bf
+generate-pert-chart} module in how it works.  It too calls a routine
+to split the Gantt chart information up into pages, and then calls
+routines to produce all of the Gantt bars on each of the pages.  Bars
+that extend over pages will be handled, just as dependency lines that
+extend over pages were handled for the PERT generator.
+
+%
+% Include a PDL pseudocode description for this module
+%
+\subsubsection{PDL Description}
+
+\begin{verbatim}
+PROCEDURE generate-gantt-chart;
+INTERFACE file-name;
+
+   TYPE file-d IS FILE-DESCRIPTOR;
+   TYPE page-down-index IS INTEGER;
+   TYPE page-across-index IS INTEGER;
+   TYPE pages-across IS INTEGER;
+   TYPE pages-down IS INTEGER;
+   TYPE task-list IS TASKLIST;
+   TYPE matrix-of-task-lists IS MATRIX OF TYPE TASKLIST;
+
+   CALL get-gantt-formatting-info PROCEDURE WITH task-list;
+   CALL split-gantt-chart-into-pages PROCEDURE WITH 
+      task-list, matrix-of-task-lists, pages-across, pages-down;
+
+   CALL file-open PROCEDURE WITH file-name, file-d;
+
+   page-across-index := 0;
+   DO FOR page-across-index < pages-across; 
+      pages-down-index := 0;
+      DO FOR pages-down-index < pages-down;
+         CALL generate-gantt-page PROCEDURE WITH file-d,
+            page-down-index, page-across-index,
+            matrix-of-task-lists[page-down-index, page-across-index];
+      ENDFOR
+   ENDFOR
+
+   CALL file-close PROCEDURE WITH file-d;
+END generate-gantt-chart
+\end{verbatim}
+
+\begin{verbatim}
+PROCEDURE split-gantt-chart-into-pages;
+INTERFACE task-list, RETURNS matrix-of-task-lists, pages-across,
+pages-down;
+
+   TYPE maximum-x IS INTEGER;
+   TYPE maximum-y IS INTEGER;
+   TYPE pages-across IS INTEGER;
+   TYPE pages-down IS INTEGER;
+   TYPE task IS TASK;
+
+   maximum-x := 0;
+   maximum-y := 0;
+
+   DO FOR each task in task-list
+      IF task.x + task.length > maximum-x
+         THEN BEGIN
+            maximum-x := task.x;
+         END
+      IF task.y + task.length > maximum-y
+         THEN BEGIN
+            maximum-y := task.y;
+         END
+   ENDFOR
+
+   pages-across := maximum-x MODULO page-width;
+   pages-down := maximum-y MODULO page-height;
+
+   allocate matrix-of-task-lists to be of size pages-across by pages-down;
+
+   DO FOR each task in task-list
+      page-across-index = task.x MODULO page-width;
+      page-down-index = task.y MODULO page-height;
+
+      CALL add-task-to-end-of-task-list PROCEDURE WITH
+         matrix-of-task-lists[page-down-index, page-across-index],
+         task;
+   ENDFOR
+
+END split-gantt-chart-into-pages
+\end{verbatim}
+
+\begin{verbatim}
+PROCEDURE generate-gantt-page;
+INTERFACE file-d, page-down-number, page-across-number, task-list;
+
+   TYPE task IS TASK;
+
+   write line to file to start picture environment;
+   DO FOR each task in task-list
+      CALL generate-gantt-bar WITH task;
+   ENDFOR
+END generate-gantt-page
+\end{verbatim}
+
+\begin{verbatim}
+PROCEDURE generate-gantt-bar;
+INTERFACE task-list;
+
+   write \put command to place Gantt bar on page
+
+END generate-gantt-bar;
+\end{verbatim}
+
+%
+% Include a description of the interfaces for this module.
+% This should include a list of data elements passed between
+% modules.  The data elements described here should either be
+% described in the next subsection or in the relevant owner's
+% data dictionary
+%
+\subsubsection{Internal Interfaces}
+
+The {\bf generate-gantt-chart} module is the driver for \LaTeX\ Gantt
+chart generation.  It calls {\bf get-gantt-formatting-info} to get a
+list of tasks to process, and then calls {\bf
+split-gantt-chart-into-pages} to split the chart up into pages.  From
+that routine it receives a matrix of task lists --- one for each page.
+It then calls {\bf generate-gantt-page} for each page and passes the
+task list for that page.
+
+The {\bf generate-gantt-page} submodule controls the generation of the
+\LaTeX\ code for the Gantt bars.  It calls {\bf generate-gantt-bar} 
+for each task in the task list sent to it, and {\bf
+generate-gantt-bar} writes out to the \LaTeX\ file commands for
+creating the Gantt bar.
+
+%
+% Include a data dictionary for this module.  The format should be:
+%  
+% Name: (this is the name of the data item)
+% Aliases: (this is a list of aliases, if any)
+% Where Used/ How Used: (this is a paired list of where the item is
+%     used and how it is used
+% Description: (this is a demarco description of the data item)
+%
+\subsubsection{Data Dictionary}
+
+\begin{enumerate}
+\item 
+\begin{description}
+\item[Name:] file-d
+\item[Where/How Used:] file-d is the file descriptor for the LaTeX file we
+are writing to.  It is used in {\bf generate-gantt-chart} to open and
+close the file, and in {\bf generate-gantt-bar} to write the formatting
+information out to the file.
+\item[Description:] file-d = *file descriptor*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] page-down-index
+\item[Where/How Used:] This is an index used in {\bf
+generate-gantt-chart} to count how many pages down we have generated
+thus far.
+\item[Description:] page-down-index = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] page-across-index
+\item[Where/How Used:] This is an index used in {\bf
+generate-gantt-chart} to count how many pages across we have generated
+thus far.
+\item[Description:] page-across-index = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] pages-across
+\item[Where/How Used:] This is an index used in {\bf
+generate-gantt-chart} and in {\bf split-gantt-chart-into-pages} to store
+the number of pages across we will have.  It is calculated in {\bf
+split-gantt-chart-into-pages} and passed back up to {\bf generate-gantt-chart}.
+\item[Description:] pages-across = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] pages-down
+\item[Where/How Used:] This is an index used in {\bf
+generate-gantt-chart} and in {\bf split-gantt-chart-into-pages} to store
+the number of pages down we will have.  It is calculated in {\bf
+split-gantt-chart-into-pages} and passed back up to {\bf generate-gantt-chart}.
+\item[Description:] pages-down = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] matrix-of-task-lists
+\item[Where/How Used:] This is a matrix of task lists, with each cell
+in the matrix being a list of tasks that appear on that page (i.e.\
+cell 1-1 is the first page of the document, cell 1-2 is the page
+before it, etc.).
+\item[Description:] matrix-of-task-lists = $\left\{\mbox{task-list-vec}\right\}^{n}$\\
+task-list-vec = $\left\{\mbox{task-list}\right\}^{m}$
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] maximum-x
+\item[Where/How Used:] This is the maximum x coordinate found in the
+Gantt formatting information.  Using this we can calculate how many
+pages across we will have.  It is used in {\bf
+split-gantt-chart-into-pages}.
+\item[Description:] maximum-x = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] maximum-y
+\item[Where/How Used:] This is the maximum y coordinate found in the
+Gantt formatting information.  Using this we can calculate how many
+pages across we will have.  It is used in {\bf
+split-gantt-chart-into-pages}.
+\item[Description:] maximum-y = *integer range 0..MAXINT*
+\end{description}
+
+\end{enumerate}
+@
+
+
+1.4
+log
+@*** empty log message ***
+@
+text
+@d124 1
+a124 1
+   alllocate matrix-of-task-lists to be of size pages-across by pages-down;
+d180 1
+a180 1
+gererate-gantt-bar} writes out to the \LaTeX\ file commands for
+d274 1
+a274 1
+\end{enumerate}
+@
+
+
+1.3
+log
+@First completed draft of LaTeX Gantt Chart generation section
+@
+text
+@d20 3
+@
+
+
+1.2
+log
+@*** empty log message ***
+@
+text
+@d12 3
+d20 8
+d33 3
+d38 1
+a38 1
+\centerline{\psfig{figure=latganttsc.ps,height=3in}}
+d65 7
+a71 7
+   file-d IS FILE-DESCRIPTOR;
+   page-down-index IS INTEGER;
+   page-across-index IS INTEGER;
+   pages-across IS INTEGER;
+   pages-down IS INTEGER;
+   task-list IS TASKLIST;
+   matrix-of-task-lists IS MATRIX OF TYPE TASKLIST;
+d98 5
+a102 5
+   maximum-x IS INTEGER;
+   maximum-y IS INTEGER;
+   pages-across IS INTEGER;
+   pages-down IS INTEGER;
+   task IS TASK;
+d139 1
+a139 2
+   task IS TASK;
+   dependant IS DEPENDANT;   
+d166 14
+d191 10
+d202 70
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d26 1
+a26 1
+chart for \LaTeX\ Gantt chart generation.\n}
+@

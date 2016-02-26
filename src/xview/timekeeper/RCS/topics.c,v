@@ -1,0 +1,329 @@
+head     1.7;
+branch   ;
+access   ;
+symbols  ;
+locks    ;
+comment  @ * @;
+
+
+1.7
+date     92.06.02.13.22.38;  author ian;  state Exp;
+branches ;
+next     1.6;
+
+1.6
+date     92.06.02.13.16.33;  author ian;  state Exp;
+branches ;
+next     1.5;
+
+1.5
+date     91.11.28.16.58.06;  author ian;  state Exp;
+branches ;
+next     1.4;
+
+1.4
+date     91.11.28.16.34.20;  author ian;  state Exp;
+branches ;
+next     1.3;
+
+1.3
+date     91.11.28.13.48.03;  author ian;  state Exp;
+branches ;
+next     1.2;
+
+1.2
+date     91.11.28.12.55.46;  author ian;  state Exp;
+branches ;
+next     1.1;
+
+1.1
+date     91.11.28.12.53.32;  author ian;  state Exp;
+branches ;
+next     ;
+
+
+desc
+@Code to read/write the Topics file for the timeRecorder program.
+@
+
+
+1.7
+log
+@Make it agree with tk.sh and the man page: use TASKFILE.
+@
+text
+@/*
+ * Code to read, write, update, etc. the topics list.
+ * $Id: topics.c,v 1.6 92/06/02 13:16:33 ian Exp $
+ */
+
+#include <stdio.h>
+#include <malloc.h>
+#include <xview/xview.h>
+#include <xview/panel.h>
+#include "timer_ui.h"
+#include "timekeeper.h"
+extern timer_baseFrame_objects	*Timer_baseFrame;
+
+#define	MAXTOPICS	100
+#define	TOPICLEN	30
+static char *list[MAXTOPICS];
+static int nlist = 0;
+static char *curfilename = NULL;
+
+void insertTopic();
+extern char *progname;
+
+readTopics()
+{
+	char *h, *p, *getenv(), buf[512];
+	FILE *fp;
+
+	if (!curfilename) {
+	    if ((p=getenv("TASKFILE")) == NULL) {
+		if ((h = getenv("HOME")) == NULL) {
+			fprintf(stderr, "%s: No HOME in env\n", progname);
+			exit(1);
+		}
+		p = malloc(strlen(h)+strlen(DOTFILE)+2);
+		strcpy(p, h);
+		strcat(p, "/");
+		strcat(p, DOTFILE);
+		curfilename = p;
+	    }
+	}
+
+	xv_set(Timer_baseFrame->baseFrame,
+		FRAME_RIGHT_FOOTER, curfilename,
+		NULL);
+	xv_set(Timer_baseFrame->topicList, XV_SHOW, FALSE, NULL);
+
+	if (nlist)	/* clear out existing rows */
+		xv_set(Timer_baseFrame->topicList,
+			PANEL_LIST_DELETE_ROWS, 0, nlist,
+			NULL);
+
+	nlist = 0;
+
+	if ((fp = fopen(curfilename, "r")) == NULL) {
+		xv_set(Timer_baseFrame->baseFrame,
+			FRAME_RIGHT_FOOTER, "Using default topics",
+			XV_NULL);
+		insertDefaultTopics();
+	}
+	else while (fgets(buf, sizeof buf, fp) != NULL)
+		insertTopic(buf);
+
+	xv_set(Timer_baseFrame->topicList, XV_SHOW, TRUE, NULL);
+
+	fclose(fp);
+}
+
+writeTopics()
+{
+	static FILE *fp = NULL;
+	int i;
+
+	/* Open it only once */
+	if (!fp)
+		fp = fopen(curfilename, "w");
+	else
+		fseek(fp, 0L, 0);	/* rewind */
+
+	if (!fp) {
+		extern int errno;
+		int e = errno;
+		fprintf(stderr, "%s: can't save topics file ", progname);
+		errno = e;
+		perror(curfilename);
+		exit(1);
+	}
+
+	for (i=0; i<nlist; i++) {
+		fprintf(fp, "%s\n", list[i]);
+	}
+
+	fflush(fp);
+	if (ferror(fp)) {
+		perror("Writing topics file");
+		fprintf(stderr,
+			"%s: Caution: Topics file not written correctly\n",
+			progname);
+	}
+}
+
+insertDefaultTopics()
+{
+	register char **p;
+	static char *defaults[] = {
+		"Reading Mail",
+		"Reading News",
+		"Drinking Coffee",
+		"Idle Chit-Chat",
+		0
+	};
+
+	for (p=defaults; *p; ++p)
+		insertTopic(*p);
+
+	writeTopics();
+}
+
+char *strsave(s)
+char *s;
+{
+	char *p = malloc(strlen(s)+1);
+	if (p)
+		strcpy(p, s);
+	return p;
+}
+
+void
+insertTopic(s)
+char *s;
+{
+	if (nlist >= MAXTOPICS) {
+		fprintf(stderr, "%s: Too many topics", progname);
+		return;
+	}
+	if (*(s+strlen(s)-1) == '\n')
+		*(s+strlen(s)-1) = '\0';
+	xv_set(Timer_baseFrame->topicList,
+		PANEL_LIST_INSERT,	nlist,
+		PANEL_LIST_STRING,	nlist, s,
+		NULL);
+	list[nlist++] = strsave(s);
+}
+
+char *
+getTopic(i)
+int i;
+{
+	if (i>=0 && i < nlist)
+		return list[i];
+	else
+		return "";
+}
+@
+
+
+1.6
+log
+@Use DOTFILE from .h file instead of hardcoding it here.
+@
+text
+@d3 1
+a3 1
+ * $Id: topics.c,v 1.5 91/11/28 16:58:06 ian Exp $
+d29 1
+a29 1
+	    if ((p=getenv("TIMETOPICSLIST")) == NULL) {
+@
+
+
+1.5
+log
+@Set right footer to be filename, or "Using default topics" if none.
+@
+text
+@d3 1
+a3 1
+ * $Id: topics.c,v 1.4 91/11/28 16:34:20 ian Exp $
+d11 1
+a18 1
+static char *DOTFILE = ".topics";
+@
+
+
+1.4
+log
+@The list is now array of char*, not array of array of char; malloc
+entries in it (need to free in re-read); xv_set XV_SHOW on and off
+around large updates of the scrolling list.
+@
+text
+@d3 1
+a3 1
+ * $Id: topics.c,v 1.3 91/11/28 13:48:03 ian Exp $
+d42 3
+d56 1
+a56 1
+			FRAME_LEFT_FOOTER, "No .topics, using defaults",
+@
+
+
+1.3
+log
+@Slightly improve the reporting of errors.
+@
+text
+@d3 1
+a3 1
+ * $Id: topics.c,v 1.2 91/11/28 12:55:46 ian Exp $
+d15 1
+a15 1
+static char list[MAXTOPICS][TOPICLEN+1];
+d17 1
+a17 1
+static char *curfilename = 0;
+d28 2
+a29 6
+	if (nlist) {
+		fprintf(stderr, "%s: list already read\n", progname);
+		exit(1);
+	}
+
+	if ((p=getenv("TIMETOPICSLIST")) == NULL) {
+d38 2
+d42 1
+a42 1
+	curfilename = p;
+d44 11
+a54 1
+	if ((fp = fopen(p, "r")) == NULL) {
+a55 1
+		return;
+d57 1
+a57 2
+
+	while (fgets(buf, sizeof buf, fp) != NULL)
+d60 2
+d115 9
+d138 1
+a138 1
+	strncpy(list[nlist++], s, TOPICLEN);
+@
+
+
+1.2
+log
+@Add RCS ID.
+@
+text
+@d3 1
+a3 1
+ * $Id$
+d21 1
+d29 1
+a29 1
+		printf("list already read\n");
+d35 1
+a35 1
+			printf("No HOME in env\n");
+d71 1
+a71 1
+		printf("can't save topics file ");
+d82 6
+d112 1
+a112 1
+		printf("Too many topics");
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d3 1
+@

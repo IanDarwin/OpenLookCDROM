@@ -1,0 +1,186 @@
+<html>
+<head>
+<!-- @(#)notes-solaris2.html	1.1 02 Jun 1995 -->
+<title>WorkMan notes: Solaris 2</title>
+</head>
+
+<body>
+<h1>Solaris 2 notes</h1>
+
+<p>
+<b>Contents:</b>
+
+<ol>
+   <li> <a href="#compile">Compiling WorkMan for Solaris 2</a>
+	<ol>
+	   <li> <a href="#gcc">Using gcc</a>
+	</ol>
+   <li> <a href="#volmgr">Using the volume manager</a>
+	<ol>
+	   <li> <a href="#avoid">Avoiding the volume manager</a>
+	</ol>
+   <li> <a href="#audio">Getting sound via the SPARCstation audio output</a>
+</ol>
+
+
+<h2><a name="compile">Compiling WorkMan for Solaris 2</a></h2>
+
+<p>
+WorkMan should compile without modification on Solaris 2.x, provided you
+make sure the three relevant lines indicated in the Makefile are uncommented.
+The LIBLOC line is
+necessary to get it to run properly in conjunction with the volume manager
+(vold) found in Solaris 2.2 and later.
+
+<p>
+If you're using the SPARCworks compilers from Sun, make sure your search
+path is set so that "/opt/SUNWspro/bin" (or whatever directory the compilers
+are in) is searched before "/usr/ucb".  Otherwise you'll be using a different
+set of libraries and include files, and WorkMan won't compile properly.
+
+<p>
+If you get a message like "language optional software package not installed,"
+your machine probably does not have SPARCworks, and you should talk to your
+system administrator about getting gcc.
+
+
+<h2><a name="gcc">Using gcc</a></h2>
+
+<p>
+You should be able to compile WorkMan using gcc.  Just uncomment the "CC=gcc"
+line in the Makefile and comment out (or remove) "CC=cc".
+
+<p>
+Gcc version 2.6.0 is known to compile WorkMan on Solaris 2.4 without any
+special handholding; older versions of Solaris and/or gcc apparently have
+some trouble with the include files in /usr/openwin/include.  If you get
+compiler errors about OpenWindows include files, you should probably run the
+"fixincludes" utility that comes with gcc, giving it the correct command line
+arguments so it fixes /usr/openwin/include.
+
+
+<h2><a name="volmgr">Using the volume manager</a></h2>
+
+<p>
+If you're running the volume manager -- you probably are -- you can get it to
+start WorkMan when you insert a music CD.  Assuming you've installed WorkMan
+in /usr/openwin/bin, add the following line to /etc/rmmount.conf,
+<em>before</em> the action_filemgr line:
+
+<blockquote>
+	action cdrom action_workman.so /usr/openwin/bin/workman
+</blockquote>
+
+<p>
+You should already have "action_workman.so" -- it comes with Solaris.  With
+that line in place, a WorkMan window should appear on your screen when you
+insert a CD.
+
+<p>
+Note that the volume manager doesn't know whether you're running a window
+system, so if you put in a music CD when you're not running OpenWindows (or
+there's one in the drive when the system boots up) you'll have to eject it
+with the "eject" command and reinsert it to get the WorkMan window to appear.
+
+<p>
+Also, WorkMan will be running as root or as nobody, not as you, since the
+volume manager runs without regard to who happens to be logged in on the
+console.  As a result, you'll probably want to edit your .Xdefaults file and
+add the "workman.db.shared" and "workman.db.personal" resources to tell
+WorkMan where to find its database files.  For example, if /users/jane is
+your home directory, you'd probably add:
+
+<blockquote>
+	workman.db.shared: /users/jane/.workmandb<br>
+	workman.db.personal: /users/jane/.workmanrc
+</blockquote>
+
+<p>
+Then run "xrdb -merge $HOME/.Xdefaults" to load the new settings into your
+X server.  You should only have to run that command once; .Xdefaults is read
+automatically when you start the window system.
+
+<p>
+If you do use the volume manager to start WorkMan, you may find you have to
+run "xhost hostname" (where hostname is the name of your machine) to give
+root-owned processes the right to connect to your X server.
+
+<p>
+You'll also find that setting environment variables has no effect on
+WorkMan when it's started by the volume manager, even if you set them before
+you start the window system.  To see why, realize that environment variables
+are inherited by new processes from their parents.  The volume manager is
+started at system boot time, before you've logged in; it's what runs
+WorkMan, so WorkMan only gets whatever variables were set when vold was
+started.  Setting variables in your .cshrc, or manually in a window, does
+not magically cause them to be set in preexisting processes or those
+processes' children.
+
+<h2><a name="avoid">Avoiding the volume manager</a></h2>
+
+If all that sounds too confusing and you'd like to avoid the volume manager
+altogether, you can start WorkMan by hand as long as you do it after you've
+inserted a CD.
+
+<h2><a name="audio">Getting audio output from the workstation</a></h2>
+
+(Note: This section only applies to the SPARCstation 5, and possibly the 20.
+On other machines, hook up a cable from the CD player's headphone jack to
+the computer's microphone input.)
+
+<p>
+Version 1.3 of WorkMan adds code to control the audio hardware on the SS5.
+It only works if there is a physical connection inside the machine between
+the CD player's internal audio output and the internal audio input on the
+workstation.  Instructions for making that connection are included with the
+CD-ROM drive; don't ask me.
+
+<p>
+The code was added by &lt;stevep@ctc.ih.att.com&gt;, who has this to say:
+
+<blockquote>
+    I'm sure there will be problems with it, as people use hardware
+    configurations I didn't imagine.  I'll be happy to try to deal with them.
+
+<p>
+    The use of audiocontrol, audiotool, gaintool, or the like in conjunction
+    with this is highly recommended.  Upon initialization, it switches the
+    codec input to the internal CD player, and turns the monitor gain up to
+    full (necessary).  Thereafter, anytime WorkMan begins a play operation,
+    it checks the state of the codec and enforces the following conditions:
+
+<p>
+	channels: 2<br>
+	encoding: linear<br>
+	precision: 16 bits<br>
+	sample rate: 44100<br>
+	monitor gain: max<br>
+	input port: internal cd player
+
+<p>
+    It does NOT "own" /dev/audio, nor does it check state other than when
+    beginning a "play".  This allows other processes to do things with the
+    audio system.  Please note that most other things will leave the chip in
+    a relatively pathetic state (8-bit ulaw mono at 8000 samples/sec);
+    pausing and resuming will correct this.
+
+<p>
+    This all comes about because the headphone jack on the CD drawer sounds
+    awful (lots of processor noise; apparently, Sun doesn't believe in
+    shielding).  The headphone jack out the back sounds MUCH better, but one
+    has to go through the audio chip to get there.
+
+</blockquote>
+
+<p>
+Please send mail directly to him if you have problems with this aspect of
+WorkMan.
+
+<p>
+<hr>
+<a href="install.html">To the install page</a>
+
+<h5>Last update: 02 Jun 1995</h5>
+
+</body>
+</html>

@@ -1,0 +1,425 @@
+%!
+%
+% From: greg@citi.umich.edu
+% Date: 8 May 1987 18:52 EDT
+% Subject: PostScript version of Token
+% 
+% For all you NeWS lovers out there, here is a PostScript
+% version of Token. It is a PostSCript operator which is
+% not implemented in NeWS 1.0.
+% 
+%    -greg@citi.umich.edu
+% 
+% Note: Token IS implemented in NeWS 1.1, so there's really no need for
+%       it now, but what the hell, it's an interesting example!
+%
+% -----------------------------------------------------------------------------
+%
+% PostScript version of Token
+% Greg Cockroft
+% University of Michigan
+% Center for Information Technology Integration  (CITI)
+% Mon Apr 13 13:55:33 EDT 1987
+
+% Bugs:
+% Numbers -- Anything starting with a numeral or - or . is assumed to be a number.
+%            Therefore a name like "13-456" will execute instead of being returned
+%            as a object. This is because I convert numbers by just storing
+%            characters into a string and then executing the string.
+%
+% Files  -- On EOF the file doesn't get closed.
+%           There is no way to unget a char with PostScript. So if a char is read which
+%           ends an object but is not needed, it will be saved in OLD_CHAR for the
+%           next invocation of token.
+%
+% Strings -- \ddd octal and \newline aren't supported when reading from a file.
+%
+
+
+false setautobind   % This hurts but it has to be done because NeWS classifies
+                    % token as an operator even though its not implemented.
+
+/token {  %   string ==> post any true  -or- false
+          %   file   ==> any true       -or- false
+
+        token.dict begin
+        dup type cvx exec     % initialize based on stringtype or filetype
+        state_zero begin
+        { getchar exec_char } loop
+        exit_token
+        end
+   } def
+
+
+
+/token.dict 100 dict def
+
+token.dict begin
+
+/STR null def                 % string being read from
+/FILE null def                % file being read from
+/CHAR null def                % current char being read
+/SCRATCH null def             % temporary string
+/I null def                   % temporary integer
+/OLD_CHAR null def            % leftover char from previous call
+/getchar null def             % procedure that reads in next CHAR
+/exit_token null def          % procedure that cleans up when leaving
+
+                      % character definitions
+/EOF 4 def
+/comment 37 def
+/space   32 def
+/tab     9  def
+/minus  45  def
+/period 16#2e def
+/newline  10 def
+/white_space [ space tab newline ] def
+/number [ 16#30 1 16#39 { } for minus period ] def
+
+
+/left_parend  16#28 def
+/right_parend 16#29 def
+/less_then    16#3c def
+/great_then   16#3e def
+/left_brack   16#5b def
+/right_brack  16#5d def
+/left_brace   16#7b def
+/right_brace  16#7d def
+/slash        16#2f def
+/backslash    16#5c def
+/ascii [ 16#0 1 16#7e { } for ] def
+/special_char [left_parend right_parend less_then great_then
+               comment left_brack right_brack left_brace right_brace slash ] def
+
+/hex_char_upper [  16#41 1 16#46 { } for ] def  % A-F
+/hex_char_lower [  16#61 1 16#66 { } for ] def  % a-f
+
+
+
+/exec_char  { % nothing ==> nothing
+             % Get procedure indexed by CHAR in highest proc_array
+             % on the dictionary stack and execute it.
+
+    proc_array CHAR get exec
+    } def
+
+/string_getchar { % nothing ==> nothing    % string version of getchar
+   STR length 0 le                         % no more?
+       { /CHAR EOF store }
+       { /CHAR STR 0 get store             % get first char
+         /STR STR dup length 1 sub 1 exch
+         getinterval store }               % store leftovers
+       ifelse
+   } def
+
+/string_exit_token {  % any true or false ==> substr any true or false
+   { CHAR null eq                      % Was CHAR important???
+       { STR exch true                 % we're all done
+       }
+       { STR length 1 add string       % prefix STR with CHAR
+         dup 1 STR putinterval
+         dup 0 CHAR put
+         exch true
+       }
+       ifelse
+   }
+   { false
+   }
+   ifelse
+   } def
+
+/file_getchar { % nothing ==> nothing    % file version of getchar
+  OLD_CHAR null ne                     % any leftovers from previous call
+       { /CHAR OLD_CHAR store
+         /OLD_CHAR null store
+       }
+       { FILE read
+           { /CHAR exch store }        % store byte into CHAR
+           { /CHAR EOF store }         % end of file
+           ifelse
+       }
+       ifelse
+   } def
+
+/file_exit_token {  % Store CHAR in OLD_CHAR for next call
+   /OLD_CHAR CHAR store
+   } def
+
+/stringtype { % string  ==> nothing  % setup up for reading from string
+   /STR exch store
+   /getchar /string_getchar load store         %  pick string version
+   /exit_token /string_exit_token load store   %  pick string version
+   } def
+
+/filetype { % file  ==> nothing     % setup for reading from file
+   /FILE exch store
+   /getchar /file_getchar load store         %  pick file version
+   /exit_token /file_exit_token load store   %  pick file version
+   } def
+
+
+/setprocs { exch { proc_array exch 2 index put } forall pop } def
+/setproc  { proc_array 3 1 roll put } def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%       state_zero
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/state_zero 20 dict def
+
+state_zero begin
+/proc_array 128 array def
+ascii { state_name begin entry } setprocs
+number { state_number begin entry } setprocs
+comment { state_comment begin entry } setproc
+slash   { state_literal begin entry } setproc
+left_parend { state_string begin entry } setproc
+less_then { state_hexstring begin entry } setproc
+left_brace { state_array begin entry } setproc
+white_space { } setprocs
+EOF { /CHAR null store false exit } setproc
+left_brack { /CHAR null store ([) cvn cvx true exit } setproc
+right_brack { /CHAR null store (]) cvn cvx true exit } setproc
+right_brace { /CHAR null store false exit } setproc
+/rentry { true exit } def
+end  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%       state_array
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/state_array 20 dict def
+
+state_array begin
+/entry { mark } def
+/proc_array 128 array def
+ascii { state_name begin entry } setprocs
+white_space { } setprocs
+number { state_number begin entry } setprocs
+comment { state_comment begin entry } setproc
+slash   { state_literal begin entry } setproc
+left_parend { state_string begin entry } setproc
+EOF { /CHAR null store false exit } setproc
+left_brack { /CHAR null store ([) cvn cvx } setproc
+right_brack { /CHAR null store (]) cvn cvx } setproc
+left_brace { state_array begin entry } setproc  % deeper and deeper we go
+right_brace { /CHAR null store
+              (]) cvx exec cvx       % create array make it executable
+              end rentry
+            } setproc
+/rentry { CHAR null eq
+            {
+            }
+            {
+            exec_char         % execute CHAR passed from previous level
+            }
+         ifelse
+      } def
+end  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%       state_number
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/state_number 20 dict def
+
+state_number begin
+/proc_array 128 array def
+/cleanup {
+   SCRATCH cvx
+	exec
+   end
+   rentry     % pop that chute
+   } def
+/entry { /SCRATCH () store exec_char } def
+ascii { SCRATCH dup length 1 add string          % string 1 bigger than before
+        dup 3 -2 roll
+        copy pop /SCRATCH exch store                 % new SCRATCH only one larger
+        SCRATCH dup length 1 sub CHAR put        % put CHAR at the end
+      } setprocs
+white_space {/CHAR null store cleanup} setprocs
+special_char {cleanup} setprocs
+EOF {/CHAR null store cleanup} setproc
+end  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%       state_name
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/state_name 20 dict def
+
+state_name begin
+/proc_array 128 array def
+/cleanup {
+   SCRATCH cvn cvx
+   end
+   rentry     % pop that chute
+   } def
+/entry { /SCRATCH () store exec_char } def
+ascii { SCRATCH dup length 1 add string          % string 1 bigger than before
+        dup 3 -2 roll
+        copy pop /SCRATCH exch store             % new SCRATCH only one larger
+        SCRATCH dup length 1 sub CHAR put        % put CHAR at the end
+      } setprocs
+white_space {/CHAR null store cleanup} setprocs
+special_char {cleanup} setprocs
+EOF {/CHAR null store cleanup} setproc
+end  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%       state_literal
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/state_literal 20 dict def
+
+state_literal begin
+/proc_array 128 array def
+/cleanup {
+   SCRATCH cvx exec
+   end
+   rentry     % pop that chute
+   } def
+/entry { /SCRATCH (/) store } def
+ascii { SCRATCH dup length 1 add string          % string 1 bigger than before
+        dup 3 -2 roll
+        copy pop /SCRATCH exch store             % new SCRATCH only one larger
+        SCRATCH dup length 1 sub CHAR put        % put CHAR at the end
+      } setprocs
+white_space {/CHAR null store cleanup} setprocs
+special_char {cleanup} setprocs
+EOF {/CHAR null store cleanup} setproc
+end  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%       state_string
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/state_string 20 dict def
+
+state_string begin
+/balance null def                   % keep track of balancing parends
+/proc_array 128 array def
+
+/backslash_convert 128 array def
+backslash_convert (n) 0 get (\n) 0 get  put
+backslash_convert (r) 0 get (\r) 0 get  put
+backslash_convert (t) 0 get (\t) 0 get  put
+backslash_convert (b) 0 get (\b) 0 get  put
+backslash_convert (f) 0 get (\f) 0 get  put
+backslash_convert (\\) 0 get (\\) 0 get  put
+backslash_convert left_parend left_parend put
+backslash_convert right_parend right_parend put
+
+/cleanup {
+   SCRATCH
+   end
+   rentry     % pop that chute
+   } def
+
+/add_to_end {  % add CHAR to the end of SCRATCH
+        SCRATCH dup length 1 add string          % string 1 bigger than before
+        dup 3 -2 roll
+        copy pop /SCRATCH exch store             % new SCRATCH only one larger
+        SCRATCH dup length 1 sub CHAR put        % put CHAR at the end
+        } def
+
+/entry { /SCRATCH () store /balance 1 def } def
+ascii { add_to_end } setprocs
+
+right_parend {
+   /balance balance 1 sub def
+   balance 0 eq
+   {
+     /CHAR null store cleanup
+   }
+   { add_to_end
+   }
+   ifelse
+   } setproc
+
+left_parend { /balance balance 1 add def add_to_end } setproc
+backslash {
+        /CHAR getchar backslash_convert          % get next char and convert it
+        CHAR get store
+        SCRATCH dup length 1 add string          % string 1 bigger than before
+        dup 3 -2 roll
+        copy pop /SCRATCH exch store             % new SCRATCH only one larger
+        SCRATCH dup length 1 sub CHAR put        % put CHAR at the end
+        } setproc
+
+EOF {/CHAR null store cleanup} setproc
+end  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%       state_hexstring
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+/state_hexstring 20 dict def
+
+state_hexstring begin
+/top4 null def                                    % top 4 bits of byte
+/proc_array 128 array def
+
+/cleanup {
+   top4 null eq                                   % was there an odd number of chars ?
+       {                                          % no. Everything is ok.
+       }
+       { 0 do_half                                % yes. Cap it off with a 0.
+       }
+       ifelse
+   SCRATCH
+   end
+   /CHAR null store
+   rentry     % pop that chute
+   } def
+
+/add_to_end {  % add CHAR to the end of SCRATCH
+        SCRATCH dup length 1 add string          % string 1 bigger than before
+        dup 3 -2 roll
+        copy pop /SCRATCH exch store             % new SCRATCH only one larger
+        SCRATCH dup length 1 sub CHAR put        % put CHAR at the end
+        } def
+
+/do_half { % int ==> nothing
+   top4 null eq                                      % do we already have the first 4 bits
+       { /top4 exch store                            % no. Then use these
+       }
+       { top4 4 bitshift add                         % make a full byte and add to SCRATCH
+         /CHAR exch store
+         add_to_end /top4 null store
+       }
+       ifelse
+    } def
+
+/entry { /SCRATCH () store /top4 null store } def
+ascii { /CHAR null store false exit } setprocs
+
+number { CHAR 16#30 sub do_half } setprocs
+hex_char_upper { CHAR 16#37 sub do_half } setprocs
+hex_char_lower { CHAR 16#57 sub do_half } setprocs
+
+white_space { } setprocs
+great_then { cleanup } setproc
+
+EOF { /CHAR null store false exit } setproc
+
+end  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%       state_comment
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/state_comment 10 dict def
+
+state_comment begin
+/proc_array 128 array def
+/entry {} def
+ascii {} setprocs
+newline { end exec_char} setproc
+EOF {end exec_char } setproc
+end  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+end     % end of token.dict

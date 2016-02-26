@@ -1,0 +1,276 @@
+#!/usr/NeWS/bin/psh
+%!
+% (c) 1987 Sun Microsystems, Inc.
+% David A. LaVallee 
+% 
+
+8 setretainthreshold
+
+/initializeData {
+ /gameX 276 def
+ /gameY 150 def
+ /gameW 600 def
+ /gameH 600 def
+ /limitL 0 def
+ /limitR {gameW paddleW sub} def
+ /paddleH 10 def
+ /paddleW 40 def
+ /paddleX {gameW 2 div paddleW 2 div sub} def
+ /paddleY 40 def
+ /paddleSurface {paddleY paddleH add} def
+ /paddleDelta 20 def
+ /ballDiameter 15 def
+} def
+
+/forkgameprocess {
+ gsave 300 dict begin
+  /can exch def
+  /ballX gameW 2 div def
+  /ballY gameH 2 div def
+  /ballXDelta 4 def
+  /ballYDelta 8 def
+  /ballsUsed 0 def
+  /bricksHit 0 def
+  /oldScoreMessage () def
+  /up? true def
+  /right? true def
+  /brickColumns 24 def
+  /brickRows 6 def
+  /brickArray [ brickRows { [ brickColumns {true} repeat ] } repeat ] def
+  /brickYOrigin gameH .7 mul def
+  /brickW gameW brickColumns div def
+  /brickH gameH brickYOrigin sub gameH .1 mul sub brickRows div def
+  /thisX 0 def
+  /thisY brickYOrigin def
+  /gap 6 def
+  /timeOut {pause} def
+  /paintBrick { 
+   thisX gap 2 div add thisY gap 2 div add brickW gap sub brickH gap sub
+   rectpath gsave
+   random monochromecanvas
+    {setgray}
+    {random .3 mul .5 add random .4 mul .6 add sethsbcolor}
+   ifelse
+   fill grestore stroke
+  } def
+  /unPaintBrick {
+   thisX thisY brickW brickH rectpath gsave 1 setgray fill grestore
+  } def
+  /makeBricks {
+   can setcanvas
+   brickRows {
+    brickColumns {
+     paintBrick /thisX thisX brickW add store
+    } repeat
+    /thisX 0 store
+    /thisY thisY brickH add store
+   } repeat 
+  } def
+  makeBricks
+  /moveX {/ballY ballY ballYDelta up? {add} {sub} ifelse store} def
+  /moveY {/ballX ballX ballXDelta right? {add} {sub} ifelse store} def
+  /bounceBelow {/ballY ballY ballYDelta sub store /up? false store} def
+  /bounceAbove {/ballY ballY ballYDelta add store /up? true store} def
+  /bounceLeft {/ballX ballX ballXDelta add store /right? true store} def
+  /bounceRight {/ballX ballX ballXDelta sub store /right? false store} def
+  /youFinish {
+   can setcanvas
+   (You have finished with a pct. of )
+   bricksHit ballsUsed div 10 string cvs append
+   10 40 moveto show
+   gameprocess killprocess
+  } def
+  /paintScore {
+   bricksHit brickRows brickColumns mul eq {
+    youFinish
+   }  {
+    10 10 moveto 1 setgray oldScoreMessage show
+    10 10 moveto 0 setgray (Balls=) ballsUsed 10 string cvs append
+    ( Bricks=) bricksHit 10 string cvs append append dup /oldScoreMessage
+    exch store show
+   } ifelse
+  } def
+  /brickX 0 def
+  /brickY 0 def
+  /brick? {
+   /brickX
+    thisX gameW div
+    brickColumns mul truncate cvi
+   store
+   /brickY
+    thisY brickYOrigin sub brickH brickRows mul div
+    brickRows mul truncate cvi
+   store
+   brickArray brickY get brickX get
+  } def
+  /setXY {
+   brickArray brickY get brickX false put
+   /thisX brickX brickW mul store
+   /thisY brickY brickH mul brickYOrigin add store
+  } def
+  /haveIHitOne? {
+   ballY ballDiameter add brickYOrigin ge 
+   ballY brickYOrigin brickRows .9 sub brickH mul add lt and {
+    /thisX ballX ballDiameter .5 mul add store
+    up? {
+      /thisY ballY ballDiameter add gap .5 mul add store
+     } {
+      /thisY ballY gap .5 mul sub store
+    } ifelse
+    brickYOrigin brickH dup brickRows mul brickYOrigin add {
+     up? {
+      thisY exch ge brick? and
+       {setXY bounceBelow true exit}
+       {false exit} ifelse
+     } {
+      brickH add thisY le brick? and
+       {setXY bounceAbove true exit}
+       {false exit} ifelse
+     } ifelse
+    } for
+   } {false} ifelse
+  } def
+  {
+   {
+    can setcanvas
+    moveX moveY
+    ballX 0 lt {bounceLeft} if
+    ballX gameW ballDiameter sub gt {bounceRight} if
+    ballY gameH ballDiameter sub gt {bounceBelow} if
+    ballY 0 lt {
+       bounceAbove /ballsUsed ballsUsed 1 add store
+       500 {pause} repeat paintScore
+      } if
+    ballY paddleY paddleH add lt
+    ballX paddleX paddleW add lt
+    ballX ballDiameter add paddleX gt and and {bounceAbove moveX} if
+    haveIHitOne? {
+     unPaintBrick /bricksHit bricksHit 1 add store paintScore
+    } if
+    ballCanvas setcanvas ballX ballY movecanvas timeOut
+   } loop
+  } fork
+ end
+ grestore
+} def
+
+/paintPaddle {
+ paddleCanvas setcanvas
+ .8 fillcanvas 0 strokecanvas
+} def
+
+/makePaddle {
+ 0 0 paddleW paddleH rectpath paddleCanvas reshapecanvas
+ paddleCanvas dup setcanvas paddleX paddleY movecanvas
+ dup makecanvasopaque
+ dup mapcanvas
+ makecanvasretained
+} def
+
+/paintBall {
+ ballCanvas setcanvas .5 fillcanvas
+} def
+
+/makeBall {
+ ballDiameter 2 div dup dup 0 360 arc ballCanvas reshapecanvas
+ ballCanvas
+ dup makecanvasopaque
+ dup mapcanvas
+ makecanvasretained
+} def
+
+/movePaddle {
+ paddleCanvas setcanvas paddleX paddleY movecanvas
+} def
+
+/stopGo {
+ gameprocess running? { suspendprocess } { continueprocess } ifelse
+ /running? running? not store
+} def
+
+/FunctionR10 { 
+ paddleX limitL gt {/paddleX paddleX paddleDelta sub store movePaddle} if
+} def
+
+/FunctionR11 { 
+ % stopGo
+} def
+
+/FunctionR12 { 
+ paddleX limitR lt {/paddleX paddleX paddleDelta add store movePaddle} if
+} def
+
+/seteventmgrcallback {	
+ /ClientData 10 dict dup /CallBack 5 -1 roll put put
+} def
+
+/eventmgrkbdinterest {	
+ [6 1 roll] {
+  3 index addkbdinterests				
+  exch {[4 index addfunctionstringsinterest] append} if	
+  exch {[3 index addfunctionnamesinterest] append} if	
+  exch {[2 index addeditkeysinterest] append} if	
+  {2 index seteventmgrcallback} forall		
+  pop pop
+ } append cvx
+} def
+
+/KBScanner {
+ /MyEventProc {
+  begin
+  {Name cvx exec} errored pop
+  end
+ } def
+
+ /p [
+  {MyEventProc} can false true false eventmgrkbdinterest
+ ] forkeventmgr def
+} def
+
+/windowRepaint {
+ clippath pathbbox
+ /gameH exch store
+ /gameW exch store
+ /gameY exch store
+ /gameX exch store 
+} def
+
+/iconRepaint {
+ 0 fillcanvas
+ clippath pathbbox scale pop pop
+ .5 .5 moveto .5 .5 .45 30 330 arc closepath
+ monochromecanvas {1 setgray} {1 1 0 setrgbcolor} ifelse
+ fill
+} def
+
+/windowMenuArray [ (quit) {currentprocess killprocessgroup} ] def
+
+/MyWindow LiteWindow []
+ classbegin
+  /BorderLeft 1 def
+  /BorderRight 1 def
+  /BorderTop 1 def
+  /BorderBottom 1 def
+  /ControlSize 1 def
+  /PaintFocus { % stopGo
+   } def
+  /stretchcorner { } def
+  /PaintClient {windowRepaint} def
+  /PaintIcon {iconRepaint} def
+  /ClientMenu windowMenuArray /new DefaultMenu send def
+ classend
+def
+
+/win framebuffer /new MyWindow send def
+initializeData
+gameX gameY gameW gameH /reshape win send
+/map win send
+/can win /ClientCanvas get def
+can setcanvas
+/paddleCanvas can newcanvas def
+/ballCanvas can newcanvas def
+can dup makecanvasopaque makecanvasretained
+/nouse /nouse_m can setstandardcursor
+makePaddle paintPaddle makeBall paintBall KBScanner
+/gameprocess can forkgameprocess def
+/running? true def

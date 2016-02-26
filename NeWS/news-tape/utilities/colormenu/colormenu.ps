@@ -1,0 +1,322 @@
+%!
+%
+% Date: Tue, 10 May 88 03:28:44 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Re: nterm color menu
+% From: voder!wlbr!mh@ucbvax.Berkeley.EDU  (Mike Hoegeman)
+% 
+% In article <454@cmx.npac.syr.edu> krempel@cmx.npac.syr.edu (Henry BJ Krempel) writes:
+% >
+% >I have a suggestion for the developers of "nterm":
+% >
+% >The color menu is difficult to use,  the layout of colors does not
+% >seem intuitive to me, and although the square matrix menu does have
+% >the look'n-feel of the M*cintosh,  I think a better solution would be
+% >a piemenu with a nicely graded colorwheel.
+% >
+% 
+% here you go henry.... it's gross hacking at it's worst but it works
+% 
+% to try it out you can just snip at the line below and run the whole
+% thing thru psh. I like to use this while in vi by running the printcolor
+% script which is also included further down in this file
+
+%+
+%	Function: forks a color selection window. returns the color selected
+%		on the operand stack
+%	Notes: Horrible hack of the sun colorwheel demo
+%	       If you are new to postsrript and looking for
+%	       programming examples don't look here!!
+%	Modification History:
+%	Date	Author		Reason
+%	-------------------------------------------------------------
+%	10Aug87	MCH			Initial Release.
+%
+%	-------------------------------------------------------------
+%-
+
+%+
+% colormenu:  true  => color  or...	 false => hue sat bright true
+%					 false => grayscale false
+%
+% true designates to return a color on the stack. false designates to return
+% the hue saturation and brightness values on the stack. the color? value
+% returned on the stack indicates wether or not the following return values
+% is for a  color or a greyscale value.
+%-
+
+/colormenu
+{
+50 dict begin %localscope
+    /returncolor? exch def
+    /scolor 1 1 1 hsbcolor def
+    {
+	newprocessgroup
+	/paintwheel { /paint win send } def
+	/getslice
+	{
+	10 dict begin gsave
+	    /ypos exch def
+	    /xpos exch def
+	    /spath null def
+
+	    clippath pathbbox scale pop pop
+	    /segang 360 nseg div def
+
+	    0 1 nseg 1 sub
+	    {
+		newpath
+
+		dup nseg div color? {
+		    dup /hue exch def saturation intensity sethsbcolor
+		} {
+		    dup /hue exch def setgray
+		} ifelse
+
+		segang mul /ta exch def
+		.5 .5 moveto
+		.5 .5 .5 ta ta segang add arc
+		closepath
+		/spath  currentpath def
+
+		xpos ypos pointinpath {
+
+		    0 1 1
+		    {
+			/scolor currentcolor store
+			pop
+			spath setpath
+			1 1 1 sethsbcolor fill
+			0 1 100 {pop  pause} for
+			scolor color? { setcolor } { setgray } ifelse
+			spath setpath fill
+			0 1 100 {pop  pause} for
+		    } for
+
+		    returncolor? {
+			%% return the color
+			scolor exit
+		    } {
+			color? {
+			    %% return the hsb numbers for the color
+			    /scolor [ hue saturation intensity true ] def
+			    scolor exit
+			} {
+			    %% return the grayscale number
+			    /scolor [ hue false ] def
+			    scolor exit
+			} ifelse
+		    } ifelse
+
+		} if  %% xpos ypos pointintpath
+
+	    } for
+	    grestore
+	end
+	} def
+
+	/colorwheel
+	{
+	    gsave
+	    1 fillcanvas
+	    clippath pathbbox scale pop pop
+	    /segang 360 nseg div def
+	    0 1 nseg 1 sub
+	    {
+		dup nseg div color?
+		    {saturation intensity sethsbcolor}
+		    {setgray}
+		ifelse
+		segang mul /ta exch def
+		.5 .5 moveto
+		.5 .5 .5 ta ta segang add arc
+		closepath fill pause
+	    } for
+	    grestore
+	} def
+
+	/do_start_mgr
+	{
+	    gsave can setcanvas
+	    clippath pathbbox scale pop pop
+	    dictbegin
+		/startevt
+		    LeftMouseButton
+		    { begin XLocation YLocation getslice end exit}
+		    /DownTransition can eventmgrinterest
+		def
+	    dictend forkeventmgr
+	    grestore
+	} def
+
+	/nseg		36 def
+	/segang 360 nseg div def
+	/ta null def
+	/saturation	.9 def
+	/intensity	1 def
+	/color?		framebuffer /Color get def
+	/getmenunumber	{/currentkey self send cvr} def
+
+	/segmentsmenu
+	    [(6) (12) (24) (36) (64) (128) (256)]
+	    [{/nseg getmenunumber store paintwheel}]
+	/new DefaultMenu send def
+	/intensitymenu
+	    [(.1) (.2) (.25) (.3) (.4) (.5) (.6) (.7) (.75) (.8) (.9) (1.0)]
+	    [{/intensity getmenunumber store paintwheel}]
+	/new DefaultMenu send def
+	/saturationmenu
+	    [(.1) (.2) (.25) (.3) (.4) (.5) (.6) (.7) (.75) (.8) (.9) (1.0)]
+	    [{/saturation getmenunumber store paintwheel}]
+	/new DefaultMenu send def
+
+	/win framebuffer /new DefaultWindow send store	% Create a window
+	{
+	    /PaintFocus
+	    {
+		gsave
+		1 setlinequality
+		4 setlinewidth
+		KeyFocus? { 1 1 1 sethsbcolor } { 0 setgray } ifelse
+		FrameCanvas setcanvas
+		0 0 FrameWidth FrameHeight ovalpath stroke
+		grestore
+	    } def
+	    /ShapeIconCanvas
+	    {
+		ParentCanvas setcanvas
+		0 0 translate 0 0 IconWidth IconHeight ovalpath
+		IconCanvas reshapecanvas
+	    } def
+	    /ShapeFrameCanvas
+	    {
+		gsave
+		ParentCanvas setcanvas
+		FrameX FrameY translate 0 0 FrameWidth FrameHeight ovalpath
+		FrameCanvas reshapecanvas
+		grestore
+	    } def
+	    /PaintClient {colorwheel PaintFocus} def
+	    /PaintIcon {colorwheel} def
+	    /ClientMenu
+	    [
+		    (Color)		{/color? true store paintwheel}
+		    (Black & White)	{/color? false store paintwheel}
+		    (Saturation =>)	saturationmenu
+		    (Intensity =>)	intensitymenu
+		    (Segments =>)	segmentsmenu
+	    ] /new DefaultMenu send def
+	    /BorderLeft 0 def
+	    /BorderRight 0 def
+	    /BorderBottom 0 def
+	    /BorderTop 0 def
+	} win send
+	currentcursorlocation 100 sub exch 100 sub exch 200 200
+		/reshape win send
+	{
+	    FrameCanvas /SaveBehind true put
+	    ClientCanvas /SaveBehind true put
+	} win send
+	/can win /ClientCanvas get def can setcanvas
+	/map win send
+
+	%% start up selection process
+	do_start_mgr  waitprocess
+
+	%%get the color he left on the stack
+	/scolor exch def
+
+	%% zap ourselves
+	/destroy win send
+
+    } fork waitprocess pop
+
+    %% leave the selected color / color numbers on stack
+    scolor type /arraytype ne {
+	scolor
+    } {
+	scolor  {
+	    dup type /booleantype ne {
+		%% round so NeWS does'nt barf
+		%% when someone tries to use these in setting a color
+		dup 1 ge {
+		    pop (1.0)
+		} {
+		    10000 mul round 5 string cvs (.) exch append
+		} ifelse
+	    } if
+	} forall
+    } ifelse
+
+end %% localscope
+} def
+
+%% ==============================================================
+
+%#!/user/bin/psh
+%+
+%	Copyright 1988, Eaton Corp., IMSD.
+%	Module: printcolor
+%	Author: colorwheel type program that prints out the hsbcolor on stdout
+%		when clicked on.
+%	Function:
+%	Notes: a stub for the colormenu proc in LOCALNEWSHOME
+%	Modification History:
+%	Date	Author		Reason
+%	-------------------------------------------------------------
+%	10Jan88	MCH			Initial Release.
+%	-------------------------------------------------------------
+%-
+
+%+
+% runit:        (/filename) => -
+% Function:	run a postscript file in $LOCALNEWSHOME/lib
+%		complain (in a msg window) and exit if it fails
+%-
+/runit {
+    {
+	2 dict begin /fname exch def
+	    /dir (LOCALNEWSHOME) getenv (/lib) append  def
+	    %/dir (/user/src/forms/forms) def
+	    dir fname append
+	end %localscope
+	run
+    } stopped
+    {
+	dup (r) eq {pop} if % run error ; pop the (r) flag
+	% make err msg
+	(/user/bin/msg run_error cannot_run_or_find ) exch append
+	forkunix pause quit
+    } if
+} def
+
+%[ (/colormenu.ps) ] { runit } forall
+
+/flag ($1) def
+flag [
+    (n)  { /newline () def }
+    /Default { /newline (\n) def }
+] case
+
+false colormenu {
+    %% color is returned
+    3 -2 roll (% % %) sprintf newline append [] printf
+} {
+    %% grayscale returned
+    10 string cvs ( ) append newline append printf
+} ifelse
+
+flush
+
+%% ======================================================================
+
+% Change the framebuffer color to what user desires.
+
+%%
+%% use like this ---->> true colormenu rootcolor
+%%
+/rootcolor
+{
+    /DefaultRootGrayOrColor exch store
+    PaintRoot
+} def

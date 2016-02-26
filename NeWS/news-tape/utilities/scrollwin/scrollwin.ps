@@ -1,0 +1,1017 @@
+%!
+%
+% Date: Fri, 13 May 88 00:45:52 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Scroll list class
+% From: voder!wlbr!mh@ucbvax.Berkeley.EDU  (Mike Hoegeman)
+% 
+% howdy..
+% This is part of a larger NeWS forms package that I'm currently building.
+% 
+% I wasn't going to post this till I polished it up some more ( put scroll bars
+% in , etc...) but I have to put in a bunch of stuff for interfacing with the
+% oracle rdbms so it looks like I might not get back to it for awhile so
+% I'll go ahead and post it now. If anyone actually uses this and has
+% suggestions or improvements they've made to it please drop me a note.
+% to try it out just snip at the marker below and run it through psh.
+% 
+% Sorry about the lack of documentation
+% 
+% Also , you'll see some cps stuff in here which goes along with
+% some C-code for use in scrolling BIG chunks of data.  the C-code
+% uses some code that is not all mine so  I'm not going to post
+% that unless there's a demand for it.
+% 
+
+%+
+% Module: scrfld.ps
+% Author: Mike Hoegeman
+% Function: scroll field class
+% Notes:
+% Modification History:
+% Date		Author		Reason
+% -------------------------------------------------------------
+% 01May88	MCH		Initial Release.
+% -------------------------------------------------------------
+%-
+
+/ScrFld Object
+%% ================= Instance Variables =============================
+dictbegin
+    /SFEvtMgr nulldict def
+    /SFMenu nulldict def
+    /SFLabel null def
+    /SFMaxSelects 15 def %% max selects allowed for this field
+    /SFSelList [] def
+    /SFCanvas nulldict def %% canvas for this field
+    /SFParent nulldict def %% parent can for this field
+    /SFX 0 def
+    /SFY 0 def
+    /SFW 0 def
+    /SFH 0 def
+    /SFFillColor 0 0 1 hsbcolor def
+    /SFEColor .778 .900 1.0 hsbcolor def
+    /SFOColor 0 0 0 hsbcolor def
+    /SFSelColor 1 1 1 hsbcolor def
+    /SFTextColor SFOColor def
+    /SFFontSize 12 def
+    /SFFont /Courier findfont SFFontSize scalefont def
+    /SFLMargin 2 def %% left margin for data
+    /SFData nulldict def %% handle to where the data lives
+    /SFDataBuf null def
+    /HideMark (#) def %% stuff is hidden before this character
+    /User nulldict def %% cubbyhole for user stuff...
+
+    %% these are use for paging data between client and us
+    /SFCPS nulldict def %% cps glue dict, installed by client (if there is one)
+    /DataOnClient? false def
+    /Home (_?UnknownHome?_) def %% proc that pushes on stack
+				  %% the dict that we live in
+
+    %% scrolling gadget stuff - don't have scroll bars yet
+    /GdgtW 16 def
+    /PgControl nulldict def
+dictend
+
+classbegin
+
+%% ================= Class Variables ================================
+
+%% ================= Methods ========================================
+
+%+
+% classname:	- => /class_name
+% Function:	return the name of the class
+%-
+/classname {
+    /ScrFld
+} def
+
+%+
+% new:		x y w h parentcanvas => instance
+%-
+/new {
+    /new super send begin
+	/SFParent exch store
+	/SFH exch store /SFW exch store
+	/SFY exch store /SFX exch store
+
+	%% if there is a client we are interacting with, he's defined the
+	%% cps glue dict in userdict, pull it in to the instance were we
+	%% can see it
+	userdict /SFCPS known { /SFCPS userdict /SFCPS get def } if
+    currentdict end
+} def
+
+%+
+% destroy:	- => -
+%-
+/destroy {
+    /unmap self send
+
+    %% null out any possible objects that are memory intensive.
+    /SFCanvas null store
+    /PgCanvas null store
+
+    SFEvtMgr  killprocess store
+    /SFEvtMgr null store
+
+    /SFData nulldict store
+    /SFUser nulldict store
+} def
+
+%+
+% set:		[(string1).... (stringN)] => -
+%	or..    (datatag) (type) (desc)
+% Function: 	define the data to be scrolled.
+%-
+/set {
+    dup
+
+    type /arraytype eq {
+	%% all scroll buf data  is local
+	%% => -
+
+	/SFData 5 dict store
+	SFData begin
+	    /Data exch def
+	    /TElem 0 def
+	    /TLine 0 def
+	    /BElem 0 def
+	    /BLine 0 def
+	end
+
+	/DataOnClient? false store
+	/SFDataBuf SFData /Data get store
+    } {
+	%% scroll buf data is on client
+	%% => (datatag) (type) (desc)
+
+	SFCPS nulldict eq {
+	    (/user/bin/msg scrfld.ps: where's my SFCPS dict?\n) forkunix
+	    pause quit
+	} if
+
+	/SFData 5 dict store
+	SFData begin
+	    /Data 3 index def
+	    /TElem 0 def
+	    /TLine 0 def
+	    /BElem 0 def
+	    /BLine 0 def
+	end
+	/DataOnClient? true store
+
+	%% tell client to load up a scroll field lineset with what
+	%% we want and then ship us the first scroll region's worth
+	%% of data.
+
+	/SFDataBuf null store
+	SFCPS begin
+	    %% => (datatag) (type) (desc)
+	    SFgetdata
+	end %% SFCPS
+
+	%% tell client to give us the first scroll region's worth
+	(waiting...) [] dbgprintf
+	{
+	    0 1 60 { pop pause pause pause } for
+	    SFDataBuf null ne { exit } if
+	    (.) [] dbgprintf
+	} loop
+
+    } ifelse
+
+} def
+
+%+
+% MakeSelInterests:	canvas => -
+% Function:		create the EIS selection interests and tweaks them
+%			so they're palatable to the "forkeventmgr" utility.
+%-
+/MakeSelInterests {
+    addselectioninterests %% consume canvas arg here
+
+    aload pop
+
+    %% tell the evt mgr to ignore EIS's private events
+    begin
+	/ClientData 10 dict dup begin
+	    /CallBack nullproc def
+	end def
+    end
+
+    %% Insert the evtmgr callback proc for this interest
+    %% (forkevtmgr needs this so that the evt mgr it creates knows what
+    %% to do with the event once it get's it).
+
+    %% => interest
+    begin
+	/ClientData 10 dict dup begin
+	    /CallBack {DoSelect} def
+	end def
+    end
+} def
+
+%+
+% DoSelect:		event => -
+% Function:		forkeventmgr style CallBack proc.
+%			Handles all incoming selection events
+% Notes:		Currently scrollfields use the EIS buffer model
+%			for selection handling
+% -- NOT FULLY COMPLETED --
+%-
+/DoSelect {
+%% => selection event
+1 dict begin
+	/evt exch def
+	evt /Name get [
+
+	    /Ignore {}
+
+	    %% not sure what the hell to do with this so just print it out
+	    %% when we get one and we'll find out soon enough!!
+	    /InsertValue {
+		(scrfld: got a /InsertValue: \n\t/Action = %)
+		[ evt /Action get] dbgprintf
+	    }
+
+	    %% user has made a selection in this canvas
+	    /SetSelectionAt {
+		evt /Action get /Preview get not {
+		%% make sure we are in the right canvas
+		    /SFSelList
+			[
+			    gsave SFCanvas setcanvas
+			    evt begin XLocation YLocation Point2Elem end
+			    grestore
+			]
+		    store
+		} if
+
+		%% now register the selection w/ the EIS
+		%% ... TO BE DONE
+		%%
+		%% selection-dict 10 dict dup begin
+		%%	/ContentsAscii XXXXX def
+		%%	/Rank evt /Action get /Rank get def
+		%%	/Canvas SFCanvas def
+		%%	/SelectionResponder null def
+		%%	/SelectionObjsize ContentsAscii length def
+		%%	/SelectionStartIndex 0 def
+		%%	/SelectionLastIndex SelectionObjsize 1 sub def
+		%%
+		%% end setselection
+		%%
+
+		paintdata
+	    }
+
+	    %% user has extended the current selection
+	    /ExtendSelectionTo {
+		evt /Action get /Preview get not {
+		%% make sure we are in the right canvas
+		    gsave SFCanvas setcanvas
+		    evt begin XLocation YLocation end Point2Elem
+		    grestore
+		    AddToSelList
+		} if
+
+		%% now re-register the extended selection w/ the EIS
+		%% ... TO BE DONE
+		%%
+		%% selection-dict 10 dict dup begin
+		%%	/ContentsAscii XXXXX def
+		%%	/Rank evt /Action get /Rank get def
+		%%	/Canvas SFCanvas def
+		%%	/SelectionResponder null def
+		%%	/SelectionObjsize ContentsAscii length def
+		%%	/SelectionStartIndex 0 def
+		%%	/SelectionLastIndex SelectionObjsize 1 sub def
+		%%
+		%% end setselection
+		%%
+
+		paintdata
+	    }
+
+	    /DeSelect {
+		%% At the moment we don't really care about being
+		%% deselected..
+	    }
+
+	    /Default {}
+
+	] case
+end
+} def
+
+%+
+% AddToSelList:		int => -
+% Function:		Add a element index to the selection list. If it is
+%			already present in the list it is not added.
+%-
+/AddToSelList {
+1 dict begin
+    /addition exch def
+
+    SFSelList {
+	%% null out " addition "  if it already exists in the array
+	addition eq { /addition null def exit } if
+    } forall
+
+    addition null ne {
+	/SFSelList SFSelList [ addition ] append store
+    } if
+end %%localscope
+} def
+
+%+
+% Point2Elem:		xpos ypos => int
+% Function:		Returns the element index that is currently displayed
+%			at point x,y in the scroll field canvas. the Element
+%			index is from the start of the data as a whole not
+%			from the start of the display buffer.
+%-
+/Point2Elem {
+gsave SFCanvas setcanvas
+    3 dict begin
+	exch pop %% the "x"
+	/ypos exch def
+	/elem SFData /TElem get def
+	/firstone? true def
+	0 SFH SFLabel null ne { SFFontSize sub } if moveto
+
+	SFDataBuf {
+
+	    firstone? {
+		/firstone? false def
+		SFData /TLine get  nthline_on not {
+		    (/user/bin/msg scrfld: Point2Elem_BooBoo tell_mike)
+		    forkunix pause ()
+		} if
+	    } if
+
+	    %% is the point clicked above the curr point yet ??
+	    currentpoint exch pop ypos lt {
+		pop exit
+	    } if
+
+	    countlines SFFontSize mul neg 0 exch rmoveto
+	    /elem elem 1 add def
+	} forall
+
+	elem 1 sub 0 max
+    end
+grestore
+} def
+
+
+%+
+% MakeSFInterests:	- => -
+% Function:		Create interests for this fld and start a
+%			event manager for them.
+%-
+/MakeSFInterests {
+    SFEvtMgr nulldict eq {
+	/SFEvtMgr [
+
+	    %% pager control stuff
+	    PointButton
+	    { pop scrollup }
+	    DownTransition
+	    PgControl
+	    eventmgrinterest
+
+	    AdjustButton
+	    { pop scrolldown }
+	    DownTransition
+	    PgControl
+	    eventmgrinterest
+
+	    %% selection stuff
+	    { SFCanvas MakeSelInterests }
+
+	    %%% menu stuff
+	    MenuButton
+	    { SFMenu nulldict ne { /show SFMenu send } if }
+	    DownTransition
+	    SFCanvas
+	    eventmgrinterest
+
+	] forkeventmgr store
+    } if
+} def
+
+%+
+% reshape:	x y w h => -
+% Function:	Reshape the scroll field and all it's controls
+%-
+/reshape {
+    ChkCans
+    Reshape
+    ReshapeControls
+} def
+
+/Reshape {
+    /SFH exch def /SFW exch def
+    /SFY exch def /SFX exch def
+    gsave
+	SFParent setcanvas SFX SFY translate
+	%% reshape the scroll field...
+	0 0 SFW SFH rectpath SFCanvas reshapecanvas
+    grestore
+} def
+
+%+
+%
+%-
+/map {
+    ChkCans
+    SFCanvas /Mapped true put
+    PgControl /Mapped true put
+} def
+
+/unmap {
+    SFCanvas nulldict ne {
+	SFCanvas /Mapped false put
+	PgControl /Mapped false put
+    } if
+} def
+
+%+
+% paint:	- => -
+% Function	paint the scroll field in it's entirety
+%-
+/paint {
+    ChkCans
+    gsave SFCanvas setcanvas SFTextColor setcolor SFFont setfont
+    {
+	SFFillColor fillcanvas SFTextColor strokecanvas
+	PaintData PaintCtrls PaintLabel
+    } CallPaintProc
+    grestore
+} def
+
+/paintdata { /PaintData CallPaintProc } def
+/unpaintdata { /UnpaintData CallPaintProc } def
+
+/CallPaintProc {
+    gsave SFCanvas setcanvas SFTextColor setcolor SFFont setfont
+	cvx exec
+    grestore
+} def
+
+%+
+% ReshapeControls:	- => -
+% Function:	 	reshapes all controls associated w/ the window
+%
+%-
+/ReshapeControls {
+gsave
+    %% make him a small square guy on the lower
+    %% left of the field
+    SFCanvas setcanvas
+    0 0 GdgtW dup rectpath PgControl reshapecanvas
+grestore
+} def
+
+%+
+% ChkCans:	- => -
+% Function:  	deferred init of canvases and the interests associated w/ them.
+%-
+/ChkCans {
+    SFCanvas nulldict eq {
+	/SFCanvas SFParent newcanvas store
+	SFCanvas /Transparent false put
+	SFCanvas /Retained false put
+	SFCanvas /EventConsumed /MatchedEvents put
+	SFX SFY SFW SFH Reshape
+
+	/PgControl SFCanvas newcanvas store
+	%%%PgControl /Transparent false put
+	%%%PgControl /Retained false put
+	PgControl /EventConsumed /MatchedEvents put
+	ReshapeControls
+
+	MakeSFInterests
+    } if
+
+} def
+
+%+
+% PaintLabel:	- => -
+% Function:	paints the label for the scroll field (if one exists).
+%-
+/PaintLabel {
+    SFLabel type /stringtype eq {
+	GdgtW SFLMargin add SFH SFFontSize sub 1 sub moveto
+	SFLabel show
+	0 SFH SFFontSize sub 1 sub moveto SFW 0 rlineto stroke
+    } if
+} def
+
+%+
+% PaintData:	- => -
+% Function:	paints the scrolled data visible within the window
+%-
+/PaintData {
+    SFData nulldict ne SFDataBuf null ne and {
+	SFDataBuf datashow pop
+    } if
+} def
+
+/UnpaintData {
+    SFData nulldict ne SFDataBuf null ne and {
+	SFDataBuf SFFillColor datashow pop
+    } if
+} def
+
+/scrolldelta {
+    SFH 2 idiv dup SFFontSize mod sub SFFontSize idiv
+} def
+
+/linesshowing {
+} def
+
+/scrolldown {
+    %% Don't bother if there is nothing there
+    SFData nulldict ne {
+
+	3 dict begin
+	%% calc the no. of lines we need
+
+	DataOnClient? {
+
+	    SFData /Data get
+	    Home
+	    scrolldelta dup 2 mul
+	    SFCPS begin SFgetbuf end
+
+	}{
+
+	    scrolldelta  SFData /TElem get SFData /TLine get  seekforward
+	    dup null eq {
+		pop pop %% we've hit bottom, do nothing
+	    } {
+		%% Make a subset of the scroll data, which is
+		%% the stuff we are currently displaying. this lives
+		%% in SFDataBuf
+
+		%% unpaint what is there
+		{ SFDataBuf SFFillColor datashow } CallPaintProc pop
+
+		SFData begin
+
+		    /TLine exch def
+		    /TElem exch def
+
+		    /SFDataBuf
+			Data TElem   Data length 1 sub   getinterval
+			%%[ Data TElem get TLine nthline_on pop ]
+			%%TElem Data length 1 sub ge {
+			%%    []
+			%%} {
+			%%    Data TElem 1 add Data length 1 sub getinterval
+			%%} ifelse
+			%%append
+		    store
+		end
+
+		%% paint the new stuff
+		{ SFDataBuf datashow } CallPaintProc pop
+
+		%% /paint self send
+	    } ifelse
+	} ifelse
+	end
+    } if %% SFData null ne
+} def
+
+
+/scrollup {
+    %% if empty , don't bother
+    SFData nulldict ne {
+
+	3 dict begin
+	%% calc the no. of lines we need
+
+	DataOnClient? {
+
+	    %%
+	    SFData /Data get
+	    Home
+	    scrolldelta dup neg exch 2 mul
+	    SFCPS begin SFgetbuf end
+
+	}{
+
+	    { SFDataBuf SFFillColor datashow } CallPaintProc pop
+
+	    %
+	    scrolldelta   SFData /TElem get SFData /TLine get   seekbackward
+	    dup null eq {
+		%% seek went past the start of the Data...
+		pop pop
+		SFData begin
+		    %% set start of displayable stuff to be start of
+		    %% of all the scroll data...
+		    /TElem 0 def
+		    /TLine 0 def
+		end
+	    } {
+		%% Make a subset of the scroll data, which is
+		%% the stuff we are currently displaying. this lives
+		%% in SFDataBuf
+		SFData begin
+
+		    /TLine exch def
+		    /TElem exch def
+		end
+	    } ifelse
+
+	    SFData begin
+	    /SFDataBuf
+		Data TElem   Data length 1 sub   getinterval
+		%%[ Data TElem get TLine nthline_on pop ]
+		%%TElem Data length 1 sub ge {
+		%%    []
+		%%} {
+		%%    Data TElem 1 add Data length 1 sub getinterval
+		%%} ifelse
+		%%append
+	    store
+	    end % SFData
+
+	    { SFDataBuf datashow } CallPaintProc pop
+	    %%% /paint self send
+
+	} ifelse
+    end  %% local scope
+    } if %% SFData nulldict ne
+} def
+
+%+
+% datashow:	[ (text\ntext\n....) (..) ... ]  color =>  bool
+% Function:	with the current point's y-coord as the left margin, display
+%		the argument string, wrapping at newlines. showing is stopped
+%		when the curren point's x-coord is less than zero. false
+%		is returned if the currentpoint's x-coord is less than zero
+%		after the showing has taken place. the color parame is optional.
+%		it is include for things like unpainting.
+%-
+/datashow {
+6 dict begin
+gsave
+    dup type /arraytype eq { /usecolor null def } { /usecolor exch def } ifelse
+    /rval true def
+    /elem SFData /TElem get def
+    /firstone? true def
+
+    %% so we do not mess up our border strokes
+    1.5 clippath pathbbox points2rect insetrect rectpath clip
+
+    %% move down a little further if we have a label
+    GdgtW SFH SFFontSize SFLabel null eq {1} {2} ifelse mul sub moveto
+
+    usecolor null ne { usecolor setcolor } if
+
+    /xpos currentpoint pop def
+
+
+    %% consume [(...) (...) ... ]
+    {
+	firstone? {
+	    %% get just the showable part of the first element
+	    /firstone? false def
+
+	    SFData /TLine get
+	    nthline_on not {
+
+		/datashow_error  dbgbreak
+
+		%%(/user/bin/msg scrfld: datashow_BooBoo inform_mike) forkunix
+		pause ()
+	    } if
+
+	    %% don't show the stuff before the hide mark
+	    SFData /TLine get 0 eq {
+		HideMark search { pop pop } if
+	    } if
+	} {
+
+	    %% don't show the stuff before the hide mark
+	    HideMark search { pop pop } if
+
+	} ifelse
+
+	rval not { pop exit } if
+	usecolor null eq {
+	    elem InSelList {
+		SFSelColor setcolor
+	    } {
+		%% set color depending on if the element index is odd or even
+		elem elem 1 or eq { SFOColor } { SFEColor } ifelse setcolor
+	    } ifelse
+	} if
+
+	{ %%start loop
+	    currentpoint SFFontSize add exch pop 0 lt {
+		pop /rval false def exit
+	    } if
+	    (\n) search {
+		%% show the line and do a "cr/nl"
+		currentpoint SFFontSize sub
+		    3 -1 roll
+		    show
+		moveto
+		pop %% the newline, leave what's left on stack
+	    } {
+		%% last line in blk , show and bail
+		show
+		exit
+	    } ifelse
+	    %%% pause
+	} loop
+
+	/elem elem 1 add def
+	xpos currentpoint exch pop SFFontSize sub moveto
+    } forall
+
+    rval
+
+grestore
+end %% localscope
+} def
+
+%+
+% InSelList:		N => bool
+% Function:		Is element "N" of the scroll data in the select list ?
+%-
+/InSelList {
+1 dict begin
+    /n exch def
+    SFSelList { n eq { /n true def exit } if } forall
+    n true eq %% leave verdict on stack
+end %% localscope
+} def
+
+%+
+% PaintCtrls:	- => -
+% Function:	paints any controls associated with the scroll field.
+%-
+/PaintCtrls {
+    gsave PgControl setcanvas
+	0 0 moveto /cycle showicon
+    grestore
+} def
+
+
+%+
+% seekbackward:	linesforward startelem startline => seekedelem seekedline
+% Function:
+%-
+/seekbackward {
+11 dict begin
+
+    /startline exch def %% grab args off stack...
+    /startelem exch def
+    /linesback exch def
+
+    /seekedelem null def %% local var. init stuff...
+    /seekedline null def
+    /totallines 0 def
+    /Data SFData /Data get def
+
+    %% seek backward  elem by elem ...
+    startelem -1 0 {
+	/i exch def
+
+	i dup startelem eq {
+	    Data exch get startline till_nthline not { () } if
+	} {
+	    Data exch get
+	} ifelse
+	/curelem exch def
+
+	/linecount curelem countlines def
+
+	/totallines totallines linecount add def
+
+	%% Have we hit the elem w/ the linesback-th line yet?
+	totallines linesback ge {
+	    %% Yes, note the elem it was in and the line no.
+	    /seekedelem i def
+	    /seekedline
+		totallines linesback sub %%  overshoot amount == line #
+	    def
+	    exit
+	} if
+
+    } for
+
+    seekedelem  %% leave return vals on stack
+    seekedline
+
+end %localscope
+} def
+
+%+
+%
+%
+% Note: 	If N > than the max # of lines int the arg string false
+%		is returned,  otherwise true is returned along with a string
+%		identical to the argument string.
+%-
+/till_nthline {
+3 dict begin
+    /n exch def
+    /sofar 0 def
+    /rval null def
+
+    %% => (stuff...\n...\n....)
+    {
+	sofar n ge { pop exit } if
+
+	rval null eq { /rval () def } if
+
+	(\n) search {
+	    rval exch
+	    append /rval exch def
+
+	    /sofar sofar 1 add def
+
+	    pop %% the (\n)
+	    sofar n ge { pop exit } { /rval rval (\n) append def } ifelse
+	} {
+	    rval exch
+	    append /rval exch def
+
+	    exit
+	} ifelse
+
+    } loop
+    rval null ne { rval true } { false } ifelse
+
+end %localscope
+} def
+
+%+
+% seekforward:	linesforward startelem startline => seekedelem seekedline
+% Function:
+%-
+/seekforward {
+11 dict begin
+
+    /startline exch def %% grab args off stack...
+    /startelem exch def
+    /linesforward exch def
+
+    /seekedelem null def %% local var. init stuff...
+    /seekedline null def
+    /totallines 0 def
+    /Data SFData /Data get def
+
+    %% seek forward elem by elem...
+    startelem 1 Data length 1 sub {
+
+	/i exch def
+
+	i dup startelem eq {
+	    Data exch get startline nthline_on not { () } if
+	} {
+	    Data exch get
+	} ifelse
+	/curelem exch def
+
+	/linecount curelem countlines def
+
+	/totallines totallines linecount add def
+
+	%% Have we hit the elem w/ the linesforward-th line yet?
+	totallines linesforward ge {
+	    %% Yes, note the elem it was in and the line no.
+	    /seekedelem i def
+	    /seekedline
+		Data seekedelem get countlines %% total lines in this elem
+		totallines linesforward sub  sub %%  less overshoot amount
+		1 sub
+	    def
+	    exit
+	} if
+
+    } for
+
+    seekedelem  %% leave return vals on stack
+
+    seekedline
+
+end %localscope
+} def
+
+%+
+% nthline_on:	(string1\n...stringN\n...) N => false
+%               (string1\n...stringN\n...) N => true (stringN\n...)
+%
+% Function: 	Return Nth line on from  argument string.
+% 		If nthline is greater than total number of lines ,
+%		() is returned.
+%
+% Note: 	First line in string is referenced as "0" not "1"
+%-
+/nthline_on {
+3 dict begin
+    /n exch def
+    /sofar 0 def
+    /rval null def
+
+    {
+	sofar n eq { /rval exch def exit } if
+
+	(\n) search { pop pop } { pop exit } ifelse
+	/sofar sofar 1 add def
+    } loop
+    rval null ne { rval true } { false } ifelse end
+} def
+
+/countlines {
+1 dict begin
+    /i 0 def
+    {
+	/i i 1 add def
+	(\n) search { pop pop }{ pop exit } ifelse
+    } loop
+    i %% leave ret val on stack
+end %localscope
+} def
+
+
+classend def
+
+%% ================= End Of ScrFld Class ===========================
+
+%% ========== test fragment for the scroll field class =============
+
+/paintit {
+    1 1 1 hsbcolor fillcanvas
+    /paint ScrollFld send
+} def
+
+/scrwin framebuffer /new DefaultWindow send def
+/reshapefromuser scrwin send
+
+{
+
+    /PaintClient { paintit } def
+
+    /ScrollFld
+	4 4 300 100 ClientCanvas /new ScrFld send
+    def
+
+    /FrameLabel (Scroll Field Demo) def
+    /IconLabel FrameLabel def
+
+} scrwin send
+
+/sfld  scrwin /ScrollFld get def
+{ /SFLabel (Scroll Field Demo) def } sfld send
+
+[
+(here is some scrollfield data)
+(notice that you can have multi-line\nelements as data!)
+(here's a real long one\nA\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM\nN\nO)
+(Now some quotes that are in the PostScript Blue Book)
+(To Read means to obtain meaning from words, and\n\
+legibility is THAT QUALITY WHICH enables words\n\
+to be read easily, quickly, and accurately.\n\
+\n\
+JOHN C. TARR)
+(If my film makes one more person feel miserable\n\
+I'll feel I've done my job.\n\
+\n\
+WOODY ALLEN)
+(Printing is the source of practically all human evolution\n\
+Without it the tremendous progress in the fields of science and\n\
+technology would not have been possible\n\
+\n\
+VALTER FALK)
+(now some single line elements)
+(1)
+(2)
+(3)
+(4)
+(5)
+(6)
+(7)
+(8)
+(9)
+(0)
+(a)
+(b)
+(c)
+(d)
+]
+/set sfld send
+
+/map sfld send
+/map scrwin send

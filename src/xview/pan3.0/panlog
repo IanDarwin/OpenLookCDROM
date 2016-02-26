@@ -1,0 +1,97 @@
+#!/bin/sh
+
+MYNAME=`basename $0`
+USAGE="Usage:
+
+$MYNAME [-user <username>] [-dir <pan directory>] [-remove] [-quiet]
+
+	Displays the pan log from control file execution.
+
+"
+
+errexit() {
+    echo $MYNAME:  "$@"
+    exit 1
+}
+
+#
+# Start of script
+#
+
+user=$USER
+dir=""
+remove=0
+quiet=0
+
+while expr match "$1" "-.*" >/dev/null
+    do
+    if [ "$1" = "-user" ]; then
+        shift
+        if [ -z "$1" ]; then
+            echo "Missing name for -user option."
+            errexit "$USAGE"
+        fi
+        user="$1"
+    fi
+
+    if [ -z "$user" ]; then
+        errexit "Environment variable USER not set."
+    fi
+
+    if [ "$1" = "-dir" ]; then
+        shift
+        if [ -z "$1" ]; then
+            echo "Missing directory for -dir option."
+            errexit "$USAGE"
+        fi
+        dir="$1"
+    fi
+    if [ "$1" = "-remove" ]; then
+        remove=1
+    fi
+    if [ "$1" = "-quiet" ]; then
+        quiet=1
+    fi
+    shift
+done
+
+#
+# Get user's home directory if -dir not used.
+#
+if [ -z "$dir" ]; then
+    ypmatch $user passwd > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        dir=`awk -F: '$1 == "'$user'" { print $6 }' < /etc/passwd`
+    else
+        dir=`ypmatch $user passwd | awk -F: '$1 == "'$user'" { print $6 }'`
+    fi
+    dir="$dir/.pan"
+fi
+
+if [ ! -d $dir ]; then
+    errexit "$dir:  No such file or directory."
+fi
+
+PANCTRL=$dir/PanCtrl
+PANCTRLLOG=$PANCTRL.log
+PANCTRLLOCK=$PANCTRL.lock
+
+if [ $quiet -eq 0 ]; then
+    if [ ! -f $PANCTRLLOG ]; then
+        echo "No log file found"
+    else
+        cat $PANCTRLLOG
+    fi
+fi
+
+if [ $remove -ne 0 ]; then
+    if [ -f $PANCTRLLOCK ]; then
+        errexit "Can't remove $PANCTRLLOG - file is locked"
+    fi
+    rm $PANCTRLLOG > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        errexit "Problem removing $PANCTRLLOG"
+    fi
+fi
+
+exit 0

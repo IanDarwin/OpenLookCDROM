@@ -1,0 +1,222 @@
+%!
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 
+% Class PulloutPieMenu
+% Copyright (C) 1988 by Don Hopkins (don@brillig.umd.edu)
+% 
+% This program is provided free for unrestricted use and redistribution,
+% provided that the headers remain intact.  No author or distributor
+% accepts any responsibility for any problems with this software.
+% 
+% PulloutPieMenu is a subclass of PieMenu that uses cursor distance
+% from the menu center to specify an argument to the menu selection.
+% Each menu key has an array of possible arguments, from which the
+% cursor distance selects the argument value.  The values in the
+% arrays are "Things" (cf. litemenu.ps & colordemo) that are painted
+% in the menu center as feedback.  The /new method of class
+% PulloutPieMenu takes the same arguments that regular menus do, plus
+% an additional array of argument arrays.  Each argument array
+% corresponds to a menu key.  If you give just one argument array, it
+% is used for all the keys, the same as with the array of actions.
+% You can use getmenuarg and getmenuargindex in your menu actions to
+% retrieve the argument displayed when the key was selected.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+systemdict begin
+
+% ------------------------------------ %
+% PulloutPieMenu
+
+/PulloutPieMenu PieMenu
+dictbegin
+  /SliceWedges false def
+  /HiLiteWithArrow? false def
+  /PrinterMatch? false def
+  /ArgBorder 2 def
+  /EraseArgs? true def
+  /MenuArgs null def
+  /MenuArg null def
+  /MenuArgIndex null def
+  /PaintedArg null def
+dictend
+classbegin
+
+  % [[args...]...] [keys...] [actions...] => menu
+  /new { 
+    /new super send begin
+      dup length MenuKeys length lt {
+	[ exch aload pop % pad out args w/ last arg
+	  counttomark MenuKeys length exch sub {dup} repeat ]
+      } if
+      /MenuArgs exch def
+      currentdict
+    end
+  } def
+
+  % Need to make flipstyle a no-op because /new takes a different number
+  % of args, and actions might depend on MenuArg! Scratch that.
+  % Instead, let's just make a new instance of ourselves, of
+  % the same class. 
+  /flipstyle {
+    0 1 MenuActions length 1 sub {
+	dup getmenuaction % fixed to use getmenuaction!
+	dup type /dicttype eq {
+	    /flipstyle exch send	% i menu'
+	    MenuActions 3 1 roll put	% -
+	} {pop pop} ifelse
+    } for
+    MenuArgs MenuKeys MenuActions /new ClassName load send
+    dup /LabelMinRadius LabelMinRadius put % hack
+  } def
+
+  /MenuGSave {
+    /MenuGSave super send
+    PrinterMatch? setprintermatch
+  } def
+
+  /DragProc {
+    ChildMenu null eq {
+      MenuGSave
+        PieRadius dup translate
+        CurrentEvent begin
+          XLocation DeltaX add
+          YLocation DeltaY add
+        end
+        SetMenuValue
+
+        MenuValue PaintedValue ne {
+          PaintMenuValue
+        } if
+        getmenuarg /PaintedArg load ne {
+          PaintMenuArg
+        } if
+      grestore
+    } if
+  } def
+
+  framebuffer /GLCanvas known { % SGI 4Sight?
+    % Paint menus on the overlay plane
+      /paint {
+	/paint super send
+	/PaintedArg load /PaintArg self send
+      } def
+  } {
+    /DamageProc {
+      MenuGSave
+	damagepath clipcanvas
+	/paint self send
+	PaintedValue PaintSlice
+	/PaintedArg load PaintArg
+	newpath clipcanvas
+      grestore
+    } def
+  } ifelse
+
+  /PaintMenuArg {
+    getmenuarg
+    dup null eq  /PaintedArg load null eq  EraseArgs? or or {
+      % The null...pop is to get around the fact that 4Sight's ThingSize
+      % recognizes [(string) /name] as a special case, and eats both,
+      % which hoses us if we call it with just a /name, but with a 
+      % (string) on the stack before that. 
+      null /PaintedArg load EraseArg pop
+    } if
+    dup PaintArg
+    /PaintedArg exch store
+  } def
+
+  /EraseArg { % thing => -
+    MenuGSave
+      dup null eq {
+	pop
+	PieRadius dup translate
+	MenuFillColor setcolor
+	0 0 LabelRadius Gap sub 3 sub 0 360 arc
+	fill
+      } {
+	PieRadius dup translate
+	MenuFillColor setcolor
+% dup /toggle3 eq {/foo dbgbreak} if
+	ThingSize
+	2 copy
+	-.5 mul exch -.5 mul exch
+	4 -2 roll
+	ArgBorder neg 5 1 roll insetrect % Some extra padding...
+	rectpath fill
+      } ifelse
+    grestore
+  } def
+
+  /PaintArg { % thing => -
+    MenuGSave
+      dup null eq {
+	pop
+	PieRadius dup translate
+	MenuBorderColor setcolor
+        MenuLineWidth setlinewidth
+	MenuLineCap setlinecap
+	MenuItems {
+	  begin
+	    gsave
+	      newpath
+	      ang PieSliceWidth 2 div sub rotate
+	      NumbRadius 0 moveto
+	      LabelRadius Gap sub 4 sub 0 lineto
+              MenuBorderColor setcolor
+	      stroke
+	    grestore
+	  end
+	} forall
+      } {
+	PieRadius dup translate
+	MenuTextColor setcolor
+        dup ThingSize
+	-.5 mul exch -.5 mul exch
+	ShowThing
+      } ifelse
+    grestore
+  } def
+
+  /showat {
+    PaintedArg null ne PaintedValue null ne and
+    MenuCanvas null ne and MenuWidth null ne and {
+      MenuGSave
+        /PaintedArg load EraseArg
+        /PaintedArg null store
+	null PaintArg
+      grestore
+    } if
+    /MenuArg null def
+    /MenuArgIndex null def
+    /showat super send
+  } def
+
+  /SetMenuValue { % x y => -
+    /SetMenuValue super send
+    /MenuArg
+      MenuValue null eq
+      {null true}
+      {MenuArgs MenuValue get dup length 0 eq} ifelse {
+        pop null
+	/MenuArgIndex null def
+      } {
+        PieDistance PieRadius 1 sub min NumbRadius sub
+	PieRadius NumbRadius sub div 1 index length mul floor
+	/MenuArgIndex 1 index def
+	get
+      } ifelse
+    def
+  } def
+
+  /getmenuargindex { % - => index
+    MenuArgIndex
+  } def
+
+  /getmenuarg { % - => Thing
+    /MenuArg load
+  } def
+
+classend def
+
+end % systemdict

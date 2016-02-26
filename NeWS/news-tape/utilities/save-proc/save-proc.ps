@@ -1,0 +1,259 @@
+%!NeWS-1.0
+%
+% Copyright (C) 1988 by William Roberts. All rights reserved.
+% This program is provided for unrestricted use, provided that this
+% copyright message is preserved. There is no warranty, and no author
+% or distributor accepts responsibility for any damage caused by this
+% program.
+%
+% Date: Mon, 26 Oct 87 01:14:48 EST
+% Subject: Re: saving procedures from NeWS
+% From: William Roberts <liam@cs.qmc.ac.uk>
+%
+% This code defines the following useful routines:
+%
+% Print       any_object      => -   % prints the object
+% PrintDef    /name           => -   % prints a definition
+% FileOut     dict (filename) => -   % writes procedures to a file
+%
+% The output of PrintDef looks a bit stilted, e.g.
+% ---------------------------------
+% %
+%  /Print{ dup type /arraytype eq{ PrintArray}
+% { dup type /stringtype eq{ PrintString}
+% { PrintItem}
+%  ifelse}
+%  ifelse pause}
+%  def
+%
+% ---------------------------------
+% but it is legal and it is human-readable (almost). The Print and
+% PrintDef routines write to a file object which is called
+% /OutputFile and must be accessible on the dict stack. This
+% defaults to (%stderr) just like == and so on. The FileOut
+% method writes all the procedures in the given dictionary into
+% the filename of your choice.
+%
+% The main thing that still doesn't work is dictionaries: if you
+% register a name for the dictionary it will be identified, e.g.
+%
+%         /Object AddIndexItem
+%         Object Print
+% gives
+%         Object
+%
+% but otherwise you just get the obscure
+%
+%         dictionary[72]
+%
+% which is of course not very useful. Here is the code (it uses a
+% few useful things like fprintf which are supplied with NeWS):
+% ------------------------------------------------
+%!NeWS-1.0
+%%
+%% Write PostScript Objects to a file
+
+
+%% STAGE 1:
+%%
+%% The index of known names - you supply the object and that
+%% is used as a key in MyIndex to find the associated name.
+%% Pre-fill this with things from systemdict and a few
+%% well-known dictionary names
+
+/MyIndex 500 dict def
+
+/AddIndexItem { % name => -
+  MyIndex exch dup load exch cvx put
+} def
+
+% Load up with all systemdict operators
+
+systemdict {
+    dup dup
+    type /operatortype eq exch
+    type /dicttype eq or
+        { exch MyIndex 3 1 roll cvx put }
+        { pop pop }
+    ifelse
+} forall
+
+% Fix a couple of stupidities
+
+MyIndex systemdict /systemdict cvx put
+MyIndex userdict /userdict cvx put
+
+
+%% STAGE 2:
+%%
+%% Lowest level print stuff
+
+/FPrint { % string => - (write string to OutputFile)
+  OutputFile exch (%) fprintf
+} def
+
+% Default OutputFile is stderr
+
+/OutputFile (%stderr)(w) file def
+
+
+%% STAGE 3:
+%%
+%% Various print procedures of increasing complexity
+
+/PrintItem { % object => - (fprints object to OutputFile)
+  dup MyIndex exch known
+    { MyIndex exch get } if
+  OutputFile exch ( %) fprintf
+} def
+
+/PrintArray { % array => - (FPrint it to OutputFile)
+    dup xcheck { (}\n) ({) } { (]\n) ([) } ifelse
+    FPrint exch
+    /Print load forall
+    FPrint
+} def
+
+/PrintString { % string => - (FPrint string to OutputFile)
+   (\() FPrint /PrintChar load forall (\)) FPrint
+} def
+
+% Chars are somewhat harder - use a dictionary to record
+% some of the more common ones
+
+/StringSpecials 35 dict begin
+    (\n) 0 get (\\n) def
+    (\r) 0 get (\\r) def
+    (\t) 0 get (\\t) def
+    (\b) 0 get (\\b) def
+    (\f) 0 get (\\f) def
+    (\\) 0 get (\\\\) def
+    (\() 0 get (\\() def
+    (\)) 0 get (\\)) def
+currentdict end
+def
+
+/PrintChar { % int => - (FPrint equivalent char string)
+    dup
+    StringSpecials exch known
+      { StringSpecials exch get }
+      { dup 127 gt
+        { (\\) FPrint 8 (000) cvrs }
+        { dup 32 lt
+          { 8 (00) cvrs (\\0xx) dup 2 4 -1 roll putinterval}
+          { (x) dup 0 4 -1 roll put } ifelse
+        } ifelse
+      } ifelse
+    FPrint
+} def
+
+
+%% STAGE 4:
+%%
+%% The interesting print procedures
+
+/Print { % anything => - (FPrint it to OutputFile)
+    dup type /arraytype eq {PrintArray} {
+    dup type /stringtype eq {PrintString} {PrintItem} ifelse
+    } ifelse
+    pause
+} def
+
+/PrintDef { % name => - (FPrint definition to OutputFile)
+  (%\n) FPrint
+  dup Print load Print ( def\n\n) FPrint
+} def
+
+% FileOut preserves the original OutputFile and restores
+% it at the end. Be warned, this takes a fair while if you
+% decide to FileOut the systemdict....
+
+/FileOut { % dict name => - (write dict procs to file)
+    OutputFile 3 1 roll
+    /OutputFile exch (w) file store
+    dup begin
+    { dup xcheck
+      { type /operatortype ne { PrintDef} { pop } ifelse }
+      { pop pop } ifelse
+    } forall
+    end
+    OutputFile closefile
+    /OutputFile exch store
+    (Done\n) print
+} def
+% ------------------------------------------------
+% Here is the result of typing
+%
+% lhc1% psh
+% executive
+% (fileproc.ps) run
+% currentdict (fileout) FileOut
+%
+% ------------------------------------------------
+% %
+%  /Print{ dup type /arraytype eq{ PrintArray}
+% { dup type /stringtype eq{ PrintString}
+% { PrintItem}
+%  ifelse}
+%  ifelse pause}
+%  def
+%
+% %
+%  /AddIndexItem{ MyIndex exch dup load exch cvx put}
+%  def
+%
+% %
+%  /FileOut{ OutputFile 3 1 roll /OutputFile exch(w) file store dup begin{ dup xcheck{ type /operatortype ne{ PrintDef}
+% { pop}
+%  ifelse}
+% { pop pop}
+%  ifelse}
+%  forall end OutputFile closefile /OutputFile exch store(Done\n) print}
+%  def
+%
+% %
+%  /PrintString{(\() def
+%     ()) 0 get (\)) FPrint /PrintChar load forall()) FPrint}
+%  def
+%
+% %
+%  /FPrint{ OutputFile exch(%) fprintf}
+%  def
+%
+% %
+%  /PrintDef{(%\n) FPrint dup Print load Print( def\n\n) FPrint}
+%  def
+%
+% %
+%  /execfile file(?,W,R) def
+%
+% %
+%  /PrintItem{ dup MyIndex exch known{ MyIndex exch get}
+%  if OutputFile exch( %) fprintf}
+%  def
+%
+% %
+%  /PrintChar{ dup StringSpecials exch known{ StringSpecials exch get}
+% { dup 127 gt{(\\) FPrint 8(000) cvrs}
+% { dup 32 lt{ 8(00) cvrs(\\0xx) dup 2 4 -1 roll putinterval}
+% {(x) dup 0 4 -1 roll put}
+%  ifelse}
+%  ifelse}
+%  ifelse FPrint}
+%  def
+%
+% %
+%  /PrintArray{ dup xcheck{(}\n)({)}
+% {(]\n)([)}
+%  ifelse FPrint exch /Print load forall FPrint}
+%  def
+%
+% %
+%  /bye{ quit}
+%  def
+%
+% --
+%
+% William Roberts         ARPA: liam@cs.qmc.ac.uk
+% Queen Mary College      UUCP: liam@qmc-cs.UUCP
+% LONDON, UK              Tel:  01-975 5250

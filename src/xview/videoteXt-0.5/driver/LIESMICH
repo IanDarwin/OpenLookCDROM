@@ -1,0 +1,144 @@
+============================================================================
+Ladbarer Videotext-Device-Treiber V1.4 für Linux     (C) 1994-95 Martin Buck
+============================================================================
+
+
+Dieser Videotext-Treiber ermöglicht es, Videotext-Karten unterschiedlicher
+Hersteller ohne Änderungen am Decoder-Programm anzusteuern. Er wurde so
+geschrieben, daß eine Unterstützung aller Videotext-Interfaces, die auf dem
+SAA 5243 bzw. SAA 5246 von Philips basieren mit minimalen Änderungen im
+Treiber möglich ist. Auch Karten, die auf anderen Chipsätzen basieren, aber
+eine ähnliche Funktionalität bieten, können unterstützt werden, da hardware-
+abhängige Details wie Registerbelegungen usw. für das ansteuernde Programm
+nicht sichtbar sind.
+
+Der Treiber sorgt dafür, daß im Programm selbst keine Low-Level I/O-
+Operationen mehr notwendig sind, weshalb das Decoder-Programm ohne root-
+Rechte laufen kann. Außerdem wird für ein definiertes Timing gesorgt, da das
+udelay()-Makro Mikrosekunden-Auflösung bietet und durch die
+Verzögerungsschleife beim Booten (BogoMips) kalibriert wird.
+
+Im Moment werden folgende Interfaces unterstützt:
+o c't-Videotext-Karte: Wurde in der Zeitschrift c't 11/91 auf Seite 228 ff
+  und in c't 7/92, S. 176 ff vorgestellt. Es wird nur die Version mit SAA5246
+  unterstützt. Der SAA5244 ist unbrauchbar.
+o serielle c't-Karte: Die in c't 7/92 vorgestellte Karte kann auch an einer
+  seriellen Schnittstelle angeschlossen werden; dazu ist das Kabel mit
+  Amiga-Pinbelegung notwendig:
+    Videotext-Decoder             Serielle Schnittstelle
+    (9-polig Sub-D)               (25-pol. / 9-pol. Sub-D)
+    SCL     (Pin 8) <-----------> RTS (Pin 4 / Pin 7)
+    SDA-out (Pin 7) <-----------> DCD (Pin 8 / Pin 1)
+    SDA-in  (Pin 9) <-----------> DTR (Pin 20 / Pin 4)
+    GND     (Pin 3) <-----------> GND (Pin 7 / Pin 5)
+o VTX2000/VD3000: Wird von der Firma Wiegand Datentechnik/Videodat Medien GmbH
+  hergestellt. Die VTX2000 ist eine nur-Videotext Einsteckkarte; die VD3000
+  enthält zusätzlich einen (nicht unterstützten) Videodat-Decoder.
+o ELV PC-VT 7000: Ein externer Decoder mit ISA-Bus-Interface. Wurde in der
+  Elektronik-Zeitschrift ELV journal 2/90, S. 54, 3/90, S. 54 und 4/90, S. 16
+  veröffentlicht. Dieser Treiber ist noch ungetestet, ich bitte um
+  Rückmeldung, falls er bei irgendjemand funktioniert.
+o SATCOM: Eine externer Videotext-Decoder, der an einer seriellen Schnitt-
+  stelle angeschlossen wird. Er wird von der Firma KDK SATCOM hergestellt.
+o Außerdem wird ein von mir selbstentwickeltes Interface unterstützt, das
+  über die Druckerschnittstelle eine Verbindung zu einem in einem Video-
+  recorder eingebauten Videotext-Decoder herstellt.
+
+Zu anderen Interfaces liegen mir im Moment leider keine Unterlagen vor,
+weshalb ich sie (noch) nicht unterstützen kann. Besitzer von nicht
+unterstützten Interfaces sollten sich bei mir melden, denn wenn ich nicht
+weiß, daß ein Bedarf vorhanden ist, werde ich mich um das entsprechende
+Interface natürlich auch nicht kümmern.
+
+Nähere Informationen zur Ansteuerung des Treibers befinden sich in der Datei
+'programming.txt' (im Moment nur in Englisch). Ich bitte auch die Autoren
+anderer Videotext-Decoder, sich bei mir zu melden, da ich immer an anderen
+(besseren) Implementationen interessiert bin.
+
+
+INSTALLATION
+------------
+
+Da der Treiber nur aus einem einzigen Sourcefile besteht, ist die
+Installation nicht allzu schwierig. Allerdings sind dazu (wie bei jedem
+Treiber) root-Rechte erforderlich.
+
+Zuerst muß im Makefile das Kommentarzeichen vor der Zeile mit dem
+gewünschten Interface entfernt werden und die entsprechende Default-
+Basisadresse eingetragen werden. Außerdem sollte überprüft werden, ob die
+voreingestellte Major-Nummer des Treibers noch frei ist (mit 'cat
+/proc/devices' bekommt man eine Liste der momentan vorhandenen Treiber) und
+ggf. eine andere, freie eingetragen werden. Zusätzlich können noch die
+Directories, Permissions und Gruppen der zu installierenden
+Dateien/Device-Files eingestellt werden.
+
+Jetzt kann der Treiber mit 'make' compiliert und mit 'make install' (als
+root) installiert werden. Geladen wird der Treiber am besten beim Booten mit
+insmod <Name>. Dazu sind die Linux-Modutils notwendig.
+
+Das neue Modutils-Paket (Linux 1.1.67) ermöglicht es, beim Laden des
+Treibers Argumente zu übergeben. Im Moment kann die Basisadresse mit
+base_io=<Adresse> und die Major-Nummer mit major=<Major-Nummer> eingestellt
+werden. Mit slow_if=1 kann der Treiber langsamer gemacht werden, falls viele
+Timeouts auftreten.
+
+Beim Laden des Treibers können Fehlermeldungen wegen undefinierter Symbole
+ausgegeben werden. Dies liegt daran, daß vor Linux 1.1.63 noch nicht alle
+notwendigen Symbole vom Kernel exportiert wurden. Um dies zu ändern, müssen
+in den Kernel-Sources in der Datei 'kernel/ksyms.c' die entsprechenden
+Symbole eingetragen werden (ohne '_' am Anfang, wie bei den schon
+vorhandenen Symbolen auch); außerdem muß evtl. zusätzlich '#include
+<linux/delay.h>' am Dateianfang eingefügt werden. Nach dem Booten des neuen
+Kernels sollte der Treiber dann problemlos geladen werden.
+
+Achtung: Bei Benutzung des Treibers für die serielle c't-Karte und den
+SATCOM-Decoder ist darauf zu achten, daß die benutzte serielle Schnittstelle
+nicht gleichzeitig angesprochen wird. Andernfalls könnten unvorhersehbare
+Ereignisse eintreten. Falls die entsprechende Schnittstelle nur für die
+Ansteuerung der Videotext- Karte benutzt wird, wäre es am besten, den
+Treiber für die serielle Schnittstelle komplett zu deaktivieren. Leider
+kenne ich keine Möglichkeit, die serielle Schnittstelle nur zeitweise zu
+deaktivieren.
+
+
+BUGS
+----
+
+Falls Probleme auftreten, bitte ich um eine möglichst genaue Beschreibung
+und wenn möglich eine Anleitung, wie der Fehler reproduzierbar ist. Bei
+Kernel-Panics o.ä. benötige ich unbedingt den Register-Dump, der alle
+folgenden Informationen enthalten sollte:
+
+        general protection: xxxx
+        EIP:    0010:xxxxxxxx
+        EFLAGS: xxxxxxxx
+        eax: xxxxxxxx   ebx: xxxxxxxx   ecx: xxxxxxxx   edx: xxxxxxxx
+        esi: xxxxxxxx   edi: xxxxxxxx   ebp: xxxxxxxx
+        ds: xxxx  es: xxxx  fs: xxxx  gs: xxxx
+        Pid: xx, process nr: xx
+        xx xx xx xx xx xx xx xx xx xx
+
+Außerdem benötige ich die Startadresse, die insmod beim Laden des Treibers
+ausgibt: module `vtx.drv' (1 pages @ 0x0100e000) created
+                                     ^^^^^^^^^^
+Was auch nicht fehlen sollte ist ein Dump der Symbole aus dem Objekt-File
+des Treibers (mit 'nm /etc/drivers/vtx.drv' erzeugen). Mit den neuen
+Modutils (1.1.67) wird die Startadresse standardmäßig nicht ausgegeben,
+stattdessen kann mit 'insmod -m' beim Laden ein Symbol-Dump erstellt werden.
+
+Falls auch nur eine der Angaben fehlt, ist der Bug-Report für mich wertlos.
+
+
+COPYRIGHT
+---------
+
+Der Treiber kann unter Beachtung der Bedingungen der GNU General Public
+License (Datei 'COPYING') frei kopiert werden.
+
+
+
+So, jetzt aber viel Spaß mit dem Treiber,
+Martin Buck
+
+Internet: <martin.buck@student.uni-ulm.de>
+Sackpost: Martin Buck, Paukengasse 2, D-89077 Ulm, Deutschland

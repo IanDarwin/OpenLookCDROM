@@ -1,0 +1,282 @@
+#! /usr/NeWS/bin/psh
+%
+% From jag@Sun.COM Fri Nov  4 20:55:01 1988
+% Date: Thu 3 Nov 1988 10:27:56 EST
+% From: James Gosling <jag@Sun.COM>
+% Subject: Just for grins
+% To: don@brillig.umd.edu
+% 
+% A cheezy lunar lander game
+
+% draw the lunar lander
+/lander { 	% thrust rotation x y => -
+	gsave translate rotate
+		0 setgray
+	%body
+		-37 -45 moveto
+		-37 -30 lineto
+		-11 -30 lineto
+		-30 -11 lineto
+		-30 11 lineto
+		-11 30 lineto
+		11 30 lineto
+		30 11 lineto
+		30 -11 lineto
+		11 -30 lineto
+		37 -30 lineto
+		37 -45 lineto
+		closepath
+	%flame
+		-11 -45 moveto
+		neg -45 add 0 exch lineto
+		11 -45 lineto
+	%left leg
+		-30 -45 moveto
+		-30 -30 rlineto
+		-5 0 rmoveto
+		10 0 rlineto
+		-15 -45 moveto
+		-45 -60 lineto
+	%right leg
+		30 -45 moveto
+		30 -30 rlineto
+		-5 0 rmoveto
+		10 0 rlineto
+		15 -45 moveto
+		45 -60 lineto
+
+	%window
+		-10 8 moveto
+		-8 8 rlineto
+		10 0 rlineto
+		closepath
+
+		10 8 moveto
+		8 8 rlineto
+		-10 0 rlineto
+		closepath
+
+		stroke
+	grestore
+} def
+
+% construct a proc to draw the shards that get scattered after an explosion
+/shards
+[ 0 1 15 {
+    pop
+    /theta random 180 mul def
+    /r random 25 mul 15 add def
+    /r2 random 10 mul 5 sub r add def
+    /theta2 theta random 15 mul 15 add add def
+    theta cos r mul theta sin r mul /moveto load
+    theta2 cos r2 mul theta2 sin r2 mul /lineto load
+  } for ] cvx def
+
+/shards [ 0 1 15 {
+    pop
+    /theta random 180 mul def
+    /r random 25 mul 15 add def
+    /l random 10 mul 5 add def
+    /gsave load
+    theta cos r mul theta sin r mul /translate load
+    theta 90 add /finish cvx
+    random .5 sub 10 mul /mul load /add load /rotate load
+    l 0 /moveto load
+    l neg 0 /lineto load
+    /stroke load /grestore load
+  } for ] cvx def
+
+
+/boom { % sc x
+    gsave
+	ground 20 add translate
+	dup scale
+	shards
+    grestore
+} def
+
+framebuffer setcanvas
+
+% The bounding box of the framebuffer
+clippath pathbbox /ymax exch def /xmax exch def /ymin exch def /xmin exch def
+
+/backdrop framebuffer newcanvas def
+backdrop /Retained false put
+backdrop /Transparent false put
+clippath backdrop reshapecanvas
+backdrop /Mapped true put
+/scfac .5 def
+/stars [ 100 {
+    random xmax scfac div mul random ymax scfac div mul /moveto load
+    0 0 /rlineto load
+} repeat ] cvx def
+stroke				% some stars
+
+/tsize 100 def
+/tstep xmax scfac div tsize div def
+/ty random 200 mul def
+/slope random def
+/terrain [ tsize {
+    ty /ty ty random slope sub 80 mul add def
+    ty 0 lt { /ty 0 def /slope slope neg def } if
+    random .3 lt { /slope random sqrt 2 div random .5 lt { .5 add } { .5 exch sub } ifelse def} if
+} repeat ] def
+
+/ty 0 def
+/tfunc /moveto load def
+/drawterrain [ terrain {
+	ty exch /tfunc load
+	/tfunc /lineto load def
+	/ty ty tstep add def
+} forall ] cvx def
+/left 0 def
+/bottom 0 def
+
+/drawscene {
+	backdrop setcanvas
+	scfac dup scale
+	left bottom translate
+	0 setgray clippath fill		% The blackness of space
+	1 setgray
+	stars
+	drawterrain
+	stroke
+	clippath pathbbox
+	/vymax exch def /vxmax exch def /vymin exch def /vxmin exch def
+	fboverlay setcanvas
+	scfac dup scale
+	left bottom translate
+} def
+drawscene
+clippath pathbbox /ymax exch def /xmax exch def /ymin exch def /xmin exch def
+gsave
+	/str { 	% y str => new_y
+		exch 15 sub dup 20 exch moveto
+		exch show
+	} def
+	backdrop setcanvas
+	1 setgray
+	clippath pathbbox
+	/Times-Roman findfont 12 scalefont setfont
+	(Moving the mouse left-right controls the attitide of the craft,) str
+	(Moving the mouse up-down controls the thrust.) str
+	(Upright, zero thrust, is in the center of the screen.) str
+grestore clear
+/theta 0 def		% the attitude of the lander
+/xp xmax .1 mul def	% the coordinates of the lander
+/yp ymax .9 mul def
+/timestep .001 def	% time between screen updates
+/dx 5 def		% current velocity
+/dy -3 def
+/finish 30 def
+
+% draw a small person
+/person { % x y
+    gsave
+	translate
+	-10 0 moveto
+	0 20 lineto
+	10 0 lineto
+	0 20 moveto
+	0 45 lineto
+	-5 5 rlineto
+	5 5 rlineto
+	5 -5 rlineto
+	-5 -5 rlineto
+	-15 30 moveto
+	0 40 lineto
+	15 20 lineto
+	stroke
+    grestore
+} def
+
+
+/shrinktest { 
+    altitude 300 lt { 
+	/scfac 1.5 def
+	/left xp xmax 8 div sub neg def
+	/bottom ground 1.5 div neg def
+	drawscene
+	/magtest /expandtest load def
+    } if
+} def
+/expandtest { 
+    altitude 300 gt { 
+	/scfac .5 def
+	/left 0 def
+	/bottom 0 def
+	drawscene
+	/magtest /shrinktest load def
+    } if
+    xp vxmin le xp vxmax ge or { 
+	/left xp xmax 8 div sub neg def
+	/bottom ground 2 div neg def
+	drawscene
+    } if
+} def
+/magtest /shrinktest load def
+
+% Tick gets executed every time the clock ticks: it deals with the simulation
+% and drawing of the lander
+/Tick {
+    TickEvent dup /TimeStamp currenttime timestep add put sendevent
+    /xp xp dx add store
+    xp xmax ge { /dx dx neg store /xp xmax 1 sub store } if
+    xp xmin le { /dx dx neg store /xp xmin 1 add store } if
+    /yp yp dy add store
+    /dy theta cos thrust mul 30 div .1 sub dy add store
+    /dx dx theta sin thrust mul 30 div sub store
+    /tslot xp tstep div floor def
+    /ground terrain tslot get
+	    terrain tslot 1 add terrain length 1 sub min get
+	    max def
+    /altitude yp ground sub def
+    altitude 77 lt {
+	dx abs 3 lt dy abs 3 lt and theta abs 20 lt and { 
+	    /Tick { finish 0 lt { erasepage quit }  if
+		/finish finish 1 sub store
+		TickEvent dup /TimeStamp currenttime timestep add put sendevent
+	    } store
+	    /picture {
+		0 0 xp ground 77 add lander
+		xp 50 finish sub -3 mul add ground 10 add person
+	    } store
+	} { 
+	    /Tick {  finish 0 lt { erasepage quit }  if
+		/finish finish 1 sub store
+		TickEvent dup /TimeStamp currenttime timestep add put sendevent
+	    } def
+	    /picture {
+		30 finish sub 3 div 1 add xp boom
+	    } store
+	} ifelse
+    } if
+    magtest
+} def
+
+/MouseDragged {
+	/thrust this /YLocation get vymin sub vymax vymin sub div .5 sub 50 mul store
+	/theta this /XLocation get vxmin sub vxmax vxmin sub div .5 sub 200 mul store
+} def
+
+/picture /lander load def
+/thrust 0 def
+    createevent dup begin
+	/Name 10 dict dup begin
+		/MouseDragged dup def
+		/LeftMouseButton dup def
+		/MiddleMouseButton dup def
+		/RightMouseButton dup def
+		/Tick dup def
+	end def
+    end expressinterest
+    /TickEvent createevent dup begin
+	/Name /Tick def
+	/TimeStamp currenttime def
+    end def
+    TickEvent sendevent
+    { 	erasepage clear thrust theta xp yp picture
+	/this awaitevent def
+	this /Name get cvx exec
+    } loop
+

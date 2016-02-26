@@ -1,0 +1,68 @@
+#!/bin/bash
+
+
+unset CRON
+if [ "$1" = -cron ]; then
+  . /etc/bash_profile &> /dev/null
+  CRON=1
+fi
+cd $HOME/public_html/private-TV
+
+
+DESTDIR=$HOME/public_html/TV
+TV2HTML_DIR=`pwd`/data
+TV2HTML_MAINT='Martin Buck'
+TV2HTML_MAIL='martin.buck@student.uni-ulm.de'
+TV2HTML_HOMEURL='http://wwwuser.rz.uni-ulm.de/~s_buck/'
+
+
+export DESTDIR TV2HTML_DIR TV2HTML_MAINT TV2HTML_MAIL TV2HTML_HOMEURL
+PATH=$HOME/bin/$ARCH:$HOME/bin:/soft/local/gnu/bin:/soft/common/gnu/bin:/soft/local/bin:/soft/common/bin:/usr/local/bin:/bin:/usr/bin:/usr/ucb:.
+
+DISKCOUNT=0
+while :; do
+  if [ $DISKCOUNT -gt 8 ]; then
+    echo Disk is full. GIVING UP.
+echo 'Subject: tv2html failed (disk full)
+
+Disk was full during the last 8 attempts to start tv2html. GIVING UP.
+' | /usr/lib/sendmail "$TV2HTML_MAIL"
+
+    exit 1
+  fi
+  DISKFREE=`/bin/df $HOME/public_html | tail -1 | gawk '{ print $4 }'`
+  if [ "$DISKFREE" -lt 1000 ]; then
+    echo Disk is full.
+    [ ! $CRON ] && exit 1
+echo 'Subject: tv2html delayed (disk full)
+
+Disk is currently full, will try to start tv2html again in 2 hours.
+' | /usr/lib/sendmail "$TV2HTML_MAIL"
+    
+    sleep 7200
+  else
+    break
+  fi
+  DISKCOUNT=$[ $DISKCOUNT + 1 ]
+done
+
+
+progname=`basename $0`
+if [ $progname != remote.update ]; then
+  rm -f $TV2HTML_DIR/*[0-9]
+  CURRENT=`pwd`
+  cd $TV2HTML_DIR
+  ls *.db > tar.exclude 2> /dev/null
+  gzip -cd $CURRENT/tv2html.tgz | tar -xvf - -X tar.exclude
+  rm -f tar.exclude
+  cd $CURRENT
+
+  ./updatedb
+fi
+
+./tv2html
+
+mv $DESTDIR $DESTDIR.old
+mv $TV2HTML_DIR/html $DESTDIR
+rm -fr $DESTDIR.old
+rm -f $TV2HTML_DIR/*[0-9]

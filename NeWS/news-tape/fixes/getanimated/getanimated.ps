@@ -1,0 +1,51 @@
+%!
+% Date: Mon, 3 Aug 87 15:02:04 EST
+% From: Don Hopkins <don@brillig.umd.edu>
+% To: news-makers@brillig.umd.edu
+% Subject: getanimated bug
+% 
+% There's a bug in getanimated, defined in util.ps. The problem is that
+% it's not setting /Exclusivity in the interest to true. Without
+% exclusivity, every PostScript process doing a getanimated will receive
+% any button clicks, when you're sizing windows, etc. With exclusivity,
+% only the most recent process to express interest in such events will
+% get them, which is more reasonable behavior. This solves the problem
+% with starting several psterms (or whatever) at the same time and
+% having them all end up stacked on top of each other. You will be able
+% to position one after the other, now. Here is what getanimated should
+% look like:
+
+systemdict begin % Make sure it goes into systemdict, if loaded with psh ...
+/getanimated {
+    10 dict begin
+    /proc exch  def /y0 exch def /x0 exch def
+    currentcursorlocation /y exch def /x exch def
+    GA_constraint null ne GA_value null eq and {
+	/GA_value currentcursorlocation GA_constraint 1 eq {exch} if pop store
+    } if
+    .033333 blockinputqueue
+    {   createevent dup begin
+	  /Name [PointButton AdjustButton MenuButton] def
+	  /Action [UpTransition DownTransition] def
+	  /Exclusivity true def
+	  end expressinterest
+	createevent dup /Name /MouseDragged put expressinterest
+	unblockinputqueue
+	{   
+	    GA_constraint 0 eq {/x GA_value def} if
+	    GA_constraint 1 eq {/y GA_value def} if
+	    erasepage x0 y0 moveto x y /proc load exec stroke
+	    awaitevent begin
+	      Action UpTransition eq { end exit } if
+	      /x XLocation store /y YLocation store
+	    end
+	} loop
+	erasepage
+	/GA_constraint null store
+	/GA_value null store
+	[x y] 
+    } fork
+    end
+} def
+
+end % systemdict

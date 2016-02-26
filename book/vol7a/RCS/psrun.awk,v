@@ -1,0 +1,305 @@
+head     1.5;
+branch   ;
+access   ;
+symbols  ;
+locks    ;
+comment  @@;
+
+
+1.5
+date     95.02.20.21.06.21;  author ian;  state Exp;
+branches ;
+next     1.4;
+
+1.4
+date     95.02.19.14.55.38;  author ian;  state Exp;
+branches ;
+next     1.3;
+
+1.3
+date     95.02.18.12.27.27;  author ian;  state Exp;
+branches ;
+next     1.2;
+
+1.2
+date     95.02.17.21.29.55;  author ian;  state Exp;
+branches ;
+next     1.1;
+
+1.1
+date     95.02.16.11.59.19;  author ian;  state Exp;
+branches ;
+next     ;
+
+
+desc
+@Main script of Ian's psmerge package: the awk script that
+strips the prolog and various garbage, fiddles page numbers, etc.,
+and merges the files into one big file on stdout.
+@
+
+
+1.5
+log
+@Change comments. Add one case to "if" statement, for VOl7B filenames.
+Add extra blankPages call for ch25.ps to workaround strangeness in Vol7a/25.
+Add %%EOF at very end.
+@
+text
+@#!/bin/nawk -f
+#
+# psrun - run several DSC-conforming PostScript files - not necessarily
+# all from one application - into one "book.ps" file. Assumes that you're
+# running the PS interpreter on your workstation or can download all the
+# files to the printer's disk.
+
+# Ideas from Adobe via Charles Poynton's tech notes.
+
+# Assuming the input may not have pdfmarks in it, we add a "pdfmark" like this:
+# [/Page 27 /View [/Fit] /Title (Preface) /OUT pdfmark
+# for each file, to make a minimal chapter-level TOC.
+# The subject line comes from the file "BOOKFILES" described below.
+
+BEGIN	{		## START OF LARGE BEGIN ACTION
+	BF = "book.ps"
+	# TODO can we use "startjob" instead of all this?
+	print "%!PS-Adobe" > BF
+	print "" >> BF
+	# Next 4 lines must agree with like lines in toc-linked.ps!
+	print "/cropLLX 30 def" >> BF
+	print "/cropLLY 90 def" >> BF
+	print "/cropURX 520 def" >> BF
+	print "/cropURY 760 def" >> BF
+	print "/TopOfPage cropURY def" >> BF
+	print "[/CropBox [cropLLX cropLLY cropURX cropURY] /PAGES pdfmark" >> BF
+	print "" >> BF
+
+	print "/prun {/mysave save def RunFile clear cleardictstack mysave restore} def" >> BF
+
+	# variable initializations...
+	pagenum = 1	# avoid "page zero" problems
+
+	if (ARGC < 1) {
+		print "Usage: psrun"
+		exit 1
+	}
+
+# BOOKFILE contains a list of files in the book and, for each, a *short*
+# description of that chapter. MUST BE ONE TAB between each filename
+# and its descriptor. Example:
+# toc.ps Contents
+# ch00.ps Preface
+# ch01.ps 1. XView and X
+# ch02.ps 2. XView Programmer's Model
+
+	# TODO error checking
+	while (getline < "BOOKFILES" == 1) {
+		fname = $1
+		title = ""
+		for (i=2; i<=NF; i++)
+			title = title " " $i
+		titles[fname] = title
+	}
+
+	}		## END OF LARGE "BEGIN" ACTION
+
+function toc_entry(fname, title, pnum) {
+	print "% psrun - inclusion of " fname	>> BF
+	print "[/Page", pnum, "/View [/XYZ -4 TopOfPage 0] " >> BF
+	sub(/^ /, "", title)	# chop leading space if any
+	print "	/Title (" title ") /OUT pdfmark" >> BF
+	print "(" fname ") prun"	>> BF
+}
+
+# Fix for Vol7A/B books  - book had title pages but we didn't get them
+function blankPages() {
+	for (ql=1;ql<=2;ql++) {
+		print "%%Page:", pagenum++, "dummy" >> BF
+		print "/Helvetica findfont 12 scalefont setfont" >> BF
+		print "200 600 moveto (This page intentionally left blank) show" >> BF
+		print "200 550 moveto (to preserve original page counts.) show" >> BF
+		print "showpage" >> BF
+		print "%%EndPage" >> BF
+		}
+	}
+FNR == 1 {
+	# Insert blank pages for the "Chapter Headers" in the printed book.
+	# Only do so if filename is ch*, sec* or app* - O'Reilly-specific.
+	t = substr(FILENAME, 1, 2)
+	if (t == "ch" || t == "ap" || t == "se")
+		blankPages()
+	if (FILENAME == "ch25.ps")
+		blankPages()	# work around a bug in the PS files??
+	toc_entry(FILENAME, titles[FILENAME], pagenum)
+	}
+
+/^%%Page:/ {$3 = ++pagenum; relpagnum = $2}
+
+END	{
+	print "%%EOF" >> BF
+	}
+@
+
+
+1.4
+log
+@Numerous small changes: postincrement pagenum in %%Page: for dummy pages.
+Fix typo that prevented blankPages for Appendices. Formatting and comments.
+Remove some of the overlap with toc-linked.ps' prolog, and warn about
+what's left.
+@
+text
+@a7 1
+# Inspired by psconcat, by Gerald Spiegel, University of Karlsruhe, Germany.
+d78 2
+d81 1
+a81 1
+	if (t == "ch" || t == "ap")
+d83 2
+d91 1
+@
+
+
+1.3
+log
+@Rename psmerge to psrun. Does not strip prologs anymore, nor write
+all files out, just RunFile's for each one, plus all kinds of 
+ancilliary stuff like pdfmarks.
+@
+text
+@d21 8
+a28 10
+	print "/cropLLX 50 def>> BF
+	print "/cropLLY 90 def>> BF
+	print "/cropURX 510 def>> BF
+	print "/cropURY 770 def>> BF
+	print "/TopOfPage cropURY def>> BF
+	print ">> BF
+	print "/lftmargin cropLLX 20 add def>> BF
+	print "/botmargin cropLLY 20 add def>> BF
+	print "/ritmargin cropURX 20 sub def>> BF
+	print "/topmargin cropURY 20 sub def>> BF
+a31 2
+	print "(setup.ps) RunFile" >> BF
+
+d36 1
+a36 1
+		print "Usage: psmerge file..."
+d60 1
+a60 1
+	print "% psmerge - start of " fname	>> BF
+d64 1
+a64 1
+	print "(" fname ") prun"	>>BF
+d70 1
+a70 1
+		print "%%Page:", ++pagenum, "dummy" >> BF
+d80 1
+a80 1
+	if (t == "ch" || ch == "ap")
+@
+
+
+1.2
+log
+@pdfmark_toc_entry gets pagenumber as an argument, not a global.
+Try to fill in the missing "title page" pages.
+@
+text
+@d3 4
+a6 2
+# psmerge - merge several DSC-conforming PostScript files from one application
+# into one large "book" file (on stdout). 
+d9 1
+a9 3
+# This program by Ian Darwin, ian@@darwinsys.com, since Geralds' was
+# very specific to the FrameMaker Mac PostScript format and I needed
+# something much more general.
+d16 15
+a30 6
+function pdfmark_toc_entry(fname, title, pnum) {
+	print "% psmerge - start of " fname
+	print "[/Page", pnum, "/View [/XYZ -4 TopOfPage 1] "
+	sub(/^ /, "", title)	# chop leading space if any
+	print "	/Title (" title ") /OUT pdfmark"
+}
+d32 7
+a38 1
+BEGIN	{		## START OF LARGE BEGIN ACTION
+a43 11
+# Assumes you have a common prolog - does NOT try to merge files
+# from different applications!
+# The PROLOG file must contain all font names and procedure definitions 
+# needed in all input PS files.  My version does not try to check this.
+
+	PROLOG="prolog.ps"
+
+	# TODO error checking
+	while (getline < PROLOG == 1)
+		print
+
+a60 3
+	# variable initializations...
+	pagenum = 1	# avoid "page zero" problems
+
+d63 8
+d74 6
+a79 5
+		print "%%Page:", ++pagenum, "dummy"
+		print "/Helvetica findfont 12 scalefont setfont"
+		print "200 600 moveto (This page intentionally left blank) show"
+		print "showpage"
+		print "%%EndPage"
+a81 1
+# rip out the Prolog from each file.
+d83 4
+a86 6
+	if (FILENAME != "TITLE.ps" &&
+	    FILENAME != "COPYRIGHT.ps" &&
+	    FILENAME != "toc.ps")
+		blankPages()	# Fix for Vol7A/B books only!
+	pdfmark_toc_entry(FILENAME, titles[FILENAME], pagenum)
+	eating_setup = 1
+a87 8
+/^%%EndSetup/ {
+	eating_setup = 0
+	next
+	}
+	{
+	if (eating_setup)
+		next
+	}
+a88 6
+# Rip out gratuitous spare save and restores that sqtroff puts out
+$1 == "save" { next }
+$1 == "restore" { next }
+
+/^%%Trailer/ { print "%%EndPage:", pagenum, relpagnum; }
+
+a90 3
+	# whatever is left - most of the file - gets printed
+	{print}
+
+a91 3
+	print "sqtrVMsave restore"
+	print "%%Trailer"
+	print "%%EOF"
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d16 1
+a16 1
+function pdfmark_toc_entry(fname, title) {
+d18 1
+a18 1
+	print "[/Page", pagenum, "/View [/XYZ -4 0 0] "
+d62 10
+d74 5
+a78 1
+	pdfmark_toc_entry(FILENAME, titles[FILENAME])
+@

@@ -1,0 +1,86 @@
+From don@brillig.umd.edu  Thu Mar 31 08:59:30 1988
+Date: Thu, 31 Mar 88 08:59:30 EST
+To: NeWS-makers@brillig.umd.edu
+Subject: Pie Menus for NeWS 1.1
+From: Don Hopkins <don@brillig.umd.edu>
+Sender: NeWS-makers-request@brillig.umd.edu (Don Hopkins)
+
+Here's the latest piemenu.ps, for NeWS 1.1! You can psh it into your
+NeWS server, or load it from your user.ps. Note that because of a
+problem with /flipstyle, you should load piemenu.ps after customizing
+the NeWS rootmenu and its submenus. This is because flipstyle changes
+the submenu objects under rootmenu, but not the variables in
+systemdict that refer to them. The function /setdefaultmenu, defined
+and invoked in piemenu.ps, sends a /flipstyle to roomenu and redefines
+the rootmenu in systemdict.  If you want to change the menus after
+running piemenu.ps, one fix for this problem is to use /searchkey in
+your user.ps, after running piemenu.ps, to redefine the variables in
+systemdict to refer to the new submenus. Then you can send /insertitem
+and /deleteitem messages to terminalmenu, etc. (Otherwise you'd be
+changing the old submenus, and see no effect on the pie submenus.)
+
+% redefine menus in systemdict after flipstyle!
+(Applications =>) /searchkey rootmenu send {
+  /getmenuaction rootmenu send
+  /applicationsmenu exch def
+} if
+
+(Terminals =>) /searchkey applicationsmenu send {
+  /getmenuaction applicationsmenu send
+  /terminalmenu exch def
+} if
+
+(Fixed Startup =>) /searchkey terminalmenu send {
+  /getmenuaction terminalmenu send
+  /fixedterminalmenu exch def
+} if
+
+% etc...
+
+The above is a bit of a kludge. The way I think it should work is that
+menu actions that invoke submenus should be (executable?) keywords
+that refer to menus defined in systemdict, instead of the actual menu
+objects themselves. (see /getmenuaction) Then flipstyle would be able
+to redefine the keywords in systemdict, instead of just sticking new
+submenus into the new menus it creates. And you'd be able to just
+redefine keywords in systemdict to be new menus, and the any menus
+using those as submenus would reflect the changes.
+
+I'm also including class LayeredPieMenu. Its /new method takes an
+extra argument: an array of MenuArgs. The cursor distance from the menu
+center determines the argument from MenuArgs returned by the
+/getmenuarg method. One problem I had was that /flipstyle was
+flipping the style of instances of class LayeredPieMenu, whose actions
+use LayeredPieMenu's /getmenuarg method, not defined in class
+LitePullRightMenu. I defined a /flipstyle method in LayeredPieMenu
+that makes it immune to having its style flipped. Here is an example
+of how to use class LayeredPieMenu:
+
+/rloginmenu
+  [ 24 32 48 ]
+  [ (brillig) (gyre) (ballast) (tumtum) (amanda) (bensun) (haigha) (mimsy) ]
+  [ { (rsh % -n setenv NEWSSERVER % ; psterm -t h19 -bg -fl % -il % -li %)
+      [ currentkey % host
+        % get rid of hostname after ; in NEWSSERVER!
+	(NEWSSERVER) getenv (;) search {exch pop exch pop} if
+        currentkey dup % host NEWSSERVER host host
+        getmenuarg % host NEWSSERVER host host #lines
+      ] sprintf
+      forkunix } ]
+  /new LayeredPieMenu send
+  dup /LabelMinRadius 30 put
+def
+
+% add rlogin menu
+2 (Rlogin =>) rloginmenu /insertitem rootmenu send
+
+You will get an menu of hosts, which will show "24", "32", or "48" in
+the menu center when the cursor is in an active region, depending on
+how far out the cursor is. You will get a psterm that menu lines tall
+when you choose a host.
+
+Try out you own ideas, by making subclasses of PieMenu and LayeredPieMenu
+that do what you YOU want them to, and tell me about them! Have fun!
+
+	-Don
+

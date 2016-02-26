@@ -1,0 +1,641 @@
+# To unbundle, sh this file
+#
+# Date: Thu, 27 Jul 89 22:26:24 -0400
+# To: NeWS-makers@brillig.umd.edu
+# Subject: mterm-fix patches for GoodNeWS remote terminals, take 2
+# From: "Stephen C. Pope" <scp@sfi.santafe.edu>
+# Sender: NeWS-makers-request@brillig.umd.edu (Don Hopkins)
+# 
+# (Note, if my previous posting leaked out, throw it away, it's broken.)
+# 
+# Enough interest was expressed in my patches to mterm to enable
+# remote terminal emulators, so I'm posting the mess here.  Also,
+# you can get it (for an indefinite, short period via anonymous
+# ftp from sfi.santafe.edu (192.12.12.1) in ~ftp/pub/mterm-fix.tar.Z).
+# 
+# Stephen Pope
+# Santa Fe Institute
+# scp@sfi.santafe.edu
+# 
+echo README 1>&2
+sed 's/.//' >README <<'//GO.SYSIN DD README'
+-Since getting my copy, I've been an avid consumer of GoodNeWS,
+-authored by Arthur van Hoff of the Turing Institute, Glasgow, Scotland
+-(E-mail: arthur@turing.ac.uk).  However, as I'm employed at two different
+-internet sites, I find myself continually making rlogin connections
+-through my GoodNeWS terminal emulators (mterms) to do this or that.
+-Frequently enough that it deserved *Menu-ification*.
+-
+-Here's some changes to the mterm code distributed with GoodNeWS1.2.DEV
+-to enable opening terminal emulators on remote machines.  The general
+-mechanism is quite simple:  instead of {(term ...) forkunix}, you
+-do a {(rsh remotehost term ...) forkunix}.  However, some additional
+-changes to both the server side and the client side code were needed
+-to make everything *nice*.
+-
+-
+-NOTE:
+-
+-	This code is distributed under the same terms as GoodNeWS
+-is, whatever that means.  Read: use it, abuse it, but don't sell it.
+-
+-
+-WHERE:
+-
+-	For a limited time, you can get these mods via anonymous ftp
+-to sfi.santafe.edu (192.12.12.1).  Hopefully, if they're any good,
+-we can move them over to an ftp server with all the rest of the
+-NeWS/GoodNeWS universe.  If you can't ftp, contact myself
+-(scp@sfi.santafe.edu) and we'll work something out.
+-
+-
+-CAVEAT:
+-
+-	I don't particularily see myself *supporting* this stuff,
+-but I'm happy to do what I can, time permitting.
+-
+-
+-INSTALLING:
+-
+-	*** WARNING ***
+-
+-	I'm making the assumption here that you have control over
+-the $GNHOME directory, and that you can change term for everybody.
+-The changes made to the term source code will not adversely affect
+-the operation of term using the old user.ps/mterm/mconsole code,
+-so don't worry!
+-
+-	If you don't have patch 2.0, get it, or do the patching by
+-hand.  (You can find it at uunet.uu.net, amongst other places.)
+-
+-	Make a directory for all of this stuff somewhere.  I'll
+-assume it's in $GNHOME/mterm-fix.  Change pathnames as appropriate ...
+-
+-	cd $GNHOME/tools/mterm.
+-	cp $GNHOME/mterm-fix/termulator.ps .
+-	patch < $GNHOME/mterm-fix/diffs
+-	make install
+-
+-This should rebuild the term binary and install it in your
+-$GNHOME/bin.XXXX directory (you may want to check $GNHOME/Makefile.param
+-first).
+-
+-You'll also need to modify your user.ps to use the new mterms.
+-You need to insert the following line after $GNHOME/init.ps
+-is loaded and run.
+-
+-(GNHOME) getenv (/tools/mterm/termulator.ps) append run
+-
+-You'll also need the following nasty.  I put it in my user.ps,
+-above where all the GoodNeWS code is.  I think this should be
+-relatively portable; I need it because localhostname returns
+-my unqualified host name.  If you live on a network isolated
+-from the rest of the world and use only unqualified names,
+-you can skip it, and change all appearances of "localhostnamequalified"
+-to "localhostname" here and in $GNHOME/tools/mterm/termulator.ps
+-
+-% cheap and bad way to get qualified localhostname
+-systemdict /localhostnamequalified {
+-    (NEWSSERVER) getenv
+-    (;) search {
+-	pop pop
+-    } if
+-} put
+-
+-
+-Then, fix up your Menu entries.  To replace the existing Terminal
+-and Console entries, do the following:
+-
+-	(Terminal)		MenuActive {
+-	    () () /Pink Termulator }
+-	(Console)		MenuActive {
+-	    () (-c) /Pink Termulator }
+-
+-But the real point of all this is a menu of remote hosts to connect
+-to.  So I do the following:
+-
+-/RshMenu [
+-    (sfi)   	    	    	MenuActive  {
+-	(sfi.santafe.edu) (-l) /Pink Termulator}
+-    (laotse)   	    	    	MenuActive  {
+-	(laotse.santafe.edu) (-l) /Pink Termulator}
+-    (hegel)   	    	    	MenuActive  {
+-	(hegel.santafe.edu) (-l) /Pink Termulator}
+-    (foo)                       MenuActive  {
+-        (foo.cs.podunk.edu) (-l) /Pink Termulator}
+-    (bar)
+-        (bar.doglips.com) (-l) /Pink Termulator}
+-] /new GNMenu send def
+-
+-/TerminalsMenu [
+-        (Rsh)  	    	    	MenuActive RshMenu
+-	(Terminal)		MenuActive {
+-	    () () /Pink Termulator }
+-	(Console)		MenuActive {
+-	    () (-c) /Pink Termulator }
+-] /new GNMenu send def
+-
+-You'll obviously want to add your own remote hosts.  Bear in
+-mind that you need rsh permission on these hosts (via .rhost entries
+-or what-have-you), and they'll need to have the term binary
+-(but not termulator.ps, etc).
+-
+-
+-NOTES:
+-
+-	The following changes were made to the term source:
+-
+- - The -l command line option was added, so that your login
+-   shell will be run with a "-" prepended, causing .login
+-   to be sourced.  This is often desirable for remote connections.
+-
+- - Code was added so that the NEWSSERVER environment variable is
+-   properly set for the shell that term will invoke.  term (and
+-   termulator.ps) use a special socket to open the connection;
+-   this was left as the NEWSSERVER value when opening remote
+-   shells, so that you couldn't run anything in the remote
+-   shell which would connect back to the server.  Now, the following
+-   is done:  a) if NEWSSERVER is already set in the environment
+-   (remote) in which term is invoked, this value is placed into
+-   the environment of the remote shell.  b) Otherwise, the
+-   setnewshost command is used on the remote side to generate
+-   the appropriate NEWSSERVER entry.
+-
+-
+-	Termulator.ps is a rework of the code originally in
+-mterm and mconsole.  Several modifications were made:
+-
+- - It is now loaded into the server, and lives there, so it
+-   needn't be forkunixed into a psh.
+-
+- - Procedure Termulator takes the following args:
+-
+-	hostname termargs color
+-
+-   where hostname is the fully-qualified name of the host
+-   whether local or remote.  if it is an empty string, local
+-   is assumed.  termargs is a string of command line arguments to
+-   pass to term. -l is used to force the shell to source .login,
+-   -c is used to create a console shell.  Eventually, when
+-   all the other args built into term but not enabled are made
+-   usable, yuou can use them too!  color is the color
+-   name (/Pink, etc) to use for the GoodNeWS FrameCanvas
+-
+- - When attempting to connect to a remote host, an entry is made in
+-   the RemoteHostRegistry.  This avoids security violation problems.
+-
+- - A monitor is used to control the acceptance of connections to
+-   the socket set up by Termulator.  This would lock up in the
+-   event that the remote invocation of term failed for some reason
+-   or another, preventing any further terms from being opened.
+-   This is now controlled through a TimeStamped event.  If the
+-   anticiapted connection is made within 30 seconds, all's well.
+-   If not, a warning window is poped up, and the process awaiting
+-   the connection is killed, freeing things up to process more
+-   invocations of Termulator.  You can change this 30 second
+-   value by modifying the TimeStamp set in termulator.ps.
+-
+-
+-
+-Have Fun!
+-
+-Stephen C. Pope
+-Santa Fe Institute
+-scp@sfi.santafe.edu
+//GO.SYSIN DD README
+echo diffs 1>&2
+sed 's/.//' >diffs <<'//GO.SYSIN DD diffs'
+-*** main.c.orig	Wed Jul 26 14:23:12 1989
+---- main.c	Wed Jul 26 13:54:15 1989
+-***************
+-*** 1,8 ****
+---- 1,10 ----
+-
+-  #include <stdio.h>
+-+ #include <strings.h>
+-  #include "term.h"
+-  #include "default.h"
+-
+-+ extern int errno;
+-  extern	char *getenv();
+-
+-  int	fontsize	= 0,
+-***************
+-*** 18,30 ****
+-  	fixed		= 0,
+-  	iconic		= 0,
+-  	iconx		= -1,
+-! 	icony		= -1;
+-
+-  char 	*progname,
+-  	*command	= "",
+-  	*font		= NULL,
+-  	**arguments	= NULL,
+-! 	*title		= DEFAULTTITLE;
+-
+-  perror(err,arg)
+-  char *err, *arg;
+---- 20,34 ----
+-  	fixed		= 0,
+-  	iconic		= 0,
+-  	iconx		= -1,
+-! 	icony		= -1,
+-!         login           = 0;
+-
+-  char 	*progname,
+-  	*command	= "",
+-  	*font		= NULL,
+-  	**arguments	= NULL,
+-! 	*title		= DEFAULTTITLE,
+-!         *login_args[]   = {"-              ", NULL};
+-
+-  perror(err,arg)
+-  char *err, *arg;
+-***************
+-*** 45,66 ****
+-  main(argc,argv)
+-  char *argv[];
+-  {
+-! 	char	str[256], *server, *s = str;
+-
+-  	progname = argv[0];
+-  	server = getenv("NEWSSERVER");
+-
+-  	if ((argc > 1) && (argv[1][0] >= '0') && (argv[1][0] <= '9')) {
+-! 		/* socket name as first argument */
+-! 		sprintf(str,"NEWSSERVER=%s",argv[1]);
+-! 		while (*s)
+-! 			if (*s == ':')
+-! 				*s++ = ';';
+-! 			else
+-! 				s++;
+-! 		putenv(str);
+-! 		argv++;
+-! 		argc--;
+-  	}
+-
+-  	while((--argc > 0) && (**++argv == '-'))
+---- 49,89 ----
+-  main(argc,argv)
+-  char *argv[];
+-  {
+-! 	char	str[256], snh[256], *server, *termserver, *s;
+-! 	FILE*   pp = NULL;
+-
+-  	progname = argv[0];
+-  	server = getenv("NEWSSERVER");
+-
+-+ 	termserver = NULL;
+-  	if ((argc > 1) && (argv[1][0] >= '0') && (argv[1][0] <= '9')) {
+-! 	    /* socket name as first argument */
+-! 	    sprintf(str,"NEWSSERVER=%s",argv[1]);
+-! 	    s = str;
+-! 	    while (*s)
+-! 		if (*s == ':')
+-! 		    *s++ = ';';
+-! 		else
+-! 		    s++;
+-! 	    putenv(str);
+-! 	    argv++;
+-! 	    argc--;
+-! 	    if( !server )  {
+-! 		snh[0] = 0;
+-! 		if (!(s = getenv("NEWSHOME")))
+-! 		    s = "/usr/NeWS";
+-! 		strcpy(snh, s);
+-! 		strcat(snh, "/bin/setnewshost ");
+-! 		if (s = rindex(str, ';'))  {
+-! 		    ++s;
+-! 		    strcat(snh, s);
+-! 		    if (pp = popen(snh, "r"))  {
+-! 			fscanf(pp, "%s", snh);
+-! 			pclose(pp);
+-! 			server = snh;
+-! 		    }
+-! 		}
+-! 	    }
+-  	}
+-
+-  	while((--argc > 0) && (**++argv == '-'))
+-***************
+-*** 102,107 ****
+---- 125,133 ----
+-  			if (--argc > 0)
+-  				history = Atoi(*++argv);
+-  			break;
+-+                 case 'l':
+-+ 			login = 1;
+-+ 			break;
+-  		case 'W':
+-  			if (--argc > 0)
+-  				fixed = Atoi(*++argv);
+-***************
+-*** 121,132 ****
+-  	if (argc > 0) {
+-  		command = *argv;
+-  		arguments = argv;
+-! 	} else
+-! 		command = getenv("SHELL");
+-!
+-  	init_signal();
+-  	init_display();
+-  	init_tty();
+-  	sprintf(str,"NEWSSERVER=%s",server);
+-  	putenv(str);
+-  	init_child();
+---- 147,170 ----
+-  	if (argc > 0) {
+-  		command = *argv;
+-  		arguments = argv;
+-! 	}
+-! 	else if (command = getenv("SHELL"))  {
+-! 		arguments = login_args;
+-! 		if (s = rindex(command, '/'))
+-! 		    ++s;
+-! 		if (!s)
+-! 		    s = command;
+-! 		if( login )
+-! 		    strcpy(arguments[0]+1, s);
+-! 		else
+-! 		    strcpy(arguments[0], s);
+-! 	}
+-!
+-  	init_signal();
+-  	init_display();
+-  	init_tty();
+-+ 	if( !server )
+-+ 	    server = "";
+-  	sprintf(str,"NEWSSERVER=%s",server);
+-  	putenv(str);
+-  	init_child();
+//GO.SYSIN DD diffs
+echo termulator.ps 1>&2
+sed 's/.//' >termulator.ps <<'//GO.SYSIN DD termulator.ps'
+-%terminal emulator
+-%
+-
+-GoodNeWS /Termulator { % hostname args /color => running mterm
+-
+-    (GNHOME) getenv (/init.ps) append run
+-
+-    100 dict begin
+-    {
+-	newprocessgroup
+-
+-	/TermColor exch def
+-	/TermArgs exch def
+-	/TermHostname exch def
+-
+-	/Matrix		[1 0 0 1 0 0] def
+-	/FontMatrix	[1 0 0 1 0 0] def
+-
+-	/Width		550 def
+-	/Height		300 def
+-	/LeftMargin		5 def
+-	/TopMargin		5 def
+-	/BottomMargin		5 def
+-	/RightMargin		5 def
+-
+-	/Top			Height TopMargin sub def
+-	/FontName		/Screen def
+-	/FontDescent		0 def
+-	/Font			null def
+-	/FontSize		12 def
+-	/LineHeight		1 def
+-	/LineDescent		0 def
+-	/ScreenLines		null def
+-	/EmptyString		null def
+-	/NLines			15 def
+-	/NCols			60 def
+-	/FillColor		[.9 .9 .9 1] def
+-	/TextColor		[0 0 0 0] def
+-	/CursorLine		0 def
+-	/CursorCol		0 def
+-	/CursorVis?		false def
+-	/SelStartLn		0 def
+-	/SelStartCol		0 def
+-	/SelEndLn		0 def
+-	/SelEndCol		0 def
+-	/LineExtra		2 def
+-
+-	/TermWin /new GNWindow send def
+-	TermColor TermWin send
+-	/Cv TermWin /ClientCanvas get def
+-	TermWin /PaintClient {
+-	    clipcanvaspath clip
+-	    FontMatrix setmatrix
+-	    Font setfont TextColor SetColor DrawTerm
+-	} put
+-	TermWin /ClientFill? false put
+-
+-	Cv CanvasInfo begin
+-	    /OnLeft {
+-		FontMatrix setmatrix
+-		Font setfont TextColor SetColor OnMouse
+-		TermFile status {
+-		    TermFile (\205) writestring
+-		    TermFile flushfile
+-		} if
+-	    } def
+-	    /OnAscii {
+-		TermFile status {
+-		    TermFile LastEvent
+-		    /ClientData get write
+-		    TermFile flushfile
+-		} if
+-	    } def
+-	    /CanvasMenu [
+-		(Copy) (C) MenuKey {
+-		    GetSelection dup length 0 gt {
+-			/ClipDisplayText /Text
+-			MakeClipData DataToClip
+-		    } {pop} ifelse
+-		}
+-		(Paste) (V) MenuKey {
+-		    TermFile status {
+-			/Text GetClipData {
+-			    dup length 0 gt {
+-				0 1 2 index length 2 sub {
+-				    1 index exch get
+-				    TermFile exch writestring
+-				    TermFile (\n) writestring
+-				} for
+-				dup dup length 1 sub get
+-				TermFile exch writestring
+-				TermFile flushfile
+-			    } if} if} if
+-		}
+-		MenuLine
+-		(Screen)	/FunctionF1 MenuKey {
+-		    /Screen	ChangeFont
+-		}
+-		(Courier)	/FunctionF2 MenuKey {
+-		    /Courier ChangeFont
+-		}
+-		MenuLine
+-		(8 Point)	MenuActive {
+-		    8 ChangeFontSize
+-		}
+-		(10 Point)	MenuActive {
+-		    10 ChangeFontSize
+-		}
+-		(12 Point)	MenuActive {
+-		    12 ChangeFontSize
+-		}
+-		(14 Point)	MenuActive {
+-		    14 ChangeFontSize
+-		}
+-		(18 Point)	MenuActive {
+-		    18 ChangeFontSize
+-		}
+-		(24 Point)	MenuActive {
+-		    24 ChangeFontSize
+-		}
+-	    ] /new GNMenu send def
+-	end
+-
+-	/GS {	% --
+-	    TermFile status {
+-		TermFile (\200) writestring
+-		TermFile NLines writeobject
+-		TermFile (\n) writestring
+-		TermFile NCols writeobject
+-		TermFile (\n) writestring
+-		TermFile flushfile
+-	    } if
+-	} def
+-
+-	/SV {	% val --
+-	    /SetValue ScrollBar send
+-	} def
+-	/SB {	% from val to --
+-	    /SetRange ScrollBar send
+-	} def
+-	/SS {
+-	    Cv setcanvas
+-	    FontMatrix setmatrix Font setfont TextColor SetColor
+-	} def
+-
+-	/ChangeFont {	% fontname --
+-	    Cv setcanvas initgraphics
+-	    /FontName exch store ResetTerm DrawTerm GS
+-	} def
+-
+-	/ChangeFontSize {	% size --
+-	    Cv setcanvas initgraphics
+-	    /FontSize exch store ResetTerm DrawTerm GS
+-	} def
+-
+-	{
+-	    /DestroyClient {
+-		TermFile closefile
+-	    } def
+-	    /ReshapeClient {
+-		/ResetTerm where {
+-		    Cv setcanvas
+-		    pop initgraphics
+-		    clippath pathbbox Points2Rect
+-		    /Height exch store
+-		    /Width exch store
+-		    pop pop
+-		    ResetTerm
+-		    DrawTerm GS
+-		} if
+-	    } def
+-	    /ResizeBox? true def
+-	    /CloseBox? true def
+-	    /FrameLabel TermArgs (-c) search {
+-		pop pop pop (Console)
+-	    }{
+-		pop (Termulator)
+-	    } ifelse
+-	    ( on ) append
+-	    TermHostname dup () eq {
+-		pop localhostnamequalified
+-	    } if append def
+-	    /IconImage (tools/mterm/icon.draw) def
+-	} TermWin send
+-
+-	false true /setscroll TermWin send
+-
+-	5 540 Width Height /reshape TermWin send
+-
+-	/ScrollBar TermWin /ScrollV get def
+-	ScrollBar /ScrollClient {
+-	    TermFile status {
+-		TermFile (\203) writestring
+-		TermFile ScrollBar /ScrollValue get
+-		20 string cvs writestring
+-		TermFile (\n) writestring
+-		TermFile flushfile
+-	    } if
+-	} put
+-
+-	TermMonitor {
+-	    GoodNeWS /TerminalDict known not {
+-		(tools/mterm/mterm.ps) Run
+-	    } if
+-	    currentdict end TerminalDict begin begin
+-		Cv setcanvas
+-		InitTerm
+-		(%socketl2001) (r) file dup getsocketlocaladdress
+-		(term ) exch append ( ) append
+-		TermArgs append
+-		(;) search {(:) append exch pop exch append} if
+-		TermHostname dup () eq not
+-		exch localhostnamequalified eq not and {
+-		    systemdict /NetSecurityWanted get  {
+-			systemdict /RemoteHostRegistry known {
+-			    systemdict /RemoteHostRegistry get
+-			    TermHostname cvn true put
+-			} if
+-		    } if
+-		    (rsh ) TermHostname append ( ) append exch append
+-		} if
+-		% here we need to check for bummer forkunix
+-		/TimeOutProc {
+-		    createevent dup begin
+-			/Name /TermMonitor def
+-			/Action /Timeout def
+-			/Canvas null def
+-		    end expressinterest
+-		    createevent dup begin
+-			/Name /TermMonitor def
+-			/Action /GotConnection def
+-			/Canvas null def
+-		    end expressinterest
+-		    createevent dup begin
+-			/Name /TermMonitor def
+-			/Action /Timeout def
+-			/Canvas null def
+-			/ClientData {
+-			    (Timed out waiting for remote connection) warning
+-			    currentprocess killprocessgroup
+-			} def
+-			/TimeStamp currenttime 0.5 add def
+-		    end sendevent
+-		    awaitevent
+-		    /ClientData get exec
+-		} fork def
+-		{ forkunix } errored {
+-		    (Unable to start terminal emulator) warning
+-		    currentprocess killprocessgroup
+-		} if
+-		acceptconnection
+-		createevent dup begin
+-		    /Name /TermMonitor def
+-		    /Action /GotConnection def
+-		    /Canvas null def
+-		    /Process TimeOutProc def
+-		    /ClientData {
+-			currentprocess killprocess
+-		    } def
+-		end sendevent
+-	} monitor
+-	/Show TermWin send
+-	/TermFile 1 index def cvx exec
+-	end
+-    } fork
+-    end
+-} put
+//GO.SYSIN DD termulator.ps

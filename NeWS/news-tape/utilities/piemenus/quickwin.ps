@@ -1,0 +1,281 @@
+%!
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  @(#)quickwin.ps
+%
+%  QuickWindow Class pie menu based window manager
+%  Copyright (C) 1988.
+%  By Don Hopkins.
+%  All rights reserved.
+%
+%  This program is provided for UNRESTRICTED use provided that this
+%  copyright message is preserved on all copies and derivative works.
+%  This is provided without any warranty. No author or distributor
+%  accepts any responsibility whatsoever to any person or any entity
+%  with respect to any loss or damage caused or alleged to be caused
+%  directly or indirectly by this program. This includes, but is not
+%  limited to, any interruption of service, loss of business, loss of
+%  information, loss of anticipated profits, core dumps, abuses of the
+%  virtual memory system, or any consequential or incidental damages
+%  resulting from the use of this program.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% August 28, 1988  Don Hopkins
+%    Made the menus shared by all instances of the class.
+%    Put in a kludge to keep "spin" from trashing everybody's frame menu.
+%    (If you want to learn how to write good NeWS code, don't look at spin.)
+%    Added the DontSetDefaultWindow flag.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+systemdict begin
+
+systemdict /PieMenu known not {
+  (NeWS/piemenu.ps) LoadFile pop
+} if
+
+/QuickWindow LiteWindow
+dictbegin
+  /Retained? framebuffer newcanvas /Retained get def
+  /CheapIcon? true def
+dictend
+classbegin
+
+    /stretchtopright {
+      non-iconic
+      FrameX  FrameY
+      BBoxFromUser reshape
+    } def
+
+    /stretchtopleft {
+      non-iconic
+      FrameX FrameWidth add  FrameY
+      BBoxFromUser reshape
+    } def
+
+    /stretchbottomright {
+      non-iconic
+      FrameX  FrameY FrameHeight add
+      BBoxFromUser reshape
+    } def
+
+    /stretchbottomleft {
+      non-iconic
+      FrameX FrameWidth add  FrameY FrameHeight add
+      BBoxFromUser reshape
+    } def
+
+    /stretchtop {
+      non-iconic
+      /GA_value FrameX def
+      /GA_constraint 0 def
+      FrameX FrameWidth add  FrameY
+      BBoxFromUser reshape
+    } def
+
+    /stretchbottom {
+      non-iconic
+      /GA_value FrameX def
+      /GA_constraint 0 def
+      FrameX FrameWidth add  FrameY FrameHeight add
+      BBoxFromUser reshape
+    } def
+
+    /stretchleft {
+      non-iconic
+      /GA_value FrameY def
+      /GA_constraint 1 def
+      FrameX FrameWidth add  FrameY FrameHeight add
+      BBoxFromUser reshape
+    } def
+
+    /stretchright {
+      non-iconic
+      /GA_value FrameY def
+      /GA_constraint 1 def
+      FrameX  FrameY FrameHeight add
+      BBoxFromUser reshape
+    } def
+
+    /movevertical {
+      /GA_constraint 0 def
+      slide
+    } def
+
+    /movehorizontal {
+      /GA_constraint 1 def
+      slide
+    } def
+
+    /flipmove {
+      gsave
+      	framebuffer setcanvas
+	CurrentEvent begin XLocation YLocation end
+	unmap
+	Iconic? {
+	  exch FrameWidth 2 div sub exch FrameHeight 2 div sub
+	  /FrameX 2 index def /FrameY 1 index def
+	  FrameCanvas
+	} {
+	  exch IconWidth 2 div sub exch IconHeight 2 div sub
+	  /IconX 2 index def /IconY 1 index def
+	  IconCanvas
+	} ifelse
+	setcanvas matrix defaultmatrix setmatrix 2 copy movecanvas
+	flipiconic
+	move
+	slide
+      grestore
+    } def
+
+    /non-iconic {
+      Iconic? { flipiconic } if
+    } def
+
+    /reshapefromuser-open {
+      non-iconic
+      reshapefromuser
+    } def
+
+    /flipiconic {
+	% Don't retain the frame canvas when iconic!
+        Retained? CheapIcon? and { 
+	  IconCanvas /Retained Iconic? not put
+	  FrameCanvas /Retained Iconic? put
+	} if
+	/flipiconic super send
+    } def
+
+    /CreateFrameCanvas {
+      /CreateFrameCanvas super send
+      /Retained? FrameCanvas /Retained get def
+    } def
+    
+    /CreateFrameMenu { % - => - (Create frame menu)
+	% Note: Store menu in class to share menus, especially if retained.
+	/FrameMenu ClassFrameMenu def
+    } def
+
+    /CreateIconMenu { % - => - (Create icon menu)
+	% Note: Store menu in class to share menus, especially if retained.
+	/IconMenu {FrameMenu} def
+    } def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% The menus shared by all instances of the class:
+
+        /MenuFont /Courier findfont 12 scalefont def
+
+	/FrameDebugMenu [
+	  (userdict) {
+	    { clear
+	      ParentDictArray length 1 add {end} repeat
+	      /OllieNorthIsAHero dbgbreak
+	    } fork pop
+	   }
+
+	  (ThisWindow) {
+	    { clear
+	      { /CatsupIsAVegetable dbgbreak } ThisWindow send
+	    } fork pop
+	  }
+
+	] /new PieMenu send def
+	FrameDebugMenu /MenuFont MenuFont put
+	FrameDebugMenu /flipstyle {currentdict} put
+	FrameDebugMenu /LabelMinRadius 5 put
+
+	/FrameEtcMenu [
+	    (zap)		{/destroy ThisWindow send}
+	    (debug)		FrameDebugMenu
+	] /new PieMenu send def
+	FrameEtcMenu /MenuFont MenuFont put
+	FrameEtcMenu /flipstyle {currentdict} put
+	FrameEtcMenu /LabelMinRadius 5 put
+
+	/FrameMoveMenu [
+	  /move_v		{/movevertical ThisWindow send}
+	  /move			{/slide ThisWindow send}
+	  /eye			{/flipmove ThisWindow send}
+	  /move_h		{/movehorizontal ThisWindow send}
+	] /new PieMenu send def
+        FrameMoveMenu /flipstyle {currentdict} put
+        FrameMoveMenu /LabelMinRadius 15 put
+        FrameMoveMenu /LabelRadiusExtra 0 put
+        FrameMoveMenu /SliceWedges false put
+        FrameMoveMenu /HiLiteWithArrow? false put
+
+	/FrameStretchMenu [
+	  /stretch_h		{/stretchtop ThisWindow send}
+	  /stretchNE		{/stretchtopright ThisWindow send}
+	  [/stretch_v 4 0]	{/stretchright ThisWindow send}
+	  /stretchSE		{/stretchbottomright ThisWindow send}
+	  /stretch_h		{/stretchbottom ThisWindow send}
+	  /stretchSW		{/stretchbottomleft ThisWindow send}
+	  [/stretch_v 4 0]	{/stretchleft ThisWindow send}
+	  /stretchNW		{/stretchtopleft ThisWindow send} 
+	] /new PieMenu send def
+        FrameStretchMenu /flipstyle {currentdict} put
+        FrameStretchMenu /LabelMinRadius 5 put
+        FrameStretchMenu /LabelRadiusExtra 0 put
+        FrameStretchMenu /SliceWedges false put
+        FrameStretchMenu /HiLiteWithArrow? false put
+
+	/ClassFrameMenu [
+	    [(\255) /Symbol findfont 12 scalefont]
+		    		{/totop ThisWindow send}
+	    (Paint!)
+				{/paint ThisWindow send}
+	    (Move\274)
+	    			FrameMoveMenu
+	    (Etc\274)		FrameEtcMenu
+	    [(\257) /Symbol findfont 12 scalefont]
+	    			{/tobottom ThisWindow send}
+	    (Shape!)		{/reshapefromuser-open ThisWindow send}
+	    (Grab\274)
+	    			FrameStretchMenu
+	    /eye		{/flipiconic ThisWindow send}
+	] /new PieMenu send def
+	ClassFrameMenu /MenuFont MenuFont put
+	ClassFrameMenu /LabelMinRadius 10 put
+	ClassFrameMenu /LabelRadiusExtra 10 put
+
+
+	% Make a copy of ourselves if somebody tries to change us!
+	% (Yes this is a hack, but otherwise "spin" messes up everybody
+	% else's frame menu, and if you mess with the frame menu you're
+	% asking for trouble anyway.)
+        { /clone&forward { % /msg => -
+	    /flipstyle self send
+	    ThisWindow dup null eq {
+		pop /win where {pop win} { % Foo on spin...
+		  /window where {pop window} { % Foo on othello...
+		    /dont-mess-with-the-frame-menu dbgbreak
+		  } ifelse
+		} ifelse
+	    } if
+	    /FrameMenu
+	    2 index put
+	    send
+	  } def
+	  /insertitem { /insertitem clone&forward } def
+	  /deleteitem { /deleteitem clone&forward } def
+	  /changeitem { /changeitem clone&forward } def
+	} ClassFrameMenu send
+
+classend def
+
+systemdict /DontSetDefaultWindow known not {
+  /DefaultWindow QuickWindow def
+
+  % Hack to make ScrollWindow a subclass of QuickWindow. (gross)
+  /ScrollWindow load type /arraytype eq {
+    10 dict begin
+      /LiteWindow DefaultWindow def
+      ScrollWindow pop
+    end
+  } if
+} if
+
+end % systemdict

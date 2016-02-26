@@ -1,0 +1,61 @@
+To: xpert@expo.lcs.mit.edu
+Subject: Re: Changing the default visual for Xt toolkit widgets 
+Date: Fri, 29 Sep 89 13:59:58 PDT
+From: Dave Lemke <lemke@sun.com>
+
+  From:  arisia!janssen%holmes@lll-winken.llnl.gov  (Bill Janssen)
+  Date:  29 Sep 89 02:08:12 GMT
+
+  In article <8909271536.AA22775@quito.local>, willson@pdaeng (Stephen Willson)
+ writes:
+  >We have just received version 1.0 of OpenLook which we are running on Sun-4s
+  >and Sun OS 4.0.3.  The default visual for the X11/News server is static
+  >color.  There is another visual which is pseudo color but it is not the
+  >default visual.
+
+  The pseudo-color visual can be made the default visual by setting the
+  environment variable USE_MIT_VISUALS (to some value, say "t") before
+  starting the server.  The problem with this is that NeWS programs think
+  that the default visual is static.  This is not generally too bad, but
+  the cursor seems to be solid black.  This is documented in the man page
+  for xnews.
+
+NeWS programs will use any read-only colors in the colormap, so if you
+start running X clients that take up these cells, NeWS colors will use
+the closest match.  If anyone is interested in using this from NeWS,
+send me mail.
+
+The cursor problem is a bug.  Here's a hack to hold you till the
+next release.  It should just fail with a (different) error then.
+
+
+/* hack to fix the black-on-black xnews cursor bug */
+/* it'll exit with an error, but don't worry about that */
+/* it *is* a hack, after all... */
+#include <X11/Xlib.h>
+main()
+{
+    Display    *dpy;		/* X server connection */
+    Colormap	cmap;
+    XColor	defs[256];
+    int	num, i;
+
+    dpy = XOpenDisplay();
+    cmap = XDefaultColormap(dpy, 0);
+    for (num = 256; num > 10; num--)
+	if (XAllocColorCells(dpy, cmap, False, (char *) 0, 0, defs, num))
+	    break;
+    defs[num].pixel = 255;
+    defs[num].red = defs[num].green = defs[num].blue = 0;
+    defs[num].flags = DoRed|DoGreen|DoBlue;
+    defs[num - 1].pixel = 254;
+    defs[num - 1].red = defs[num - 1].green = defs[num - 1].blue = 65535;
+    defs[num - 1].flags = DoRed|DoGreen|DoBlue;
+    XStoreColors(dpy,cmap,defs,num);
+    XSync(dpy, 0);
+}
+
+
+Dave Lemke				ARPA: lemke@sun.com
+Window Systems Group			UUCP: ucbvax!sun!lemke
+Sun Microsystems, Inc.

@@ -1,0 +1,413 @@
+head	1.5;
+access;
+symbols;
+locks; strict;
+comment	@% @;
+
+
+1.5
+date	92.10.28.07.14.43;	author lacey;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	92.10.28.04.47.09;	author lacey;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	92.10.27.20.36.15;	author lacey;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	92.10.27.03.45.44;	author lacey;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	92.10.27.03.41.14;	author lacey;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.5
+log
+@*** empty log message ***
+@
+text
+@%*****************************************************************************
+% Remember, you need to be as detailed as possible in the description
+% of the modules in order to facilitate the coding task. Do not leave any 
+% room for ambiguity.
+%*****************************************************************************
+%
+% For each module and major submodule complete the following
+% section and subsections
+%
+\subsection{\LaTeX\ PERT Chart Generation Module}
+
+This module generates the \LaTeX\ commands that represent a PERT chart
+of the task list given.
+
+% 
+% Include a data flow diagram for this module
+%
+\subsubsection{Data Flow Diagram}
+
+Figure~\ref{lt:pert:dfd} on page~\pageref{lt:pert:dfd} presents the
+flow of data throughout this module.
+
+\begin{figure}
+\centering
+\centerline{\psfig{figure=latpertdfd.ps,width=6in}}
+\caption[Data Flow Diagram for \LaTeX\ PERT Chart Generation]{Data
+flow diagram for \LaTeX\ PERT chart generation.}
+\label{lt:pert:dfd}
+\end{figure}
+
+%
+% Include a Structure Chart for this module
+%
+\subsubsection{Structure Chart}
+
+To gain some insight into the calling structure of this module, refer
+to Figure \ref{lt:pert:sc} on page \pageref{lt:pert:sc}.
+
+\begin{figure}
+\centering
+\centerline{\psfig{figure=latpertsc.ps,width=6in}}
+\caption[Structure Chart for \LaTeX\ PERT Chart Generation]{Structure
+chart for \LaTeX\ PERT chart generation.}
+\label{lt:pert:sc}
+\end{figure}
+
+%
+% Include a processing narrative for this module
+%
+\subsubsection{Narrative}
+
+The {\bf generate-pert-chart} module first calls the {\bf
+get-pert-formatting-info} sub-module of the calculation module to
+retrieve the positioning information for the PERT chart.  It then
+calls the {\bf split-pert-chart-into-pages} sub-module (part of the
+\LaTeX\ Generation module) to select pages that each of the boxes of
+the PERT chart will be displayed on.  From this it receives a matrix
+of task lists, each list having tasks that should show up on the page
+of the matrix (i.e.\ the matrix divides all the tasks into pages, and
+each cell of the matrix contains a list of tasks to go on a given
+page).  For each page in the matrix, the {\bf generate-pert-page}
+sub-module is called to generate the actual \LaTeX\ code for the page.
+This sub-module subsequently traverses the task list sent to it and
+calls a routine to generate the box for each task, and then generate
+the lines between the boxes.  Dependency lines that cross over pages
+will be handled by the routine that draws the PERT pages.
+
+%
+% Include a PDL pseudocode description for this module
+%
+\subsubsection{PDL Description}
+
+\begin{verbatim}
+PROCEDURE generate-pert-chart;
+INTERFACE file-name;
+
+   TYPE file-d IS FILE-DESCRIPTOR;
+   TYPE page-down-index IS INTEGER;
+   TYPE page-across-index IS INTEGER;
+   TYPE pages-across IS INTEGER;
+   TYPE pages-down IS INTEGER;
+   TYPE task-list IS TASKLIST;
+   TYPE matrix-of-task-lists IS MATRIX OF TYPE TASKLIST;
+
+   CALL get-pert-formatting-info PROCEDURE WITH task-list;
+   CALL split-pert-chart-into-pages PROCEDURE WITH 
+      task-list, matrix-of-task-lists, pages-across, pages-down;
+
+   CALL file-open PROCEDURE WITH file-name, file-d;
+
+   page-across-index := 0;
+   DO FOR page-across-index < pages-across; 
+      pages-down-index := 0;
+      DO FOR pages-down-index < pages-down;
+         CALL generate-pert-page PROCEDURE WITH file-d,
+            page-down-index, page-across-index,
+            matrix-of-task-lists[page-down-index, page-across-index];
+      ENDFOR
+   ENDFOR
+
+   CALL file-close PROCEDURE WITH file-d;
+END generate-pert-chart
+\end{verbatim}
+
+\begin{verbatim}
+PROCEDURE split-pert-chart-into-pages;
+INTERFACE task-list, RETURNS matrix-of-task-lists, pages-across,
+pages-down;
+
+   TYPE maximum-x IS INTEGER;
+   TYPE maximum-y IS INTEGER;
+   TYPE pages-across IS INTEGER;
+   TYPE pages-down IS INTEGER;
+   TYPE task IS TASK;
+
+   maximum-x := 0;
+   maximum-y := 0;
+
+   DO FOR each task in task-list
+      IF task.x > maximum-x
+         THEN BEGIN
+            maximum-x := task.x;
+         END
+      IF task.y > maximum-y
+         THEN BEGIN
+            maximum-y := task.y;
+         END
+   ENDFOR
+
+   pages-across := maximum-x MODULO page-width;
+   pages-down := maximum-y MODULO page-height;
+
+   alllocate matrix-of-task-lists to be of size pages-across by pages-down;
+
+   DO FOR each task in task-list
+      page-across-index = task.x MODULO page-width;
+      page-down-index = task.y MODULO page-height;
+
+      CALL add-task-to-end-of-task-list PROCEDURE WITH
+         matrix-of-task-lists[page-down-index, page-across-index],
+         task;
+   ENDFOR
+
+END split-pert-chart-into-pages
+\end{verbatim}
+
+\begin{verbatim}
+PROCEDURE generate-pert-page;
+INTERFACE file-d, page-down-number, page-across-number, task-list;
+
+   TYPE task IS TASK;
+   TYPE dependent IS DEPENDENT;   
+
+   write line to file to start picture environment;
+   DO FOR each task in task-list
+      CALL generate-pert-box WITH task;
+      DO FOR each dependent in task.dependents;
+         CALL generate-dependency-lines WITH file-d, task, dependent;
+      ENDFOR
+   ENDFOR
+END generate-pert-page
+\end{verbatim}
+
+\begin{verbatim}
+PROCEDURE generate-pert-box;
+INTERFACE task;
+
+   write line to file to create box with text in it;
+
+END generate-pert-box
+\end{verbatim}
+
+%
+% Include a description of the interfaces for this module.
+% This should include a list of data elements passed between
+% modules.  The data elements described here should either be
+% described in the next subsection or in the relevant owner's
+% data dictionary
+%
+\subsubsection{Internal Interfaces}
+
+The {\bf generate-pert-chart} module is the driver for \LaTeX\ PERT
+chart generation.  It calls {\bf get-pert-formatting-info} to get a
+list of tasks to process, and then calls {\bf
+split-pert-chart-into-pages} to split the chart up into pages.  From
+that routine it receives a matrix of task lists --- one for each page.
+It then calls {\bf generate-pert-page} for each page and passes the
+task list for that page.
+
+The {\bf generate-pert-page} submodule controls the generation of the
+\LaTeX\ code for the PERT boxes and the dependency lines between the
+boxes.  It calls {\bf generate-pert-box} for each task in the task
+list sent to it, and {\bf generate-pert-box} writes out to the \LaTeX\
+file commands for creating a box and the associated text within it.
+
+%
+% Include a data dictionary for this module.  The format should be:
+%  
+% Name: (this is the name of the data item)
+% Aliases: (this is a list of aliases, if any)
+% Where Used/ How Used: (this is a paired list of where the item is
+%     used and how it is used
+% Description: (this is a demarco description of the data item)
+%
+\subsubsection{Data Dictionary}
+
+\begin{enumerate}
+\item 
+\begin{description}
+\item[Name:] file-d
+\item[Where/How Used:] file-d is the file descriptor for the LaTeX file we
+are writing to.  It is used in {\bf generate-pert-chart} to open and
+close the file, and in {\bf generate-pert-box} to write the formatting
+information out to the file.
+\item[Description:] file-d = *file descriptor*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] page-down-index
+\item[Where/How Used:] This is an index used in {\bf
+generate-pert-chart} to count how many pages down we have generated
+thus far.
+\item[Description:] page-down-index = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] page-across-index
+\item[Where/How Used:] This is an index used in {\bf
+generate-pert-chart} to count how many pages across we have generated
+thus far.
+\item[Description:] page-across-index = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] pages-across
+\item[Where/How Used:] This is an index used in {\bf
+generate-pert-chart} and in {\bf split-pert-chart-into-pages} to store
+the number of pages across we will have.  It is calculated in {\bf
+split-pert-chart-into-pages} and passed back up to {\bf generate-pert-chart}.
+\item[Description:] pages-across = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] pages-down
+\item[Where/How Used:] This is an index used in {\bf
+generate-pert-chart} and in {\bf split-pert-chart-into-pages} to store
+the number of pages down we will have.  It is calculated in {\bf
+split-pert-chart-into-pages} and passed back up to {\bf generate-pert-chart}.
+\item[Description:] pages-down = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] matrix-of-task-lists
+\item[Where/How Used:] This is a matrix of task lists, with each cell
+in the matrix being a list of tasks that appear on that page (i.e.\
+cell 1-1 is the first page of the document, cell 1-2 is the page
+before it, etc.).
+\item[Description:] matrix-of-task-lists = $\left\{\mbox{task-list-vec}\right\}^{n}$\\
+task-list-vec = $\left\{\mbox{task-list}\right\}^{m}$
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] maximum-x
+\item[Where/How Used:] This is the maximum x coordinate found in the
+PERT formatting information.  Using this we can calculate how many
+pages across we will have.  It is used in {\bf
+split-pert-chart-into-pages}.
+\item[Description:] maximum-x = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] maximum-y
+\item[Where/How Used:] This is the maximum y coordinate found in the
+PERT formatting information.  Using this we can calculate how many
+pages across we will have.  It is used in {\bf
+split-pert-chart-into-pages}.
+\item[Description:] maximum-y = *integer range 0..MAXINT*
+\end{description}
+
+\end{enumerate}
+@
+
+
+1.4
+log
+@*** empty log message ***
+@
+text
+@d57 1
+a57 1
+the PERT chart will be displayed on.  From this it recieves a matrix
+d152 1
+a152 1
+   TYPE dependant IS DEPENDANT;   
+d157 2
+a158 2
+      DO FOR each dependant in task.dependants;
+         CALL generate-dependency-lines WITH file-d, task, dependant;
+d193 1
+a193 1
+list sent to it, and {\bf gererate-pert-box} writes out to the \LaTeX\
+@
+
+
+1.3
+log
+@First complete draft of LaTeX PERT Chart generation section
+@
+text
+@d57 1
+a57 1
+the PERT charts will be displayed on.  From this it recieves a matrix
+d64 1
+a64 1
+calls a routine to generate the box for each chart, and then generate
+@
+
+
+1.2
+log
+@*** empty log message ***
+@
+text
+@d12 3
+d20 11
+d36 3
+d41 1
+a41 1
+\centerline{\psfig{figure=latpertsc.ps,height=3in}}
+d77 7
+a83 7
+   file-d IS FILE-DESCRIPTOR;
+   page-down-index IS INTEGER;
+   page-across-index IS INTEGER;
+   pages-across IS INTEGER;
+   pages-down IS INTEGER;
+   task-list IS TASKLIST;
+   matrix-of-task-lists IS MATRIX OF TYPE TASKLIST;
+d110 5
+a114 5
+   maximum-x IS INTEGER;
+   maximum-y IS INTEGER;
+   pages-across IS INTEGER;
+   pages-down IS INTEGER;
+   task IS TASK;
+d151 2
+a152 2
+   task IS TASK;
+   dependant IS DEPENDANT;   
+d182 14
+d207 10
+d218 70
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d26 1
+a26 1
+chart for \LaTeX\ PERT chart generation.\n}
+@

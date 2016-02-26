@@ -1,0 +1,437 @@
+%!
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 
+% @(#)distill.ps
+% NeWS distillery
+% Copyright (C) 1989.
+% By Don Hopkins. (don@brillig.umd.edu)
+% All rights reserved.
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 
+% You are free to redistribute this program.  Please leave the comments
+% intact, add your own interpretations, views, hallucinations, navagation 
+% aids, and pass it on to friends!  The author is not responsible for any 
+% time or brain cells wasted with this software.
+% 
+% The following is in the spirit of Glenn Reid's Distillery.
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+systemdict begin
+
+%
+%
+% litstring replace escapes in strings with escaped escapes!
+% Thus (foo\n) products (\(foo\\n\)) which prints as (foo\n)
+% Mainly used with printf when you want the arg to print as
+% the string you typed to the interpreter.
+% test: /s (\b\t\n\f\r\(\\\)\200\300) def s litstring
+%
+/litstring { 		% str => str'
+    [ 
+        40 3 -1 roll {
+            dup {
+                8 9 10 12 13 {	% \b \11 \n \f \r
+                    (\\ ) dup 1 (--------btn-fr) 4 index get put
+                    }
+                40 41 92 {	% ( ) & \
+                    (\\ ) 1 2 index put
+                    } 
+%                true {	% all other chars
+                /Default {	% all other chars
+                    dup 32 lt 1 index 126 gt or {
+                        (\\000) dup			% i s s
+                        2 index dup 0 lt {256 add} if % BUG workaround
+                        8 4 string cvrs		% i s s os
+                        dup length 4 exch sub exch putinterval
+                    } if
+                }
+            } case
+            dup type /stringtype eq {exch pop {} forall} if
+        } forall 41	% 41 is ')' 
+    ] cvas
+} def
+
+/StillDict 200 dict def
+StillDict begin 
+
+  /_out null def
+  /_out? false def
+%  /_outfile (/dev/ttya) def
+  /_outfile (/dev/ttyb) def
+%  /_outfile (%socketc2000) def
+%  /_outfile (%socketc2000.tumtum.cs.umd.edu) def
+%  /_outfile (still_out.ps) def
+
+  /_ascii? true def % false doesn't work yet because of typedprint
+
+  /_display_def? false def
+
+  /_showpage? true def
+
+  /_jobs? true def
+
+  /_wrap_things? true def
+
+  /_buf 80 string def
+
+  /_smartcolor? false def
+  /_usefont? false def
+
+  /_fonts 100 dict def
+  /_fcount 0 def
+  /_font null def
+  /_font_id null def
+  /_font_name null def
+  /_font_size null def
+  /_color null def
+  /_linecap null def
+  /_linejoin null def
+  /_linewidth null def
+  /_miterlimit null def
+  /_dashoff null def
+  /_dasharray null def
+
+  /_output_flatness 0 def
+
+  /_output_tx -80 def
+  /_output_ty -100 def
+  /_output_sx 2 def
+  /_output_sy 2 def
+  /_output_r 0 def
+
+  /_outputmatrix matrix def
+
+  /_MOVETO (m\n) def
+  /_LINETO (l\n) def
+  /_CURVETO (c\n) def
+  /_CLOSEPATH (p\n) def
+  /_CONTROLPOINT (k\n) def
+  /_FILL (f\n) def
+  /_EOFILL (e\n) def
+  /_STROKE (s\n) def
+  /_SHOW (t\n) def
+  /_NEWPATH (x\n) def
+  /_SETFONT (n\n) def
+  /_GSAVE (gs\n) def
+  /_GRESTORE (gr\n) def
+  /_SETGRAY (sg\n) def
+  /_SETHSBCOLOR (sh\n) def
+  /_SETLINECAP (sc\n) def
+  /_SETLINEJOIN (sj\n) def
+  /_SETLINEWIDTH (sw\n) def
+  /_SETMITERLIMIT (sm\n) def
+  /_SETDASH (sd\n) def
+  /_DISPLAYBEGIN (/display {\n) def
+  /_DISPLAYEND (} def\n) def
+  /_SHOWPAGE (showpage\n) def
+  /_SETUP () def
+  /_SETDOWN () def
+  /_STILLBEGIN (
+100 dict begin
+
+/m /moveto load def
+/l /lineto load def
+/c /curveto load def
+/p /closepath load def
+/k
+  /controlpoint where { /controlpoint get } { { pop lineto } } ifelse
+def
+/f /fill load def
+/e /eofill load def
+/s /stroke load def
+/t /show load def
+/x /newpath load def
+/n /setfont load def
+/gs /gsave load def
+/gr /grestore load def
+/sg /setgray load def
+/sh /sethsbcolor load def
+/sc /setlinecap load def
+/sj /setlinejoin load def
+/sw /setlinewidth load def
+/sm /setmiterlimit load def
+/sd /setdash load def
+
+) def
+  /_STILLEND (end % StillHeaderDict\n) def
+  /_JOBBEGIN () def
+  /_JOBEND (\004) def
+  /_BEGINGROUP { ProcessMax 1 gt (\n) (% BeginGroup {\n) ifelse } def
+  /_ENDGROUP { ProcessMax 1 gt (\n) (%} EndGroup\n) ifelse } def
+  /_BEGINTHING ({\n) def
+  /_ENDTHING (} exec\n) def
+
+  /_stillon {
+    /_out? true store
+  } def
+
+  /_stilloff {
+    /_out? false store
+  } def
+
+  /_stillbegin {
+    _init
+    _out null eq {
+      _out? {
+        systemdict /_printer known {
+	  /_out _printer store
+	} {
+          /_out _outfile (w) file store
+	} ifelse
+        _jobs? { _JOBBEGIN _write_out } if
+        (%!\n%BoundingBox: % % % %\n/display_w % def\n/display_h % def\n\n)
+	[ (%) (%%)
+	  gsave 
+	    clippath pathbbox
+	    4 -1 roll dup -1 eq { 1 add } if 4 1 roll % bug fix!
+	    points2rect
+	  grestore
+	  2 copy
+	] sprintf
+	_write_out
+	_display_def? { _DISPLAYBEGIN _write_out } if
+	_SETUP _write_out
+	_STILLBEGIN _write_out
+	_GSAVE _write_out
+      } {
+        NoStillDict begin
+      } ifelse
+    } if
+  } def
+
+  /_stillend {
+    _out? {
+      _SETDOWN _write_out
+      _GRESTORE _write_out
+      _STILLEND _write_out
+      _display_def? { _DISPLAYEND _write_out } if
+      _showpage? { _SHOWPAGE _write_out } if
+      _jobs? { _JOBEND _write_out } if
+      _out flushfile
+      systemdict /_printer known not {
+        _out closefile
+      } if
+      /_out null store
+    } if
+    currentdict NoStillDict eq { end } if
+  } def
+
+  /_init {
+    gsave
+      _output_tx _output_ty translate
+      _output_sx _output_sy scale
+      _output_r rotate
+      _outputmatrix currentmatrix pop
+    grestore
+    /_fonts 100 dict store
+    /_fcount 0 store
+    /_font null store
+    /_color null store
+    /_linecap null store
+    /_linejoin null store
+    /_linewidth null store
+    /_miterlimit null store
+    /_dasharray null store
+    /_dashoff null store
+    _output_flatness setflat
+  } def
+
+  /_write_out {
+    _out exch writestring
+  } def
+
+  % XXX: Writes to stdout!
+  /_typed_out {
+    typedprint
+  } def
+
+  /_write_string {
+    _ascii? { litstring _write_out } { _typed_out } ifelse
+  } def
+
+  /_write_number {
+    _ascii? { _buf cvs _write_out ( ) _write_out } { _typed_out } ifelse
+  } def
+
+  /_write_state {
+    _usefont? {
+      _font_id
+      /_font_id currentfont (%) sprintf store
+      _font_id ne
+    } false ifelse {
+      /_font_id currentfont (%) sprintf store
+      /_font_name currentfont /FontName get store
+      /_font_size currentfont /FontMatrix get 0 get store
+      _fonts _font_id (%) sprintf known {
+	_fonts _font_id get _write_out ( ) _write_out
+      } {
+	_fonts _font_id _fcount (_f%) sprintf put
+	_font_name (/% findfont ) sprintf _write_out
+	_font_size _write_number
+	_fcount (scalefont dup /_f% exch def ) sprintf _write_out
+	/_fcount _fcount 1 add store
+      } ifelse % (_f#)
+      _SETFONT _write_out
+      /_font currentfont store
+    } if
+    _smartcolor? {
+      % ...
+    } {
+      _color currentcolor ne {
+	currentrgbcolor
+	1 index eq { eq } { pop pop false } ifelse {
+	  currentgray _write_number _SETGRAY _write_out
+	} {
+	  currenthsbcolor
+	  3 -1 roll _write_number exch _write_number _write_number
+	  _SETHSBCOLOR _write_out
+	} ifelse
+        /_color currentcolor store
+      } if
+    } ifelse
+    _linecap currentlinecap ne {
+      currentlinecap _write_number _SETLINECAP _write_out
+      /_linecap currentlinecap store
+    } if
+    _linejoin currentlinejoin ne {
+      currentlinejoin _write_number _SETLINEJOIN _write_out
+      /_linejoin currentlinejoin store
+    } if
+    _miterlimit currentmiterlimit ne {
+      currentmiterlimit _write_number
+      _SETMITERLIMIT _write_out
+      /_miterlimit currentmiterlimit store
+    } if
+    gsave _outputmatrix setmatrix
+      _linewidth currentlinewidth ne {
+	currentlinewidth _write_number
+	_SETLINEWIDTH _write_out
+	/_linewidth currentlinewidth store
+      } if
+      currentdash exch _dashoff ne { pop false } {
+	dup length _dasharray length ne { pop false } {
+	  _dasharray {eq} arrayop
+	  true exch {not {not exit} if} forall
+	} ifelse
+      } ifelse {
+	currentdash exch
+	([) _write_out { _write_number } forall (]) _write_out
+	_write_number
+	_SETDASH _write_out
+	currentdash /_dasharray exch store /_dashoff exch store
+      } if
+    grestore
+  } def
+
+  /_write_path {
+    gsave _outputmatrix setmatrix
+      _output_flatness setflat
+      %flattenpath
+      { { exch _write_number _write_number
+          _MOVETO _write_out }
+	{ exch _write_number _write_number 
+	  _LINETO _write_out }
+	{ 6 -1 roll _write_number
+	  5 -1 roll _write_number
+	  4 -1 roll _write_number
+	  3 -1 roll _write_number
+	  exch _write_number _write_number
+	  _CURVETO _write_out }
+	{ _CLOSEPATH _write_out }
+%	{ 3 -1 roll _write_number exch _write_number _write_number
+%	  _CONTROLPOINT _write_out }
+      } pathforallvec
+    grestore
+  } def
+
+  /_begingroup {
+    _out? {
+      _BEGINGROUP _write_out
+    } if
+  } def
+
+  /_endgroup {
+    _out? {
+      _ENDGROUP _write_out
+    } if
+  } def
+
+  /_fill {
+    _out? {
+      gsave fill grestore
+      _write_path
+      _write_state
+      _FILL _write_out
+      newpath
+    } {
+      fill
+    } ifelse
+  } def
+
+  /_eofill {
+    _out? {
+      gsave eofill grestore
+      _write_path
+      _write_state
+      _EOFILL _write_out
+      newpath
+    } {
+      eofill
+    } ifelse
+  } def
+
+  /_stroke {
+    _out? {
+      gsave stroke grestore
+      _write_path
+      _write_state
+      _STROKE _write_out
+      newpath
+    } {
+      stroke
+    } ifelse
+  } def
+
+  /_show {
+    _out? {
+      gsave
+	_write_state
+	_outputmatrix setmatrix
+%	_GSAVE _write_out
+%        _write_matrix
+	currentpoint exch _write_number _write_number
+	_MOVETO _write_out
+	dup _write_string
+	_SHOW _write_out
+%	_GRESTORE _write_out
+      grestore
+    } if
+    show
+  } def
+
+  /_newpath { % signifies a new object
+    _out? {
+      _NEWPATH _write_out
+    } if
+    newpath
+  } def
+
+end % StillDict
+
+/NoStillDict 200 dict def
+NoStillDict begin
+
+  /_init nullproc def
+  /_begingroup nullproc def
+  /_endgroup nullproc def
+  /_fill /fill load def
+  /_eofill /eofill load def
+  /_stroke /stroke load def
+  /_show /show load def
+  /_newpath /newpath load def
+
+end % NoStillDict
+
+end % systemdict

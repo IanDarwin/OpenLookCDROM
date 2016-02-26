@@ -1,0 +1,2211 @@
+From: meyer@frostbite-falls.uoregon.edu (David M. Meyer 503/346-1747)
+Newsgroups: comp.unix.solaris,comp.answers,news.answers
+Subject: Solaris 2 Porting FAQ
+Date: 02 May 1995 11:58:08 GMT
+Organization: University Network Services, University of Oregon, Eugene, OR
+	97403
+Lines: 2194
+Approved: news-answers-request@MIT.Edu
+Distribution: world
+Message-ID: <MEYER.95May2045808@frostbite-falls.uoregon.edu>
+Reply-To: meyer@ns.uoregon.edu (David M. Meyer 503/346-1747)
+NNTP-Posting-Host: frostbite-falls.uoregon.edu
+Summary: This posting contains a list of Frequently Asked
+	 Questions (and their answers) about porting BSD
+	 applications to ANSI/SVID/SVR4 systems (in general) and  
+	 Solaris 2 (in particular).
+
+
+Archive-name:   Solaris2/porting-FAQ
+Last-modified:  Monday, May 01, 1995
+Version:        2.23
+
+Solaris 2 Porting FAQ
+[Last modified: 01 May 1995]
+
+This article contains the answers to some Frequently Asked
+Questions (FAQ) often seen in comp.unix.solaris that relate to
+porting BSD/Solaris 1 applications to Solaris 2. Over the first
+few days of its existence, it has evolved into a more general
+discussion about portability among Unix systems, especially as it
+relates to BSD, ANSI, POSIX, and SVID compliant systems.  It is
+hoped that this document will help reduce volume in this
+newsgroup and to provide hard-to-find information of general
+interest.
+        
+        Please redistribute this article!
+
+This FAQ is maintained by David Meyer (meyer@ns.uoregon.edu).
+Send updates and corrections to me at this address.  It would
+help if the subject line contained the phrase "FAQ".
+
+This article includes answers to the following questions.  Ones
+marked with a + indicate questions new to this issue; those with
+changes of content since the last issue are marked by *:
+
+0)  Which preprocessor symbols to use?
+1)  Some Include File Issues
+2)  Libraries
+3)* Possible ANSI/POSIX/SVR4 replacements for some popular BSD functions 
+4)  Signal Primer
+5)  Waiting for Children to Exit
+6)  Dealing with Shadow Password Files
+7)  Some Compatibility Problems
+8)  Other Resources
+
+-----------------------------------------------------------------------------
+0) TOPIC: Which preprocessor symbols to use?
+
+[Last modified: 11 October 93]
+
+[Editor's Note: This section began life as a Solaris 1 and 
+Solaris 2 centric discussion. However, it has grown into a more 
+generalized portability discussion. I believe that this is a
+useful discussion, but it appears that contrasting styles,
+preferences, and requirements will make consensus difficult. DM]
+
+Answer: This is a difficult and controversial question.
+
+In order to understand the following discussion, we need to be
+aware of the following standards:
+
+ANSI C (ANSI X3J11) 
+                
+        This is the standard C definition, originally adopted as
+        American National Standard X3.159-1989 and has since been
+        adopted as international standard ISO/IEC 9899:1990.
+
+                
+POSIX.1 (IEEE 1003.1-1990)
+
+        POSIX.1, the Portable Operating System Interface for
+        Computer Environments,  is a system level API that deals
+        with the function and format of system calls and
+        utilities such as signal handling. 
+
+SVID3
+
+        SVID3, the System V Interface Definition Issue 3, is is
+        fully compliant with POSIX.1, and is a arguably subset of
+        the SVR4 system API. For example, SVID3 doesn't have
+        "-ldl", but many people consider it of the SVR4 API. That
+        is, a system could be SVID3-compliant without necessarily
+        being an SVR4 system.
+
+XPG
+
+        XPG, X/Open Company Ltd's X/Open Portability Guide, is a
+        broad document which covers a great number of areas,
+        including operating systems and programming languages,
+        system interfaces, and internetworking. The latest
+        version, XPG4, groups these components into "profiles",
+        which are packaged together according to market needs.
+
+
+Two additional standards are relevant for Suns:
+
+SCD 2.0 and x86 ABIs
+
+        SCD 2.0 is the SPARC Compliance Definition 2.0. The SCD
+        has two components: On the hardware side, 
+
+         (i).   System Compliance Test verifies that the hardware
+                and operating system successfully emulates what
+                Sun is doing. It covers low level system issues
+                such as alignment, and linking and loading. 
+
+        (ii).   The SPARC Application Verifier tests software to
+                be sure that it runs on SCD hardware. 
+
+                
+As an example of subtle differences that exist between the BSD
+interface and SVID/POSIX standards, consider the BSD mktemp(3)
+call. The SunOS 4.1 mktemp() replaced the trailing X characters
+with the letter (e.g., X) and the current process ID. The SVID
+and SVR4 versions specify only that the six trailing Xs be
+replaced with a character string that can be used to create a
+unique filename, and does not depend on the specific name of the
+file.  Thus, the BSD and SVR4/SVID3 versions are only
+semantically equivalent in the case where only the application
+cares that the filename is unique.
+
+Now, the basic philosophical question of which preprocessor
+contstucts to use here would appear to revolve around the
+following choices: 
+
+        (i).    Use a high level, large grained standard
+                definition (e.g., _POSIX_SOURCE). In this case,
+                features are implicitly defined. One problem with
+                such definitions is that they may cause other
+                useful functions to become unavailable. However,
+                there are several such definitions in common use.
+                For operating systems, we have
+
+                        SVR4
+                        SYSV
+                        BSD
+                        OSF1
+
+                to name a few. For standards, we are mainly
+                interested interested symbols such as 
+
+                        __STDC__
+                        _POSIX_SOURCE
+                        _XOPEN_SOURCE
+                
+  
+                This method is not without pitfalls.  For
+                example, the Sun SC2.0.1 compiler defines
+                __STDC__ as 0 when compiling in transition mode
+                (-Xt), only setting it to 1 when the strict ANSI 
+                mode (-Xc) is used. The expression 
+
+                        #if (__STDC__ - 0 == 0) 
+
+                can be used to recognize strict v. transition
+                ANSI modes. On Solaris 2, if you compile with
+                -Xc, you will lose all non-ANSI functionality.
+                However, you can define _POSIX_SOURCE or
+                _XOPEN_SOURCE to get a POSIX or XOPEN
+                environment.   
+                
+                If you use _POSIX_SOURCE, .eg., 
+                
+                        #define _POSIX_SOURCE 1
+
+                then all symbols not defined by Standard C or the
+                POSIX standard will be hidden (except those with
+                leading underscores). If you wish to use
+                _POSIX_SOURCE, be sure to define it before
+                including any standard header files, and avoid
+                name clashes by not defining any symbols that
+                begin with "_" (Similarly, note that almost all
+                names beginning with  "E" are reserved by
+                errno.h, and many names prefixed by "va_"
+                reserved by stadarg.h). 
+
+                One more note on _POSIX_SOURCE:   SunOS 5.3 has
+                introduced the new header file <sys/feature_tests.h>. 
+                This file is included in all files which have
+                _POSIX_SOURCE dependancies. 
+
+                A new symbol,  _POSIX_C_SOURCE was introduced in POSIX.2
+                (V1 P720, L51) as a mechanism to enable POSIX.1 and
+                POSIX.2 symbols. Its values are as follows:
+
+                /*
+                 *      Values of _POSIX_C_SOURCE
+                 *
+                 *              undefined       not a POSIX compilation
+                 *                      1       POSIX.1-1990 compilation
+                 *                      2       POSIX.2-1992 compilation
+                 *                1993xxL       POSIX.4-1993 compilation
+                 */
+
+
+                This means that POSIX.2 says that a value of 1 = POSIX.1
+                and a value of 2 = POSIX.1 & POSIX.2. The idea here is
+                to provide a single control point over the POSIX namespace,
+                rather than having to edit each file individually. 
+
+                Another potential portability pitfall is the
+                __svr4__ feature defined by the FSF (gcc). If you
+                depend on __svr4__, you may lose portability.
+                gcc also defines sun if you don't give the -ansi
+                argument. If you use -ansi,  then sun is not
+                defined and __sun__ is.
+
+                Finally, complexity may arise surrounding a
+                feature which may be part of some vendor's
+                version of some system Y, but may also exist in
+                non-Y compliant systems. Consider, for example,
+                shadow passwording. Systems conforming to the
+                latest SVID (e.g., SVR4) have shadow.h, but there
+                are many systems that have shadow.h without
+                conforming to the SVID.
+
+                So, in general, for code that uses a STD_FEATURE and
+                runs on systems W, Y, and Z, you are left with 
+                something that may look like   
+
+                        #if defined(W)                          ||
+                           (defined(Y) && _Y_VERSION_ > 3)      ||
+                           (defined(Z) || defined(__Z__))
+                        #include <STD_FEATURE.h>
+                        #endif
+
+                [W, Y, Z are things like SVR4, AIX, NeXT, BSD,
+                and so on. STD_FEATURE.h is something like shadow.h] 
+
+                This example exposes two problems the large
+                grained method. First, it forces one to keep
+                track of exactly which vendors supply
+                <STD_FEATURE.h>.  Second, the complexity of the
+                preprocessor expressions may be a serious
+                consideration, since their complexity is
+                something like     
+
+                        O(n*m) where
+
+                        n = the number of standard features, and
+                        m = number of vendors/systems
+
+
+        (ii).   Define new fine-grained feature tests (e.g.,
+                HAVE_POSIX_SIGNALS, or HAVE_SHADOW_H) for
+                features of interest. Such fine-grained features
+                could be used in conjunction with large grained
+                definitions. An nice example of using feature
+                definitions is the GNU configure program. It
+                uses, for example, the features HAVE_BCOPY and
+                HAVE_MEMSET to enable either the bcopy (BSD) or
+                memset (ANSI) functions.   
+
+                Feature testing has the advantage of being useful
+                for automatic configuration with programs such as
+                GNU configure. GNU configure outputs statements
+                of the form
+                
+
+                        #define HAVE_aaaa
+                        #define HAVE_bbbb
+                        #define HAVE_cccc
+                        ....
+
+                Another way to generate a feature set is by
+                using the symbol defining the system, e.g., 
+
+                        #ifdef SVR4
+                        #define HAVE_aaaa
+                        #define HAVE_bbbb
+                        #define HAVE_cccc
+                        ....
+
+                        #endif
+                        #ifdef BSD43
+                        #define HAVE_yyyy
+                        ...
+                        #endif
+                        #ifdef NEWTHING
+                        #define HAVE_zzzz
+                        ...
+                        #endif
+        
+                Feature testing also helps to avoid constructs
+                such as 
+
+                #if defined(_POSIX_SOURCE) || defined(_XOPEN_SOURCE)
+
+                [Editor's Note: Finally, an observation: The real
+                issue here appears to be how many of these
+                "features" are migrating to the standard
+                operating systems and interfaces, and how many
+                vendors are implementing these standards. In
+                general, some people feel that feature testing
+                improves portability (and readability), and
+                others believe that the feature testing style 
+                decreases portability and readability. DM]  
+
+
+        (iii).  Use some part of the feature's definition itself
+                to enable the feature, for example 
+
+                        #ifdef _IOLBF
+                                setvbuf(stderr, NULL, _IOLBF, 0);
+                        #else
+                                setlinebuf(stderr);
+                        #endif  /* _IOLBF  */
+
+                Note that in this case, another, possibly better
+                option is (consider the case in which some vendor
+                has inadvertently defined _IOLBF for some other
+                purpose):
+
+                        #ifdef   __STDC__
+                                setvbuf(stderr, NULL, _IOLBF, 0);
+                        #else
+                                setlinebuf(stderr);
+                        #endif  /* __STDC__  */
+
+                since setvbuf is required by Standard C.
+
+
+
+        Finally, some people have suggested the use of
+        expressions like 
+
+                #if defined(sun) && defined(__svr4__)
+                        <Solaris 2 centric code>
+                #else 
+                        ...
+                #endif
+
+
+        As noted above, the __svr4__ feature is defined by the
+        FSF (gcc). If you depend on __svr4__, you may lose 
+        portability. gcc also defines sun if you don't give the
+        -ansi argument. If you use -ansi,  then sun is not
+        defined and __sun__ is. The implication here is that
+        depending on symbols defined by a given compiler can
+        reduce portability.
+
+        In general, such a construct should be used if and only if
+        the code in question cannot be covered by some standard
+        (e.g., SVR4, _POSIX_SOURCE, etc.). Note that it is also
+        compiler specific.
+        
+
+-----------------------------------------------------------------------------
+1) TOPIC: Include File Issues
+
+[Last modified: 19 August 93]
+
+The first and apparently most common problem is that
+/usr/include/strings.h is not ANSI compliant, and as such does not
+exist on Solaris 2 (or SVR4). It should be replaced by
+/usr/include/string.h, e.g. (following GNU feature definition
+conventions)
+
+        #if HAVE_STRING_H || defined(STDC_HEADERS)
+        #include <string.h>
+        #else
+        #include <strings.h>
+        #endif
+        #if defined(STDC_HEADERS)
+        #include <stdlib.h>
+        #endif /* HAVE_STRING_H */
+
+        while ANSI-C requires the name be string.h, one might
+        define this as
+
+        #ifdef __STDC__
+        #include <string.h>
+        #else
+        #include <strings.h>
+        #endif  /* __STDC__ */
+
+        However, this again neglects the case in which the vendor 
+        provides string.h in a non-ANSI environment.
+
+                        
+Another thing to watch is for the symbols O_CREAT, O_TRUNC, and
+O_EXCL being undefined. On BSD systems, these are defined in
+<sys/file.h>. On Solaris 1 systems (beginning with SunOS 4.0) ,
+these are defined in <sys/fnctlcom.h> (which is included in
+<sys/file.h>). On a POSIX compliant system, these symbols are
+defined in <fcntl.h>, which is not included in <sys/file.h>.
+Since <fcntl.h> is defined on SunOS 4.1.x, replacing <sys/file.h>
+with <fcntl.h> works for both SunOS 4.1.x and SVR4. See, for
+example, section 5.3.1.1 of the POSIX spec.
+
+
+-----------------------------------------------------------------------------
+
+2) TOPIC: Libraries
+
+[Last modified: 12 Feburary 94]
+
+Network Libraries:
+
+Many of the network functions and definitions that were present
+in the BSD libc are now in libnsl.so and libsocket.so. Thus
+networking code will generally need to be linked with -lsocket
+-lnsl. Since libsocket.so requires libnsl.so (it is NEEDED), you must
+specify them in this order. Note that you need libnsl.so for functions
+like gethostbyname (see gethostbyname note below). Incidently, you can
+look at selected parts of an object file using dump(1), e.g.,  
+
+        % dump -Lv /usr/lib/libsocket.so
+
+        /usr/lib/libsocket.so:
+
+          **** DYNAMIC SECTION INFORMATION ****
+        .dynamic :
+        [INDEX] Tag      Value
+        [1]     NEEDED   libnsl.so.1
+        [2]     INIT     0x3174
+
+        [...]
+        
+Regular Expressions
+
+Another problem frequently encountered is that the regexp
+functions (see regexpr(3G)) are not defined in libc. On Solaris
+2, you must link with libgen.a (-lgen) in order to get these
+definitions. See Intro(3) for a more complete discussion.
+
+Name List (nlist)
+
+You must link with libelf.a (-lelf) to get the nlist(3E)
+definition. 
+
+-----------------------------------------------------------------------------
+
+3)* TOPIC: Possible ANSI/POSIX/SVR4 replacements for some popular
+           BSD functions  
+
+[Last modified: 01 May 1995]
+
+[Editor's Note: Once again, this section began life a SunOS 4.1.x 
+and SunOS 5.x centric discussion.  It too has grown into a
+discussion dealing with general portability for BSD to other
+standards. DM]
+
+Problems finding functions that were defined in the BSD libc.a is
+one of the most frequently asked porting questions. The following
+table and code fragments suggest substitutes for some common BSD
+constructs (more complete lists can be found in some of the texts
+listed in section 7 below). 
+
+In addtion to the possibilites listed below, many people have 
+created compatability libraries using GNU autoconfigure. An
+example of this is the "generic" libary from Dan Stromberg
+(strombrg@hydra.acs.uci.edu). It can be found on 
+ftp.uci.edu:/pub/generic/generic.tar.gz.
+
+
+BSD                     Possibilities           Standards/Notes
+============================================================================
+srandom(seed)           srand(seed)             ANSI-C (Also, some older UNIX)
+                        srand48(seed)           SVR4
+
+non-ANSI signal()       sigset()                SVR4   (systems calls not
+(e.g., SunOS)                                          restarted, but bytes r/w
+                                                       returned, else EINTR) 
+                        sigaction               POSIX  (but extensible by
+                                                       implementation) 
+
+sigvec                  sigaction               POSIX
+sigblock                sigprocmask             POSIX
+                        sigset(.., SIG_HOLD)
+                        sighold                 SVR4
+sigsetmask              sigprocmask             POSIX
+                        sigset/sigrelse         SVR4    
+
+sigpause                sigsuspend              POSIX
+        
+setjmp                  sigsetjmp               POSIX 
+longjmp                 siglongjmp              POSIX 
+
+statfs                  statvfs                 SVR4
+
+bcopy                   memmove                 ANSI-C (BSD bcopy() handles
+                                                       overlapping areas
+                                                       correctly, as does
+                                                       memmove, but not memcpy)
+
+bzero                   memset                  ANSI-C
+
+index                   strchr                  ANSI-C
+rindex                  strrchr                 ANSI-C
+
+getwd                   getcwd                  POSIX
+
+getrusage               open,ioctl              The getrusage information
+                                                (and a whole lot more) can be
+                                                found in the prusage structure.
+                                                Use the PIOCUSAGE ioctl. See
+                                                the example below and the
+                                                proc(4) man page for detail. 
+
+
+gethostname             sysinfo(SI_HOSTNAME,..) SVR4   See sysinfo(2) for
+                                                       many other possible
+                                                       values
+
+getdtablesize           sysconf(_SC_OPEN_MAX)   POSIX  See sysconf(3C) for
+                                                       many other values
+                                                       available via sysconf.
+
+strptime                                                See code from Kevin Ruddy
+                                                        below
+
+timelocal               mktime                          
+
+wait3 w/o rusage        waitpid                 POSIX
+wait3                   waitid                  SVR4
+wait3                                           See J"org Schilling's wait3
+                                                emulation code below.
+
+usleep                   nanosleep              POSIX See nanosleep(3R) on
+                                                Solaris 2.3 (see libposix4.a) 
+                                                For a Solaris 2.[0-2], see the
+                                                example below.
+
+
+
+
+------------------------------------------------------------------
+
+        Some Well-Traveled Macros
+        -------------------------
+
+        #define bcopy(src,dest,len)     (memmove((dest), (src), (len)))
+        #define bzero(dest,len)         (memset((dest), (char)0, (len)))
+        #define bcmp(b1,b2,n)           (memcmp((b1),(b2),(n)))
+        #define index(s,c)              strchr((s),(c))
+        #define rindex(s,c)             strrchr((s),(c))
+        #define MIN(a, b)               ((a) < (b) ? (a) : (b))
+        #define MAX(a, b)               ((a) < (b) ? (b) : (a))
+        #ifdef  MAXPATHLEN
+        #define getwd(x)                getcwd((x), MAXPATHLEN)
+        #endif  /* MAXPATHLEN */
+        define  setlinebuf(fp)          setvbuf(fp, NULL, _IOLBF, 0);
+
+
+        Timing Problems
+        ---------------
+
+        POSIX defines the <sys/times.h> function for subsecond
+        timing.  Sun seems to provide about 1/60 second accuracy. 
+
+        #include <stdio.h>
+        #include <sys/times.h>   /* for struct tms and times() */
+        #include <time.h>        /* for CLK_TCK value */
+
+        int main(void) {
+           struct tms tms_start, tms_finish;  /* user and system time */
+           clock_t start, finish;             /* real time */
+           start = times( &tms_start );
+           /* ... do something ... */
+           finish = times( &tms_finish );
+           printf("(in seconds) %f real, %f system, %f user\n",
+               (finish-start) / (double)CLK_TCK,
+               (tms_finish.tms_stime-tms_start.tms_stime) / (double)CLK_TCK,
+               (tms_finish.tms_utime-tms_start.tms_utime) / (double)CLK_TCK);
+           return 0;
+        }
+
+        You might want to divide CLK_TCK by 1000.0 to get more
+        precise millisecond values.  times() returns -1 if it
+        cannot provide timing information.
+
+        While Solaris 2 conforms to POSIX, SunOS 4.1 defines
+        times() as returning a flag instead of elapsed real time.
+        You can use ftime() to get elapsed real time:
+
+        #include <stdio.h>
+        #include <sys/types.h>  /* for time_t */
+        #include <sys/timeb.h>  /* for ftime() and struct timeb */
+
+        int main(void) {
+           struct timeb start, finish;
+           double real_secs;
+           ftime( &start );
+           /* ... do something ... */
+           ftime( &finish );
+           real_secs = finish.time - start.time;
+           if ( finish.millitm < start.millitm )
+              real_secs = (real_secs-1) +
+                          (1000+start.millitm-finish.millitm)/1000.0;
+           else
+              real_secs = (finish.millitm-start.millitm)/1000.0;
+           printf( "That took %f real seconds.", real_secs );
+           return 0;
+        }
+
+        The ANSI C function clock() can also be used for timing.
+        It returns elased "processor" time, which is equivalent
+        to system+user time. While it also returns a clock_t
+        value, you must divide the difference between to calls to
+        clock() by CLOCKS_PER_SEC, *not* CLK_TCK.  The values are
+        different by orders of magnitude.  SunOS 4.1 doesn't seem
+        to provide CLOCKS_PER_SEC or CLK_TCK in <time.h>.  Try
+        10000000 and 60, respectively.
+
+
+
+        Compatibility Functions
+        -----------------------
+
+        /*
+         *      getrusage --
+         */
+
+        #include <sys/resource.h>
+        #ifndef RUSAGE_SELF
+        #include <sys/procfs.h>
+        #endif
+
+        #ifdef PIOCUSAGE
+                int             fd;
+                char            proc[SOMETHING];
+                prusage_t       prusage;
+
+                sprintf(proc,"/proc/%d", getpid());
+                if ((fd = open(proc,O_RDONLY)) == -1) {
+                        perror("open");
+                        ....
+                }
+                if (ioctl(fd, PIOCUSAGE, &prusage) == -1) {
+                        perror("ioctl");
+                        ...
+                }
+                ....
+        #else                   /* Again, assume BSD */
+                if (getrusage(RUSAGE_SELF, &rusage) == -1) {
+                        perror("getrusage");
+                        ....
+                }
+                ....
+        #endif /* PIOCUSAGE */
+
+
+
+        /*
+         *      setlinebuf --
+         *
+         */
+        
+        #ifdef   __STDC__
+                setvbuf(stderr, NULL, _IOLBF, 0);
+        #else
+                setlinebuf(stderr);
+        #endif  /* __STDC__  */
+
+
+        /*
+         *      gethostid 
+         *
+         *      This example has a combination of high-level
+         *      (SVR4) and (SI_HW_SERIAL) feature declarations.
+         */
+        
+        #if defined(SVR4) && defined(SI_HW_SERIAL)
+        long  gethostid() {
+                        
+          char buf[128];
+                
+          if (sysinfo(SI_HW_SERIAL, buf, 128) == -1) {
+            perror("sysinfo");
+            exit(1);
+          }
+          return(strtoul(buf,NULL,0));
+        }
+        #endif /* SVR4 && SI_HW_SERIAL */
+
+
+        /*
+         *      getdtablesize --
+         *
+         *      Several possibilites here. Note that while one
+         *      can emulate getdtablesize with getrlimit on SVR4
+         *      or 4.3BSD (or later), these systems should be
+         *      POSIX.1 compliant, so sysconf is preferred.
+         *
+         */
+
+        #ifdef  _SC_OPEN_MAX            /* POSIX -- preferred */
+                if ((tableSize = sysconf(_SC_OPEN_MAX)) == -1) {
+                        perror("sysconf");
+                        ...
+                }
+        #elif   RLIMIT_NOFILE           /* who is non POSIX but has this? */
+                if (getrlimit(RLIMIT_NOFILE, &rlimit) == -1) {
+                        perror("getrlimit");
+                        exit(1);
+                }
+                tableSize = rlimit.rlim_max;
+        #else                           /* assume old BSD type */
+                tableSize = getdtablesize();
+        #endif
+
+
+------------------   
+
+        /*
+         * gethostname  --
+         *
+         */
+
+        #ifdef  SVR4 
+        #include <sys/systeminfo.h>
+        #endif  /* SVR4 */ 
+
+                ....
+
+                char buf[MAXHOSTNAME]
+
+        #ifdef  SVR4
+                if (sysinfo(SI_HOSTNAME, buf, sizeof(buf)) <0) {
+                        perror("SI_HOSTNAME");
+                        exit(BAD);
+                }
+        #else   /* Assume BSD */
+                if (gethostname(buf, sizeof(buf)) < 0) {
+                        perror("gethostname");
+                        exit(BAD);
+                }
+        #endif  /* SVR4 */
+
+        /* buf has hostname here... */
+
+
+        /*
+         *      usleep(delay)  --
+         *
+         *      Possible usleep replacement. Delay in microseconds.
+         *      Another possiblity is to use poll(2). On Solaris
+         *      2.x, select is just a wrapper for poll, so you
+         *      are better off using it directly.  If you use,
+         *      poll, note that it uses millisecond resolution,
+         *      and is not affected by the O_NDELAY and O_NONBLOCK 
+         *      flags.
+         *
+         *      Note that using nanosleep has portability implications,
+         *      even across different versions of Solaris 2.x. In
+         *      particular, only Solaris 2.3 has libposix4, and 
+         *      hence nanosleep. Select (or poll) is a better option if 
+         *      you need portability across those versions.
+         *
+         *      If you define USE_NANOSLEEP, be sure to link with -lposix4
+         *
+         */
+
+        #include <unistd.h>
+        #include <stdlib.h>
+        #include <stdio.h>
+        #include <errno.h>
+        #include <time.h>
+        #include <sys/time.h>
+        #include <sys/param.h>
+        #include <sys/types.h>
+        #ifdef  USE_POLL
+        #include <stropts.h>
+        #include <poll.h>
+        #endif  /* USE_POLL */
+        
+        int     usleep(unsigned long int useconds)
+        {
+        #ifdef  USE_NANOSLEEP
+          struct timespec rqtp;
+        
+          rqtp.tv_sec  = useconds / (unsigned long)  1000000;
+          rqtp.tv_nsec = (useconds % (unsigned long) 1000000) * 1000 ;
+        
+          if (nanosleep(&rqtp,  (struct  timespec *) NULL) == -1)
+            perror("nanosleep");
+          return (0);
+        
+        #elif   USE_POOL
+          struct pollfd unused;
+        
+          if (poll(&unused,0,(useconds/1000)) == -1) 
+            perror("poll");
+          return(0);
+        #elif   USE_USLEEP
+          struct timeval delay;
+        
+          delay.tv_sec = 0;
+          delay.tv_usec = useconds;
+          if (select(0,
+                     (fd_set *) NULL,
+                     (fd_set *) NULL,
+                     (fd_set *) NULL,
+                     &delay) == -1)
+            perror("select");
+          return (0);
+        #endif                  /* USE_NANOSLEEP */
+        
+        
+        /*
+         *      tzsetwall -- 
+         */
+        
+        void tzsetwall()
+        {
+          unsetenv("TZ");
+          tzset();
+        }
+
+        /*
+         *      gethostybname --
+         *
+         *      The following code was contributed by Casper H.S. Dik
+         *      to address the following problem:
+         *
+         *      gethostbyname() always returns null in h->aliases.
+         *      Now, gethostbyX can be replaced its __switch_gethostbyX
+         *      equivalents. However, these are missing from Solaris 2.3.
+         *
+         *      The _r functions are reentrant.  They have a different
+         *      calling sequence. (The __switch_getXXXbyYYY are called
+         *      like getXXXbyYYY, the _switch_getXXXbyYYY_r are called
+         *      like getXXXbyYYY_r) 
+         *
+         *      With this bit of knowledge I constructed the code that
+         *      follows this message. Just plug it in every program
+         *      that requires gethostbyname to work. (Gethostbyaddr()
+         *      is added for symmetry). 
+         *
+         *      You'll need to link with -lnsl -ldl.
+         *
+         *      It works for Solaris 2.2 and 2.3.  (Compiled on 2.3 or
+         *      2.2 it will run 2.2 and 2.3)
+         *
+         *      Note that as with __switch* _switch*_r is undocumented
+         *      and can be changed in the next release.
+         *
+         */
+        
+        /*
+         *     Proper gethostbyXX function for Solaris 2.0-2.3
+         *     (and later ?) 
+         *
+         *     Fixed in 2.4?
+         *
+         *     You'll need -ldl added to the link command line.
+         *
+         *     Casper Dik (casper@fwi.uva.nl)
+         *
+         */
+
+        #include <netdb.h>
+        #include <dlfcn.h>
+        
+        #define HBUFSIZE 4096
+        
+        static void *dlhandle;
+        /* The gethostbyXXX function variables. Named after
+        * then .so files they appear in. nsw*.so in SunOS 5.2
+        * and earlier, nss_*.so in 5.3 */ 
+        static struct hostent *(*nswghba)(const char *, int, int),
+                              *(*nswghbn)(const char *),
+                              *(*nss_ghba)(const char *,
+                                           int, int,
+                                           struct hostent *, char *, int, int *),
+                              *(*nss_ghbn)(const char *,
+                                           struct hostent *, char *, int, int *);
+        
+        static int dlinit(void)
+        {
+          static int dlstatus = 0; /* 0 = uninited, 1 = inited & ok, -1 = error */
+        
+          if (dlstatus)
+            return dlstatus;
+        
+          dlstatus = -1;
+        
+          dlhandle = dlopen(0, RTLD_LAZY);
+        
+          if (dlhandle == 0)
+            return dlstatus;
+        
+          /* SunOS 5.0 - 5.2 */
+          nswghba = (struct hostent *(*)(const char *, int, int))
+            dlsym(dlhandle, "__switch_gethostbyaddr");
+        
+          nswghbn = (struct hostent *(*)(const char *))
+            dlsym(dlhandle, "__switch_gethostbyname");
+        
+          /* either both should exist or both should not exist */
+          if ((nswghbn == 0) != (nswghba == 0))
+            return dlstatus;
+        
+          if (nswghbn)
+            return dlstatus = 1;
+        
+          /* SunOS 5.3 - ? */
+          nss_ghba = (struct hostent *(*)
+                      (const char *, int, int, struct hostent *, char *, int , int *))
+            dlsym(dlhandle, "_switch_gethostbyaddr_r");
+        
+          nss_ghbn = (struct hostent *(*)
+                      (const char *, struct hostent *, char *, int , int *))
+            dlsym(dlhandle, "_switch_gethostbyname_r");
+        
+          /* these two must exist when we get here */
+          if (nss_ghbn != 0 && nss_ghba != 0)
+            dlstatus = 1;
+        
+          return dlstatus;
+        }
+        
+        struct hostent *
+        gethostbyname(const char *name) {
+        
+          static struct hostent hp;
+          static char buf[HBUFSIZE];
+        
+          if (dlinit() == -1)
+            return 0;
+        
+          if (nswghbn)
+            return nswghbn(name);
+          else
+            return nss_ghbn(name, &hp, buf, sizeof(buf), &h_errno);
+        }
+        
+        struct hostent *
+        gethostbyaddr(const char *addr, int len, int type) {
+          static struct hostent hp;
+          static char buf[HBUFSIZE];
+        
+          if (dlinit() == -1)
+            return 0;
+        
+          if (nswghba)
+            return nswghba(addr, len, type);
+          else
+            return nss_ghba(addr,
+                            len, type, &hp, buf, sizeof(buf), &h_errno);
+        }
+
+
+------------------   
+wait3
+-----------------
+
+        This is an alternative to the wait3() implementation from
+        /usr/ucblib. It comes from J"org Schilling
+        (joerg@schily.isdn.cs.tu-berlin.de js@cs.tu-berlin.de).
+
+        Some of the rusage fields present in SunOS 4.x are
+        missing from the Solaris /usr/ucblib wait3
+        implementation. The fields missing from the /usr/ucblib
+        wait3 implemenation are: 
+
+                rusage->ru_maxrss
+                rusage->ru_ixrss
+                rusage->ru_idrss
+                rusage->ru_isrss
+
+        J"org's implementation provides these rusage fields.
+
+        Some other notes on this J"org's implementation:
+
+        (i).    The wait3() implementation found in /usr/ucblib
+                provides only full seconds in the ru_utime and
+                ru_stime fields. The usecs are always zeroed.
+                J"org's implementation (below) provides clock
+                tick resolution (a la' SunOS 4.x). 
+
+        (ii).   If the process beeing waited for is setuid and
+                the parent is not run by root, the /proc entry
+                for the child may not be opened. In these cases
+                only time information is available.
+
+/* @(#)wait3.c  1.1 95/03/22 Copyr 1995 J. Schilling */
+#ifndef lint
+static  char sccsid[] =
+        "@(#)wait3.c    1.1 95/03/22 Copyr 1995 J. Schilling";
+#endif  lint
+/*
+ * Compatibility function for BSD wait3().
+ *
+ * J"org Schilling (joerg@schily.isdn.cs.tu-berlin.de js@cs.tu-berlin.de)
+ *
+ * Tries to get rusage information from /proc filesystem.
+ * NOTE: since non root processes are not allowed to open suid procs
+ * we cannot get complete rusage information in this case.
+ *
+ * Theory of Operation:
+ *
+ * On stock SVR4 there is no way to get resource usage information.
+ * We may only get times information from siginfo struct:
+ *
+ * wait3()
+ * {
+ *      call waitid(,,,);
+ *      if (child is found) {
+ *              compute times from siginfo and fill in rusage
+ *      }
+ * }
+ *
+ * Solaris (at least 2.3) has PIOCUSAGE which is guaranteed
+ * to work even on zombies:
+ *
+ * wait3()
+ * {
+ *      call waitid(P_ALL,,,options|WNOWAIT);
+ *      if (child is found) {
+ *              compute times from siginfo and fill in rusage
+ *              if (can get /proc PIOCUSAGE info)
+ *                      fill in rest of rusage from /proc
+ *              selective call waitid(P_PID, pid,,);
+ * }
+ *
+ * /proc ioctl's that work on zombies:
+ *      PIOCPSINFO, PIOCGETPR, PIOCUSAGE, PIOCLUSAGE
+ * 
+ */
+#include <wait.h>
+#ifdef  WNOWAIT         /* We are on SVR4 */
+
+#include <sys/types.h>
+#include <sys/time.h>
+#include <sys/times.h>
+#include <sys/siginfo.h>
+#include <sys/procset.h>
+#include <sys/param.h>
+#include <sys/procfs.h>
+#include "resource.h"   /* local version of BSD /usr/include/sys/resource.h */
+
+static int      wait_prusage(siginfo_t *, int, struct rusage *);
+static int      wait_status(int, int);
+static void     wait_times(siginfo_t *, struct rusage *);
+
+wait3(status, options, rusage)
+                int     *status;
+                int     options;
+        struct  rusage  *rusage;
+ 
+{
+        siginfo_t       info;
+
+        if (rusage)
+                memset((void *)rusage, 0, sizeof(struct rusage));
+        memset((void *)&info, 0, sizeof(siginfo_t));
+
+        /*
+         * BSD wait3() only supports WNOHANG & WUNTRACED
+         *
+         * You may want to modify the next two lines to meet your requirements:
+         * 1)   options &= (WNOHANG|WUNTRACED);
+         * 2a)  options |= (WEXITED|WSTOPPED|WTRAPPED);
+         * 2b)  options |= (WEXITED|WSTOPPED|WTRAPPED|WCONTINUED);
+         *
+         * If you want BSD compatibility use 1) and 2a)
+         * If you want maximum SYSV compatibility remove both lines.
+         */
+        options &= (WNOHANG|WUNTRACED);
+        options |= (WEXITED|WSTOPPED|WTRAPPED);
+        if (waitid(P_ALL, 0, &info, options|WNOWAIT) < 0)
+                return (-1);
+
+        (void) wait_prusage(&info, options, rusage);
+        if (status)
+                *status = wait_status(info.si_code, info.si_status);
+        return (info.si_pid);
+}
+
+static int wait_prusage(info, options, rusage)
+        siginfo_t       *info;
+        int             options;
+        struct rusage   *rusage;
+{
+#ifdef  PIOCUSAGE
+        int             f;
+        char            cproc[32];
+        prusage_t       prusage;
+#endif
+        struct  tms     tms_stop;
+        siginfo_t       info2;
+
+        if ((options & WNOHANG) && (info->si_pid == 0))
+                return (0);     /* no children */
+
+        if (rusage == 0)
+                goto norusage;
+
+        wait_times(info, rusage);
+#ifdef  PIOCUSAGE
+        sprintf(cproc, "/proc/%d", info->si_pid);
+        if ((f = open(cproc, 0)) < 0)
+                goto norusage;
+        if (ioctl(f, PIOCUSAGE, &prusage) < 0) {
+                close(f);
+                goto norusage;
+        }
+        close(f);
+#ifdef  COMMENT
+Missing fields:                 
+        rusage->ru_maxrss = XXX;
+        rusage->ru_ixrss = XXX;
+        rusage->ru_idrss = XXX;
+        rusage->ru_isrss = XXX;
+#endif
+        rusage->ru_minflt = prusage.pr_minf;
+        rusage->ru_majflt = prusage.pr_majf;
+        rusage->ru_nswap  = prusage.pr_nswap;
+        rusage->ru_inblock = prusage.pr_inblk;
+        rusage->ru_oublock = prusage.pr_oublk;
+        rusage->ru_msgsnd = prusage.pr_msnd;
+        rusage->ru_msgrcv = prusage.pr_mrcv;
+        rusage->ru_nsignals = prusage.pr_sigs;
+        rusage->ru_nvcsw = prusage.pr_vctx;
+        rusage->ru_nivcsw = prusage.pr_ictx;
+#endif
+norusage:
+        return (waitid(P_PID, info->si_pid, &info2, options));
+}
+
+/*
+ * Convert the status code to old style wait status
+ */
+static int wait_status(code, status)
+        int     code;
+        int     status;
+{
+        register int    stat = (status & 0377);
+
+        switch (code) {
+
+        case CLD_EXITED:
+                stat <<= 8;
+                break;
+        case CLD_KILLED:
+                break;
+        case CLD_DUMPED:
+                stat |= WCOREFLG;
+                break;
+        case CLD_TRAPPED:
+        case CLD_STOPPED:
+                stat <<= 8;
+                stat |= WSTOPFLG;
+                break;
+        case CLD_CONTINUED:
+                stat = WCONTFLG;
+                break;
+        }
+        return (stat);
+}
+
+/*
+ * Convert the siginfo times to rusage timeval
+ */
+static void wait_times(info, rusage)
+        siginfo_t       *info;
+        struct rusage   *rusage;
+{
+        int     hz = HZ;        /* HZ is mapped into sysconf(_SC_CLK_TCK) */
+
+        rusage->ru_utime.tv_sec = info->si_utime / hz;
+        rusage->ru_utime.tv_usec = (info->si_utime % hz) * 1000000 / hz;
+
+        rusage->ru_stime.tv_sec = info->si_stime / hz;
+        rusage->ru_stime.tv_usec = (info->si_stime % hz) * 1000000 / hz;
+}
+
+#endif          /* WNOWAIT */
+
+/*      @(#)resource.h 2.10 89/02/21 SMI; from UCB 4.1 83/02/10 */
+/*
+ * Missing parts for wait3() taken from SunOS 4.1
+ */
+
+#ifndef _resource_h
+#define _resource_h
+
+/*
+ * Get rest of definitions from system include files
+ */
+#include <sys/resource.h>
+
+/*
+ * Resource utilization information.
+ */
+
+#define RUSAGE_SELF     0
+#define RUSAGE_CHILDREN -1
+
+struct  rusage {
+        struct timeval ru_utime;        /* user time used */
+        struct timeval ru_stime;        /* system time used */
+        long    ru_maxrss;
+#define ru_first        ru_ixrss
+        long    ru_ixrss;               /* XXX: 0 */
+        long    ru_idrss;               /* XXX: sum of rm_asrss */
+        long    ru_isrss;               /* XXX: 0 */
+        long    ru_minflt;              /* any page faults not requiring I/O */
+        long    ru_majflt;              /* any page faults requiring I/O */
+        long    ru_nswap;               /* swaps */
+        long    ru_inblock;             /* block input operations */
+        long    ru_oublock;             /* block output operations */
+        long    ru_msgsnd;              /* messages sent */
+        long    ru_msgrcv;              /* messages received */
+        long    ru_nsignals;            /* signals received */
+        long    ru_nvcsw;               /* voluntary context switches */
+        long    ru_nivcsw;              /* involuntary " */
+#define ru_last         ru_nivcsw
+};
+
+#endif /* _resource_h */
+
+
+------------------   
+strptime
+-----------------
+
+/*
+ * Copyright (c) 1994 Powerdog Industries.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer
+ *    in the documentation and/or other materials provided with the
+ *    distribution.
+ * 3. All advertising materials mentioning features or use of this
+ *    software must display the following acknowledgement:
+ *      This product includes software developed by Powerdog Industries.
+ * 4. The name of Powerdog Industries may not be used to endorse or
+ *    promote products derived from this software without specific prior
+ *    written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY POWERDOG INDUSTRIES ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE POWERDOG INDUSTRIES BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#ifndef lint
+static char copyright[] =
+"@(#) Copyright (c) 1994 Powerdog Industries.  All rights reserved.";
+static char sccsid[] = "@(#)strptime.c  0.1 (Powerdog) 94/03/27";
+#endif /* not lint */
+
+#include <time.h>
+#include <ctype.h>
+#include <locale.h>
+#include <string.h>
+
+#define asizeof(a)      (sizeof (a) / sizeof ((a)[0]))
+
+#ifndef sun
+struct dtconv {
+        char    *abbrev_month_names[12];
+        char    *month_names[12];
+        char    *abbrev_weekday_names[7];
+        char    *weekday_names[7];
+        char    *time_format;
+        char    *sdate_format;
+        char    *dtime_format;
+        char    *am_string;
+        char    *pm_string;
+        char    *ldate_format;
+};
+#endif
+
+static struct dtconv    En_US = {
+        { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" },
+        { "January", "February", "March", "April",
+          "May", "June", "July", "August",
+          "September", "October", "November", "December" },
+        { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" },
+        { "Sunday", "Monday", "Tuesday", "Wednesday",
+          "Thursday", "Friday", "Saturday" },
+        "%H:%M:%S",
+        "%m/%d/%y",
+        "%a %b %e %T %Z %Y",
+        "AM",
+        "PM",
+        "%A, %B, %e, %Y"
+};
+
+#ifdef SUNOS4
+extern int      strncasecmp();
+#endif
+
+char    *
+strptime(char *buf, char *fmt, struct tm *tm)
+{
+        char    c,
+                *ptr;
+        int     i,
+                len;
+
+        ptr = fmt;
+        while (*ptr != 0) {
+                if (*buf == 0)
+                        break;
+
+                c = *ptr++;
+
+                if (c != '%') {
+                        if (isspace(c))
+                                while (*buf != 0 && isspace(*buf))
+                                        buf++;
+                        else if (c != *buf++)
+                                return 0;
+                        continue;
+                }
+
+                c = *ptr++;
+                switch (c) {
+                case 0:
+                case '%':
+                        if (*buf++ != '%')
+                                return 0;
+                        break;
+
+                case 'C':
+                        buf = strptime(buf, En_US.ldate_format, tm);
+                        if (buf == 0)
+                                return 0;
+                        break;
+
+                case 'c':
+                        buf = strptime(buf, "%x %X", tm);
+                        if (buf == 0)
+                                return 0;
+                        break;
+
+                case 'D':
+                        buf = strptime(buf, "%m/%d/%y", tm);
+                        if (buf == 0)
+                                return 0;
+                        break;
+
+                case 'R':
+                        buf = strptime(buf, "%H:%M", tm);
+                        if (buf == 0)
+                                return 0;
+                        break;
+
+                case 'r':
+                        buf = strptime(buf, "%I:%M:%S %p", tm);
+                        if (buf == 0)
+                                return 0;
+                        break;
+
+                case 'T':
+                        buf = strptime(buf, "%H:%M:%S", tm);
+                        if (buf == 0)
+                                return 0;
+                        break;
+
+                case 'X':
+                        buf = strptime(buf, En_US.time_format, tm);
+                        if (buf == 0)
+                                return 0;
+                        break;
+
+                case 'x':
+                        buf = strptime(buf, En_US.sdate_format, tm);
+                        if (buf == 0)
+                                return 0;
+                        break;
+
+                case 'j':
+                        if (!isdigit(*buf))
+                                return 0;
+
+                        for (i = 0; *buf != 0 && isdigit(*buf); buf++) {
+                                i *= 10;
+                                i += *buf - '0';
+                        }
+                        if (i > 365)
+                                return 0;
+
+                        tm->tm_yday = i;
+                        break;
+
+                case 'M':
+                case 'S':
+                        if (*buf == 0 || isspace(*buf))
+                                break;
+
+                        if (!isdigit(*buf))
+                                return 0;
+
+                        for (i = 0; *buf != 0 && isdigit(*buf); buf++) {
+                                i *= 10;
+                                i += *buf - '0';
+                        }
+                        if (i > 59)
+                                return 0;
+
+                        if (c == 'M')
+                                tm->tm_min = i;
+                        else
+                                tm->tm_sec = i;
+
+                        if (*buf != 0 && isspace(*buf))
+                                while (*ptr != 0 && !isspace(*ptr))
+                                        ptr++;
+                        break;
+
+                case 'H':
+                case 'I':
+                case 'k':
+                case 'l':
+                        if (!isdigit(*buf))
+                                return 0;
+
+                        for (i = 0; *buf != 0 && isdigit(*buf); buf++) {
+                                i *= 10;
+                                i += *buf - '0';
+                        }
+                        if (c == 'H' || c == 'k') {
+                                if (i > 23)
+                                        return 0;
+                        } else if (i > 11)
+                                return 0;
+
+                        tm->tm_hour = i;
+
+                        if (*buf != 0 && isspace(*buf))
+                                while (*ptr != 0 && !isspace(*ptr))
+                                        ptr++;
+                        break;
+
+                case 'p':
+                        len = strlen(En_US.am_string);
+                        if (strncasecmp(buf, En_US.am_string, len) == 0) {
+                                if (tm->tm_hour > 12)
+                                        return 0;
+                                if (tm->tm_hour == 12)
+                                        tm->tm_hour = 0;
+                                buf += len;
+                                break;
+                        }
+
+                        len = strlen(En_US.pm_string);
+                        if (strncasecmp(buf, En_US.pm_string, len) == 0) {
+                                if (tm->tm_hour > 12)
+                                        return 0;
+                                if (tm->tm_hour != 12)
+                                        tm->tm_hour += 12;
+                                buf += len;
+                                break;
+                        }
+
+                        return 0;
+
+                case 'A':
+                case 'a':
+                        for (i = 0; i < asizeof(En_US.weekday_names); i++) {
+                                len = strlen(En_US.weekday_names[i]);
+                                if (strncasecmp(buf,
+                                                En_US.weekday_names[i],
+                                                len) == 0)
+                                        break;
+
+                                len = strlen(En_US.abbrev_weekday_names[i]);
+                                if (strncasecmp(buf,
+                                                En_US.abbrev_weekday_names[i],
+                                                len) == 0)
+                                        break;
+                        }
+                        if (i == asizeof(En_US.weekday_names))
+                                return 0;
+
+                        tm->tm_wday = i;
+                        buf += len;
+                        break;
+
+                case 'd':
+                case 'e':
+                        if (!isdigit(*buf))
+                                return 0;
+
+                        for (i = 0; *buf != 0 && isdigit(*buf); buf++) {
+                                i *= 10;
+                                i += *buf - '0';
+                        }
+                        if (i > 31)
+                                return 0;
+
+                        tm->tm_mday = i;
+
+                        if (*buf != 0 && isspace(*buf))
+                                while (*ptr != 0 && !isspace(*ptr))
+                                        ptr++;
+                        break;
+
+                case 'B':
+                case 'b':
+                case 'h':
+                        for (i = 0; i < asizeof(En_US.month_names); i++) {
+                                len = strlen(En_US.month_names[i]);
+                                if (strncasecmp(buf,
+                                                En_US.month_names[i],
+                                                len) == 0)
+                                        break;
+
+                                len = strlen(En_US.abbrev_month_names[i]);
+                                if (strncasecmp(buf,
+                                                En_US.abbrev_month_names[i],
+                                                len) == 0)
+                                        break;
+                        }
+                        if (i == asizeof(En_US.month_names))
+                                return 0;
+
+                        tm->tm_mon = i;
+                        buf += len;
+                        break;
+
+                case 'm':
+                        if (!isdigit(*buf))
+                                return 0;
+
+                        for (i = 0; *buf != 0 && isdigit(*buf); buf++) {
+                                i *= 10;
+                                i += *buf - '0';
+                        }
+                        if (i < 1 || i > 12)
+                                return 0;
+
+                        tm->tm_mon = i - 1;
+
+                        if (*buf != 0 && isspace(*buf))
+                                while (*ptr != 0 && !isspace(*ptr))
+                                        ptr++;
+                        break;
+
+                case 'Y':
+                case 'y':
+                        if (*buf == 0 || isspace(*buf))
+                                break;
+
+                        if (!isdigit(*buf))
+                                return 0;
+
+                        for (i = 0; *buf != 0 && isdigit(*buf); buf++) {
+                                i *= 10;
+                                i += *buf - '0';
+                        }
+                        if (c == 'Y')
+                                i -= 1900;
+                        if (i < 0)
+                                return 0;
+
+                        tm->tm_year = i;
+
+                        if (*buf != 0 && isspace(*buf))
+                                while (*ptr != 0 && !isspace(*ptr))
+                                        ptr++;
+                        break;
+                }
+        }
+
+        return buf;
+}
+
+-----------------------------------------------------------
+
+4)* TOPIC: BSD/Solaris 1/POSIX Signal Primer
+
+[Last modified: 23 Feburary 95]
+
+
+The most common problem encountered when porting BSD/Solaris 1
+signal code is that Solaris 2 (and SVR4) handles interrupted
+systems calls differently than does BSD. In Solaris 2 (SVR4),
+system calls are interrupted and return EINTR, unless the call is
+read, write, or some other call that returns the number of bytes
+read/written (unless 0 bytes have been read/written, in which
+case the call returns EINTR). 
+
+On the other hand, system calls are restarted on BSD/Solaris 1
+systems. The signal calls can be made to restart by specifying a
+SA_RESTART with sigaction().  Note, however, that code that
+relies on restartable system calls is generally considered bad
+practice. The following code is provided for illustrative
+purposes only. It is recommended that you remove these
+dependencies. Sigaction is the preferred (POSIX) way of
+installing signal handlers.  
+
+
+
+        The BSD/Solaris 1 code 
+
+                omask = sigblock(sigmask(SIGXXX));
+                do_stuff_while_SIGXXX_blocked();
+                (void)sigsetmask(omask);
+        
+        can be emulated by
+
+                sigset_t block, oblock;
+                struct   sigaction act, oact;
+                ....
+                (void)sigemptyset(&block);
+                (void)sigaddset(&block, SIGXXX);
+                if (sigprocmask(SIG_BLOCK, &block, &oblock) < 0)
+                        perror("sigprocmask");
+                do_stuff_while_SIGXXX_blocked();
+                (void)sigprocmask(SIG_SETMASK, &oblock, (sigset_t *)NULL);
+        #ifdef  SA_RESTART                      /* make restartable */
+                act.sa_flags = SA_RESTART;
+        #endif  /* SA_RESTART */
+                if (sigaction(SIGXXX, &act, &oact) < 0)
+                       return(SIG_ERR);
+
+
+        Note that this (emulating) construct is also available on
+        Solaris 1 (sans SA_RESTART), so should work on either
+        Solaris 1 or SVR4.
+
+        Another possibility would be to emulate BSD signal(2)
+        semantics as follows:
+
+        Sigfunc *bsdsignal(int signo, Sigfunc *alarm_catcher)
+        {
+
+         struct sigaction act;
+         act.sa_handler = alarm_catcher;
+         sigemptyset(&act.sa_mask);
+         act.sa_flags = SA_RESTART;
+         if(sigaction(signo, &act,NULL) == -1) {
+           perror("signal:");
+           return(SIG_ERR);
+        }
+
+Another problem revolves around the use of setjmp and longjmp.
+With 4.3+BSD  the setjmp and longjmp save and restore the signal
+mask. The default behavior for SVR4 is not to save and restore
+the signal mask. Note that these calls are MT-Unsafe.
+
+The POSIX.1 interface allows you to do either, by using a second
+argument, savemask, for sigsetjmp. To cause the signal mask to be
+saved and restored (emulating setjmp/longjmp behavior), use a
+nonzero savemask.  For example,
+
+
+                #include        <stdio.h>
+                #include        <stdlib.h>
+                #include        <setjmp.h>
+                
+                sigjmp_buf      env;
+                int             savemask;
+                
+                ....
+                
+                savemask = 1;
+                #ifdef  HAS_SIGSETJMP
+                        sigsetjmp(env, savemask);
+                #endif  HAS_SIGSETJMP
+
+                ...
+
+In this case, the sigsetjmp saves the current signal mask of the
+process in the saved environment (sigjmp_buf). Now, if the
+environment was saved by a call to sigsetjmp with a nonzero
+savemask, then a subsequent siglongjmp call will restore the
+saved signal mask.    
+
+Finally, be careful with signal handling code when you are doing
+a vfork [Editor's Note: The following observation and example in
+section 7. (i). comes courtesy of Paul Eggert
+(eggert@twinsun.com). DM]. In Solaris 2, if a vfork'ed child
+adjusts signal handling before exec'ing, signal handling is
+munged in the parent in ways that lead to unreliable results; the
+parent can dump core in some cases.  This bug affects some widely
+distributed programs, so when building a program that adjusts
+signal handlers between `vfork' and `exec', be careful to
+override its configuration to use `fork' instead (see section
+7. (i) below for more detail).  
+
+To summarize, some basic rules are:
+
+        (i).    Limit signal handling code to the POSIX interface
+                whenever possible. 
+
+        (ii).   Use sigaction to install signal handlers whenever
+                possible. Use Standard C's signal() only for
+                portability to non-POSIX systems. 
+
+        (iii).  Avoid code that relies on restartable system calls. 
+
+        (iv).   The main difference between SVR4 sigset() (not
+                POSIX) and SunOS 4.x/BSD signal() is that system
+                calls will return EINTR with sigset() but will be
+                restarted on BSD/SunOS 4.x. On SVR4 EINTR is only
+                returned when no bytes have been read/written.     
+
+        (v).    Watch your use of vfork.
+
+-----------------------------------------------------------------------------
+
+5) TOPIC: Waiting for Children to Exit
+
+[Last modified: 26 October 93]
+
+
+waitpid(2) is the preferred (POSIX) interface. Wait3 can be
+replaced by waitpid (when you don't need the rusage). For
+example, the BSD segment  
+        
+        while((id = wait(&stat)) >=0 && id != pid);
+
+can be approximated using the POSIX waidpid(2) interface by code
+of the form: 
+
+        int status;
+        int options;                    /* e.g., WNOHANG */
+        ....
+        options = WNOHANG;
+        if (waitpid((pid_t) -1, &status, options) == -1)
+                perror("waitpid");
+        }
+
+
+Note here that if you execute a signal(SIGCHLD, SIG_IGN) or
+sigset(SIGCHLD, SIG_IGN), Solaris will discard all child exit
+statuses and reap the child processes without giving the parent a
+chance to wait. That is, waitpid(2) will return -1 with an ECHILD. 
+
+
+Another possibility is emulate the BSD wait(2) call with SVR4's
+waitid(2). The code fragment below is an example. In this case,
+we wait for a particular child in our process group ((pid_t) 0)
+to exit (WEXITED).
+
+
+        #ifdef  SVR4
+        #include <sys/types.h>
+        #include <sys/wait.h>
+                siginfo_t       stat;
+                int             retcode;
+        #else
+                union   wait    stat;
+        #endif
+
+        .....
+
+        #ifdef  SVR4
+              while (retcode = waitid(P_ALL,(pid_t) 0, &stat, WEXITED)) {
+                if (retcode < 0) {
+                  perror("waitid");
+                  exit(1);
+                }
+                if (stat.si_pid == pid)
+                  break;
+              }
+        #else           /* BSD */
+               while((id = wait(&stat)) >=0 && id != pid);
+        #endif  /* SVR4 */
+
+
+
+-----------------------------------------------------------------------------
+
+6) TOPIC: Dealing With Shadow Password Files
+
+[Last modified: 19 August 93]
+
+The following code segment outlines how to handle shadow password
+files. In the outline below, <passwd> is the clear text password.
+Note that shadow passwords are part of SVR4, so again we have the
+conflict between using high level system definitions (e.g., SVR4)
+and feature definitions (for systems other than SVR4). I'll use
+feature a feature definition (HAVE_SHADOW_H) to illustrate this.
+
+
+        #ifdef  HAVE_SHADOW_H
+        #include <shadow.h>
+            register struct spwd    *sp;
+        #endif  /* HAVE_SHADOW_H */
+
+             .....
+                
+        #ifdef  HAVE_SHADOW_H
+            if ((sp = getspnam(<username>)) == NULL)
+               <no password entry for username>
+            if (sp->sp_pwdp == NULL)
+               <NULL password for username>
+            if (strcmp (crypt (<passwd>, sp->sp_pwdp), sp->sp_pwdp) != 0)
+        #else 
+            if ((pw = getpwnam(<username>)) == NULL)
+               <no password entry for username>
+            if (pw->pw_passwd == NULL)
+               <NULL password for username>
+            if (strcmp (crypt (<passwd>, pw->pw_passwd), pw->pw_passwd) != 0)
+        #endif  /* HAVE_SHADOW_H */
+               <incorrect password for username>
+                       
+
+-----------------------------------------------------------------------------
+
+7)  TOPIC: Some Compatibility Problems
+
+[Last modified: 23 September 95]
+
+        
+
+        (i).     vfork doesn't work in Solaris 2
+
+                [Editor's Note: The following observation and
+                example comes courtesy of Paul Eggert
+                (eggert@twinsun.com). DM] 
+
+                In Solaris 2, if a vfork'ed child adjusts signal
+                handling before exec'ing, signal handling is munged in
+                the parent in ways that lead to unreliable results;
+                the parent can dump core in some cases.  This bug
+                affects some widely distributed programs, so when
+                building a program that adjusts signal handlers
+                between `vfork' and `exec', be careful to override its
+                configuration to use `fork' instead. 
+
+                Sun doesn't consider this behavior to be a bug,
+                so it's not likely to be fixed. 
+
+                Here's an illustration of the bug.  This program
+                works fine in SunOS 4.1.x, but dumps core in
+                Solaris 2.x. 
+
+                        #include <signal.h>
+                        #include <unistd.h>
+
+                        #ifdef SIGLOST          /* must be SunOS 4.1.x */
+                        #include <vfork.h>
+                        #endif
+
+                        int signalled;
+
+                        void catch (sig)
+                             int sig;
+                        {
+                             signalled = 1;
+                        }
+
+                        int main()
+                        {
+                             signal (SIGINT, catch);
+                             if (vfork () == 0) {               /* child */
+                                 signal (SIGINT, SIG_IGN);
+                                 execlp ("sleep", "sleep", "10", (char *) 0);
+                             }
+        
+                            /* parent here */
+
+                             kill (getpid (), SIGINT);
+                             return signalled != 1;
+                        }
+
+        (ii).   Regarding the observation surrounding Paul
+                Eggert's vfork comments in (i). above, Joerg
+                Schilling has pointed out that the vfork code in
+                the kernel has not changed since SunOS 4.0. The
+                following text is lifted directly from Joerg's
+                note.
+
+                If you run the sample program under control of
+                truss(1) you can prove that signal(3) calls
+                sigaction(2) which really is a library routine on
+                SVr4 (not only on Solaris 2.x). 
+
+                This library routine does not setup the signal
+                handler in the kernel directly. If the signal
+                handler is not SIG_IGN/SIG_DFLT it sets up a user
+                level dispathing function which calls the signal
+                handler through a table. If you use vfork(), this
+                table is shared between both processes. -- The
+                kernel code correctly changes the signal handler
+                only in the child. But as vfork() shares all data
+                between child and parent the dispatching table in
+                the parent process gets trashed by the child and
+                the parent dies on a memory address alignment
+                error -- the value of SIG_IGN is 1. 
+
+                If you consider this to be a bug you should call
+                Sun and request a fix for libc.
+
+                To avoid this problem each process that calls
+                vfork should not use any routine that modifies
+                global data: signal(), sigaction(), exit() and
+                malloc() are possible sources of trouble. 
+
+                The man page for vfork() correctly lists only
+                exit() as a source of problems -- it should be
+                updated to list all possible problems. 
+
+                Users of vfork() should be very carefully and:
+
+                - Use _exit() instead of exit()
+                - Use __sigaction() instead of sigaction()
+                - Save child allocated storage in global pointers
+                  and free them in the parent process after
+                  returning from vfork(). 
+
+                To prove my statements I include a modified
+                version of the sample code from Paul Eggert
+                (eggert@twinsun.com) that is able to use the
+                syscall version of signal() and sigaction(). If
+                the syscalls are used directly, the code runs as
+                in SunOS 4.x, if the library routine signal(3) is
+                used, the code dumps core as explained above: 
+
+        /*
+         * vfork.c
+         *
+         * compile: cc -o vfork vfork.c
+         *
+         * test:
+         *      ./vfork           - will dump core
+         *      ./vfork syscall   - calls syscall version of signal()    -- OK
+         *      ./vfork sigaction - calls syscall version of sigaction() -- OK
+         */
+        #include <signal.h>
+        #include <unistd.h>
+        #include <sys/syscall.h>
+        
+        #ifdef SIGLOST          /* must be SunOS 4.1.x */
+        #include <vfork.h>
+        #endif
+        
+        int signalled;
+        
+        void catch (sig)
+             int sig;
+        {
+             signalled = 1;
+        }
+        
+        int main(ac, av)
+                int     ac;
+                char    *av[];
+        {
+                int     how = 0;
+        
+                if (ac > 1) {
+                        if (strcmp(av[1], "syscall") == 0)
+                                how = 1;
+                        else if (strcmp(av[1], "sigaction") == 0)
+                                how = 2;
+                }
+        
+                signal (SIGINT, catch);
+        
+                if (vfork () == 0) {                    /* child */
+        
+        #ifdef  SYS_signal                              /* it's SVR4 */
+                        if (how == 1) {
+                                syscall(SYS_signal, SIGINT, SIG_IGN);
+                        } else if (how == 2) {
+                                struct sigaction act;
+        
+                                act.sa_handler = SIG_IGN;
+                                sigemptyset(&act.sa_mask);
+                                act.sa_flags = SA_RESTART;
+        
+                                __sigaction(SIGINT, &act, 0); /* real syscall */
+                        } else {
+                                signal (SIGINT, SIG_IGN);
+                        }
+        #else
+                        signal (SIGINT, SIG_IGN);
+        #endif
+                        execlp ("sleep", "sleep", "10", (char *) 0);
+                }
+                
+                /* parent here */
+        
+                kill (getpid (), SIGINT);
+                return signalled != 1;
+        }
+
+        (iii).  So, then, what is the story with vfork?
+
+                The problem with vfork() and signals has been
+                understoond for some time. In addition, good
+                practice requires that programs do some signal
+                housekeeping when using vfork(). This is the case
+                on even on SunOS 4.x.
+
+                Now, it is possible to write a correct program
+                using vfork() and signals only using documented
+                interfaces. This is demonstrated below in code
+                contributed by J"org Schilling.
+
+
+                #include <signal.h>
+                #include <unistd.h>
+                
+                #ifdef SIGLOST          /* must be SunOS 4.1.x */
+                #include <vfork.h>
+                #endif
+
+                #ifdef  SIGHOLD         /* must be SVR4 */
+                #define signal  sigset  /* use reliable signals on SVR4 */
+                #endif
+                
+                int signalled;
+                
+                void catch (sig)
+                     int sig;
+                {
+                        /*
+                         * first reestablish handler:
+                         * needed on SVR4 no op on BSD
+                         */
+                        signal (SIGINT, catch); 
+                        signalled = 1;
+                }
+                
+                int main()
+                {
+                        int     pid;
+                        int     oldmask;
+                
+                        signal (SIGINT, catch);
+                
+                /* do something ... */
+                
+                        /*
+                         * prepare for doing vfork()
+                         * block signals managed during vfork()
+                         */
+                #ifdef  SIGHOLD
+                        sighold(SIGINT);                /* SVR4 version */
+                #else
+                        oldmask = sigblock(sigmask(SIGINT)); /* BSD version */
+                #endif
+                        pid = vfork();
+                        if (pid < 0) {
+                                perror("fork");
+                                exit(-1);
+                        }
+                        if (pid == 0) {                         /* child */
+                                signal (SIGINT, SIG_IGN);
+                                /*
+                                 * enable child signals
+                                 */
+                #ifdef  SIGHOLD
+                                sigrelse(SIGINT);    /* SVR4 version */
+                #else
+                                sigsetmask(oldmask); /* BSD version */
+                #endif
+                                execlp ("sleep", "sleep", "10", (char *) 0);
+                        } else {
+                                /*
+                                 * Re-establish old signals in parent ...
+                                 * IMPORTANT: first restore signal handler
+                                 * then unblock held signals
+                                 */
+                                signal (SIGINT, catch);
+                #ifdef  SIGHOLD
+                                sigrelse(SIGINT);     /* SVR4 version */
+                #else
+                                sigsetmask(oldmask);  /* BSD version */
+                #endif
+                        }
+                        
+                        /* parent here */
+                
+                        kill (getpid (), SIGINT);
+                        return signalled != 1;
+                }
+
+
+        Lesson: Use vfork with care.
+
+
+        (iv).  chown(2) does not allow uid/gid values greater
+                than 60002 on Solaris 2.[0-3]. Check /usr/include/limits.h, 
+                which contains:
+
+                #define UID_MAX         60002   
+
+
+-----------------------------------------------------------------------------
+
+8)  TOPIC: Other Resources
+
+[Last modified: 27 September 93]
+
+Porting to Solaris 2
+--------------------
+
+A excellent text on this subject is  "Solaris Porting Guide",
+SunSoft ISV Engineering, et. al., Prentice Hall, 1993. ISBN
+0-13-030396-8. 
+
+Solaris 2 General FAQ
+---------------------
+
+The official Solaris 2 Frequently Answered Questions is
+maintained by Ian Darwin, ian@sq.com, and is posted once or twice 
+a month to various newsgroups including comp.unix.solaris and
+comp.answers.
+
+General
+-------
+
+"Internetworking with TCP/IP: Volume III Client-Server Programming
+& Applications (AT&T TLI Edition)", Douglas E. Comer & David L.
+Stevens, Prentice-Hall. ISBN 0-13-474230-3. Nice reference for
+TLI programming, etc.
+
+"Networking Applications on UNIX System V", Mike Padovano, ISBN
+013-613555. A good reference for System V.
+
+"UNIX, POSIX, and Open Systems: The Open Standards Puzzle", John
+S. Quarterman and Susanne Wilhelm, Addison-Wesley, 1993. ISBN
+0-201-52772-3. Another nice modern reference.
+
+"UNIX System V Network Programming", Steve Rago, ISBN
+0-201-56318-5. Another good System V reference.
+
+"Advanced Programming in the UNIX Environment", W. Richard
+Stevens, Addison Wesley, 1992, ISBN 0-201-56317-1, is a nice, in
+depth text covering large parts of this topic.
+
+ANSI C
+------
+
+A very nice text here is "The Standard C Library", P.J. Plauger,
+Prentice Hall, 1992, ISBN 0-13-131509-9.
+
+Another example of the many texts here is "C,  a Reference
+Manual", Harbison and Steele, Prentice Hall. ISBN 0-13-110933-2.  
+
+POSIX
+-----
+
+A nice reference text on the POSIX interface is "POSIX
+Programmer's Guide", Donald Levine, O'Reily & Associates, 1991.
+ISBN 0-937175-73-0. 
+
+
+ACKNOWLEDGMENTS
+
+I would like to thank everyone who contributed to this, and I
+hope that it clarifies some of these issues. I would especially 
+acknowledge the contributions of Casper H.S. Dik and J.G. Vons in
+helping me organize my thoughts on all this.
+
+Thanks to:
+
+        Jamshid Afshar          <jamshid@ses.com>
+        Pedro Acebes Bayon      <pacebes@tid.es>
+        Ian Darwin              <ian@sq.com>
+        Casper H.S. Dik         <casper@fwi.uva.nl>
+        Paul Eggert             <eggert@twinsun.com>
+        Stephen L Favor         <xcpslf@atom.oryx.com>
+        Charles Francois        <cbf@gotham.east.sun.com>
+        Pete Hartman            <pwh@bradley.bradley.edu>
+        Guy Harris              <guy@auspex.com>
+        Jens-Uwe Mager          <jum@anubis.han.de>
+        Thomas Maslen           <maslen@eng.sun.com>
+        Richard M. Mathews      <richard@astro.west.sun.com>
+        Davin Milun             <milun@cs.buffalo.edu>
+        Paul Pomes              <Paul-Pomes@uiuc.edu>
+        Andrew Roach            <andrewr@ultrix.sun.com>
+        Kevin Ruddy             <smiles@powerdog.com> 
+        Joerg Schilling         <joerg@schily.isdn.cs.tu-berlin.de>
+        M C Srivas              <M._C._Srivas@transarc.com>
+        Dan Stromberg           <strombrg@hydra.acs.uci.edu>
+        Larry W. Virden         <lwv26@cas.org>
+        J.G. Vons               <vons%ulysse@crbca1.sinet.slb.com>
+        Peter Wemm              <peter@DIALix.oz.au>
+        christos@deshaw.com
+        jorgens@pvv.unit.no
+        Malte                   <malte@techfak.uni-bielefeld.de>
+
+----- End of Solaris 2 Porting FAQ -- Maintained by David Meyer meyer@ns.uoregon.edu --
+
+
+
+	David M. Meyer 503/346-1747
+	meyer@ns.uoregon.edu
+	Tue May 02 04:54:54 1995
+
+	$Header: /net/network-services/disk1/home/meyer/Projects/FAQ/RCS/porting-FAQ,v 1.6 1995/05/02 11:55:21 meyer Exp $
+
+
+

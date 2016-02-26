@@ -1,0 +1,296 @@
+#!/usr/NeWS/bin/psh
+% 
+% Date: Sun, 23 Oct 88 00:33:13 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: setcolor: change colors of various things
+% From: jcricket!sjs@bellcore.com  (Stan Switzer)
+% 
+% This program allows you to set your screen colors to other than the
+% boring defaults.  It is also a pretty good way to browse for nice
+% colors to use for a color application.
+% 
+% Depending on whether your system supports color, you will either get
+% three RGB sliders of one "gray" slider.  The RGB sliders can be
+% changed to HSB from the menu the color remains the same, this allows
+% you to diddle a color in either model until you get it "just right."
+% 
+% Unfortunately, due to the fact that NeWS doesn't really handle
+% ClientFillColor correctly, changing the fill color or frame color will
+% not really work right.  I'll post some patches in a subsequent posting
+% to fix this all up.
+% 
+% This is one of my earlier NeWS programs, so it's kinda gross
+% internally.  Sure makes a pretty screen, 'tho.
+% 
+% Note to Don: Please replace the version on tumtum, as this one has
+% a few new features and a few bug fixes.
+% 
+% As always, enjoy!
+% 
+% Stan Switzer sjs@ctt.bellcore.com
+% 
+% P.S.:  Ignore article's reply address as my poster mungs it; use
+% signature address instead.
+% -------------------------------------------------------------
+
+%
+% setcolor: control colors of various things on the screen
+%
+% Copyright (C) 1988 by Stan Switzer. All rights reserved.
+% This program is provided for unrestricted use, provided that this
+% copyright message is preserved. There is no warranty, and no author
+% or distributer accepts responsibility for any damage caused by this
+% program.
+%
+
+systemdict /Item known not { (NeWS/liteitem.ps) run } if
+
+/PointFromUser { % => x y
+    gsave
+    fboverlay setcanvas %% Use ParentCanvas!
+    getclick
+    grestore
+} def
+
+/Xform { % ulx uly w h -> llx lly w h
+    3 -1 roll 1 index sub 3 1 roll
+} def
+
+/GrayMax 100 def
+
+gsave DefaultRootGrayOrColor setshade
+currentrgbcolor
+  /Val3 exch GrayMax mul def
+  /Val2 exch GrayMax mul def
+  /Val1 exch GrayMax mul def
+/Lab1 (R:) def /Lab2 (G:) def /Lab3 (B:) def
+ColorDisplay? not {
+   /Lab3 (Gray:) def
+   } if
+grestore
+/SetCol { [ Val1 Val2 Val3 ] { GrayMax div } forall ColorOp
+     items /showcolor get /SetColor exch send } def
+/SetOp { load dup /ColorOp load ne { ChgModel } if
+    /ColorOp exch store
+    items begin { /ItemLabel Lab1 store } Slider1 send
+                { /ItemLabel Lab2 store } Slider2 send
+                { /ItemLabel Lab3 store } Slider3 send
+    end SetCol } def
+/ChgModel {
+  gsave [ Val1 Val2 Val3 ] { GrayMax div } forall
+  3 index /rgbcolor load eq
+    { sethsbcolor currentrgbcolor } { setrgbcolor currenthsbcolor } ifelse
+  [ /Val3 /Val2 /Val1 ] { exch GrayMax mul cvi store } forall
+  grestore
+  items begin  % NB: only used on color display
+    Val1 /setvalue Slider1 send
+    Val2 /setvalue Slider2 send
+    Val3 /setvalue Slider3 send
+  end
+} def
+/ColorOp ColorDisplay? { /rgbcolor load }
+		       { {exch pop exch pop dup dup rgbcolor } } ifelse def
+/ReDisp { /paint win send } def
+/DoSetColor { ItemValue store SetCol } def
+/SetRoot { /DefaultRootGrayOrColor exch store
+    ColorDisplay? not { /DefaultRootGrayOrColor Val3 GrayMax div store } if
+    { framebuffer setcanvas PaintRoot } fork pop } def
+/FrameFixer { gsave
+    FrameCanvas setcanvas
+    0 0 FrameWidth FrameHeight rectpath
+    BorderLeft BorderBottom translate
+    0 0
+    FrameWidth BorderLeft BorderRight add sub
+    FrameHeight BorderBottom BorderTop add sub
+    rectpath
+    BorderLeft neg BorderBottom neg translate
+    eoclipcanvas
+    PaintFrame
+    newpath clipcanvas
+grestore} def
+/AllPaint { {/paint self send} AllWin } def
+/AllIcon { { IconCanvas null ne { PaintIcon } if } AllWin } def
+/AllFrame { //FrameFixer AllWin } def
+/AllNterm { { /setfgcolor where { pop % Hack Warning
+  /NtermTextColor UserProfile 1 index known { UserProfile exch get
+    dup /setfgcolor Text send /setfgcolor Win send } { pop } ifelse
+  /NtermFillColor UserProfile 1 index known { UserProfile exch get
+    dup /setbgcolor Text send /setbgcolor Win send } { pop } ifelse
+  /NtermCaretColor UserProfile 1 index known { UserProfile exch get
+    /setcaretcolor Text send } { pop } ifelse
+  /paint self send
+ } if } AllWin } def
+/WinSet { LiteWindow begin exch store end } def
+/SetFrame { /FrameFillColor WinSet AllFrame } def
+/SetIconText { /IconTextColor WinSet AllIcon } def
+/SetIconBorder { /IconBorderColor WinSet AllIcon } def
+/SetIconFill { /IconFillColor WinSet AllIcon } def
+/SetFill { dup /backgroundcolor exch store /ClientFillColor WinSet AllPaint } def
+/SetText { /textcolor exch store AllPaint } def
+/SetNText { tocolor UserProfile begin /NtermTextColor exch def end AllNterm } def
+/SetNFill { tocolor UserProfile begin /NtermFillColor exch def end AllNterm } def
+/SetNCaret { tocolor UserProfile begin /NtermCaretColor exch def end AllNterm } def
+/SetFocus { /KeyFocusColor WinSet /PaintFocus win send } def
+/tocolor { dup type /colortype ne { dup dup rgbcolor } if } def
+/SetProc /SetRoot load def
+/SetTarget { load /SetProc exch store currentkey
+    win begin /FrameLabel exch def end
+    //FrameFixer win send
+} def
+/DoSetIt { items /showcolor get /ItemValue get SetProc } def
+
+/ColorItem LabeledItem dictbegin
+    /ItemHighLighted?	false	def
+    /ItemTextColor	0 0 0 rgbcolor	def
+    /ItemBorderColor	null	def
+    dictend
+classbegin
+    /new { % initcolor label notifyproc parentcanvas (width height) =>  instance
+	% fake a labeled item.
+        dup type /canvastype eq
+            {() /Center 4 2 roll} {() /Center 6 2 roll} ifelse
+        /new super send
+        begin
+	    /ItemRadius		.5 def
+	    /ItemFrame		4 def
+	    /ItemBorder		null def %
+	    /ItemGap		6 def
+	    /ItemValue		exch def
+            currentdict
+        end
+    } def
+    /reshape { % x y w h
+        /ItemHeight exch def /ItemWidth exch def
+
+        LabelSize /LabelHeight exch def /LabelWidth exch def
+        ItemBorder null eq {/ItemBorder ItemFrame def} if
+
+        /ItemWidth ItemWidth
+            ItemBorder ItemGap add 2 mul LabelWidth add max def
+        /ItemHeight ItemHeight
+            ItemBorder ItemGap add 2 mul LabelHeight add max def
+
+        /LabelX ItemWidth LabelWidth sub 2 div LabelX add def
+        /LabelY ItemHeight LabelHeight sub 2 div LabelY add def
+        ItemLabel type /stringtype eq { % adjust for descenders
+            /LabelY LabelY ItemFont fontdescent 2 div sub ItemBorder max def
+        } if
+
+        ItemRadius 0 gt ItemRadius .5 le and {
+            /ItemRadius ItemWidth ItemHeight min ItemRadius mul def
+        } if
+
+	ItemWidth ItemHeight /reshape super send
+    } def
+
+    /SetColor { /ItemValue exch store /paint self send } def
+    /PaintItem {
+	ItemHighLighted?
+	    { ItemBorderColor setshade ItemRadius clippath pathbbox points2rect
+	      rrectpath fill
+	      ItemFrame }
+	    { 0 }
+	ifelse
+	ItemRadius clippath pathbbox points2rect insetrrect
+	rrectpath ItemValue setshade fill
+	/ItemTextColor
+	     currenthsbcolor exch pop exch pop .495 le % want black on gray.
+		1 0 ifelse dup dup rgbcolor
+	store
+	/ItemBorderColor ItemTextColor store
+	ShowLabel
+    } def
+    /HighLight { % bool => -
+	ItemHighLighted? exch
+        /ItemHighLighted? exch store
+        ItemHighLighted? ne {/paint self send} if
+    } def
+    /ClientDown {true HighLight} def
+    /ClientUp {
+        ItemHighLighted? {NotifyUser} if
+        false HighLight
+        StopItem
+    } def
+    /ClientEnter {true HighLight} def
+    /ClientExit {false HighLight} def
+classend def
+
+/TrackerItem SliderItem []
+classbegin
+    /ClientDrag { /ClientDrag super send NotifyUser } def
+classend def
+
+/createitems {
+/items 50 dict dup begin
+
+    /showcolor [ Val1 Val2 Val3 ] { GrayMax div } forall rgbcolor
+		(Set it) /DoSetIt can 30 33
+    	/new ColorItem send begin
+	    /ItemRadius	.3	def
+	    /ItemFrame	3	def
+	currentdict end 5 ColorDisplay? { 40 } { 5 } ifelse /move
+	3 index send def
+
+  ColorDisplay? {
+    /Slider1 Lab1 [0 GrayMax Val1 round ]
+	     /Right { /Val1 DoSetColor } can 220 30
+    	/new TrackerItem send
+	62 75 /move 3 index send def
+
+    /Slider2 Lab2 [0 GrayMax Val2 round ]
+	     /Right { /Val2 DoSetColor } can 220 30
+    	/new TrackerItem send
+	62 40 /move 3 index send def
+  } if
+
+    /Slider3 Lab3 [0 GrayMax Val3 round ]
+	     /Right { /Val3 DoSetColor } can 220 30
+    	/new TrackerItem send
+	62 5 /move 3 index send def
+
+end def
+} def
+
+/main {
+
+    /win framebuffer /new DefaultWindow send def	% Create a window
+    {	/PaintClient { ClientFillColor fillcanvas items paintitems } def
+	/FrameLabel (Root Color) def
+	/ClientMenu [
+	    (Root Color) { /SetRoot SetTarget }
+	    (Frame Color) { /SetFrame SetTarget }
+	    (Focus Color) { /SetFocus SetTarget }
+	    (Fill Color) { /SetFill SetTarget }
+	    (Text Color) { /SetText SetTarget }
+	    (Nterm Fill Color) { /SetNFill SetTarget }
+	    (Nterm Text Color) { /SetNText SetTarget }
+	    (Nterm Caret Color) { /SetNCaret SetTarget }
+	    (Icon Fill Color) { /SetIconFill SetTarget }
+	    (Icon Text Color) { /SetIconText SetTarget }
+	    (Icon Border Color) { /SetIconBorder SetTarget }
+	  ColorDisplay? {
+	    (RGB Model) { /Lab1(R:)store/Lab2(G:)store/Lab3(B:)store
+			  /rgbcolor SetOp ReDisp }
+	    (HSB Model) { /Lab1(H:)store/Lab2(S:)store/Lab3(B:)store
+			  /hsbcolor SetOp ReDisp }
+	  } if
+	    (Zap) { /destroy win send }
+	] /new DefaultMenu send def
+    } win send
+
+   % /reshapefromuser win send	% Reshape from user.
+    PointFromUser 320 ColorDisplay?{145}{75}ifelse Xform /reshape win send
+    /map win send		% Map the window & install window event manager.
+    				% (Damage causes PaintClient to be called)
+
+    /can win /ClientCanvas get def			% Get the window canvas
+% Create all the items.
+    createitems
+    SetCol
+
+    /itemmgr items forkitems def
+} def
+
+main
+
+%  --- anything following this line is NOT part of the program!

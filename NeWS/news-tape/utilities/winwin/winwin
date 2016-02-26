@@ -1,0 +1,385 @@
+#!/usr/NeWS/bin/psh
+%
+% Date: Wed, 26 Apr 89 18:22:53 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Windows in windows in windows (This one works)
+% From: spectral!sjs@bellcore.com  (Stan Switzer)
+% 
+% The hackman always posts twice....  Apologies for any inconvenience.
+% 
+% The previous version of "winwin" didn't work.  Without going into too
+% much detail let's just say that it worked here when I posted it, but
+% it had no chance to work anywhere else (unless you had autobind off
+% when you define your root menu).  I really have to watch those
+% last-minute changes.
+% 
+% Anyway, this version is fixed (really).  It remains fragile in all
+% ways detailed in the previous message, but it can be useful nonetheless.
+% 
+% As I said before, it is quite useful to set up several large winwin
+% windows, each containing related subwindows.  In a way it's like
+% having multiple desktops.
+% 
+% As always, enjoy,
+% 
+% Stan Switzer  sjs@ctt.bellcore.com  "Thou shalt not have no idea."
+% --------------
+%
+% WinWin: Windows in windows in windows ...
+%
+% Copyright (C) 1989 by Stan Switzer. All rights reserved.
+% This program is provided for unrestricted use, provided that this
+% copyright message is preserved. There is no warranty, and no author
+% or distributer accepts responsibility for any damage caused by this
+% program.
+%
+%	Recursive window managment
+%
+% Stan Switzer   sjs@ctt.bellcore.com
+%
+% To be fixed:
+%   	Highly succeptable to GC leaks resulting in canvases not being
+%	released.  The event manager's bad habit of keeping a copy of
+%	events around is a likely source of trouble.  I have fixed this
+%	once and for all by patching the event manager but it still doesn't
+%	eliminate the leaks!
+%
+% Frailties:
+%   	Shared menus retain canvases whose parent could be anything.
+%	The "fix" is to reparent the canvases.
+%
+%	Interests with null canvases are problematic.
+%
+%	Special behavior of "newcanvas" for framebuffer children is
+%	annoying, and can't really be fixed completely by redefinition
+%	owing to autobind.
+%
+%   	Shared menus make life interesting since their canvas's parent links
+%	have to be changed on /popup.
+%
+%       I really don't know why it doesn't work when you have a root piemenu.
+%       Current "solution" is to change the rootmenu back to regular menu for
+%       the "winwin."
+%
+% NeWS Bugs:
+%   	When a window is reshaped, where subwindows are and where they think
+%	they are are two different things entirely.
+%
+%	Only true root overlay canvases cover their siblings!
+%
+
+/WinWin DefaultWindow [ ] classbegin
+    /IconImage /client def
+    /PaintIcon {
+	/PaintIcon super send
+	IconBorderColor strokecanvas
+    } def
+    /FrameLabel (Window Window) def
+    /ClientMenu null def
+    /CreateClientCanvas {
+	/ClientCanvas FrameCanvas newcanvas def
+	/ptr /ptr_m ClientCanvas setstandardcursor
+	ClientCanvas begin
+	    /Transparent false def
+	    /Retained false def
+	    /EventsConsumed /AllEvents def
+	    /Mapped true def
+	end
+    } def
+    /PaintFrameBorder { % - => - (Paint frame border areas)
+	clippath pathbbox rectpath
+	BorderLeft .5 sub BorderBottom .5 sub
+	FrameWidth BorderLeft BorderRight add sub 1 add
+	FrameHeight BorderBottom BorderTop add sub 1 add
+	FramePath gsave FrameFillColor setshade eofill grestore
+	FrameBorderColor setshade stroke FrameBorderColor strokecanvas
+    } def
+
+    /ForkFrameEventMgr {
+	/FrameEventMgr FrameInterests forkeventmgr def
+    } def
+
+    /destroy {
+	createevent dup begin
+	    /Name /DoItEvent def
+	    /Action /Window def
+	    /ClientData [
+		% /EventMgrDict cvx /CurrentEvent null /put cvx % GC leak
+		ClientCanvas /framebuffer cvx /eq cvx { destroy } /if cvx
+	    ] cvx def
+	end sendevent
+	% save some memory in case of GC leaks:
+	ClientCanvas /Retained false put
+	FrameCanvas /Retained false put
+	% Kill some processes:
+	/KillProcesses where {
+	    /KillProcesses get { killprocess } forall
+	    /KillProcesses null store
+	} if
+	% Kill some groups:
+	/KillGroups where {
+	    /KillGroups get { killprocessgroup } forall
+	    /KillGroups null store
+	} if
+	% console (OK!\n) writestring console flushfile
+	/destroy super send
+    } def
+
+    % we only drag the frame since draging the canvas doesn't work too
+    % well when there are opaque children
+    /slide { % - => -  (Interactively move window)
+	{
+	    Iconic? { /slide super send } {
+		GetCanvas setcanvas
+		InteractionLock { true dragcanvas } monitor
+		currentcanvas ParentCanvas setcanvas getcanvaslocation
+		/move self send
+	    } ifelse
+	} fork pop
+    } def
+classend systemdict 3 1 roll put
+
+/copymenu { % - => newmenu  -- a phony menu method
+    self dup maxlength dict copy end begin
+	/MenuCanvas null def
+	/MenuWidth null def
+	/MenuEventMgr null def
+	/ChildMenu null def
+	/MenuActions MenuActions dup length array copy def
+	/MenuKeys MenuKeys dup length array copy def
+	/MenuItems MenuItems dup length array copy def
+	0 1 MenuActions length 1 sub { % for
+	    dup getmenuaction
+	    dup type { % case(type)  --  i menuaction
+		/dicttype {
+		    /copymenu exch send	% copy i menu'
+		    MenuActions 2 index 2 index put
+		    MenuItems 2 index MenuKeys
+		    1 index get 3 index MakeMenuItem put
+		}
+		/arraytype { dup xcheck {
+		    systemdict /forkunix get /forkunix cvx rebindit
+		} if }
+	    } case
+	    pop pop
+	} for
+	currentdict end
+} def
+
+/flipstyle { % - => newmenu
+    0 1 MenuActions length 1 sub {
+	dup getmenuaction % fixed to use getmenuaction!
+	dup type /dicttype eq {
+	    /flipstyle exch send	% i menu'
+	    MenuActions 3 1 roll put	% -
+	} {pop pop} ifelse
+    } for
+    MenuKeys MenuActions /new DefaultMenu send
+} def
+
+currentdict framebuffer { begin } pop end % pop user dict
+50 dict begin		% The things we do for recursive WinWins!
+    /framebuffer exch def
+    /fboverlay framebuffer createoverlay def
+    /newcanvas {
+	dup framebuffer eq exch
+	systemdict /newcanvas get exec
+	exch {
+	    dup /Transparent false put
+	    dup /Color get not { dup /Retained true put } if
+	} if
+    } def
+    /win framebuffer /new WinWin send def
+    /reshapefromuser win send
+    /map win send
+    win
+    /win null def
+end
+exch begin { end } pop /win exch def
+
+% systemdict /foo win put % pseudo-scientific visualizer
+systemdict /NextSocket known not { systemdict /NextSocket 2011 put } if
+
+/ServerSocket systemdict begin
+    NextSocket /NextSocket NextSocket 1 add def
+end def
+/FakeServer (NEWSSERVER) getenv
+  (;) search pop exch pop (.) search pop exch pop exch % sys addr port
+  pop ServerSocket 20 string cvs
+  (.) exch append append exch (;) exch append append def
+
+/rebindit {	% proc key val => proc
+    2 index	% proc key val proc
+    &rebindit pop pop
+} def
+
+/&rebindit {	% key val proc => key val
+    dup length 0 1 3 2 roll 1 sub {	% key val proc 0 1 lng-1 { ... } for
+	2 copy get			% key val proc ix proc[ix]
+	dup type /arraytype eq {	% another proc?
+	    exch pop exch 4 1 roll	    % proc key val proc[ix]
+	    &rebindit 3 -1 roll		    % key val proc
+	} {				% key val
+	    dup xcheck {		% executable
+		4 index eq {	% ... and same as key?
+		    % key val proc ix
+		    1 index exch 3 index put % key val proc
+		} {
+		    pop
+		} ifelse
+	    } {
+		pop pop
+	    } ifelse
+	} ifelse
+    } for
+    pop
+} def
+
+/Hacks dictbegin
+    /framebuffer win /ClientCanvas get def
+    /fboverlay framebuffer createoverlay def
+    % /fboverlay { framebuffer createoverlay dup canvastotop } def
+    /newcanvas {
+	dup framebuffer eq exch
+	systemdict /newcanvas get exec
+	exch {
+	    dup /Transparent false put
+	    dup /Color get not { dup /Retained true put } if
+	} if
+    } def
+
+    % note: we have to patch LiteWindow because newcanvas was autobound
+    % and consequently the above definition has no effect.
+
+    LiteWindow /CreateFrameCanvas get
+        systemdict /newcanvas get /newcanvas cvx rebindit pop
+    LiteWindow /CreateIconCanvas get
+        systemdict /newcanvas get /newcanvas cvx rebindit pop
+
+    % Likewise, LiteWindow ParentCanvas is defined as framebuffer in advance.
+    % We'll fix this by defining it to be { framebuffer }.
+    LiteMenu /ParentCanvas { framebuffer } put
+    [
+	DefaultMenu
+	/PieMenu where { pop PieMenu dup DefaultMenu eq { pop } if } if
+    ] { % forall
+	{ % loop
+	    dup null eq { pop exit } if
+	    dup /showat known {
+		dup /showat get systemdict /newcanvas get /newcanvas cvx
+		rebindit % classdict showatproc
+		0 get /CheckParent ne {
+		    dup /showat 2 copy get
+		    { CheckParent } {} modifyproc put
+		} if
+		dup /CheckParent {
+		    MenuCanvas null ne {
+			MenuCanvas /Parent ParentCanvas put
+		    } if
+		} put
+	    } if
+	    /ParentDict get
+	} loop
+    } forall
+
+    % This is gross, gross, gross, but we must improve the hygiene of
+    % the event manager:
+
+    /forkeventmgr load 2 get 19 get dup 22 get /repeat load eq {
+	dup 21 { { pop } repeat EventMgrDict /CurrentEvent null put } put
+	22 /exec cvx put
+    } {
+	pop
+    } ifelse
+
+    /AllWin { % proc => - (Distributes proc to all windows!!)
+	createevent dup begin
+	    /Name /DoItEvent def
+	    /Action /Window def
+	    /ClientData [
+		% /EventMgrDict cvx /CurrentEvent null /put cvx % GC leak
+		framebuffer /framebuffer cvx /eq cvx [
+		    7 index cvx /exec cvx
+		] cvx /if cvx
+	    ] cvx def
+	end sendevent pop
+    } def
+
+    /^C { % kill the Window of Windows
+	createevent dup begin
+	    /Name /DoItEvent def
+	    /Action /Window def
+	    /ClientData [
+		% /EventMgrDict cvx /CurrentEvent null /put cvx % GC leak
+		framebuffer
+		{
+		    ClassName /WinWin eq {
+			ClientCanvas eq { self /destroy exch send } if
+		    } {
+			pop
+		    } ifelse
+		} /exec cvx
+	    ] cvx def
+	end sendevent pop
+    } def
+
+    /exitcleanly load systemdict /^C get /^C cvx rebindit pop
+
+    /forkunix {
+	(NEWSSERVER) getenv
+	(NEWSSERVER) //FakeServer putenv
+	exch systemdict /forkunix get exec
+	(NEWSSERVER) exch putenv
+    } def
+dictend def
+
+Hacks /def load forall
+
+framebuffer setcanvas PaintRoot
+
+/rootmenu /copymenu rootmenu send def
+/DefaultMenu LitePullRightMenu def /rootmenu /flipstyle rootmenu send def
+
+/serverproc { % fork
+    clear (%socketl) //ServerSocket 20 string cvs append (r) file
+    { % loop
+	dup mark exch acceptconnection
+	{ % fork
+	    Hacks end 200 dict begin { def } forall
+	    initmatrix newprocessgroup
+	    exch pop exch pop dup
+	    getsocketpeername /OriginatingHost exch def
+
+	    RemoteHostRegistry OriginatingHost known
+	    OriginatingHost localhostname anchorsearch
+	    { pop (.) anchorsearch
+		{ pop pop RemoteHostRegistry localhostname known }
+		{ pop false } ifelse }
+	    { pop false } ifelse or
+	    % Let through if no security wanted
+	    NetSecurityWanted not or
+
+	    { cvx exec }
+	    { currentcursorlocation
+		[ (Network security violation:)
+		    (Rejected connection from ) OriginatingHost append ]
+		popmsg } ifelse
+	    currentprocess killprocessgroup
+	} fork
+	cleartomark
+    } loop
+} fork def
+
+/rooteventmgr [
+    /rootmenu where { pop
+	MenuButton
+	{ {/showat rootmenu send} fork pop }
+	DownTransition framebuffer eventmgrinterest
+    } if
+    /Damaged { damagepath clipcanvas PaintRoot newpath clipcanvas}
+    null framebuffer eventmgrinterest
+] forkeventmgr def
+
+win /KillProcesses [ serverproc rooteventmgr ] put
+% win /KillGroups [ rooteventmgr ] put
+

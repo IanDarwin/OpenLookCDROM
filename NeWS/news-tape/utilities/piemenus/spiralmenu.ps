@@ -1,0 +1,287 @@
+%!
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Copyright (C) 1989 by Don Hopkins. All rights reserved.
+% This program is provided for unrestricted use, provided that this 
+% copyright message is preserved. There is no warranty, and no author 
+% or distributer accepts responsibility for any damage caused by this 
+% program. 
+
+% Spiral pie menus
+
+systemdict begin
+
+/SpiralMenu PieMenu 
+dictbegin
+  /FirstItem 0 def
+  /LastItem null def
+  /MaxPieSlices 8 def
+  /PieSlices null def
+  /ShownItems null def
+dictend
+classbegin
+
+    /layout {
+      gsave MenuFont setfont initmatrix
+
+        /PieSlices MaxPieSlices MenuItems length min store
+	/LastItem
+	  FirstItem PieSlices add 1 sub MenuItems length 1 sub min
+	def
+	/PieSliceWidth 360 PieSlices 1 max div store
+
+	% Get the size of all the keys, and point them in the right direction
+	/ThisAngle PieInitialAngle store
+	MenuItems {
+	  begin
+	    w null eq
+	      {/Key load ThingSize /h exch def /w exch def} if
+	    /ang ThisAngle def
+	    /dx ang cos def
+	    /dy ang sin def
+	    dx abs .05 lt { %  top or bottom
+	      /xoffset w -.5 mul def
+	      /yoffset ang 180 gt {h neg} {0} ifelse def
+	    } { %  left or right
+	      /xoffset ang 90 gt ang 270 lt and {w neg} {0} ifelse def
+	      /yoffset h -.5 mul def
+	    } ifelse
+	    /ThisAngle ThisAngle PieSliceWidth
+	      Clockwise {sub} {add} ifelse
+	      NormalAngle store
+	  end
+	} forall
+
+	% Push the keys out so none of them overlap
+	/LabelRadius LabelMinRadius def
+	MenuItems length 1 gt {
+	  0 1 MenuItems length 1 sub {
+	    /i exch def
+	    /nexti i 1 add MenuItems length mod def
+	    { 
+	      i calcrect
+	      nexti calcrect
+	      rectsoverlap not {exit} if
+	      /LabelRadius LabelRadius LabelRadiusStep add def
+	    } loop
+	  } for
+	} if
+	/LabelRadius LabelRadius LabelRadiusExtra add def
+
+	/PieRadius LabelRadius dup mul def
+        MenuItems {
+	  begin
+	    /x dx LabelRadius cvr mul def % XXX: cvr is for NeWS math bug
+	    /y dy LabelRadius cvr mul def
+
+	    /X x xoffset add def
+	    /Y y yoffset add def
+
+	    dx abs .05 lt { %  top or bottom
+	      x abs w 2 div add dup mul y abs h add dup mul add
+	    } { %  left or right
+	      x abs w add dup mul y abs h 2 div add dup mul add
+	    } ifelse
+	    PieRadius max /PieRadius exch store
+	  end
+	} forall
+	/PieRadius PieRadius sqrt Gap add Border add round store
+
+        /MenuWidth
+	  PieRadius dup add store
+        /MenuHeight
+	  MenuWidth store
+
+      grestore
+    } def
+
+    /PaintMenuItems {
+      MenuGSave
+	false setprintermatch
+        PieRadius dup translate
+
+        FirstItem 1 LastItem { /i exch def
+	MenuItems i get		% item
+	begin
+	  MenuTextColor setcolor
+	  /Key load X Y ShowThing
+
+% There seems to be a NeWS line clipping bug with lines with one 
+% endpoint the right of the hole in the center of the menu ... 
+
+	  2 setlinequality % Solves SOME of the line glitches ...
+          MenuLineWidth setlinewidth
+	  MenuLineCap setlinecap
+
+	  SliceWedges {
+	    gsave
+	      ang PieSliceWidth 2 div sub rotate
+	      NumbRadius 0 moveto
+	      LabelRadius Gap sub 0 lineto
+              MenuBorderColor setcolor
+	      stroke
+ 	    grestore
+	  } if
+
+	  SliceArrows {
+	    gsave
+	      MenuArrowWidth setlinewidth
+	      MenuArrowCap setlinecap
+	      ang rotate
+	      NumbRadius 0 moveto
+	      LabelRadius .5 mul 0 lineto
+	      currentpoint
+	      LabelRadius .4 mul LabelRadius .04 mul lineto
+	      moveto
+	      LabelRadius .4 mul LabelRadius -.04 mul lineto
+              MenuBorderColor setcolor
+	      stroke
+ 	    grestore
+	  } if
+
+        end
+        } for
+	PaintScrollArrows
+      grestore
+    } def
+
+% Calculate and set the menu value from the cursor x y location.
+% Updates /PieDistance and /PieDirection instance variables.
+
+    /SetMenuValue { % x y => - (Sets /MenuValue)
+      /SetMenuValue super send
+      MenuValue null ne {
+	/MenuValue
+	  MenuValue {
+	    dup FirstItem ge { exit } if
+	    PieSlices add
+	  } loop
+	  LastItem min
+	def
+      } if
+    } def
+
+    /DragProc {
+	MenuValue dup FirstItem eq exch LastItem eq % first? last?
+	/DragProc super send
+	2 copy and { % first and last are the same!
+	  pop pop %
+	} { % first? last?
+	  { % cursor left last slice
+	    pop %
+	    MenuValue FirstItem eq {
+	      LastItem MenuItems length 1 sub lt {
+	        PaintedValue PaintSlice
+		MenuValue EraseMenuItem
+		EraseScrollArrows
+		/FirstItem FirstItem 1 add store
+		/LastItem LastItem 1 add store
+		/MenuValue LastItem store
+		MenuValue PaintMenuItem
+		MenuValue PaintSlice
+		/PaintedValue MenuValue store
+		PaintScrollArrows
+%/PaintedValue null store paint
+	      } if
+	    } if
+	  } { % first? ; cursor left first slice
+	    { %
+	      MenuValue LastItem eq {
+		FirstItem 0 gt {
+		  PaintedValue PaintSlice
+		  MenuValue EraseMenuItem
+		  EraseScrollArrows
+		  /FirstItem FirstItem 1 sub store
+		  /LastItem LastItem 1 sub store
+		  /MenuValue FirstItem store
+		  MenuValue PaintMenuItem
+		  MenuValue PaintSlice
+		  /PaintedValue MenuValue store
+		  PaintScrollArrows
+%/PaintedValue null store paint
+		} if
+	      } if
+	    } if
+	  } ifelse
+	} ifelse
+    } def
+
+  /EraseMenuItem { % i => -
+    MenuGSave
+      PieRadius dup translate
+      MenuItems 1 index	get begin
+        MenuFillColor setcolor
+	X 1 sub Y 1 sub w 3 add h 2 add rectpath fill
+      end % menuitem
+    grestore
+  } def
+
+  /PaintMenuItem { % i => -
+    MenuGSave
+      false setprintermatch
+      PieRadius dup translate
+      MenuTextColor setcolor
+      MenuItems 1 index get begin
+	/Key load X Y ShowThing
+      end % menuitem
+    grestore
+  } def
+
+  /EraseScrollArrows { % - => -
+    MenuGSave
+      PieRadius dup translate
+      MenuItems FirstItem get begin
+	ang PieSliceWidth 2 div add rotate
+	LabelRadius Gap sub 9 sub -5
+	10 10 rectpath
+	MenuFillColor setcolor
+	fill
+	NumbRadius 0 moveto
+	LabelRadius Gap sub 0 lineto
+	MenuBorderColor setcolor
+	stroke
+      end % menuitem
+    grestore
+  } def
+
+  /PaintScrollArrows { % - => -
+    MenuGSave
+      PieRadius dup translate
+      MenuItems FirstItem get begin
+	ang PieSliceWidth 2 div add rotate
+	MenuBorderColor setcolor
+        FirstItem 0 ne {
+	  LabelRadius Gap sub -4 moveto
+	  -4 4 rlineto
+	  -4 -4 rlineto
+	  stroke
+	} if
+	LastItem MenuItems length 1 sub ne {
+	  LabelRadius Gap sub 4 moveto
+	  -4 -4 rlineto
+	  -4 4 rlineto
+	  stroke
+	} if
+      end % menuitem
+    grestore
+  } def
+
+classend def
+
+end % systemdict
+
+%  h>|a  b	0,7
+%  g     c
+%  f  e  d
+% 
+%  h  i><b	1,8
+%  g     c
+%  f  e  d
+% 
+%  h  i  j	5,12
+%  g     k
+%  f><m  l
+% 
+%  p|<i  j	8,15
+%  o     k
+%  n  m  l
+

@@ -1,0 +1,217 @@
+dnl Process this file with autoconf to produce a configure script.
+AC_INIT(README.txt)
+
+dnl Prompt user for home page
+tk_www_home_page=http://info.cern.ch/default.html
+
+echo "What is the default home page ? (press return for default page)"
+read tk_www_home_page
+if test -z "$tk_www_home_page" ; then
+	tk_www_home_page=http://info.cern.ch/default.html
+fi
+echo "setting starting page as $tk_www_home_page"   
+AC_SUBST(tk_www_home_page)
+
+tk_www_start_page=$tk_www_home_page
+AC_SUBST(tk_www_start_page)
+
+dnl Guess prefix
+AC_PREFIX(wish)
+AC_PROG_CC
+AC_PROG_INSTALL
+AC_PROG_RANLIB
+AC_STDC_HEADERS
+
+#
+# Check for dirent.h or sys/dir.h.  autoconf generates a define of DIRENT,
+# while WWW libraries want USE_DIRENT, so we roll our own check.
+#
+dnl AC_COMPILE_CHECK(, ,[#include <dirent>], , [DEFS="$DEFS -DUSE_DIRENT"])
+
+AC_FUNC_CHECK(getwd , , AC_DEFINE(NO_GETWD))
+
+#
+# Check if mhmail exists (this check is broken with certain versions of 
+# autoconf, so we make sure the variable gets set).
+#
+
+AC_PROGRAM_CHECK(tk_www_mail,mhmail,mail)
+if test -z "$tk_www_mail"; then
+   tk_www_mail=mail
+fi
+AC_SUBST(tk_www_mail)
+
+
+#
+# Run xmkmf to check for location of X libraries and includes
+#
+
+AC_PROGRAM_CHECK(tk_ok, xmkmf, 1, 0)
+if test $tk_ok = 1; then
+    AC_FIND_X
+fi
+if test "$x_includes" = /usr/include; then
+    XINCLUDES="# no special path needed"
+elif test "$x_includes" != ""; then
+    XINCLUDES=" -I$x_includes"
+else
+    echo checking for X11 header files
+    XINCLUDES="# no special path needed"
+    AC_TEST_CPP([#include <X11/Intrinsic.h>], , XINCLUDES="nope")
+    if test "$XINCLUDES" = nope; then
+        dirs=${XINCLUDE_DIR-"/usr/unsupported/include /usr/local/include /usr/X386/include /usr/include/X11R4 /usr/X11R5/include /usr/include/X11R5 /usr/openwin/include /usr/X11/include"}
+        for i in $dirs ; do
+	    if test -r $i/X11/Intrinsic.h; then
+	        XINCLUDES=" -I$i"
+	    fi
+        done
+    fi
+fi
+if test "$XINCLUDES" = nope; then
+  echo "Warning:  couldn't find any X11 include files."
+  XINCLUDES="# no include files found"
+fi
+AC_SUBST(XINCLUDES)
+
+if test "$x_libraries" = /usr/lib; then
+    XLIBSW=-lX11
+elif test "$x_libraries" != ""; then
+    XLIBSW="-L$x_libraries -lX11"
+else
+    echo "checking for X11 library archive"
+    AC_HAVE_LIBRARY(X11, XLIBSW="-lX11", XLIBSW=nope)
+    if test "$XLIBSW" = nope; then
+	dirs=${XLIBRARY_DIR-"/usr/unsupported/lib /usr/local/lib /usr/X386/lib /usr/lib/X11R4 /usr/X11R5/lib /usr/lib/X11R5 /usr/openwin/lib /usr/X11/lib"}
+	for i in $dirs ; do
+	    if test -r $i/libX11.a; then
+		XLIBSW="-L$i -lX11"
+	    fi
+	done
+    fi
+fi
+if test "$XLIBSW" = nope ; then
+    AC_HAVE_LIBRARY(Xwindow, XLIBSW=-lXwindow)
+fi
+if test "$XLIBSW" = nope ; then
+    echo "Warning:  couldn't find the X11 library archive.  Using -lX11."
+    XLIBSW=-lX11
+fi
+AC_SUBST(XLIBSW)
+
+define(AC_FIND_PROG_PATH,
+[echo checking for path of $1
+  IFS="${IFS= 	}"; saveifs="$IFS"; IFS="$IFS:"
+for dir in $PATH; do
+   test -z "$dir" && dir=.
+   if test $dir != . && test -f $dir/$1; then
+changequote(,)dnl
+      # Not all systems have dirname.
+      echo Found $1 in $dir
+      $2
+changequote([,])dnl
+      break
+    fi
+  done
+  IFS="$saveifs"
+]
+)
+
+#
+# This is to substitute extra paths that 
+#
+AC_FIND_PROG_PATH(xli,tk_www_extra_path="$tk_www_extra_path:$dir")
+AC_FIND_PROG_PATH(ghostview,tk_www_extra_path="$tk_www_extra_path:$dir")
+AC_FIND_PROG_PATH(xdvi,tk_www_extra_path="$tk_www_extra_path:$dir")
+AC_SUBST(tk_www_extra_path)
+
+tk_www_tk_executable=wwwish
+AC_SUBST(tk_www_tk_executable)
+
+
+#
+# Make some guesses where the Tcl/Tk include files and libraries are.
+# I hate this way of doing it to.  It would be better to specify something
+# from the command line invoking configure.
+#
+
+PWD=`pwd`
+testdir=""
+export testdir
+AC_FIND_PROG_PATH(wish,[testdir=`echo $dir|sed 's%/[^/][^/]*$%%'`])
+echo $testdir
+
+AC_HEADER_CHECK(tcl.h,, [
+dirs="$testdir/include $testdir/include/tcl $x_includes/tk /usr/local/include"
+i=nope
+for i in $dirs ; do
+    if test -r $i/tcl.h; then
+       break
+    fi
+done
+if test "$i" = "nope" ; then
+    echo "What directory contains tcl.h (absolute path) ?"
+    read i
+fi
+tclinc=$i
+TCL_INCDIR="-I$i"
+AC_SUBST(TCL_INCDIR)
+])
+
+dirs="$testdir/lib $x_libraries /usr/local/lib"
+i=nope
+for i in $dirs ; do
+    if test -r $i/libtcl.a; then
+	break
+    fi
+done
+if test "$i" = nope ; then
+  echo "What directory contains libtcl.a ?"
+  read i
+fi
+tcllib=$i
+TCL_LIBDIR="-L$i"
+AC_SUBST(TCL_LIBDIR)
+
+AC_HEADER_CHECK(tk.h,, [
+if test ! -r $tclinc/tk.h ; then
+   i=nope
+   dirs="$testdir/include $testdir/include/tk $x_includes/tk /usr/local/include"
+   for i in $dirs ; do
+      if test -r $i/tk.h; then
+         break
+      fi
+   done
+   if test "$i" = nope ; then
+      echo "What directory contains tk.h?"
+      read i
+   fi
+   TK_INCDIR="-I$i"
+fi
+AC_SUBST(TK_INCDIR)
+])
+
+if test ! -r $tcllib/libtk.a ; then
+   dirs="$testdir/lib $x_libraries /usr/local/lib"
+   i=nope
+   for i in $dirs ; do
+      if test -r $i/libtk.a; then
+	 break
+      fi
+   done
+   if test "$i" = nope ; then
+      echo "What directory contains libtk.a?"
+      read i
+
+   fi
+   TK_LIBDIR="-L$i"
+fi
+AC_SUBST(TK_LIBDIR)
+
+# Add special libraries for solaris
+#
+
+AC_HAVE_LIBRARY(elf, [LIBS="$LIBS -lelf"])
+AC_HAVE_LIBRARY(socket, [LIBS="$LIBS -lsocket"])
+AC_HAVE_LIBRARY(nsl, [LIBS="$LIBS -lnsl"])
+
+AC_OUTPUT(Makefile Server/Makefile Library/Makefile Tcl/Makefile)

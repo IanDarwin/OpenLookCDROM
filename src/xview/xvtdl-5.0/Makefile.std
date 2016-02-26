@@ -1,0 +1,169 @@
+#
+#   Makefile for the xvtdl program
+#
+
+#---------------------------------------------------------------------
+#  $Id: Makefile,v 2.5 1992/07/15 20:54:01 jipping Exp $
+#---------------------------------------------------------------------
+#
+#  Compilation flags.
+#
+#  Change CC, YACC, and LEX to suit your tastes and environment
+#
+CC = acc # SunOS4
+CC = gcc
+YACC = yacc
+LEX = lex
+#
+#  Change the flags vars below to suit your O/S environment
+#
+# ..for Solaris 1.x (SunOS 4.1.x)
+#CFLAGS = -O -I$(OPENWINHOME)/include 
+#LDFLAGS = -O -L$(OPENWINHOME)/lib
+#LL = -ll
+#INSTALL = install-sol1
+#SVR4LIBS = 
+#
+# ..for Solaris 2.x
+#CFLAGS = -O -I$(OPENWINHOME)/include -DSVR4 -DSYSV -DDEBUG
+#LDFLAGS = -O -L$(OPENWINHOME)/lib
+#LL = -ll
+#INSTALL = install-sol2
+#SVR4LIBS = -lintl
+#
+# For Linux
+CFLAGS = -g -O -I$(OPENWINHOME)/include -DDEBUG -Dlinux
+LDFLAGS = -O -L$(OPENWINHOME)/lib
+LL =
+INSTALL = install-linux
+#SVR4LIBS = /stage/lib.linux/uflow.o
+SVR4LIBS =
+
+#----------------------------------------------------------------------
+#
+#  Location variables.  
+#
+#  BINDIR should be changed to reflect the location you want the binaries.
+#  LIB should be changed to point to the directory you want info files
+#  like prolog files to go.
+#  MAN should be the place where man pages go.
+#  MANEXT should be the suffix on the manual pages.
+#  HELPDIR should point to the help directory.
+#
+BINDIR = /usr/local/bin
+LIBDIR = /local/lib/tdl
+MANDIR = /usr/man/manl
+MANEXT = l
+HELPDIR = /local/lib/tdl/help
+#
+#  These should not be changed
+#
+PRINT_PROLOG1 = $(LIBDIR)/prolog1.ps
+PRINT_PROLOG2 = $(LIBDIR)/prolog2.ps
+
+#----------------------------------------------------------------------
+#
+#  Mail program.  Give the mail program you use -- it should be able to 
+#  take a "-s" option for a subject.
+#  
+MAILPGM = Mail
+
+#----------------------------------------------------------------------
+#
+#  Toolkit version:  Specify the version of the XView toolkit (2 or 3)
+#  you have.
+#
+XVIEW = 3
+
+######################################################################
+#
+#   Make sure you check the install procedure at the bottom...
+
+
+#---------------------------------------------------------------------
+#  Some global vars...
+
+XVOBJ = main.o create_windows.o calendar.o control.o y.tab.o list.o recur.o \
+		  print.o print_ui.o entry_ui.o properties.o props_ui.o \
+		  logger.o xdefaults.o logedit_ui.o deadline_ui.o deadline.o\
+        file.o category.o category_ui.o gfm_ui.o gfm_load_dir.o \
+		  gfm.o group.o group_data.o display.o gcm.o gcc.o gcc_ui.o colors.o
+
+OBJ = tdl.o tdl_utils.o y.tab.o calendar-tdl.o list-tdl.o recur-tdl.o \
+      deadline-tdl.o print-tdl.o file-tdl.o display-tdl.o category-tdl.o \
+		xdefaults.o
+
+XVSRC = $(XVOBJ:%.o=%.c) todo.y todo.l
+SRC = $(OBJ:%.o=%.c) todo.y todo.l
+
+#---------------------------------------------------------------------
+#  Target patterns.
+
+%.o: %.c
+	$(CC) $(CFLAGS) \
+         -DPRINT_PROLOG1=\"$(PRINT_PROLOG1)\"\
+         -DPRINT_PROLOG2=\"$(PRINT_PROLOG2)\"\
+         -DHELPDIR=\"$(HELPDIR)\"\
+         -DMAILPGM=\"$(MAILPGM)\"\
+         -DXVIEW$(XVIEW)  -c $<
+
+#%.c: RCS/%.c,v
+#	co $@
+
+%-tdl.o: %.c
+	$(CC) $(CFLAGS) -DTDL\
+         -DPRINT_PROLOG1=\"$(PRINT_PROLOG1)\"\
+         -DPRINT_PROLOG2=\"$(PRINT_PROLOG2)\"\
+         -DHELPDIR=\"$(HELPDIR)\"\
+         -DMAILPGM=\"$(MAILPGM)\"\
+         -DXVIEW$(XVIEW)  -o $@ -c $<
+
+#---------------------------------------------------------------------
+#  Finally, the real dependencies.
+
+all: xvtdl tdl
+
+xvtdl: $(XVOBJ) 
+	$(CC) $(LDFLAGS) -o xvtdl $(XVOBJ) -lxview -lolgx -lX11 $(LL) $(SVR4LIBS)
+
+tdl: $(OBJ)
+	$(CC) $(LDFLAGS) -o tdl $(OBJ) -lxview -lolgx -lX11 $(LL) $(SVR4LIBS)
+
+y.tab.o: lex.yy.c	y.tab.c
+	$(CC) $(CFLAGS) -c y.tab.c
+
+lex.yy.c: todo.l
+	$(LEX) todo.l
+
+y.tab.c: todo.y
+	$(YACC) todo.y
+
+properties.c: props_ui.h
+
+#---------------------------------------------------------------------
+install: $(INSTALL)
+
+install-sol1: xvtdl
+	install -s -m 755 xvtdl $(BINDIR)
+	install -s -m 755 tdl $(BINDIR)
+	install -m 755 prolog1.ps $(LIBDIR)
+	install -m 755 prolog2.ps $(LIBDIR)
+	install -m 755 xvtdl.man $(MANDIR)/xvtdl.$(MANEXT)
+	install -m 755 tdl.man $(MANDIR)/tdl.$(MANEXT)
+	install -m 755 help/* $(HELPDIR)
+
+install-sol2: xvtdl
+	install -f $(BINDIR) -s -m 755 xvtdl 
+	install -f $(BINDIR) -s -m 755 tdl 
+	install -f $(LIBDIR) -m 755 prolog1.ps 
+	install -f $(LIBDIR) -m 755 prolog2.ps
+	cp xvtdl.man $(MANDIR)/xvtdl.$(MANEXT)
+	cp tdl.man $(MANDIR)/tdl.$(MANEXT)
+	install -f $(HELPDIR) -m 755 help/*
+
+install-linux: xvtdl
+	@echo Linux installation not written yet, sorry.
+clean: 
+	rm -f xvtdl $(OBJ) $(XVOBJ) core \#* *~ y.tab.c lex.yy.c	
+
+

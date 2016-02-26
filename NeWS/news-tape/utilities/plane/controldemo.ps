@@ -1,0 +1,111 @@
+%!
+% Test out control window
+% This test class operates as follows:
+% 	1. the user clicks left button on the reader window
+% 	2. the user types a string into the reader window
+% 	3. when the user types a <return>, the message in the reader
+% 	   window is displayed at the origin of the plane canvas.
+% 	4. the scroll bars may be moved to pan/scroll over
+% 	   the plane window.  The visible effect is to move
+% 	   the text with respect to the view on the window.
+% 	5. A menu is provided to do the following things:
+% 		Center - put origin of the plane window at center
+% 			of the client canvas
+% 		Zoom - do a number of zoom actions:
+% 			Normal - reset the window to normal size
+% 			Reduce - zoom out by a factor of two
+% 			Enlarge - zoom in by a factor of two
+
+
+/testclass ControlWindow
+    dictbegin
+	/oldmessage null def
+	/ClientFont /Times-Roman findfont 16 scalefont def
+    dictend
+classbegin
+
+    /ZoomFactor 2 def
+    /DefaultPrompt (new message:) def
+
+
+    % When reader is constructed, set the notifier
+    /CreateFrameControls {
+	/CreateFrameControls super send
+	% save old message
+	/oldmessage () store
+	% arm reader notifier
+	[/SetMessage self] SetReaderNotifier
+    } def
+
+
+    /PaintClient {
+	/PaintClient super send
+	PaintMessage
+    } def
+
+    /PaintMessage {
+	gsave
+	    ClientCanvas setcanvas
+	    ClientFont setfont
+	    0 0 moveto
+	    .01 rotate % Kludge to force NeWS to scale font bitmaps!
+	    oldmessage show
+	grestore
+    } def
+
+    % When reader message is changed, display old message,
+    % erase from client canvas, and display new msg at (0,0)
+    /SetMessage { % - => -
+	% display old message
+	(old message: %) [oldmessage] DisplayFormat
+	% save new message as old message
+	/oldmessage GetInput store
+	% erase old message by erasing whole client canvas
+	gsave ClientCanvas setcanvas erasepage grestore
+	% write new (now old) message at origin of client canvas
+	PaintMessage
+	% re-arm reader notifier
+	[/SetMessage self] SetReaderNotifier
+    } def
+
+    /Enlarge {
+	    ScaleX ZoomFactor mul
+	    ScaleY ZoomFactor mul
+	    SetPlaneScale
+    } def
+    /Reduce  {
+	    ScaleX ZoomFactor div
+	    ScaleY ZoomFactor div
+	    SetPlaneScale
+     } def
+    /Normal	{
+	    1.0 1.0 SetPlaneScale
+    } def
+
+
+    /ClientMenu [
+	(Center)	{/CenterPlane testwin send}
+	(Normal)	{/Normal testwin send}
+	(Reduce)	{/Reduce testwin send}
+	(Enlarge)	{/Enlarge testwin send}
+    ] /new DefaultMenu send store
+
+/destroy {
+	/ClientMenu null store
+	/destroy super send
+    } def
+classend def
+
+/testwin framebuffer /new testclass send def
+
+% set location and shape of the window
+% Make it a 500 by 500  window located at location (400,400)
+400 400 500 500 /reshape testwin send
+
+% Make the plane window with x coordinates ranging over -1000 -> 1000
+% and y coordinates ranging over -500 -> 500
+% Origin of the plane window will be at the origin of the view.
+
+-1000 -500 1000 500 /SetPlaneSize testwin send
+
+/map testwin send

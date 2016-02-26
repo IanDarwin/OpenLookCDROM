@@ -1,0 +1,112 @@
+#!/usr/NeWS/bin/psh
+
+/ptape-dict 100 dict def
+
+ptape-dict begin
+
+/hole-radius 4 def
+/hole-spacing 12 def
+/tape-margin 3 def
+/tape-string ($1) dup () eq {pop (foobar)} if def
+/old-matrix matrix def
+
+/ptape { % width height string => 
+  /tape-string exch def
+  /image-height exch def
+  /image-width exch def
+
+  old-matrix currentmatrix
+
+  /tape-length
+    tape-string length
+    hole-spacing mul
+    tape-margin dup add add def
+
+  /tape-width
+    hole-spacing 9 mul
+    tape-margin dup add add def
+
+  image-width tape-length div
+  image-height tape-width div scale
+
+  newpath
+
+  0 0 moveto
+  tape-length 0 rlineto
+  0 tape-width rlineto
+  tape-length neg 0 rlineto
+  closepath
+
+  hole-spacing 2 div tape-margin add
+  dup translate
+
+  tape-string {
+    /char exch def
+    /power 1 def
+      8 {
+        power 16 eq {
+          0 0 hole-radius 2 div 0 360 arc
+	  closepath
+	  0 hole-spacing translate
+        } if
+	pause
+        char power and 0 ne {
+	  0 0 hole-radius 0 360 arc
+	  closepath
+	} if
+	0 hole-spacing translate
+	/power power dup add def
+      } repeat
+    hole-spacing dup -9 mul translate
+  } forall
+
+  old-matrix setmatrix
+
+} def
+
+/main {
+    /win framebuffer /new DefaultWindow send def	% Create a window
+    {
+	% The client canvas will be rectangular inside an
+	% elliptical frame with 0 borders.
+	/ShapeFrameCanvas { % Form into a circle
+	    gsave
+	    ParentCanvas setcanvas
+	    FrameX FrameY translate
+	    0 0 moveto
+	    FrameWidth FrameHeight tape-string ptape
+	    FrameCanvas eoreshapecanvas
+	    FrameCanvas /Mapped true put
+	    MoveFrameControls
+	    grestore
+	} def
+	/ShapeClientCanvas { % Form into a circle
+	    % Don't do anything. Doesn't get mapped?
+	} def
+	/ShapeIconCanvas {
+	    ParentCanvas setcanvas
+	    % Try to align the bits of the icon with the round shape
+	    0 0 translate
+	    IconWidth IconHeight tape-string ptape
+	    IconCanvas eoreshapecanvas
+	} def
+	/PaintFrame {
+	  clippath .75 setgray fill
+	  0 setgray
+	  PaintFrameControls
+	} def % Supposedly can't see frame
+	/ClientCanvas null def
+	/IconImage /scroll def
+	/PaintFocus { } def % Don't show input focus--ruins images
+	/ForkPaintClient? true def	% avoid forking PaintClient.
+    } win send
+    /reshapefromuser win send				% Shape window.
+
+    win /FrameCanvas get setcanvas
+    /client_can win /ClientCanvas get store
+    
+    /map win send  % Map the window. (Damage causes PaintClient to be called)
+
+} def
+
+main

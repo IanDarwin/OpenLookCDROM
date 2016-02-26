@@ -1,0 +1,322 @@
+%!
+%
+% Date: Tue, 25 Oct 88 10:42:30 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Wallpaper for the Mind
+% From: pterodactyl.cis.ohio-state.edu!zwicky@tut.cis.ohio-state.edu  (Elizabeth D. Zwicky)
+% 
+% This program colors in a window, picking the color of each point by
+% calculating the value of a formula in x and y. Unfortunately, you
+% must specify the formula in PostScript (I wasn't up to writing a small
+% mathematical language to use to specify the formula in). It is cute in
+% black and white, and spectacular in colour.
+% 
+% 	Elizabeth Zwicky  (zwicky@cis.ohio-state.edu)
+% 
+
+% Send comments to Elizabeth Zwicky (zwicky@cis.ohio-state.edu)
+
+%
+% Date: Mon, 6 Nov 89 01:26:23 -0500
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Integers, mod, and some wallpaper patches
+% From: zodiac!sparkyfs!sparkyfs.itstd.sri.com!zwicky@ames.arc.nasa.gov  (Elizabeth Zwicky)
+% 
+% Wallpaper, as many of you know, is a little program of mine that
+% wastes CPU cycles charmingly by coloring in the points in a window
+% according to the value of an equation in x and y which you type at it.
+% It calculates the colour to make the points with a mod (by 2 in
+% monochrome, by 6 in colour). You can only mod an integer. Thus, I have
+% learned more about integers in NeWS than I ever wanted to know.
+% 
+% In particular, div and exp are both documented in the Red Book as
+% always returning reals. In NeWS, when div returns an integer, it is
+% type integer. This makes sense, given that the NeWS manual says that
+% any real small enough to be an integer (i.e., that will fit in 16 bits
+% of integer and 16 bits of fraction), will be an integer, which will
+% magically look like a real to type. So div should be returning a real,
+% which is small enough to be converted into an integer, which then gets
+% turned back into a real if it has a fractional part. Confusing, but
+% fine. That is, until you get to exp, which really truly does always
+% return a real; "2 2 exp dup = type =" will give you "4 realtype". What
+% a nusiance.
+% 
+% Next, we have mod and idiv, both of which are documented in the red
+% book as requiring integer arguments. mod does in fact require
+% arguments of type integer, and will return a typecheck if run on 2.4,
+% 2 2 exp, or any number over 32767. idiv neither requires integer
+% arguments, *nor is guaranteed to return them*; try "2 17 exp 2 idiv
+% type =". I assume this is due to the magic conversion of integers to
+% reals once they get to big; on the other hand, since mod will return a
+% typecheck, it is not helpful. Then again, cvi does no better; try
+% "32768 cvi type =". Just what I wanted; a real result from converting
+% to an integer. And once again, mod will blow up.
+% 
+% Enough complaint: on to the promised patches. If you plug this in, and
+% change all existing instances of "mod" to "mod*" you will allow
+% wallpaper to cope with numbers up to 32767^2, which should be enough
+% latitiude to do something amusing:
+%  /mod*{ % mod big numbers. Initial stack: number-to-mod number-to-mod-by
+%    /to-mod-by exch def /to-mod exch def
+%    to-mod 32767 gt
+%      {
+%      /to-mod-idiv to-mod 32767 idiv cvi def
+%      /to-mod-mod to-mod 32767 to-mod-idiv mul sub cvi def
+%      to-mod-idiv 32767 to-mod-by mod mul
+%      to-mod-mod to-mod-by mod add
+%      to-mod-by mod
+%      }
+%      {to-mod  cvi to-mod-by mod}
+%    ifelse
+%  } def
+% 
+% If you replace the definition of "dot" with this, it will scale
+% correctly even under OpenWindows:
+% /dot {-.5 -.5 rmoveto 0 1 rlineto 1 0 rlineto 0 -1 rlineto -1 0
+%  rlineto closepath fill pause} def
+% (This compensates for a new bug in OpenWindows, in which a degenerate
+% line (what you get with 0 0 rlineto) does appear if it is a single
+% dot, even if the linecaps are set to 0, but does not appear at above
+% that size, even if linecap is set to 2. The linecaps matter because
+% the Red Book says so, although I admit to having used the previous
+% NeWS bug, which allowed you to use linecap 1 on single-point paths,
+% giving nice square dots.)
+% 
+% 	Elizabeth
+
+% 
+% Set up LiteItem if nothing else has
+systemdict /Item known not { (NeWS/liteitem.ps) run } if
+
+% If I redefine something, I want it redefined!
+false setautobind
+
+% Predefinitions
+/height null def /width null def
+/Red 1 0 0 rgbcolor def 
+/Blue 0 0 1 rgbcolor def
+/Green .2 1 .2 rgbcolor def
+/Yellow 1 1 0 rgbcolor def
+/Purple .7 0 1 rgbcolor def
+/Orange 1 .5 0 rgbcolor def
+/colors [Red Orange Yellow Green Blue Purple] def
+/startx{1} def /starty{1} def
+/div*{ dup 0 eq {pop pop 0}{div}ifelse}def
+/magnify 1 def
+/scalefactor 1 def
+/x{realx magnify div}def
+/y{realy magnify div} def
+/detail 1 def
+/formula{x cos y mul y sin x mul add} def
+/function{ formula detail mul}def
+/first true def
+/helpwindow null def
+/called false def
+
+% Draw a dot; works with linecap 1 or 2 on NeWS, but only with 1 in standard
+%/dot{ 0 0 rlineto stroke  pause} def
+/dot {-.5 -.5 rmoveto 0 1 rlineto 1 0 rlineto 0 -1 rlineto -1 0
+ rlineto closepath fill pause} def
+
+/mod*{ % mod big numbers. Initial stack: number-to-mod number-to-mod-by
+  /to-mod-by exch def /to-mod exch def
+  to-mod 32767 gt
+    {
+    /to-mod-idiv to-mod 32767 idiv cvi def
+    /to-mod-mod to-mod 32767 to-mod-idiv mul sub cvi def
+    to-mod-idiv 32767 to-mod-by mod mul
+    to-mod-mod to-mod-by mod add
+    to-mod-by mod
+    }
+    {to-mod  cvi to-mod-by mod}
+  ifelse
+} def
+
+% Draw a row of dots
+/line{
+    width{
+	gsave 
+	colorcanvas 
+	   {colors function cvi 6 mod* abs get setcolor dot} 
+	   {function cvi 2 mod* abs 1 eq {dot} if} 
+	ifelse 
+	grestore
+	1 0 rmoveto
+	/realx realx 1 add def 
+    }repeat
+    gsave 
+    colorcanvas 
+        {colors function cvi 6 mod* abs get setcolor dot} 
+        {function cvi 2 mod* abs 1 eq {dot} if} 
+    ifelse 
+    grestore
+}def
+
+% Draw a windowfull of rows
+/square{
+    width 0 rmoveto 
+    height{
+	width neg 1 rmoveto 
+	/realx startx def 
+	/realy realy 1 add def 
+	line
+    }repeat
+}def
+
+% Create window to draw in
+/paperwindow framebuffer /new DefaultWindow send def
+
+{% Set up main window
+    /PaintClient{ % Clear, reset size, position, color, current point,
+	% and redraw 
+	erasepage 
+	2 setlinecap 1 setlinewidth
+	scalefactor scalefactor scale
+	clipcanvaspath pathbbox /height exch store /width exch  store 
+	/width width scalefactor div truncate 1 add scalefactor mul store
+	/height height scalefactor div truncate 1 add scalefactor mul store
+	0 setgray  0 0 moveto
+	/realx startx def /realy starty def 
+	square
+    } def
+
+    /FrameLabel (Wallpaper) def
+
+    /destroy{
+	% Kill subwindows
+	first not {/destroy helpwindow send} if
+	% Will die even during redraw
+	PaintProcess null ne
+	{
+	PaintProcess killprocessgroup}
+	if
+	FrameEventMgr null ne
+	{
+	FrameCanvas /Mapped false put FrameEventMgr killprocessgroup} 
+	if
+	currentprocess killprocessgroup
+	
+    } def
+
+    /ClientMenu [
+	(Zoom In) 
+	{/magnify magnify 2 mul store /paint paperwindow send}
+	(Zoom Out)
+	{/magnify magnify 2 div store /paint paperwindow send} 
+	(Scale Up)
+	{/scalefactor scalefactor 2 mul store /paint paperwindow send }
+	(Scale Down)
+	{/scalefactor scalefactor 2 div store /paint paperwindow send}
+	(Add Detail)
+	{/detail detail 2 mul store /paint paperwindow send}
+	(Remove Detail) {/detail detail 2 div store /paint paperwindow send}
+	(Move Bottom Left Corner) 
+	{
+	    /xhair /xhair_m paperwindow /ClientCanvas get setstandardcursor
+	    getclick 
+	    /starty exch starty add store 
+	    /startx exch startx add store
+	    /ptr /ptr_m paperwindow /ClientCanvas get setstandardcursor
+	    /paint paperwindow send
+	} 
+	(Help) {first {help} if }
+    ]
+    /new DefaultMenu send def
+}paperwindow send
+
+/help {% Put up help file in window
+    % Make help window
+    /helpwindow framebuffer /new DefaultWindow send store
+    (Times-Roman) findfont 14 scalefont setfont
+    0 0  310 460 /reshape helpwindow send
+    framebuffer setcanvas 
+    paperwindow /FrameCanvas get getcanvaslocation 570 sub
+    /move helpwindow send
+
+    helpwindow /ClientCanvas get setcanvas
+	{
+	    /PaintClient{
+		clippath pathbbox  /place exch def pop pop pop
+		helptext
+		 { 
+		     /place place 14 sub def
+		     5 place moveto
+		     show
+		 } forall
+	     } def
+	     /destroy { % Gentle destroy; does not take other things with it
+		 helpwindow /IconCanvas get /Mapped false put
+		 helpwindow /FrameCanvas get /Mapped false put
+		 helpwindow /ClientCanvas get /Mapped false put
+		 helpwindow /FrameEventMgr get killprocess
+		 /first true store
+	     }def
+	 } helpwindow send
+     /first false store
+     /map helpwindow send
+ } def
+
+ % Actually put main window up
+ /reshapefromuser paperwindow send
+ /map paperwindow send
+
+ % Create, position and size formulawindow
+ /formulawindow framebuffer /new DefaultWindow send def
+ 100 100 300 110 /reshape formulawindow send
+ paperwindow /FrameCanvas get getcanvaslocation 110 sub /move formulawindow send
+ {	
+    /destroy{
+	/destroy paperwindow send
+    } def
+ } formulawindow send
+ % Don't want the string every time it's changed; gonotify really
+ % does the notification
+ /formulanotify {}  def 
+ /gonotify{/formula itemdict /formulaitem get /ItemValue get dup length string copy cvx store /paint paperwindow send} def
+
+ /itemdict dictbegin 
+     /formulaitem (Formula:)(x cos y mul y sin x mul add)
+	 /Right /formulanotify 
+	formulawindow /ClientCanvas get 
+	1500 10  %Plenty long for real complex formulas!
+	/new TextItem send 
+	dup 0 0  /move 3 index send pop def 
+     /goitem (Press When Formula Is Correct) /gonotify formulawindow /ClientCanvas get 10 40 /new ButtonItem send dup 0 30 /move 3 index send pop def
+ dictend def
+ itemdict paintitems (Food for randomness) itemdict forkitems
+ {/PaintClient {itemdict paintitems} def
+  } formulawindow send
+ /map formulawindow send
+
+/helptext[
+    ("Wallpaper" was inspired by one of Martin)
+    (Gardner's Mathematical Recreations columns)
+    (in the magazine "Scientific American". It)
+    (colors in a coordinate plane by)
+    (calculating the value of formula in x and)
+    (y for the x and y values of that point,)
+    (and picking a color based on that value.)
+    (On a color display it uses 6 colors, which)
+    (are meant to be red, blue, yellow, purple,)
+    (green and orange. On a monochrome screen)
+    (it uses only black and white.)
+    (  )
+    (The formula is specified in the lower)
+    (window in PostScript.  A special function,)
+    (div*, is available; it is exactly like)
+    ("div" except that if you attempt to divide)
+    (by zero it returns zero instead of an)
+    (error.)
+    ( )
+    (The "Zoom In" and "Zoom Out" menu options)
+    (change the magnification of the plane by)
+    (factors of 2; it starts out at device)
+    (resolution. Similarly, the "Add Detail")
+    (and "Remove Detail" menu options change a)
+    (multiplier that is applied to the result)
+    (of the formula by factors of 2. The)
+    (multiplier starts at 1.  "Move Bottom Left)
+    (Corner" places the bottom left corner at)
+    (the point on the plane indicated by your)
+    (next click (it starts at 0,0).)
+]def

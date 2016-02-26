@@ -1,0 +1,1413 @@
+% A large portion of this code originaly came from:
+%%%%
+%%%%
+%%%%  This code was mostly written in August 1987 but was revised to work with
+%%%%  NeWS 1.1 in May 1988.  Feel free to use it as you will.
+%%%%
+%%%%  Bruce V. Schwartz
+%%%%  Sun Microsystems
+%%%%  bvs@sun.com
+%%%%  
+%  Feel free to use this code as you like. Any questions, bugs, ideas,
+%  problems, whatever would be grealy appreciated.
+%
+%  Bret K. Thaeler
+%  thaeler@hc.dspo.gov
+%
+% 
+% This is VERSION 1.1.....
+%
+%
+% ScrollDataItem:
+%	This item provides a simple way to display information in a 
+%	scrollable data item. Furthermore the data display may be selected
+%	causing it to by highlight and a notify routine to be called.
+%
+% Usefull methods:
+%	parent_canvas notify_proc /new => instance
+%
+%	array,string /setdata => -
+%		Array is an array of the data to be displayed. Each element
+%		of the array can have the following forms...
+%			string		-- display a simple string in scroll area.
+%			array		-- parse each elemnt of the array in RIGHT
+%							to LEFT order. Each element of the array
+%							can be of the following forms...
+%				string	-- display a simple string
+%				array	-- parse array righ to left
+%				color	-- set color for future commands
+%				font	-- set font for future text
+%				x y		-- perform a releative move by x y
+%				/name	-- display icon called 'name'
+%		A given entry may be as complex as you want with multiple
+%		strings being display in different fonts with different colors
+%		all moved around with respect to each other intermixed with
+%		icons. Even very comples entries are considered as ONE object
+%		for the purposes of selecting it..
+%		WARNING: markers may NOT be used in the arrays. If the are the
+%		item will stop displaying at that point while leaving trash
+%		on the stack...
+%
+%	item_number /deleteitem => -
+%		Delete an item from the list of displayable objects.
+%		If the item_number is out of range then the command will
+%		be ignored. item_number is zero referenced.
+%
+%	array,string item_number /additem => -
+%		Add an item to the list of displayable objects.
+%		The item added will appear BEFORE or above the item forwhich
+%		the item_number is specified. To append an item to the list
+%		you must add the item before the the first item after the
+%		end of the list. No blank nodes will be added. If you add
+%		an item to the list before an item that past the end
+%		of the list then a suffecient number of EMPTY entries will
+%		be added to the list to allow the new entry to be added.
+%
+%	array,string item_number /changeitem => -
+%		Replace the object associated with an item. If the 
+%		item_number is out of range this command is ignored.
+%
+%	- /getdata => array
+%		Array that has been build up with with setdata and the
+%		change data routines.
+%
+%	x y w h /reshape => -
+%		Move and reshape the item...
+%
+%
+% Usefull Class and instance variables:
+%	/AllowMultipleSelect?	(default false)
+%		If this is set to true then the user can selected move
+%		then one object. If this is false then selecting a different
+%		object unselects the previous one.
+%		WARNING: This command MUST be issued before any data is
+%		downloaded set with /setdata. Else a /DeclareItemValueArray
+%		must be issued.
+%
+%	/HScrollBar?			(default true)
+%	/VScrollBar?			(default true)
+%		Should these scroll bars be displayed...
+%
+%	/BufferColor			(default 1 1 1 rgbcolor)
+%		Background color to be used for the scroll area
+%
+%	/ItemTextColor			(default 0 0 0 rgbcolor)
+%		Default color to be used by ites in the scroll area.
+%
+%	/ItemHighLightColor		(default 0 0 0 rgbcolor)
+%		When an item is selected the background behind the item is
+%		filled with this color. The item it then draw with a default
+%		color of 'BufferColor'
+%
+%	/ItemLabel				(default null)
+%		A label used at the top of the item
+%
+%	/ItemLabelFont			(default Times-Roman.12)
+%		The font used to display the item label
+%
+%	/ItemLabelColor			(default 0 0 0 rgbcolor)
+%		The color used to display the item label
+%
+%	/ShowItemSeperators		(default false)
+%		Should seperator lines be draw between items
+%		in the scroll area.
+%
+%	/ItemSpacing			(default 4)
+%		How much extra space should every item in the scroll
+%		area be seperated by.
+%
+%	/ItemBorderColor		(default 0 0 0 rgbcolor)
+%		Color of the item border.
+%
+%	/ItemFillColor			(default 1 1 1 rgbcolor)
+%		Color to be used to fill scroll areas and item label.
+%
+%	/ItemValue
+%		Value of last item selected. (zero referenced)
+%		Possible values for this variables may include 'null'
+%		which would indicate that nothing has been selected or
+%		0-x indicating the item selected.
+%
+%	/ItemValueArray
+%		Array of items selected. This item ONLY exists if
+%		'AllowMultipleSelect?' is set true. Possible values for
+%		elements of this array include 0 or 'null' indicating
+%		that the item is not selected. A 1 indicates that the
+%		item has been selected.
+%		
+%	For changes to the following variables to be seen a
+%	/ShowObjectData call must be issued:
+%		/BufferColor, /ItemTextColor, /ItemHighLightColor
+%		/ShowItemSeperators, /ItemSpacing
+%
+%	For changes to the following variables to be seen a
+%	/ReshapeScrollbars or /reshape call must be issued:
+%		/ItemLabel, /ItemLabelFont, /HScrollbar?, /VScrollbar?
+%
+% Example:
+%
+%	% can is assumed to be a predefined canvas.
+%
+%   /foo can {ItemValue (%\n) printf} /new ScrollDataItem send def
+%   {
+%	   /AllowMultipleSelect? true def
+%  	   /HScrollbar? false def
+%  	   /BufferColor 1 1 0 rgbcolor def
+%	   /ItemTextColor 0 0 1 rgbcolor def
+%	   /ItemHighLightColor .7 .7 .7 rgbcolor def
+%	   /ItemLabel (This is a TEST []) def
+%	   /ItemLabelFont /Times-Bold findfont 24 scalefont def
+%	   /ItemLabelColor 1 0 0 rgbcolor def
+%	   % calling reshape here means we don't have to call /ReshapeScrollbars
+%	   50 50 200 315 reshape
+%	   /ShowItemSeperators true def
+%   } foo send
+%
+%   /fooa [foo] def
+%   /foom fooa forkitems def
+%   fooa paintitems
+%   
+%   [
+%   	(hello)
+%   	[(hello) 20 0 (there)]
+%   	[(hello small) /Times-Roman findfont 10 scalefont]
+%   	[(hello big) /Times-Bold findfont 30 scalefont]
+%   
+%   	[(hello red) 1 0 0 rgbcolor]
+%   
+%   	[(hello 1) /Times-Bold findfont 10 scalefont
+%   	(hello 2) /Times-Italic findfont 20 scalefont]
+%   
+%   	[(hello 3) /Times-Bold findfont 10 scalefont
+%   	  20 20
+%   	  (hello 4) /Times-Italic findfont 20 scalefont]
+%   	[/boy1 /boy2]
+%   	[/horse5 0 1 0 rgbcolor]
+%   ] /setdata foo send
+%   
+%   (padding) 30 /additem foo send
+%   } def
+%
+%
+
+systemdict begin
+
+systemdict /SimpleScrollbar known not { (NeWS/liteitem.ps) run} if
+
+/PicScrollbar SimpleScrollbar
+dictbegin
+	/MouseInItem? false def
+	/ScrollMonitor null def
+	/ScrollProcess null def
+    /ScrollDelay 1 60 div 20 div def % 1/10 second
+    /LastX null def
+    /LastY null def
+dictend
+classbegin
+    /new {
+        /new super send
+        begin
+            /ScrollMonitor createmonitor def
+            currentdict
+        end
+    } def
+
+	/StartItem {
+		TrackInterests {
+			exch pop
+% 			/ClientData get begin % Breaks X11/NeWS -deh
+			dup /ClientData get null ne { exch pop } {
+			  10 dict exch /ClientData 2 index put
+			} ifelse
+			begin
+				/MyOwner /MyOwner GetFromCurrentEvent def
+			end
+		} forall
+		/StartItem super send
+		/maketrackinterests self send
+	} def
+
+
+    /ClientDown { % - => -
+        CurrentEvent 
+        begin 
+            XLocation YLocation 
+        end
+        /LastY exch def
+        /LastX exch def
+        SetScrollMotion
+        /MouseInItem? true def
+        HiliteItem
+        DoScroll
+
+        ScrollMonitor {
+            ScrollProcess null ne {
+                ScrollProcess killprocess
+            } if
+            /ScrollProcess { 
+                InteractiveScroll 
+            } fork def
+        } monitor
+    } def
+
+    /InteractiveScroll {
+        {
+            ScrollDelay sleep
+            ScrollMonitor { 
+                EventInItem? { 
+                    DoScroll 
+                } if 
+            } monitor
+        } loop 
+    } def
+
+    /ClientUp { % - => - 
+        ScrollMonitor { 
+            ScrollProcess null ne {
+                ScrollProcess killprocess 
+            } if
+            /ScrollProcess null def
+        } monitor
+        /MouseInItem? false def
+        UnhiliteItem
+        ItemValue ItemInitialValue ne { 
+            NotifyUser
+            % This is used when we are using this scroll bar in other items...
+			% NOTE: If we are in the context of an event then the opperand
+			%       stack should look like:
+			%              |- EventMgrDict ... mark ...
+			%       If We are not in the context of an event the
+			%       'GetFromCurrentEvent' will error out after pushing the
+			%       first object on the opperand stack onto the stack again.
+			%       This will result in pushing an extra mark onto the stack...
+			%       Look in 'GetFromCurrentEvent', 'CurrentEvent',
+			%       'EventMgrDict'.
+			/foobar
+				count 1 sub index type /dicttype eq {
+					mark {
+						/Notify /MyOwner GetFromCurrentEvent send
+					} errored pop cleartomark
+				} if
+			pop
+        } if
+    } def
+
+    /ClientDrag { % - => -
+        CurrentEvent 
+        begin 
+            XLocation YLocation 
+        end
+        /LastY exch def
+        /LastX exch def
+        CheckItem
+    } def
+
+    /PaintBar { } def
+    /EraseBox { } def
+    /PaintButtons {
+        /PaintButtons super send 
+    } def
+
+    /PaintBox { % - => - (paint box)
+        gsave
+            10 dict 
+            begin
+
+                /x 1 def
+                /w ItemWidth 2 sub def
+
+                %
+                % fill in the whole bar
+                %
+                ItemFillColor setcolor
+                x ButtonSize w ItemHeight ButtonSize dup add sub rectpath fill
+
+                %
+                % fill in the view_window bar
+                %
+                BarViewPercent 1 gt {
+                    .5 setgray
+                    x ButtonSize w ItemHeight ButtonSize dup add sub 
+                    rectpath fill
+                } {
+                    ItemValue BarMin sub BarMax BarMin sub div 
+                    BarViewPercent mul /lower exch def
+
+                    /y ItemValue ValueToY def
+
+                    ItemHeight ButtonSize dup add BoxSize add sub dup
+                    lower mul /d exch def
+                    BarViewPercent mul /h exch def
+
+                    .5 setgray
+                    x y d sub w h BoxSize add rectpath fill
+                } ifelse
+
+                %
+                % fill in the small scroll box
+                %
+                ItemValue BoxPath
+                BoxFillColor setcolor gsave fill grestore
+                ItemBorderColor setcolor eofill
+            end
+            /ItemPaintedValue ItemValue def
+        grestore
+
+        NotifyUser
+        % This is used when we are using this scroll bar in other items...
+		% NOTE: If we are in the context of an event then the opperand
+		%       stack should look like:
+		%              |- EventMgrDict ... mark ...
+		%       If We are not in the context of an event the
+		%       'GetFromCurrentEvent' will error out after pushing the
+		%       first object on the opperand stack onto the stack again.
+		%       This will result in pushing an extra mark onto the stack...
+		%       Look in 'GetFromCurrentEvent', 'CurrentEvent', 'EventMgrDict'.
+		/foobar
+			count 1 sub index type /dicttype eq {
+				mark {
+					/Notify /MyOwner GetFromCurrentEvent send
+				} errored pop cleartomark
+			} if
+		pop
+	} def
+
+		/EventInItem? { % - => bool
+			ScrollMotion
+			{
+				/ScrollAbsolute { 
+					false 
+				}
+				/ScrollPageForward % top
+				{
+					LastX dup 0 ge exch ButtonSize le
+					LastY ItemValue ValueToY ButtonSize add ge
+					LastY ItemHeight ButtonSize sub le
+					and and and
+				}
+				/ScrollPageBackward % bottom
+				{
+					LastX dup 0 ge exch ButtonSize le
+					LastY ButtonSize ge
+					LastY ItemValue ValueToY le
+					and and and
+				}
+				/ScrollLineForward % top
+				{
+					LastX 0 ge
+					LastX ButtonSize le
+					LastY ItemHeight ButtonSize sub ge
+					LastY ItemHeight le
+					and and and
+				}
+				/ScrollLineBackward % bottom
+				{
+					LastX 0 ge
+					LastX ButtonSize le
+					LastY 0 ge
+					LastY ButtonSize le
+					and and and
+				}
+			} case
+		} def 
+
+		/CheckItem {
+			ScrollMotion
+			{
+				/ScrollAbsolute {
+					DoScroll
+				}
+				/ScrollPageForward % top
+				{
+					/MouseInItem? EventInItem? def
+				}
+				/ScrollPageBackward % bottom
+				{
+					/MouseInItem? EventInItem? def
+				}
+				/ScrollLineForward % top
+				{
+					EventInItem? dup
+					{ 
+						MouseInItem? not { 
+							HiliteItem 
+						} if 
+					}
+					{ 
+						MouseInItem? { 
+							UnhiliteItem 
+						} if 
+					}
+					ifelse
+					/MouseInItem? exch def
+				}
+				/ScrollLineBackward % bottom
+				{
+					EventInItem? dup
+					{ 
+						MouseInItem? not { 
+							HiliteItem 
+						} if 
+					}
+					{ 
+						MouseInItem? { 
+							UnhiliteItem 
+						} if 
+					}
+					ifelse
+					/MouseInItem? exch def
+				}
+			} case
+		} def 
+
+		/HiliteItem {
+			ScrollMotion
+			{
+				/ScrollAbsolute { }
+				/ScrollPageForward { }
+				/ScrollPageBackward { }
+				/ScrollLineForward % top
+				{
+					0 ItemHeight ButtonSize ButtonSize neg rectpath
+					5 setrasteropcode fill
+				}
+				/ScrollLineBackward % bottom
+				{
+					0 0 ButtonSize ButtonSize rectpath
+					5 setrasteropcode fill
+				}
+			} case
+		} def
+
+
+		/UnhiliteItem {
+			gsave
+				ScrollMotion
+				{
+					/ScrollAbsolute {}
+					/ScrollPageForward {}
+					/ScrollPageBackward {}
+					/ScrollLineForward % top
+					{
+						0 ItemHeight ButtonSize sub ButtonSize ButtonSize rectpath
+						clip
+						PaintButtons
+					}
+					/ScrollLineBackward % bottom
+					{
+						0 0 ButtonSize ButtonSize rectpath
+						clip
+						PaintButtons
+					}
+				} case
+			grestore
+		} def
+
+	classend
+	def
+
+
+
+
+	/ScrollRegionItem Item
+	dictbegin
+		/BufferCanvas null def
+		/BufferWidth 0 def
+		/BufferHeight 0 def
+
+		/HScrollbar null def
+		/VScrollbar null def
+		/HScrollbar? true def
+		/VScrollbar? true def
+		/HScrollWidth 0 def
+		/VScrollWidth 0 def
+
+		/ScrollWidth 16 def
+		/ZoomFactor 1 def
+
+		/LabelHeight 0 def		% this gets set in 'ReshapeScrollbars'...
+
+	dictend
+	classbegin
+		/ItemLabel null def
+		/ItemLabelColor 0 0 0 rgbcolor def
+		/ItemLabelFont /Times-Roman findfont 12 scalefont def
+
+		% /fontoffset { % font => offset
+		% 	dup fontheight exch /FontBBox get 0 get mul neg
+		% } def
+
+		/NotifyUserDown { % x y => -
+			pop pop 
+		} def
+
+		/NotifyUserUp {  % x y => -
+			pop pop 
+		} def
+
+		/NotifyUserDrag {  % x y => -
+			pop pop 
+		} def
+
+		/NotifyUserEnter {  % x y => -
+			pop pop 
+		} def
+
+		/NotifyUserExit {  % x y => -
+			pop pop 
+		} def
+
+		/new { % parentcanvas width height => instance
+			/new super send
+			begin
+				/BufferHeight ItemHeight def
+				/BufferWidth ItemWidth def
+				CreateScrollbars
+				CreateBuffer
+				currentdict
+			end
+		} def
+
+		/destroy {
+			% HScrollbar null ne { 
+			%     null /setowner HScrollbar send 
+			% } if
+			% VScrollbar null ne { 
+			%     null /setowner VScrollbar send 
+			% } if
+			%% BufferCanvas /Mapped false put
+			%% /BufferCanvas null def
+		} def
+
+
+		/setzoom { % zoomfactor => -
+			/ZoomFactor exch def
+		} def
+
+
+		/reshape { % x y w h => -
+			/reshape super send
+			ReshapeScrollbars
+		} def
+
+		/reshapebuffer { % w h => -
+			/BufferHeight exch def
+			/BufferWidth exch def
+			ReshapeBuffer
+			ReshapeScrollbars
+		} def
+
+		/getcanvas {
+			BufferCanvas
+		} def
+
+		/updatecanvas {
+			PaintBuffer
+		} def
+
+		/makestartinterests { 
+			/makestartinterests HScrollbar send
+			/makestartinterests VScrollbar send
+			[ exch aload length 2 add -1 roll aload pop ] % join 2 arrays
+			dup {
+				/MyOwner self PutInEventMgrInterest
+			} forall
+			/makestartinterests super send
+			[ exch aload length 2 add -1 roll aload pop ] % join 2 arrays
+		} def
+
+		/PaintItem {
+			gsave
+				PaintBuffer
+				/paint VScrollbar send
+				/paint HScrollbar send
+
+				% paint the outline
+				ItemCanvas setcanvas
+				ItemBorderColor setcolor
+				0 HScrollWidth 1 add
+				ItemWidth VScrollWidth sub
+				ItemHeight HScrollWidth sub LabelHeight sub 1 sub
+				rectpath stroke
+
+				ItemLabel null ne {
+					% paint the label area
+					ItemFillColor setcolor
+					0 ItemHeight LabelHeight sub 2 sub
+					ItemWidth
+					LabelHeight 2 add
+					rectpath fill
+
+					% paint the label outline
+					ItemBorderColor setcolor
+					0 ItemHeight LabelHeight sub 2 sub
+					ItemWidth 1 sub
+					LabelHeight 2 add
+					rectpath stroke
+
+					% paint the label text
+					ItemLabelColor setcolor
+					ItemLabelFont setfont
+					ItemWidth ItemLabel stringwidth pop sub 2 div
+					ItemHeight LabelHeight sub
+					ItemLabelFont fontdescent add 1 sub moveto
+					ItemLabel show
+				} if
+			grestore
+		} def
+
+		/Notify {
+			% (picture got notified\n) [] dbgprintf
+			NotifyUser
+			PaintBuffer
+		} def
+
+		/PaintBuffer {
+			% (PaintBuffer begin \n) [ ] dbgprintf
+			gsave
+				ItemCanvas setcanvas
+
+				%
+				% compute clipping region
+				%
+				1
+				HScrollWidth 1 add
+				ItemWidth VScrollWidth sub 2 sub
+				LabelHeight 0 ne {
+					ItemHeight HScrollWidth sub LabelHeight sub 4 sub
+				} {
+					ItemHeight HScrollWidth sub 2 sub
+				} ifelse
+				rectpath
+				% (clip to % % % %\n) [ pathbbox ] dbgprintf
+				clip
+
+				%
+				% Clear the item....
+				%
+				/BufferColor where {
+					pop
+					BufferColor fillcanvas
+				} if
+
+				%
+				% compute translation
+				%
+				BufferWidth ZoomFactor mul ItemWidth sub VScrollWidth add neg
+				dup 0 lt
+				{
+					1 /getvalue HScrollbar send sub
+					mul
+				}
+				{ 
+					pop 0 
+				} ifelse
+
+				BufferHeight ZoomFactor mul ItemHeight sub
+				HScrollWidth add LabelHeight add neg
+				dup 0 lt
+				{
+					1 /getvalue VScrollbar send sub
+					mul
+				}
+				{ } ifelse
+				HScrollWidth add
+
+				% 2 copy (translate by % %\n) [ 4 2 roll ] dbgprintf
+				translate
+
+				BufferWidth BufferHeight 
+				% 2 copy (scale by % %\n) [ 4 2 roll ] dbgprintf
+				scale
+				ZoomFactor dup scale
+
+				pause
+				BufferCanvas imagecanvas
+				pause
+			grestore
+			% (PaintBuffer end\n) [ ] dbgprintf
+		} def
+
+		/CreateBuffer { % - => -
+			/BufferCanvas framebuffer newcanvas def
+			BufferCanvas /Retained true put
+			BufferCanvas /Opaque true put
+
+			ReshapeBuffer
+		} def
+
+		/ReshapeBuffer { % - => -
+			gsave
+				framebuffer setcanvas
+				0 0 BufferWidth BufferHeight
+				rectpath
+				BufferCanvas reshapecanvas
+			grestore
+		} def
+
+		/CreateScrollbars { % - => - 
+			% (begin CreateScrollbars\n) [] dbgprintf
+			/HScrollWidth HScrollbar? { ScrollWidth } { 0 } ifelse def
+			/VScrollWidth VScrollbar? { ScrollWidth } { 0 } ifelse def
+
+			ItemWidth VScrollWidth le { /VScrollWidth ItemWidth 2 div def } if
+			ItemHeight HScrollWidth le { /HScrollWidth ItemHeight 2 div def } if
+
+			/HScrollbar
+				[1 0 .01 .1 ItemWidth VScrollWidth sub BufferWidth div ]
+				1 {} ItemCanvas
+				/new PicScrollbar send
+				dup /BarVertical? false put
+			def
+			/VScrollbar
+				[1 0 .01 .1 ItemHeight HScrollWidth sub BufferHeight div ]
+				0 {} ItemCanvas
+				/new PicScrollbar send
+			def
+
+			% self /setowner HScrollbar send
+			% self /setowner VScrollbar send
+			% (end CreateScrollbars\n) [] dbgprintf
+		} def
+
+		/ReshapeScrollbars {
+			/HScrollWidth HScrollbar? { ScrollWidth } { 0 } ifelse def
+			/VScrollWidth VScrollbar? { ScrollWidth } { 0 } ifelse def
+			/LabelHeight ItemLabelFont null ne ItemLabel null ne and
+			{ItemLabelFont fontheight} {0} ifelse def
+
+			ItemWidth VScrollWidth le { /VScrollWidth ItemWidth 2 div def } if
+			ItemHeight HScrollWidth le { /HScrollWidth ItemHeight 2 div def } if
+			ItemHeight LabelHeight HScrollWidth add le {
+				/LabelHeight ItemHeight 4 div def
+			} if
+
+			10 dict 
+			begin
+				/h ItemHeight def 
+				/w ItemWidth def
+
+				[1 0 .01 .1 ItemWidth VScrollWidth sub BufferWidth div ]
+				/setrange HScrollbar send
+				[1 0 .01 .1 ItemHeight HScrollWidth sub LabelHeight sub
+				BufferHeight div ]
+				/setrange VScrollbar send
+
+
+				HScrollbar?
+					{ 0 0 w VScrollWidth sub HScrollWidth }
+					{ 0 0 0 0 }
+				ifelse
+				% 4 copy (hscroll % % % %\n) [ 6 2 roll ] dbgprintf
+				/reshape HScrollbar send
+
+				LabelHeight 0 ne {
+					VScrollbar?
+						{ w VScrollWidth sub HScrollWidth
+						  VScrollWidth h HScrollWidth sub LabelHeight sub 2 sub}
+						{ 0 0 0 0 }
+					ifelse
+				} {
+					VScrollbar?
+						{ w VScrollWidth sub HScrollWidth
+						  VScrollWidth h HScrollWidth sub}
+						{ 0 0 0 0 }
+					ifelse
+				} ifelse
+				% 4 copy (vscroll % % % %\n) [ 6 2 roll ] dbgprintf
+			end
+			/reshape VScrollbar send
+		} def
+
+		/ClientDown {
+			% (Picture ClientDown\n) [] dbgprintf
+
+			% compute translation
+			%
+			BufferWidth ZoomFactor mul ItemWidth sub VScrollWidth add neg
+			dup 0 lt
+			{
+				1 /getvalue HScrollbar send sub
+				mul
+			}
+			{ 
+				pop 0 
+			} ifelse
+
+			BufferHeight ZoomFactor mul ItemHeight sub
+			HScrollWidth add LabelHeight add neg
+			dup 0 lt
+			{
+				1 /getvalue VScrollbar send sub
+				mul
+			}
+			{ } ifelse
+			HScrollWidth add
+
+			% translatex translatey
+			CurrentEvent /YLocation get sub neg exch
+			CurrentEvent /XLocation get sub neg exch
+			2 copy
+			/tmpy exch def
+			/tmpx exch def
+			% tmpx tmpy (tmpx % tmpy %\n) printf
+			% (n: % %\n) [ tmpx tmpy ] dbgprintf
+			{ 
+				/NotifyUserDown self send
+			} fork
+
+		} def
+
+		/ClientUp {
+			% (Picture ClientUp\n) [] dbgprintf
+			CurrentEvent 
+			begin 
+				XLocation YLocation 
+			end
+			/NotifyUserUp self send
+		} def
+
+		/ClientDrag {
+			% (client drag\n) [] dbgprintf
+			CurrentEvent 
+			begin 
+				XLocation YLocation 
+			end
+			/NotifyUserDrag self send
+		} def
+
+		/ClientEnter {
+			%% (client enter\n) [] dbgprintf
+			CurrentEvent 
+			begin 
+				XLocation YLocation 
+			end 
+			/NotifyUserEnter self send
+		} def
+
+		/ClientExit {
+			%% (client exit\n) [] dbgprintf
+			CurrentEvent 
+			begin 
+				XLocation YLocation 
+			end 
+			/NotifyUserExit self send
+		} def
+
+	classend
+	def
+
+
+
+
+	/ScrollDataItem ScrollRegionItem
+	dictbegin
+		/ObjectData [] def
+		/ObjectSizes [] def
+		/ObjectOffsets [] def
+		/LocalUserNotify {} def
+		/NumItems 0 def
+		/LastSelect null def
+		/ItemValueArray [] def
+	dictend
+	classbegin
+		% Class variables
+
+		/BufferColor 1 1 1 rgbcolor def
+		/AllowMultipleSelect? false def
+		/ItemHighLightColor 0 0 0 rgbcolor def
+		/ItemSpacing 4 def
+		/ShowItemSeperators false def
+
+		% Methods
+
+		/new { % parent_canvas notify => instence
+			exch 1 1 /new super send
+			begin
+				/LocalUserNotify exch def
+				currentdict
+			end
+		} def
+
+		/setdata { % array => -
+			/ObjectData exch def
+			/SizeAllData self send
+			300 exch /reshapebuffer self send
+			AllowMultipleSelect? {
+				/DeclareItemValueArray self send
+			} {
+				/LastSelect null def
+			} ifelse
+			/ShowObjectData self send
+		} def
+
+		/getdata { % - => array
+			ObjectData
+		} def
+
+		% if item_number is out of bounds for the data then
+		% the command will be ignored..
+		% item_number is zero referenced.
+		/deleteitem { % item_number => -
+			10 dict begin
+				/foo exch def
+				/fool ObjectData length def
+				foo 0 lt foo fool ge or not {
+					% delete an item out of the ObjectData array
+					/fooa fool 1 sub array def
+					ObjectData 0 foo getinterval fooa copy pop
+					ObjectData foo 1 add fool foo sub 1 sub getinterval
+					fooa exch foo exch putinterval
+					currentdict fooa end
+					/ObjectData exch def begin
+
+					% delete an item out of the ItemValueArray array
+					AllowMultipleSelect? {
+						/fooa fool 1 sub array def
+						ItemValueArray 0 foo getinterval fooa copy pop
+						ItemValueArray foo 1 add fool foo sub 1 sub getinterval
+						fooa exch foo exch putinterval
+						currentdict fooa end
+						/ItemValueArray exch def begin
+					} if
+
+					end
+
+					/SizeAllData self send
+					300 exch /reshapebuffer self send
+
+					/ShowObjectData self send
+				} {
+					end
+				} ifelse
+		} def
+
+		% add an item to the list
+		% if we are adding past the end of the list then we expand
+		% the list with empty strings to add the item.
+		% item_number is zero referenced.
+		% This is all very convluted code put hopefully we can deal with
+		% anysized array. We should never load the array in part or in
+		% in whole onto the operand stack...
+		/additem { % item_label item_number => -
+			10 dict begin
+				% some helpfull constants
+				/foon exch def
+				/fooi exch def
+				/fool ObjectData length def
+
+				% if we are out of bounds then don't do anything
+				foon 0 lt not {
+					% check to see if we need to extend the array with
+					% null strings.
+					foon fool gt {
+						/fooa foon array def
+						ObjectData fooa copy pop
+						currentdict fooa end
+						/ObjectData exch def begin
+						/fool foon def
+
+						AllowMultipleSelect? {
+							/fooa foon array def
+							ItemValueArray fooa copy pop
+							currentdict fooa end
+							/ItemValueArray exch def begin
+						} if
+					} if
+
+					% if we are inserting before the first element after
+					% the end of the list then just append to the list
+					foon fool eq {
+						% append to list
+						/fooa fool 1 add array def
+						ObjectData fooa copy pop
+						fooa fool fooi put
+						currentdict fooa end
+						/ObjectData exch def begin
+
+						AllowMultipleSelect? {
+							/fooa fool 1 add array def
+							ItemValueArray fooa copy pop
+							currentdict fooa end
+							/ItemValueArray exch def begin
+						} if
+					} {
+						% move the list down and insert an item.
+						/fooa fool 1 add array def
+						ObjectData 0 foon getinterval
+						fooa copy pop
+						ObjectData foon fool foon sub getinterval
+						fooa exch foon 1 add exch putinterval
+						fooa foon fooi put
+						currentdict fooa end
+						/ObjectData exch def begin
+
+						AllowMultipleSelect? {
+							/fooa fool 1 add array def
+							ItemValueArray 0 foon getinterval
+							fooa copy pop
+							ItemValueArray foon fool foon sub getinterval
+							fooa exch foon 1 add exch putinterval
+							currentdict fooa end
+							/ItemValueArray exch def begin
+						} if
+					} ifelse
+					end
+					/SizeAllData self send
+					300 exch /reshapebuffer self send
+					/ShowObjectData self send
+				} {
+					end
+				} ifelse
+		} def
+
+		% Change an item..
+		% If item does not allready exist then add it..
+		% If item was selected is will remain selected..
+		/changeitem { % item_label item_number => -
+			10 dict begin
+				/foon exch def
+				/fooi exch def
+				/fool ObjectData length def
+
+				% are we out of bounds?
+				foon 0 ge {
+					% should we call additem?
+					foon fool ge {
+						% call additem.
+						fooi foon end /additem self send
+					} {
+						% just change the item
+						ObjectData foon fooi put
+						end
+						/SizeAllData self send
+						300 exch /reshapebuffer self send
+						/ShowObjectData self send
+					} ifelse
+				} {
+					end
+				} ifelse
+		} def
+
+		/DeclareItemValueArray { % - => -
+			/ItemValueArray ObjectData length array def
+			ObjectData length 0 ne {
+				0 1 ObjectData length 1 sub {
+					ItemValueArray exch 0 put
+				} for
+			} if
+		} def
+
+		/SizeAllData { % - => total_size
+			/ObjectSizes ObjectData length array def
+			/ObjectOffsets ObjectData length array def
+			10 dict begin
+				/t ItemSpacing def
+				ObjectData length 0 ne {
+					gsave
+						ItemFont setfont
+						ObjectData length 1 sub -1 0 {
+							/i exch def
+							ObjectOffsets i t put
+							ObjectData i get /ThingSize self send
+							exch pop dup
+							ObjectSizes i 3 -1 roll put
+							t add ItemSpacing add /t exch def
+						} for
+					grestore
+				} if
+			t
+			end
+		} def
+
+		/ShowObjectData { % - => -
+			gsave
+				% First we are going to fix up the buffer.
+
+				% set up the defaults
+				BufferCanvas setcanvas
+				BufferColor fillcanvas
+				ItemTextColor setcolor
+				ItemFont setfont
+
+				% loop over all the data items writing them out
+				ObjectData length 0 ne {
+					0 1 ObjectData length 1 sub {
+						PutItemText
+					} for
+				} if
+
+				% go through and hilight those items that have been
+				% selected.
+				AllowMultipleSelect? {
+					% Redraw all the multiple selected stuff.
+					% Are the arrays the same length and are they
+					% none zero. This is a sanity check.
+					ItemValueArray length ObjectData length eq
+					ObjectData length 0 ne and {
+						% Loop over all the items finding highlighed
+						% items and redrawing them.
+						10 dict begin
+							0 1 ObjectData length 1 sub {
+								/i exch def
+								ItemValueArray i get 1 eq {
+									ItemHighLightColor setcolor i FillItemBox
+									BufferColor setcolor i PutItemText
+								} if
+							} for
+						end
+					} if
+				} {
+					% Redraw the single highlighted item.
+					LastSelect null ne {
+						ItemHighLightColor setcolor LastSelect FillItemBox
+						BufferColor setcolor LastSelect PutItemText
+					} if
+				} ifelse
+			grestore
+
+			% Now that we are finished with the buffer paint the
+			% the buffer and the items as a whole onto the canvas.
+			/PaintItem self send
+		} def
+
+		/ShowThingDict 20 dict dup begin
+			/fonttype {setfont dup type exec} def
+			/colortype {setcolor dup type exec} def
+			/integertype {rmoveto dup type exec} def
+			/realtype {rmoveto dup type exec} def
+			/stringtype {
+				0 currentfont fontdescent rmoveto
+				show
+				0 currentfont fontdescent neg rmoveto
+				dup type exec
+			} def
+			/nametype {
+				gsave
+					iconfont setfont icondict exch get cvis dup show
+					stringbbox 4 2 roll pop pop pop
+				grestore
+				0 rmoveto
+
+				dup type exec
+			} def
+			/arraytype {
+				dup xcheck {
+					/paint exch exec
+					dup type exec
+				} {
+					aload pop dup type exec
+				} ifelse
+			} def
+			/dicttype {/paint exch send dup type exec} def
+			/marktype { pop } def
+			/nulltype { pop dup type exec} def
+		end def
+
+		/ShowThing { % object => -
+			gsave
+				ShowThingDict begin
+					mark exch dup type exec
+				end
+			grestore
+		} def
+
+		/ThingSizeDict 20 dict dup begin
+			/x 0 def
+			/y 0 def
+			/mx 0 def
+			/my 0 def
+			/fonttype {setfont dup type exec} def
+
+			% /colortype {setcolor dup type exec} def
+			% color shouldn't affect size.
+			/colortype {pop dup type exec} def
+
+			/integertype {
+				y exch add /y exch def
+				y my gt { /my y def } if
+
+				x exch add /x exch def
+				x mx gt { /mx x def } if
+
+				dup type exec
+			} def
+			/realtype {
+				y exch add /y exch def
+				y my gt { /my y def } if
+
+				x exch add /x exch def
+				x mx gt { /mx x def } if
+
+				dup type exec
+			} def
+			/stringtype {
+				stringwidth pop
+				x exch add
+				/x exch def
+				x mx gt { /mx x def } if
+
+				currentfont fontheight
+				y exch add
+				dup my gt { /my exch def } { pop } ifelse
+
+				dup type exec
+			} def
+			/nametype {
+				gsave
+					iconfont setfont icondict exch get cvis
+					stringbbox 							% x y w h
+
+					y exch add 							% x y w y+h
+					3 -1 roll							% x w y+h y
+					neg dup 							% x w y+h -y -y
+					3 1 roll add						% x w -y y+h+(-y)
+					1 add
+					dup my gt { /my exch def } { pop } ifelse
+					y exch add /y exch def
+
+					x exch add							% ... x x+w
+					exch neg add						% ... x+w+(-x)
+					/x exch def
+					x mx gt { /mx x def } if
+				grestore
+
+				dup type exec
+			} def
+
+			/arraytype {
+				dup xcheck { % x y /size => x y mx my
+					x y /size 4 -1 roll exec
+					/my exch def
+					/mx exch def
+					/y exch def
+					/x exch def
+
+					dup type exec
+				} {
+					aload pop dup type exec
+				} ifelse
+			} def
+			/dicttype {
+				% x y /size => x y mx my
+				x y /size 4 -1 roll send
+				/my exch def
+				/mx exch def
+				/y exch def
+				/x exch def
+
+				dup type exec
+			} def
+			/marktype { pop } def
+			/nulltype { pop dup type exec} def
+		end def
+
+		/ThingSize { % object => xoff yoff
+			gsave
+				ThingSizeDict begin
+					/x 0 def
+					/y 0 def
+					/mx 0 def
+					/my 0 def
+					mark exch dup type exec
+					mx my
+				end
+			grestore
+		} def
+
+		/PutItemText { % item_number => -
+			dup ObjectOffsets exch get
+			5 exch moveto
+			dup ObjectData exch get /ShowThing self send
+
+			ShowItemSeperators {
+				ObjectOffsets exch get 0 exch ItemSpacing 2 div sub moveto
+				300 0 rlineto stroke
+			} {
+				pop
+			} ifelse
+		} def
+
+		/FillItemBox { % item_number => -
+			dup ObjectOffsets exch get
+			0 exch ItemSpacing 2 div sub 1 sub moveto
+			300 0 rlineto
+			ObjectSizes exch get 0 exch ItemSpacing add rlineto
+			-300 0 rlineto
+			closepath fill
+		} def
+
+		/NotifyUserDown { % x y => -
+			gsave
+				/FindItem self send
+				BufferCanvas setcanvas
+				ItemFont setfont
+
+				AllowMultipleSelect? not {
+					LastSelect null ne {
+						BufferColor setcolor LastSelect FillItemBox
+						ItemTextColor setcolor LastSelect PutItemText
+					} if
+
+					dup LastSelect eq {
+						pop
+						/LastSelect null def
+						/ItemValue null def
+					} {
+						dup /LastSelect exch def
+						/ItemValue exch def
+						ItemValue null ne {
+							ItemHighLightColor setcolor ItemValue FillItemBox
+							BufferColor setcolor ItemValue PutItemText
+						} if
+					} ifelse
+				} {
+					/ItemValue exch def
+					ItemValue null ne {
+						ItemValueArray ItemValue get 1 eq {
+							BufferColor setcolor ItemValue FillItemBox
+
+							ItemTextColor setcolor ItemValue PutItemText
+
+							ItemValueArray ItemValue 0 put
+						} {
+							% 0 BufferHeight ItemValue 1 add 18 mul sub
+							% 3 sub 300 18 rectpath
+							ItemHighLightColor setcolor ItemValue FillItemBox
+							BufferColor setcolor ItemValue PutItemText
+
+							ItemValueArray ItemValue 1 put
+						} ifelse
+					} if
+				} ifelse
+
+			grestore
+			/updatecanvas self send
+			/LocalUserNotify self send
+		} def
+
+		/FindItem { % x y => item_number
+			10 dict begin
+				exch pop
+				/y exch def
+
+				y 0 lt y BufferHeight gt or not ObjectData length 0 gt and {
+					/a null def
+					0 1 ObjectData length 1 sub {
+						/i exch def
+						ObjectOffsets i get y le {
+							/a i def
+							exit
+						} if
+					} for
+					a
+				} {
+					null
+				} ifelse
+			end
+		} def
+
+	classend
+def
+
+end % systemdict

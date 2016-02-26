@@ -1,0 +1,711 @@
+head	1.3;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.3
+date	92.12.13.10.35.11;	author lacey;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	92.11.12.14.25.50;	author lacey;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	92.11.09.14.40.37;	author lacey;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@*** empty log message ***
+@
+text
+@/* FILE string_table.c ****************************************
+ *
+ * xplan - project planning tool
+ * Copyright (C) 1992 Brian Gaubert, Mark M. Lacey, Richard Malingkas,
+ * and Mike Marlow.
+ * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation.
+ * 
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License (distributed with this program in the file
+ * COPYING) for more details.
+ * 
+ * If you did not received a copy of the GNU General Public License
+ * along with this program, write to the Free Software Foundation,
+ * Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * 
+ * Since this was a project for a one semester software engineering
+ * course, the authors will not be offering support for the product
+ * after its release.
+ *
+ * DESCRIPTION OF CONTENTS
+ *
+ * Functions for keeping track of a table of unique strings.
+ *
+*/   
+
+#include <stdio.h>
+#include "string_table.h"
+
+/* FUNCTION string_table_create ****************************************
+
+   PURPOSE
+
+   Creates a string_table with the correct number of array elements.
+
+   SAMPLE CALL
+
+   table = string_table_create(nelms);
+   
+   INPUTS
+
+   nelms --- The number of elements in the table.  This is actually
+   the number of lists that the table will contain, with each list
+   having zero or more nodes containing strings.
+
+   OUTPUTS
+
+   table --- A newly created table.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Tester.... Mark M. Lacey, 7 Nov 1992
+
+   MODIFICATIONS (most recent to least)
+
+*/
+struct string_table *string_table_create(unsigned nelms)
+{
+   struct string_table *new_table;
+   
+   new_table = (struct string_table *) malloc(sizeof(struct string_table));
+   
+   new_table->nelms = nelms;
+   new_table->nodes = (struct string_node **) malloc(nelms * sizeof(struct
+								    string_node *));
+   
+   return new_table;
+}
+
+/* FUNCTION string_table_initialize ****************************************
+
+   PURPOSE
+
+   Initializes a string_table by setting all the list heads to NULL.
+
+   SAMPLE CALL
+
+   string_table_initialize(table);
+   
+   INPUTS
+
+   table --- The table to be initialized.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Tester.... Mark M. Lacey, 7 Nov 1992
+
+   MODIFICATIONS (most recent to least)
+
+*/
+void string_table_initialize(struct string_table *tableptr)
+{
+   unsigned index;
+   
+   for (index = 0; index < tableptr->nelms; ++index) {
+      tableptr->nodes[index] = NULL;
+   }
+}
+
+/* FUNCTION string_table_destroy ****************************************
+
+   PURPOSE
+
+   Destroys the list pointers in the string table.  It does not empty
+   the lists that each head points to --- string_table_empty is used
+   for that purpose.
+
+   SAMPLE CALL
+
+   string_table_destroy(table);
+   
+   INPUTS
+
+   table --- The table to be destroyed.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Tester.... Mark M. Lacey, 7 Nov 1992
+
+   MODIFICATIONS (most recent to least)
+
+*/
+void string_table_destroy(struct string_table *tableptr)
+{
+   /* Free the node pointers */
+   free(tableptr->nodes);
+   /* Free the table struct itself */
+   free(tableptr);
+}
+
+/* FUNCTION string_table_empty ****************************************
+
+   PURPOSE
+
+   Empties out a previously created string table.
+
+   SAMPLE CALL
+
+   string_table_empty(table);
+   
+   INPUTS
+
+   table --- The table to be emptied.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Tester.... Mark M. Lacey, 7 Nov 1992
+
+   MODIFICATIONS (most recent to least)
+
+*/
+void string_table_empty(struct string_table *tableptr)
+{
+   unsigned index;
+   struct string_node *node, *next;
+   
+   /* For each list in the table, clear the list */
+   for(index = 0; index < tableptr->nelms; ++index) {
+      node = tableptr->nodes[index];
+      /* For each node in the list, free memory for the string and */
+      /* then the node itself */
+      while (node) {
+	 next = node->next;
+	 free(node->name);
+	 free(node);
+	 node = next;
+      }
+   }
+}
+
+/* FUNCTION string_table_hash ****************************************
+
+   PURPOSE
+
+   Finds the list in the hash table that the string should be added to.
+
+   SAMPLE CALL
+
+   hashval = string_table_hash(name, namelen, nelms);
+   
+   INPUTS
+
+   name --- A pointer to the string that is to be added to the list.
+
+   namelen --- The length of name.
+
+   nelms --- The number of lists in the table the string will be added
+   to.
+
+   OUTPUTS
+
+   hashval --- The number of the list that the element should be added
+   ot.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Auditor...
+   Tester....
+
+   MODIFICATIONS (most recent to least)
+
+*/
+unsigned string_table_hash(char *name, unsigned namelen, unsigned nelms)
+{
+   if (namelen == 0) {
+      return 0;
+   } else {
+      return ((name[0]<<8)+name[namelen-1]) % nelms;
+   }
+}
+
+/* FUNCTION string_table_insert ****************************************
+
+   PURPOSE
+
+   Searches for an entry in the string table.  If it is found, it
+   returns a pointer to it.  Otherwise, it adds it to the table and
+   returns a pointer to the new entry.
+
+   SAMPLE CALL
+
+   node = string_table_insert(table, name, namelen);
+   
+   INPUTS
+
+   table --- A pointer to the table to be added to.
+
+   name --- A pointer to the string that is to be added to the table.
+
+   namelen --- The length of name.
+
+   OUTPUTS
+
+   node --- The node that is added to the table, or if the string was
+   already present, the node that contained it.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Tester.... Mark M. Lacey, 7 Nov 1992
+
+   MODIFICATIONS (most recent to least)
+
+*/
+struct string_node *string_table_insert(struct string_table *tableptr,
+					char *name,
+					unsigned namelen)
+{
+   unsigned index;
+   struct string_node *traverse, *current;
+   
+   index = string_table_hash(name, namelen, tableptr->nelms);
+   
+   /* If this is not the head of this list... */
+   if (tableptr->nodes[index]) {
+      traverse = tableptr->nodes[index];
+      
+      while (traverse) {
+	 current = traverse;
+	 if (namelen == traverse->namelen) {
+	    if (strncmp(name, traverse->name, namelen) == 0) {
+	       return traverse;
+	    }
+	 }
+	 traverse = traverse->next;
+      }
+      
+      /* Since it wasn't found, insert it */
+      current->next = (struct string_node *) malloc(sizeof(struct
+							   string_node));
+
+      current = current->next;
+      
+      current->namelen = namelen;
+      current->name = (char *) malloc(namelen+1);
+      if (namelen != 0) {
+	 strncpy(current->name, name, namelen);
+      }
+      current->name[namelen] = '\0';
+      current->name = NULL;
+   } else {
+      tableptr->nodes[index] = (struct string_node *) malloc(sizeof(struct
+								    string_node));
+      tableptr->nodes[index]->namelen = namelen;
+      tableptr->nodes[index]->name = (char *) malloc(namelen+1);
+      if (namelen != 0) {
+	 strncpy(tableptr->nodes[index]->name, name, namelen);
+      }
+      tableptr->nodes[index]->name[namelen] = '\0';
+      tableptr->nodes[index]->next = NULL;
+      
+      return tableptr->nodes[index];
+   }
+}
+
+/* FUNCTION string_table_insert ****************************************
+
+   PURPOSE
+
+   Searches for an entry in the string table.  If it is found, it
+   returns a pointer toit.  Otherwise, it returns NULL.
+
+   SAMPLE CALL
+
+   
+   node = string_table_search(table, name, namelen);
+   
+   INPUTS
+
+   table --- A pointer to the table to be added to.
+
+   name --- A pointer to the string that is to be added to the table.
+
+   namelen --- The length of name.
+
+   OUTPUTS
+
+   node --- The node that is found in the table, or NULL if the string
+   is not found.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Tester.... Mark M. Lacey, 7 Nov 1992
+
+   MODIFICATIONS (most recent to least)
+
+*/
+struct string_node *string_table_search(struct string_table *tableptr,
+					char *name,
+					unsigned namelen)
+{
+   unsigned index;
+   struct string_node *traverse;
+   
+   index = string_table_hash(name, namelen, tableptr->nelms);
+   
+   /* If this is not the head of this list... */
+   if (tableptr->nodes[index]) {
+      traverse = tableptr->nodes[index];
+      
+      while (traverse) {
+	 if (namelen == traverse->namelen) {
+	    if (strncmp(name, traverse->name, namelen) == 0) {
+	       return traverse;
+	    }
+	 }
+	 traverse = traverse->next;
+      }
+      
+      return NULL;
+   } else {
+      return NULL;
+   }
+}
+
+/* FUNCTION string_table_dump ****************************************
+
+   PURPOSE
+
+   Dumps a string table to the screen.
+
+   SAMPLE CALL
+
+   string_table_dump(table);
+   
+   INPUTS
+
+   table --- A pointer to the table to be dumped.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Tester.... Mark M. Lacey, 7 Nov 1992
+
+   MODIFICATIONS (most recent to least)
+
+*/
+void string_table_dump(struct string_table *tableptr)
+{
+   unsigned index;
+   struct string_node *traverse;
+   
+   printf("DUMPING STRING TABLE\n");
+   /* For each item in the table, print the associated list, if one */
+   /* exists */
+   for (index = 0; index < tableptr->nelms; ++index) {
+      traverse = tableptr->nodes[index];
+      if (traverse) {
+	 printf("%d: ", index);
+	 while (traverse) {
+	    printf("%s\t", traverse->name);
+	    traverse = traverse->next;
+	 }
+	 printf("\n");
+      }
+   }
+}
+@
+
+
+1.2
+log
+@Totally new file copied directly over from my compiler project.
+@
+text
+@d1 28
+a28 7
+/* FILE db.c ****************************************
+   
+   DESCRIPTION OF CONTENTS
+   
+   General database functions for adding tasks and resources to the
+   database, search for them, and remove them.
+   
+d57 1
+a57 2
+   Auditor...
+   Tester....
+d92 1
+a92 2
+   Auditor...
+   Tester....
+d125 1
+a125 2
+   Auditor...
+   Tester....
+d155 1
+a155 2
+   Auditor...
+   Tester....
+d249 1
+a249 2
+   Auditor...
+   Tester....
+d333 1
+a333 2
+   Auditor...
+   Tester....
+d383 1
+a383 2
+   Auditor...
+   Tester....
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+a2 2
+/* FILE string_table.c ****************************************
+
+d4 5
+d10 1
+a10 4
+   Functions to manager a hashable string table.
+
+*/
+
+d17 1
+a17 1
+   Creates a string table.
+d22 1
+a22 1
+
+d25 3
+a27 1
+   nelms --- The number of elements for the table.
+d31 1
+a31 1
+   table --- A pointer to the string table that was created.
+d39 2
+d45 1
+a45 1
+
+d47 1
+a47 1
+
+d50 2
+a51 2
+                                                                  string_node *));
+
+d55 1
+a55 1
+/* FUNCTION string_table_initialize ******************************
+d59 1
+a59 1
+   Initializes a string table.
+d64 1
+a64 1
+
+d67 1
+a67 1
+   table --- Pointer to the string table to be initialized.
+a68 5
+   PERTINENT INFORMATION
+
+   This should be called before a string table is used, and each time
+   after it is emptied.
+
+d75 2
+d81 1
+a81 1
+
+d87 1
+a87 1
+/* FUNCTION string_table_destroy ******************************
+d91 3
+a93 1
+   Destroys a string table by freeing up all the space it takes.
+d98 1
+a98 1
+
+d101 1
+a101 1
+   table --- Pointer to the string table to be destroyed.
+d109 2
+d120 1
+a120 1
+/* FUNCTION string_table_empty ******************************
+d124 1
+a124 2
+   Empties out a string table that was previously created,
+   initialized, and filled.
+d129 1
+a129 1
+
+d132 1
+a132 1
+   table --- Pointer to the string table to be emptied.
+d140 2
+d147 1
+a147 1
+
+d154 4
+a157 4
+       next = node->next;
+       free(node->name);
+       free(node);
+       node = next;
+d162 1
+a162 1
+/* FUNCTION string_table_hash ******************************
+d166 1
+a166 2
+   Calculates the hash value for a string given the size of the table
+   it will be added to.
+d171 1
+a171 1
+
+d174 1
+a174 1
+   name --- The string that will be added to the table.
+d178 2
+a179 1
+   nelms --- The number of nodes in the hash table to be added to.
+d183 2
+a184 1
+   hashval --- The value of the hash function.
+d192 2
+a199 3
+      /* take the first character, shift left 8 and add the last */
+      /* character --- take this and divide by number of elements, and */
+      /* then take remainder */
+d204 1
+a205 2
+/* FUNCTION string_table_insert ******************************
+
+d208 3
+a210 1
+   Inserts a string into a string table.
+d214 2
+a215 2
+   strnode = string_table_insert(table, name, namelen);
+
+d220 1
+a220 1
+   name --- The string that will be added to the table.
+d226 2
+a227 1
+   strnode --- A pointer to the node added to the table.
+d235 2
+d238 3
+a240 2
+struct string_node *string_table_insert(struct string_table *tableptr, char *name,
+                                      unsigned namelen)
+d244 1
+a244 1
+
+d246 1
+a246 1
+
+d250 1
+a250 1
+
+d252 7
+a258 7
+       current = traverse;
+       if (namelen == traverse->namelen) {
+          if (strncmp(name, traverse->name, namelen) == 0) {
+             return traverse;
+          }
+       }
+       traverse = traverse->next;
+d260 4
+a264 3
+      /* Since it wasn't found, insert it */
+      current->next = (struct string_node *) malloc(sizeof(struct string_node
+                                                         ));
+d266 1
+a266 1
+
+d270 1
+a270 1
+       strncpy(current->name, name, namelen);
+d276 1
+a276 1
+                                                                  string_node));
+d280 1
+a280 1
+       strncpy(tableptr->nodes[index]->name, name, namelen);
+d284 1
+a284 1
+
+d289 1
+a289 1
+/* FUNCTION string_table_search ******************************
+d293 2
+a294 1
+   Searches for a string in a string table. 
+d298 3
+a300 2
+   strnode = string_table_search(table, name, namelen);
+
+d305 1
+a305 1
+   name --- The string that is being search for.
+d311 2
+a312 2
+   strnode --- A pointer to the node that was either present in the
+   table, or added.
+d320 2
+d324 2
+a325 1
+					char *name, unsigned namelen)
+d329 1
+a329 1
+
+d331 1
+a331 1
+
+d335 1
+a335 1
+
+d337 6
+a342 6
+       if (namelen == traverse->namelen) {
+          if (strncmp(name, traverse->name, namelen) == 0) {
+             return traverse;
+          }
+       }
+       traverse = traverse->next;
+d344 1
+a344 1
+
+d348 44
+@

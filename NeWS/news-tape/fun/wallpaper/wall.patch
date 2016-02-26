@@ -1,0 +1,67 @@
+From zodiac!sparkyfs!sparkyfs.itstd.sri.com!zwicky@ames.arc.nasa.gov Mon Nov  6 01:26:46 1989
+Date: Mon, 6 Nov 89 01:26:23 -0500
+To: NeWS-makers@brillig.umd.edu
+Subject: Integers, mod, and some wallpaper patches
+From: zodiac!sparkyfs!sparkyfs.itstd.sri.com!zwicky@ames.arc.nasa.gov  (Elizabeth Zwicky)
+
+Wallpaper, as many of you know, is a little program of mine that
+wastes CPU cycles charmingly by coloring in the points in a window
+according to the value of an equation in x and y which you type at it.
+It calculates the colour to make the points with a mod (by 2 in
+monochrome, by 6 in colour). You can only mod an integer. Thus, I have
+learned more about integers in NeWS than I ever wanted to know.
+
+In particular, div and exp are both documented in the Red Book as
+always returning reals. In NeWS, when div returns an integer, it is
+type integer. This makes sense, given that the NeWS manual says that
+any real small enough to be an integer (i.e., that will fit in 16 bits
+of integer and 16 bits of fraction), will be an integer, which will
+magically look like a real to type. So div should be returning a real,
+which is small enough to be converted into an integer, which then gets
+turned back into a real if it has a fractional part. Confusing, but
+fine. That is, until you get to exp, which really truly does always
+return a real; "2 2 exp dup = type =" will give you "4 realtype". What
+a nusiance.
+
+Next, we have mod and idiv, both of which are documented in the red
+book as requiring integer arguments. mod does in fact require
+arguments of type integer, and will return a typecheck if run on 2.4,
+2 2 exp, or any number over 32767. idiv neither requires integer
+arguments, *nor is guaranteed to return them*; try "2 17 exp 2 idiv
+type =". I assume this is due to the magic conversion of integers to
+reals once they get to big; on the other hand, since mod will return a
+typecheck, it is not helpful. Then again, cvi does no better; try
+"32768 cvi type =". Just what I wanted; a real result from converting
+to an integer. And once again, mod will blow up.
+
+Enough complaint: on to the promised patches. If you plug this in, and
+change all existing instances of "mod" to "mod*" you will allow
+wallpaper to cope with numbers up to 32767^2, which should be enough
+latitiude to do something amusing:
+ /mod*{ % mod big numbers. Initial stack: number-to-mod number-to-mod-by
+   /to-mod-by exch def /to-mod exch def
+   to-mod 32767 gt
+     {
+     /to-mod-idiv to-mod 32767 idiv cvi def
+     /to-mod-mod to-mod 32767 to-mod-idiv mul sub cvi def
+     to-mod-idiv 32767 to-mod-by mod mul
+     to-mod-mod to-mod-by mod add
+     to-mod-by mod
+     }
+     {to-mod  cvi to-mod-by mod}
+   ifelse
+ } def
+
+If you replace the definition of "dot" with this, it will scale
+correctly even under OpenWindows:
+/dot {-.5 -.5 rmoveto 0 1 rlineto 1 0 rlineto 0 -1 rlineto -1 0
+ rlineto closepath fill pause} def
+(This compensates for a new bug in OpenWindows, in which a degenerate
+line (what you get with 0 0 rlineto) does appear if it is a single
+dot, even if the linecaps are set to 0, but does not appear at above
+that size, even if linecap is set to 2. The linecaps matter because
+the Red Book says so, although I admit to having used the previous
+NeWS bug, which allowed you to use linecap 1 on single-point paths,
+giving nice square dots.)
+
+	Elizabeth

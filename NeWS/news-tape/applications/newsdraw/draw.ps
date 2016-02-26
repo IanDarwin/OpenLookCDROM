@@ -1,0 +1,331 @@
+%!
+%
+% $Header: draw.ps,v 1.7 88/12/02 10:43:15 bvs Exp $
+% Copyright (C) 1988 by Sun Microsystems. All rights reserved.
+%
+
+/XNeWS? where { pop } { /XNeWS? false def } ifelse
+
+/pathscale { % x1 y1 x2 y2 => w h
+	%% 4 copy (pathscale % % % % \n) [ 6 2 roll ] dbgprintf
+	exch 4 1 roll sub neg 3 1 roll sub exch
+} def
+/ShowFillWindow {
+  {
+	newprocessgroup
+	10 dict begin
+	/FillWindow framebuffer /new DrawWindow send def
+	100 400 400 200 /reshape FillWindow send
+	/map FillWindow send
+	/FillWindow null def
+	end
+  } fork AddProcess
+} def
+
+/DrawWindow DefaultWindow
+dictbegin
+	/FrameKbdMgr null def
+	/ScratchCanvas	 null def
+	/X0 null def
+	/Y0 null def
+	/X1 null def
+	/Y1 null def
+	/XCenter null def
+	/YCenter null def
+	/Theta null def
+dictend
+classbegin
+	/FrameLabel (NewsDraw) def
+	/PaintClient {
+		DAMAGE_TAG tagprint
+		clippath pathbbox
+		% 4 copy (send damage % % % %\n) [ 6 2 roll ] dbgprintf
+		4 -1 roll typedprint
+		3 -1 roll typedprint
+		2 -1 roll typedprint
+		typedprint
+	} def
+
+	/DefaultRotateInteractive { % x0 y0 proc  -> angle
+		gsave
+		ClientCanvas createoverlay setcanvas
+		getanimated
+		waitprocess aload pop
+		ANGLE_TAG tagprint
+		YCenter sub exch XCenter sub exch atan Theta exch sub typedprint
+		grestore
+	} def
+	/rotateInteractive { % angle xinit yinit x0 y0 x1 y1 => angle
+		/Y1 exch def
+		/X1 exch def
+		/Y0 exch def
+		/X0 exch def
+		/YCenter exch def
+		/XCenter exch def
+		% xinit yinit
+		YCenter sub exch XCenter sub exch atan /Theta exch def
+		% /Theta X1 X0 sub Y1 Y0 sub atan def
+		% (theta is %\n) [ Theta ] dbgprintf
+		Theta add /Theta exch def
+		% (theta changed to %\n) [ Theta ] dbgprintf
+		XCenter YCenter
+		  {
+			matrix currentmatrix
+			x0 y0 translate
+			x x0 sub y y0 sub atan Theta exch sub rotate
+			x0 neg y0 neg translate
+			% avoid drawing 0 width rectangle!
+			X0 X1 eq Y0 Y1 eq or
+			  { X0 Y0 moveto X1 Y1 lineto }
+			  { X0 Y0 moveto X0 Y1 lineto X1 Y1 lineto X1 Y0 lineto closepath}
+			ifelse
+			setmatrix
+		  } DefaultRotateInteractive
+	} def
+
+	/DefaultCreateInteractive { % x0 y0 proc  -> x0 y0 x1 y1
+		gsave
+		ClientCanvas createoverlay setcanvas
+		getanimated
+		waitprocess aload pop
+		POINT_TAG tagprint
+		exch
+		typedprint typedprint
+		grestore
+	} def
+	/lineCreateInteractive {  % x y
+		{ x y lineto } DefaultCreateInteractive
+	} def
+	/rectCreateInteractive {  % x y
+		{  x0 y lineto x y lineto x y0 lineto x0 y0 lineto }
+		DefaultCreateInteractive
+	} def
+	/circCreateInteractive {  % x y
+		{
+			newpath
+			x0 x add 2 div y0 y add 2 div % x y
+			x0 x sub dup mul y0 y sub dup mul add sqrt 2 div % r
+			0 360 arc
+		}
+		DefaultCreateInteractive
+	} def
+	/ovalCreateInteractive { % x y
+		{
+			newpath
+			matrix currentmatrix
+			x0 y0 translate
+			x x0 sub y y0 sub scale
+			.5 .5 .5 0 360 arc
+			setmatrix
+		}
+		DefaultCreateInteractive
+	} def
+
+	/PencilDoitInteractive % x y -> points... length
+	{
+		10 dict begin
+		/y exch def
+		/x exch def
+		x y moveto
+		/pointlist [ y x ] def
+
+		/stopevt createevent def
+		stopevt begin /Action UpTransition def end
+
+		/evt createevent def
+		evt begin /Name MouseDragged def end
+
+		stopevt expressinterest
+		evt expressinterest
+
+		/pointlist
+		[
+			pointlist aload pop	%% add first 2 points
+			{
+				awaitevent
+				begin
+					Action UpTransition eq { exit } if
+
+					XLocation YLocation lineto
+					currentpoint
+					stroke
+					moveto
+					YLocation XLocation % add another point
+				end
+
+				pause
+			} loop
+		]
+		def
+
+		stopevt revokeinterest
+		evt revokeinterest
+
+		[
+		pointlist aload pop
+		pointlist length
+		]
+		end
+	} def
+
+	/pencilCreateInteractive { % x y
+		gsave
+		ClientCanvas setcanvas
+		{ PencilDoitInteractive } fork waitprocess aload pop
+		POINT_TAG tagprint
+		0 0 typedprint typedprint
+		dup 2 div typedprint
+		{ typedprint } repeat
+		grestore
+	} def
+
+	/rectMoveInteractive { % xinit yinit angle x0 y0 x1 y1
+		/Y1 exch def
+		/X1 exch def
+		/Y0 exch def
+		/X0 exch def
+		/Theta exch def
+		/XCenter X0 X1 add 2 div def
+		/YCenter Y0 Y1 add 2 div def
+		{
+			matrix currentmatrix
+			x x0 sub y y0 sub translate
+			XCenter YCenter translate
+			Theta rotate
+			XCenter neg YCenter neg translate
+			X0 X1 eq Y0 Y1 eq or
+			  { X0 Y0 moveto X1 Y1 lineto }
+			  { X0 Y0 moveto X0 Y1 lineto X1 Y1 lineto X1 Y0 lineto closepath }
+		    ifelse
+			setmatrix
+		}
+		DefaultCreateInteractive
+	} def
+
+	/ClientMenu
+	    [
+			(Move)	{ TOOL_TAG tagprint STRETCH_MODE typedprint }
+			(Rotate)	{ TOOL_TAG tagprint ROTATE_MODE typedprint }
+			(Brush)	{ TOOL_TAG tagprint BRUSH_MODE typedprint }
+			(Line)	{ TOOL_TAG tagprint LINE_MODE typedprint }
+			(Box)	{ TOOL_TAG tagprint RECT_MODE typedprint }
+			(Oval)	{ TOOL_TAG tagprint OVAL_MODE typedprint }
+			(Circle){ TOOL_TAG tagprint CIRC_MODE typedprint }
+			(Polygon)	{ TOOL_TAG tagprint POLY_MODE typedprint }
+			(Text)	{ TOOL_TAG tagprint TEXT_MODE typedprint }
+		]
+	    /new DefaultMenu send
+	def
+
+	/new {
+		/new super send
+		begin
+			/ScratchCanvas framebuffer newcanvas def
+			ScratchCanvas /Retained true put
+			% ScratchCanvas /Mapped true put
+			gsave
+			ScratchCanvas setcanvas
+			0 0 0 rgbcolor fillcanvas
+			0 0 movecanvas
+			grestore
+
+		currentdict
+		end
+	} def
+	/destroy {
+		/ScratchCanvas null def
+		/destroy super send
+	} def
+
+	/savearea { % x y w h
+		%% 4 copy (save area % % % %\n) [ 6 2 roll ] dbgprintf
+		gsave
+		newpath rectpath ScratchCanvas reshapecanvas
+
+		% scale ScratchCanvas by w/h of ClientCanvas
+		ClientCanvas setcanvas clippath pathbbox pathscale % w h
+
+		ScratchCanvas setcanvas
+		0 0 movecanvas
+		0 0 0 rgbcolor fillcanvas
+
+		% X11NEWS BUG!!!
+		XNeWS? { pop pop } { scale } ifelse
+
+		ClientCanvas imagecanvas
+		grestore
+	} def
+	/restorearea {
+		%% (restore area %\n) [ ScratchCanvas ] dbgprintf
+		gsave
+		ScratchCanvas setcanvas clippath
+		pathbbox pathscale pathbbox pop pop  % w h x y
+
+		ClientCanvas setcanvas
+
+		% X11NEWS BUG!!!
+		XNeWS? { pop pop pop pop } { translate scale } ifelse
+
+		ScratchCanvas imagecanvas
+		grestore
+	} def
+classend
+def
+
+/sendmouse {
+    Action /DownTransition eq
+	{ tagprint XLocation typedprint YLocation typedprint }
+	{ pop } ifelse
+} def
+/AddProcess { } def
+/AcceptFocus { } def
+/RestoreFocus { } def
+/DeSelect { } def
+/LeftMouseButton { SELECT_TAG sendmouse } def
+/MiddleMouseButton { ADJUST_TAG sendmouse } def
+/KeyStroke { KEY_TAG tagprint typedprint } def
+
+/fontsetup { % font font index
+    setfileinputtoken
+    0 tagprint
+	dup setfont
+    begin
+	currentdict dup fontheight typedprint
+	fontdescent typedprint
+	WidthArray dup length typedprint
+	aload length 2 div { pop typedprint } repeat
+    end
+} def
+
+
+%
+% Main...such as it is
+%
+
+/Times-Roman findfont 36 scalefont setfont
+/win framebuffer /new DrawWindow send def	% Create a window
+100 100 8 72 mul 32 add dup /reshape win send
+/map win send
+/activate win send
+win begin ClientCanvas setcanvas end
+    {	win begin
+		ClientCanvas addkbdinterests
+		/MouseDict 5 dict begin
+			/LeftMouseButton dup def
+			/MiddleMouseButton dup def
+			currentdict end def
+		createevent begin
+	    	/Canvas ClientCanvas def
+	    	/Name MouseDict def
+	    	currentdict end expressinterest
+	 	{	 	clear awaitevent begin
+				ClientCanvas setcanvas
+	 			{
+		    	Name type /integertype eq
+					{ Name KeyStroke }
+					{ Name cvx exec } ifelse
+				} exec%stopped
+				end
+	 	} loop
+    } fork
+

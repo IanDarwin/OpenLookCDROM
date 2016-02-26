@@ -1,0 +1,430 @@
+%!
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% PieMenu class for 4Sight 1.1, using the SGI Iris 4D overlay plane.
+% Copyright (C) 1988 by Don Hopkins.
+%
+% This is for 4Sight 1.1, Silicon Graphic's implementation of NeWS 1.1.
+% It should be loaded in just after piemenu.ps.
+% Don't load this unless you're running 4Sight.
+%
+% This program is provided free for unrestricted use and redistribution,
+% provided that the headers remain intact.  No author or distributor
+% accepts any responsibility for any problems with this software.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+systemdict begin
+
+% compat.ps was stripped!
+/mapcanvas { /Mapped true put } def
+/unmapcanvas { /Mapped false put } def
+/savebehindcanvas { /SaveBehind true put } def
+
+/SGIPieMenu SimplePieMenu
+dictbegin
+  /RetainCanvas? false def
+  /SupressParent? true def
+  /CellHorizGap 0 def % Toolboxes use this? (/MenuLine...)
+  /CellWidth 0 def % Toolboxes use this? (/MenuLine...)
+  /CenterItems? false def % Toolboxes use this? (/MenuLine...)
+dictend
+classbegin
+
+  /MapMenu {
+    SupressParent? ChildMenu null ne and not {
+      /MapMenu super send
+      self { % What a bitch!
+	dup null eq {pop exit} if
+	% wtf did all that junk on the stack come from?
+	{MenuCanvas /DamageProc 2 index send} fork waitprocess pop
+	/ChildMenu get
+      } loop
+    } if
+  } def
+
+  /showat { % event => -
+    InteractionLock {						% sgi
+	systemdict /MenuBusy 1 put				% sgi
+	UI_private /AttachMode /softattached put		% sgi
+
+ 	PaintedValue null ne MenuCanvas null ne and MenuWidth null ne and {
+	  /MenuValue null store PaintMenuValue
+ 	} if
+	/PaintedValue null store
+
+	MenuEventMgr null ne {MenuEventMgr waitprocess pop} if
+
+	MenuWidth null eq {
+	  /layout self send
+	  MenuCanvas null ne {/reshape self send} if
+	} if
+
+	MenuCanvas null eq {
+	    /MenuCanvas ParentCanvas newcanvas def
+	    %MenuCanvas /Retained RetainCanvas? put
+	    /reshape self send
+	    MenuCanvas dup canvastotop /Transparent true put	% sgi
+	    /MenuPaintCanvas MenuCanvas createoverlay def	% sgi
+	    MenuPaintCanvas /Retained RetainCanvas? put		% sgi
+	} if
+
+	gsave
+	framebuffer setcanvas
+	dup type /eventtype eq {
+	    begin XLocation YLocation end
+	} if
+	PieRadius sub MouseYDelta add  /MenuY exch def
+	PieRadius sub MouseXDelta add  /MenuX exch def
+
+	clippath pathbbox /DeltaY exch def /DeltaX exch def pop pop
+
+	/DeltaY
+	  MenuY MenuHeight add
+	  dup DeltaY ge {
+	    DeltaY exch sub
+	  } {
+	    dup MenuHeight lt {
+	      MenuHeight exch sub
+	    } { pop 0 } ifelse
+	  } ifelse
+	def
+
+	/DeltaX
+	  MenuX MenuWidth add
+	  dup DeltaX ge {
+	    DeltaX exch sub
+	  } {
+	    dup MenuWidth lt {
+	      MenuWidth exch sub
+	    } { pop 0 } ifelse
+	  } ifelse
+	def
+
+	/MenuX MenuX DeltaX add store
+	/MenuY MenuY DeltaY add store
+
+	MenuCanvas savebehindcanvas
+        MenuCanvas setcanvas MenuX MenuY movecanvas
+        MenuCanvas canvastotop
+
+	grestore
+
+% Defer the mapping till events already in the input queue
+% have been processed.
+
+        MapMenuEvent null ne {
+          MapMenuEvent recallevent
+        } if
+
+	/MapMenuEvent
+          createevent begin
+            /Name /MapMenu def
+	    % So active submenu pops up before already choosen parent!
+	    /TimeStamp currenttime
+	      ParentMenu null eq {MapLongDelay} {MapShortDelay} ifelse
+	      add def
+            /Canvas MenuCanvas def
+            currentdict
+          end def
+
+        MapMenuEvent sendevent
+
+	/MenuValue null def
+	/GotDown false def
+
+	/activate self send
+    } monitor							% sgi
+  } def
+
+    /popdown {
+
+        MapMenuEvent null ne {
+          MapMenuEvent recallevent
+	  /MapMenuEvent null def
+        } if
+
+        MenuPaintCanvas /Mapped false put
+	MenuCanvas null ne {MenuCanvas unmapcanvas} if  % spin needs this??
+
+        ParentMenu null ne {
+	  ParentMenu /MenuCanvas get /DamageProc ParentMenu send pop
+	} if
+
+	RetainCanvas? not {
+	    /MenuCanvas null store
+	    /MenuInterests null store
+%	    /MenuWidth null store
+	} if % framebuffer setcanvas?
+
+	ChildMenu null ne {
+	  ChildMenu /ParentMenu null put
+	  /popdown ChildMenu send
+	  /ChildMenu null store
+	} if
+
+ 	ParentMenu null ne {
+ 	  ParentMenu /ChildMenu null put
+ 	  /ParentMenu null store
+ 	} if
+
+	RetainCanvas? not {
+	    /MenuCanvas null store
+	    /MenuPaintCanvas null store
+	    /MenuInterests null store
+%	    /MenuWidth null store
+	} if % framebuffer setcanvas?
+
+	MenuEventMgr null ne {
+	    MenuEventMgr /MenuEventMgr null store killprocess
+	} if
+
+    } def
+
+    /makeinterests {
+        /MenuInterests [
+            MenuButton /UpProc UpTransition null eventmgrinterest
+	    dup /Exclusivity true put
+	    dup /Priority 5 put
+            MenuButton /DownProc DownTransition null eventmgrinterest
+	    dup /Exclusivity true put
+	    MouseDragged /DragProc  null null eventmgrinterest
+	    dup /Exclusivity true put
+ 	    /EnterEvent /EnterProc null MenuCanvas eventmgrinterest
+	    dup /Exclusivity true put
+ 	    /ExitEvent /ExitProc null MenuCanvas eventmgrinterest
+	    dup /Exclusivity true put
+%	    /Damaged /DamageProc null MenuCanvas eventmgrinterest
+	    /Damaged /paint null MenuCanvas eventmgrinterest
+	    dup /Exclusivity true put
+	    dup /Priority -5 put
+            AdjustButton /KerProc DownTransition null eventmgrinterest
+	    dup /Exclusivity true put
+            AdjustButton /ChunkProc UpTransition null eventmgrinterest
+	    dup /Exclusivity true put
+% Kludge to refresh messed up retained menu canvases. Ssssh! Don't tell anyone.
+            PointButton {} DownTransition null eventmgrinterest
+%            PointButton /DamageProc UpTransition MenuCanvas eventmgrinterest
+            PointButton /MapMenu UpTransition MenuCanvas eventmgrinterest
+	    /MapMenu /MapMenu null MenuCanvas eventmgrinterest
+	    dup /Priority -5 put
+	] def
+    } def
+
+    /DrawMenuLine {pop} def
+
+    /domenu {
+	systemdict /MenuBusy 0 put
+	MenuValue getmenuaction dup type /dicttype eq {pop} {cvx exec} ifelse
+    } def
+
+    /DamageProc {
+      SupressParent? ChildMenu null ne and not {
+	/damaged currentcanvas def
+	dup getcanvaslocation
+	2 index setcanvas clipcanvaspath neg neg translate
+	damaged setcanvas clipcanvas
+	ParentMenu null ne {/DamageProc ParentMenu send} {pop} ifelse
+	/paint self send
+	true PaintedValue PaintSlice
+	newpath clipcanvas
+      } if
+    } def
+
+    % Pop back to the previous menu, if we're in this menu's center.
+    /ChunkProc {
+      MenuGSave
+        DragProc
+        MenuValue null eq {
+	    SupressParent? ParentMenu null ne and {
+% 	      { popdown /paint ParentMenu send } fork pop
+	      { ParentMenu
+		dup /ChildMenu null put
+	        /ParentMenu null def
+		{popdown} fork waitprocess
+                { {MapMenu} errored {paint} if } exch send
+	      } fork pop
+	    } {
+	      popdown
+	    } ifelse
+	} if
+      grestore
+    } def
+
+    /MenuGSave {
+      gsave MenuFont setfont initmatrix MenuPaintCanvas setcanvas
+    } def
+
+    /reshape {
+      %MenuGSave						% sgi
+      gsave							% sgi
+	framebuffer setcanvas
+	newpath
+	PieRadius dup dup 0 360 arc
+	closepath
+	NumbHole {
+	  PieRadius dup NumbRadius 1 sub 360 0 arcn closepath } if
+	SplatFactor { 6 { PieRadius dup add random mul } repeat
+	              curveto } repeat
+	MenuCanvas eoreshapecanvas
+	/beye /beye_m MenuCanvas setstandardcursor
+	% So retained canvases don't have their old image upon popup:
+	RetainCanvas? {
+	    MenuCanvas setcanvas
+            MenuFillColor fillcanvas
+	} if
+      grestore
+    } def
+
+% Update the highlighted slice to show the current menu value.
+
+    /PaintMenuValue { % - => - (Hilite current item, un-hilite prev one.)
+	false PaintedValue PaintSlice
+	true MenuValue PaintSlice
+	/PaintedValue	 MenuValue store
+    } def
+
+% Paint highlighting on a menu slice. If it's null, then do nothing.
+% Draw an arrow, and a box around the key.
+
+    /PaintSlice { % draw key => -
+        dup null ne {	   			% key
+	  MenuGSave
+	    exch {				% keyNumber draw
+		/bgcolor MenuTextColor def
+		/fgcolor MenuFillColor def
+	    } {
+		/bgcolor MenuFillColor def
+		/fgcolor MenuTextColor def
+	    } ifelse
+	    bgcolor setcolor
+
+	    PieRadius dup translate
+
+	    MenuItems exch get begin
+
+% Draw an arrow pointing out in the direction of the slice.
+	    HiLiteWithArrow? {
+	      gsave
+	        ang rotate
+	        newpath
+	        NumbRadius 0 moveto
+	        LabelRadius Gap sub			% r
+	        dup .6 mul dup PieSliceWidth 3 div sin mul lineto
+	        dup .9 mul 0 lineto
+	        .6 mul dup PieSliceWidth -3 div sin mul lineto %
+	        closepath
+                StrokeSelection {stroke} {fill} ifelse
+	      grestore
+	    } if
+
+% Highlight the key Thing.
+	    -4 2 X Y w h insetrrect rrectpath
+
+            StrokeSelection {
+	      stroke
+	    } {
+	      fill
+	      fgcolor setcolor
+	      /Key load X Y ShowThing
+	    } ifelse
+	    end
+	  grestore
+        } {pop pop} ifelse				%
+    } def
+
+   /settitle {pop} def
+
+classend def
+
+/PieMenu SGIPieMenu def
+
+/LayeredPieMenu SGIPieMenu
+dictbegin
+  /MenuArgs [] def
+  /MenuArg null def
+  /PaintedArg null def
+dictend
+classbegin
+  % Need to make flipstype a no-op because /new takes a different number
+  % of args, and actions might depend on MenuArg!
+  /flipstyle {currentdict} def
+
+  /new {	% 	 args keys actions  =>  menu
+		%  -or-  args keys/actions (one array) => menu
+    /new super send begin
+      /MenuArgs exch def
+    currentdict end
+  } def
+
+  /showat {
+    /showat super send
+    /MenuArg null def
+  } def
+
+  /DragProc {
+    ChildMenu null eq {
+      MenuGSave
+        PieRadius dup translate
+        CurrentEvent begin
+          XLocation DeltaX add
+          YLocation DeltaY add
+        end
+        SetMenuValue
+
+        MenuValue PaintedValue ne {
+          PaintMenuValue
+        } if
+        MenuArg PaintedArg ne {
+          PaintMenuArg
+        } if
+      grestore
+    } if
+  } def
+
+  /PaintMenuArg {
+    PaintedArg PaintArg
+    MenuArg PaintArg
+    /PaintedArg MenuArg store
+  } def
+
+  /PaintArg {
+    dup null ne {
+	/obsolete dbgbreak
+      MenuGSave
+	PieRadius dup translate
+	MenuBorderColor setcolor
+	5 setrasteropcode
+	100 string cvs
+	dup stringbbox points2rect
+	-.5 mul exch -.5 mul exch moveto
+	pop pop
+	show
+      grestore
+    } if
+  } def
+
+  /SetMenuValue { % x y => -
+    /SetMenuValue super send
+    /MenuArg
+      MenuValue null eq
+      MenuArgs length 0 eq or {
+        null
+      } {
+        PieDistance PieRadius 1 sub min NumbRadius sub
+	PieRadius NumbRadius sub div MenuArgs length mul floor
+	MenuArgs exch get
+      } ifelse
+    def
+  } def
+
+  /getmenuarg {
+    MenuArg
+  } def
+classend def
+
+systemdict /DontSetDefaultMenu known not {
+  PieMenu setdefaultmenu
+} if
+
+end % systemdict

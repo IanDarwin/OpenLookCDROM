@@ -1,0 +1,637 @@
+%!
+%
+% Date: Fri, 28 Oct 88 23:14:43 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: KeySee 1.1: A few bug fixes, a few new features
+% From: jcricket!sjs@bellcore.com  (Stan Switzer)
+% 
+% Thanks to a lot of good net feedback I have made a number
+% of improvements to the original KeySee.
+% 
+% Since KeySee is now about a month old and hasn't changed any in about
+% half of that time, I figured there'd be no harm in posting this
+% (hopefully final) newer version: KeySee 1.1.
+% 
+% New features:
+%   1) You can change focus mode from cursor-follows-mouse to
+% click-to-type with a button.
+%   2) Middle and right mouse buttons map to control and shift.  A
+% trivial change allows you to substitute "meta" for one or the other.
+%   3) Pressing L5 and L7 with your mouse now does the "expected" thing.
+%   4) Eliminate certain key "pumping" problems.
+%   5) If KeySee is too slow for your taste, look at the documentation
+% on "SpeedHacks".
+%   6) Generous internal and functional documentation has been added.
+% Readers interested in more detail may enquire within.
+% 
+% Notes:
+%   1) If somehow the keyboard gets stuck in Caps mode or Control mode,
+% remebmer that how can hit "L1" to clear the problem.
+%   2) If keyboard input seems to be going to the wrong window, make
+% sure that you are'nt in click-to-type mode.
+% 
+% Enjoy,
+% 
+% Stan Switzer  sjs@ctt.bellcore.com  "Thou shalt not have no idea"
+% 
+% P.S.: Ignore bogus reply path, use signature address only.
+% 
+% ----------------------------------------------------------
+
+%
+% KeySee: Display the keyboard and simulate keyboard input.
+%
+% Copyright (C) 1988 by Stan Switzer. All rights reserved.
+% This program is provided for unrestricted use, provided that this
+% copyright message is preserved. There is no warranty, and no author
+% or distributer accepts responsibility for any damage caused by this
+% program.
+%
+%	Mon KeySee, mon key do.
+%
+% Stan Switzer   sjs@ctt.bellcore.com
+
+% ---------------------------------------
+% Sept. 29, 1988  Stan Switzer
+%
+% One good hack deserves another.  Ever since Don Hopkins posted his
+% MouSee I have been toying with the idea of writing something that
+% does for the keyboard what MouSee does for the Mouse.  This is the
+% result.
+%
+% The original version of this program simply displayed the status of
+% the keyboard.  It soon occured to me that it could just as easily
+% simulate keyboard input.  Not long afterward I added the on/off switch
+% and made it load "liteitem.ps" if it wasn't already loaded.
+% Josh Siegel suggested binding control and shift to the other mouse
+% keys, which turned out to be quite practical.  Another suggestion was
+% to display the keycaps according to the current bindings (and related
+% ideas), which did not turn out to be practical.  Perhaps someone else
+% will take up the cause.
+%
+% Thanks to comp.windows.news readers who put up with (numerous) early
+% versions of this program, and who provided valuable feedback for new
+% features.
+%
+% The following features of the program may need some explanation:
+%   + KeySee assumes you have a Sun-3 style keyboard.  This is true
+%     of all Sun-3 and Sun-4 "kb" devices, but not the 386i.
+%     It is relatively simple to accomodate other keyboard layouts.
+%   + The On/Off button determines whether keyboard monitoring is
+%     enabled.
+%   + The Cursor/Click button controls the keyboard focus mode:
+%     "cursor follows mouse" or "click to type."  Note that the button
+%     changes even if you change focus mode by other means!
+%   + Ctl, Left Shift, and Left (meta) are "sticky."  One press turns
+%     it on, another turns it off.
+%   + The Adjust button is "Ctl" and the Menu button is "Shift" except
+%     that they are not sticky.
+%   + When the monitor is "Off," the keyboard doesn't highlight mouse
+%     operations.  This is a feature, not a bug.  The cute thing here is
+%     when you press "A" with your mouse, it doesn't gray out because
+%     you pressed it (like a button would) but because it really thinks
+%     you pressed the "A" key.  If the monitor is off, it just doesn't
+%     know.  It would be easy to "fix" but I'm not sure it's broken.
+%     If enough people feel strongly about it I'll change it.
+%   + Note what happens if you press L5 or L7 with your mouse!  For this
+%     to work it is important that simulated events have proper screen
+%     coordinates (/XLocation and /YLocation values).
+%   + Note what happens when you press the *real* L1 key.  Apparently the
+%     kernel hides the L1 down in case you also hit "A" and then gives you
+%     *both* a down and up event when (if!) the key comes up again.
+%   + Keys will not simulate down or up events if they are already in the
+%     result state.  This is to prevent key "pumping" where you manage to
+%     create more down events than up.  This is particularly important in
+%     the case of shift keys.
+%   + Because KeySee operates as close to the raw keyboard as possible,
+%     simulated events look very real -- even to the extent that KeySee
+%     shifts work with real keys and real shifts work with KeySee key
+%     hits.  About the only difference is that the /KeyState interest field
+%     isn't (cannot be) set.  Apparently /KeyState isn't really used for
+%     much.  Perhaps someone can explain SCANNER in user_edit_template(UI.ps)
+%     to me.  Possibly /KeyState would be useful for mouse events so that
+%     you detect shifted mouse buttons, etc.  Better would be to use
+%     the {shift|caps|meta|control}_keys_down entries in UI_private.
+%   + Serious NeWS hacks might want to look at some of the comments in here.
+%     There are some good tricks (many learned from Don Hopkins's code and
+%     quite a few learned the old-fashioned way) and important observations
+%     documented here. The following techniques are illustrated here:
+%     - Dictionaries as interest /Names; event handling.
+%     - Raw keyboard input handling.
+%     - Managing canvases with LOTS of items.
+%     - Playing games with the icon.
+%     - Tricking items into drawing themselves somewhere besides where they
+%	really live (i.e.: in the icon!)
+%     - Subclassing of items and windows.  I strongly suggest subclassing
+%       windows rather than "defing" things in to a vanilla window.
+%     - How I learned to stop worrying and love polymorphism
+%       (Dr. Strangehack)
+%   + KeySee is a bit slow on a 3/50.  Especially if you run two or more!
+%
+% Oct. 1, 1988  SJS
+%
+%   + Simplified mouse menu and adjust button handling.  Changing the menu
+%     key to the meta will now only require an extremely trival change.
+%     Search for "meta" below to find the code.
+%   + Despite precautions taken to avoid the situation it is sometimes
+%     possible to "pump" a key (it isn't easy, mind you, just possible)
+%     if you should find keys inexplicably stuck in caps or control mode,
+%     hit "L1" to reset the keystate.
+%   + An interesting and perplexing problem occurs when KeySee is run in
+%     color (non-retained) and it is partially obscured by another canvas.
+%     When you press the L5 button and the key comes up, it attempts to
+%     redraw itself to the "up" color, but the canvas is clipped to the
+%     damage path, rendering the redraw ineffective.  There doesn't seem
+%     to be any good solution to this problem.
+%
+% Oct. 4, 1988  SJS
+%
+%   + Stopped dummy (spacer) buttons from sending events.  Previously, they
+%     sent bogus but apparently harmless events with "null" as the name.
+%
+% Oct. 6, 1988  SJS
+%
+%   + Added "xor" style highlighting code.  If you find KeySee too slow,
+%     find "/SpeedHacks? false def" and change "false" to "true".
+%
+% Oct. 11, 1988	SJS
+%   + Changed cycle items to use prevailing background and text colors
+%     to be sure that they can be seen when the background is black.
+%     There's no accounting for taste.
+%
+% Oct. 26, 1988 SJS
+%   + As there have been no changes to KeySee for nearly a month,
+%     it, in its present state, shall be called KeySee 1.1 and
+%     released for (I hope) one final time.
+%
+
+systemdict /Item known not { (NeWS/liteitem.ps) run } if
+
+/KeyItem LabeledItem dictbegin
+    /ItemDownColor   .5 .5 .5 rgbcolor def
+    /ItemRadius	     4		       def
+    /Station	     null	       def
+    /StickyKey?	     false	       def
+    /ItemValue	     false	       def
+dictend classbegin
+    /new { % label canvas width height => instance
+	() /Center nullproc 6 3 roll /new super send begin
+	    ItemLabel /OU eq {  % over/under key label
+		/LowerLabel exch def
+		/UpperLabel exch def
+	    } if
+	    currentdict
+	end
+    } def
+    /SpeedHacks? false def	% enable speed hacks?
+    /ItemLabelFont   /Times-Roman findfont 10 scalefont def
+    /setvalue { % bool => -   -- true == down, false == up
+	/ItemValue exch store
+	ItemValue ItemPaintedValue ne {
+	    SpeedHacks? {
+		gsave ItemCanvas setcanvas HiLightKey grestore
+		/ItemPaintedValue ItemValue def
+	    } {
+		/paint self send
+	    } ifelse
+	} if
+    } def
+    /JustSetvalue { % bool => -   -- paint but don't draw it
+	/ItemValue exch store
+    } def
+    /PaintIfNeeded { % - => -	  -- draw it if needed
+	ItemValue ItemPaintedValue ne {/paint self send} if
+    } def
+    /KS 2 def	% Key Separation
+    /ItemShape {  % bool => -   -- shape of item (false->inset)
+	{ ItemRadius KS 2 idiv dup ItemWidth KS sub ItemHeight KS sub }
+	{ ItemRadius .5 sub KS 2 idiv .5 add dup
+	    ItemWidth KS sub 1 sub ItemHeight KS sub 1 sub }
+	ifelse
+	rrectpath
+    } def
+    /PaintItem {
+	true ItemShape
+	gsave
+	ItemFillColor ItemValue null ne {
+	    SpeedHacks? not ItemValue and { pop ItemDownColor } if
+	} if
+	setcolor fill
+	grestore
+	ItemBorderColor setcolor stroke
+	ShowLabel
+	SpeedHacks? ItemValue and { HiLightKey } if
+    } def
+    /HiLightKey {
+	gsave false ItemShape 0 setgray 5 setrasteropcode fill grestore
+    } def
+    /OU { % over-under proc
+	% if the Label is a sym, it is executed passing "true" to draw it
+	%	and "false" to return the width and height.
+	% Hack: we pretend that the labels have no width and then
+	%       cshow them.
+	{ % draw it
+	    0 currentfont fontdescent 1 add 2 idiv rmoveto
+	    gsave 0 currentfont fontheight rmoveto UpperLabel cshow grestore
+	    LowerLabel cshow
+	} { % size it
+	    0 currentfont fontheight 2 mul
+	} ifelse
+    } def
+    /reshape { % x y w h
+	/reshape super send
+	LabelSize % w h
+	ItemHeight exch sub 2 div /LabelY exch def
+	ItemWidth exch sub 2 div /LabelX exch def
+    } def
+    /SetStation { % stationcode => -
+	16#6F00 add		% This is magic
+	/Station exch def
+    } def
+    /ClientDown { true FakeKey } def
+    /ClientUp { false FakeKey } def
+    /FakeKey {	% bool(true==down) => -    -- fake a key transition
+	StickyKey? {
+	    { ItemValue not ReallyFakeKey } if
+	} {
+	    ReallyFakeKey
+	} ifelse
+    } def
+    /ReallyFakeKey { % bool(true==down) -- bypass sticky goo
+	dup ItemValue ne exch /ItemValue exch store
+	{
+	    createevent dup begin
+		/Name Station def
+		/Action ItemValue /DownTransition /UpTransition ifelse def
+		gsave framebuffer setcanvas currentcursorlocation
+		    /YLocation exch def /XLocation exch def
+		grestore
+	    end sendevent
+	} if
+    } def
+    /SetSticky { /StickyKey? exch def } def
+
+classend def
+
+/DummyKeyItem KeyItem [ ]   % just uses up space
+classbegin
+    /new { % canvas width height => instance
+	() 4 1 roll
+	/new super send
+    } def
+    /ReallyFakeKey { pop } def	% don't send key events
+    /PaintItem nullproc def
+    /SetStation { pop } def
+classend def
+
+% really a cycle item but reaponds to some "KeyItem" messages:
+/CycleKey CycleItem dictbegin
+    /Station	     null   def
+dictend classbegin
+    /new { %  choices notify can w h => instance
+	/cycle 6 1 roll /Right 5 1 roll
+	/new super send
+    } def
+    /SetStation { pop } def
+    /PaintIfNeeded nullproc def
+classend def
+
+/KeeSee DefaultWindow dictbegin
+    /Items	       null 	def
+    /ItemList	       null	def
+    /TmpDict	       null	def
+    /Watcher	       null	def
+    /IconKey	       null	def
+    /ItemProc	       null	def
+    /EventProc	       null	def
+dictbegin
+dictend classbegin
+
+    /new {
+	/new super send begin
+	    /PaintClient {
+		ClientFillColor fillcanvas
+		ClientCanvas setcanvas
+		ItemList { paintitems } forall
+	    } def
+	    /TmpDict 20 dict def
+	    currentdict
+	end
+    } def
+    /FrameLabel (Key See) def
+    /IconLabel FrameLabel def
+    /KeyWidth 24 def	% Width (&Height) of Std Key
+    /Border 4 def   	% border around keyboard proper
+
+    /Key { % (Label) WidthFactor => item
+	KeyWidth mul
+	ClientCanvas exch KeyWidth /new KeyItem send
+	pause
+    } def
+    /Dummy { % WidthFactor => item
+	KeyWidth mul ClientCanvas exch KeyWidth /new DummyKeyItem send
+    } def
+    /Sticky { % item => item
+	true /SetSticky 2 index send
+    } def
+
+    /CreateClientCanvas {
+	/CreateClientCanvas super send
+
+	% various items:
+	/Items dictbegin
+	    (A) 0 get 1 (Z) 0 get { % alpha keys
+		1 string dup 0 4 -1 roll put
+		dup 1 string copy cvn exch 1 Key def
+	    } for
+	    /D1 (!)(1)/OU 1 Key def
+	    /D2 (@)(2)/OU 1 Key def
+	    /D3 (#)(3)/OU 1 Key def
+	    /D4 ($)(4)/OU 1 Key def
+	    /D5 (%)(5)/OU 1 Key def
+	    /D6 (^)(6)/OU 1 Key def
+	    /D7 (&)(7)/OU 1 Key def
+	    /D8 (*)(8)/OU 1 Key def
+	    /D9 (\()(9)/OU 1 Key def
+	    /D0 (\))(0)/OU 1 Key def
+	    /Caps (Caps) 1.25 Key def
+	    /Left (Left) 1.5 Key Sticky def
+	    /Space () 9 Key def
+	    /SPC (Space) 2.25 Key def 0 0 /move SPC send
+	    /Right (Right) 1.5 Key def
+	    /Alt (Alt) 1.75 Key def
+	    /LShift (Shift) 2.25 Key Sticky def
+	    /RShift (Shift) 1.75 Key def
+	    /LF (LF) 1 Key def
+	    /L-C (<)(,)/OU 1 Key def
+	    /G-P (>)(.)/OU 1 Key def
+	    /Q-S (?)(/)/OU 1 Key def
+	    /Ctl (Ctl) 1.75 Key Sticky def
+	    /C-S (:)(;)/OU 1 Key def
+	    /Q-Q (")(')/OU 1 Key def
+	    /Ret (Return) 2.25 Key def
+	    /Tab (Tab) 1.5 Key def
+	    /O-B ({)([)/OU 1 Key def
+	    /C-B (})(])/OU 1 Key def
+	    /Del (Del) 1.5 Key def
+	    /Esc (Esc) 1 Key def
+	    /U-D (_)(-)/OU 1 Key def
+	    /P-E (+)(=)/OU 1 Key def
+	    /V-B (|)(\\)/OU 1 Key def
+	    /T-Q (~)(`)/OU 1 Key def
+	    /F1 (F1) 1 Key def
+	    /F2 (F2) 1 Key def
+	    /F3 (F3) 2 Key def
+	    /F4 (F4) 2 Key def
+	    /F5 (F5) 2 Key def
+	    /F6 (F6) 2 Key def
+	    /F7 (F7) 2 Key def
+	    /F8 (F8) 1 Key def
+	    /F9 (F9) 1 Key def
+	    /BS (BS) 1 Key def
+	    /L1 (L1) 1 Key def /L2 (L2) 1 Key def /X1 .5 Dummy def
+	    /L3 (L3) 1 Key def /L4 (L4) 1 Key def /X2 .5 Dummy def
+	    /L5 (L5) 1 Key def /L6 (L6) 1 Key def /X3 .5 Dummy def
+	    /L7 (L7) 1 Key def /L8 (L8) 1 Key def /X4 .5 Dummy def
+	    /L9 (L9) 1 Key def /L10 (L10) 1 Key def /X5 .5 Dummy def
+	    /X6 .5 Dummy def /R1 (R1) 1 Key def
+	        /R2 (R2) 1 Key def /R3 (R3) 1 Key def
+	    /X7 .5 Dummy def /R4 (R4) 1 Key def
+	        /R5 (R5) 1 Key def /R6 (R6) 1 Key def
+	    /X8 .5 Dummy def /R7 (R7) 1 Key def
+	        /R8 (R8) 1 Key def /R9 (R9) 1 Key def
+	    /X9 .5 Dummy def /R10 (R10) 1 Key def
+	        /R11 (R11) 1 Key def /R12 (R12) 1 Key def
+	    /X10 .5 Dummy def /R13 (R13) 1 Key def
+	        /R14 (R14) 1 Key def /R15 (R15) 1 Key def
+	    /X11 .5 Dummy def
+	    /OnOff [ (On) (Off) ]
+	        { ItemValue 0 eq /watch /stopwatch ifelse ThisWindow send }
+	        ClientCanvas KeyWidth dup 2.5 mul exch /new CycleKey send def
+	    textcolor ClientFillColor {
+		/ItemFillColor exch def
+		/ItemTextColor exch def
+	    } OnOff send
+	    /Mode [ (Cursor) (Click) ]
+		{ ItemValue 0 eq /CursorFocus /ClickFocus ifelse setfocusmode }
+	        ClientCanvas KeyWidth dup 3 mul exch /new CycleKey send def
+	    textcolor ClientFillColor {
+		/ItemFillColor exch def
+		/ItemTextColor exch def
+	    } Mode send
+	    Mode /ItemValue
+	        UI_private /FocusMode get /CursorFocus eq 0 1 ifelse put
+	dictend store
+
+	% Display order
+	/ItemList Items begin [ % Key rows from bottom to top
+	    [ OnOff 119 Caps Left Space Right 19 Alt X11 Mode ] Station
+	    [ 95 L9 97 L10 X5 99 LShift Z X C
+		V B N M L-C G-P Q-S RShift LF
+	        X10 112 R13 R14 R15 ] Station
+	    [ 72 L7 L8 X4 76 Ctl A S D F G H J K L C-S Q-Q 89 Ret
+	        X9 91 R10 R11 R12 ] Station
+	    [ 49 L5 51 L6 X3 53 Tab Q W E R T Y U I O P O-B C-B Del
+	        X8 68 R7 R8 R9 ] Station
+	    [ 25 L3 L4 X2 29 Esc D1 D2 D3 D4 D5 D6 D7 D8 D9 D0
+		U-D P-E 88 V-B 42 T-Q
+	        X7 45 R4 R5 R6 ] Station
+	    [ 1 L1 3 L2 X1 5 F1 F2 8 F3 10 F4 12 F5
+		14 F6 16 F7 F8 F9 43 BS
+		X6 21 R1 R2 R3 ] Station
+	] end store
+        /ItemProc Items forkitems store
+    } def
+
+    /IconWidth 64 def /IconHeight 48 def
+
+    /PaintIconKey { 	% paints IconKey centered in icon
+	% a tasty hack!
+	IconKey null ne {
+	    { ItemHeight ItemWidth } IconKey send
+	    IconWidth exch sub 2 idiv exch
+	    IconHeight exch sub 2 idiv 6 add
+	    gsave translate  /PaintItem IconKey send  grestore
+	} if
+    } def
+
+    /PaintIcon { gsave IconCanvas setcanvas
+	IconFillColor fillcanvas IconBorderColor strokecanvas
+	IconTextColor setcolor
+	PaintIconKey
+	PaintIconLabel
+    grestore } def
+
+    /flipiconic {
+	/flipiconic super send
+	Iconic? {
+	    painticon    % update icon image
+	} {  % we don't paint items when they are not displayed, so update.
+	    ItemList { { /PaintIfNeeded exch send } forall } forall
+	} ifelse
+    } def
+
+    /SetIconKey { gsave IconCanvas setcanvas
+	IconKey null ne {	   % erase previous key image
+	    { ItemWidth ItemHeight } IconKey send
+	    IconWidth 2 index sub 2 idiv
+	    IconHeight 2 index sub 2 idiv 6 add
+	    moveto rect
+	    IconFillColor setshade fill
+	} if
+	JustSetIconKey
+	IconTextColor setcolor PaintIconKey
+    grestore } def
+
+    /JustSetIconKey {
+	Items begin
+	    dup Space eq {  % normal space bar is too big!
+		/ItemValue get SPC dup /ItemValue 4 -1 roll put
+	    } if
+	end
+	/IconKey exch def
+    } def
+
+    /eventmonitor { % start eventmonitor
+	EventProc null ne { EventProc killprocess } if
+	/EventProc {
+	    createevent dup begin
+		/Name  /SetFocusPolicy def 	% focus mode change
+		/Priority 10 def
+	    end expressinterest
+	    createevent dup begin
+		/Name [ MenuButton AdjustButton ] def
+		/Action [ /UpTransition /DownTransition ] def
+		/Canvas ClientCanvas def
+		% evidence suggests that mouse events are exclusive whether
+		%     you want it or not!
+		/Exclusivity true def
+	    end expressinterest
+	    {
+		awaitevent begin
+		    % invoke name w/ Action as param:
+		    %     "0 pop" keeps "self send" from being expunged
+		    Action Name self 0 pop send
+		end
+	    } loop
+	} fork def
+    } def
+
+    /FakeKey {	% action key => -
+	Items exch get	 % action keyitem
+	exch /DownTransition eq exch % bool keyitem
+	/ReallyFakeKey exch send     % bypass sticky key handling
+    } def
+
+    AdjustButton { /Ctl FakeKey } def  % action => -
+    MenuButton  { /LShift FakeKey } def % action => - % if you prefer "shift"
+    % MenuButton  { /Left FakeKey } def % action => - % if you prefer "meta"
+
+    /SetFocusPolicy { % action => -
+	% action is new mode
+	/CursorFocus eq 0 1 ifelse /setvalue Items /Mode get send
+    } def
+
+    /stopwatch {    % stop event loop
+	Watcher null ne { Watcher killprocess } if
+    } def
+    /watch {	% start event loop
+	stopwatch
+	/Watcher {
+	    createevent dup begin
+		/Name dictbegin	% dict: keycode => item
+		    Items {
+			exch pop dup /Station get
+			dup null eq { pop pop } { exch def } ifelse
+		    } forall
+		dictend def
+		/Priority 10 def
+	    end expressinterest
+	    {
+		awaitevent begin
+		    % Note: Name is key item because of interest /Name dict
+
+		    pause % perhaps this will let us do real work first
+
+		    % "self /foo exch send" keeps the method compiler
+		    % from removing self send.  This is important to that
+		    % when (Just)SetIconKey is invoked it will end up
+		    % setting IconKey in the object, not in the event.
+		    % failing to do this results in having the interest
+		    % (which is apparently reused for all keyboard events)
+		    % referencing an item and consequently its parent (the
+		    % ClientCanvas), causing the canvas to just stick around
+		    % forever.  Probably defing bogus entries in events should
+		    % be an error.  This was no fun to find.
+
+		    Action /DownTransition eq
+		    Iconic? {
+			/JustSetvalue Name send
+			Name self /SetIconKey exch send
+		    } {
+			/setvalue Name send
+			Name self /JustSetIconKey exch send
+		    } ifelse
+		end
+	    } loop
+	} fork def
+    } def
+
+    /Station { % [ KeyItems-and-indexes ] => [ KeyItems ]
+	% sets the station codes in the array's items.
+	mark exch 0 exch { % [ item item ... n currentitem
+	    dup type /integertype eq {
+		exch pop
+	    } {
+		2 copy /SetStation exch send
+		exch 1 add
+	    } ifelse
+	} forall
+	pop ]
+    } def
+
+    /ShapeClientCanvas {
+	% This is a real good way to position items!
+	/ShapeClientCanvas super send
+	Recalc	% recalc layout params
+	ClientCanvas setcanvas
+
+	% now, move the items to their rightful places
+	TmpDict begin
+	    /SepX 0 def /SepY 0 def
+	    /Y Border def
+            ItemList {
+		/X Border def
+		/MaxH 0 def
+		{
+		    X Y /move 3 index send
+		    /ItemHeight 1 index send dup MaxH gt
+			{ /MaxH exch def } { pop } ifelse
+		    /ItemWidth exch send X add SepX add /X exch store
+		} forall
+		/Y Y MaxH SepY add add def
+	    } forall
+	end
+	Watcher null eq { watch } if
+	EventProc null eq { eventmonitor } if
+    } def
+
+    /placeit {	% one click placement and sizing
+	gsave fboverlay setcanvas getclick grestore
+	BorderLeft BorderRight add 21 KeyWidth mul add Border 2 mul add
+	BorderTop BorderBottom add 6 KeyWidth mul add Border 2 mul add
+	3 -1 roll 1 index sub 3 1 roll % % ulx uly w h => llx lly w h
+	reshape
+    } def
+
+    /Recalc { % - => -  -- recalculates various layout parameters
+	% for when I decide to handle resizing!
+    } def
+
+classend def
+
+/win framebuffer /new KeeSee send def
+/placeit win send
+/map win send
+
+% ----- Anything after this line is not part of the program -----

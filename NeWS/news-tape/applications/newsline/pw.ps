@@ -1,0 +1,557 @@
+%!
+%% $Header: pw.ps,v 1.3 88/06/14 17:17:52 bvs Locked $
+
+%  This file contains the classes used by the class browser.
+%  The classes included are:
+%     Picture   --  an Item similar in concept to the NeWS1.1 textcanvas
+%     PicWindow --  a LiteWindow that holds Pictures
+%     PicScroll --  a SimpleScrollbar with a few modifications (auto scrolling)
+%
+%  This code was mostly written in August 1987 but was revised to work with
+%  NeWS 1.1 in May 1988.  Feel free to use it as you will.
+%
+%  Bruce V. Schwartz
+%  Sun Microsystems
+%  bvs@sun.com
+%  
+
+systemdict begin
+    systemdict /Item known not { (NeWS/liteitem.ps) run } if
+    systemdict /SimpleScrollbar known not { (NeWS/liteitem.ps) run } if
+end
+
+%% This file contains classes:  PicWindow Picture PicScroll
+/PicWindow LiteWindow
+dictbegin
+    /PicArray []  def
+    /BorderRight 1 def
+    /BorderLeft 1 def
+    /BorderBottom 1 def
+dictend
+classbegin
+    /PaintIcon
+    {
+        1 fillcanvas
+        .8 setgray
+        IconWidth 2 div 1 sub IconHeight 4 div 5 sub 5 Sunlogo
+    } def
+    /PaintClient
+    {
+        %% (paint client %\n) [ PicArray ] dbgprintf
+        %% PicArray { (    %\n) [ 3 2 roll ] dbgprintf } forall
+        PicArray paintitems
+    } def
+    /setpicarray
+    {
+        /PicArray exch def
+    } def
+    /destroy
+    {
+        %% (destroying arrays\n) [] dbgprintf
+        PicArray { /destroy exch send } forall
+        %% (destroying window\n) [] dbgprintf
+        /destroy super send
+        %% (destroyed window\n) [] dbgprintf
+    } def
+classend
+def
+
+/PicScrollbar SimpleScrollbar
+dictbegin
+    /Owner            null     def
+    /MouseInItem?    false    def
+    /ScrollMonitor    null    def
+    /ScrollProcess    null    def
+    /ScrollDelay    1 60 div 20 div def    % 1/10 second
+    /LastX            null    def
+    /LastY            null    def
+dictend
+classbegin
+    /new {
+        /new super send
+        begin
+            /ScrollMonitor createmonitor def
+            currentdict
+        end
+    } def
+    /setowner {
+        /Owner exch def
+    } def
+
+    /ClientDown { % - => -
+        CurrentEvent begin XLocation YLocation end
+        /LastY exch def
+        /LastX exch def
+        SetScrollMotion
+        /MouseInItem? true def
+        HiliteItem
+        DoScroll
+        ScrollProcess null ne
+            { ScrollMonitor { ScrollProcess killprocess } monitor }
+        if
+        /ScrollProcess { InteractiveScroll } fork def
+    } def
+
+    /InteractiveScroll {
+        {
+            ScrollDelay sleep
+            ScrollMonitor { EventInItem? { DoScroll } if } monitor
+        } loop 
+    } def
+
+    /ClientUp { % - => - 
+        ScrollMonitor { ScrollProcess killprocess } monitor
+        /ScrollProcess null def
+        /MouseInItem? false def
+        UnhiliteItem
+        ItemValue ItemInitialValue ne { /Notify Owner send } if
+    } def
+
+    /ClientDrag { % - => -
+        CurrentEvent begin XLocation YLocation end
+        /LastY exch def
+        /LastX exch def
+        CheckItem
+    } def
+
+    /PaintBar { } def
+    /EraseBox { } def
+    /PaintButtons {
+        BarViewPercent 1 gt { /PaintButtons super send } if
+    } def
+
+    /PaintBox { % - => - (paint box)
+        %(PaintBox %\n) [ BarViewPercent ] dbgprintf
+        %(pause...) [] dbgprintf 1 60 div sleep (!!\n) [] dbgprintf
+        gsave
+        10 dict begin
+
+        /x 1 def
+        /w ItemWidth 2 sub def
+
+        BarViewPercent 1 le
+        {
+            .5 setgray
+            x ButtonSize w ItemHeight ButtonSize dup add sub rectpath fill
+        }
+        {
+            1 1 BarViewPercent div sub 1 ItemValue sub mul
+                ItemHeight ButtonSize dup add sub mul ButtonSize add
+            /y exch def
+
+            1 BarViewPercent div ItemHeight ButtonSize dup add sub mul 
+            /h exch def
+
+            %
+            % do the normal bar
+            %
+            ItemFillColor setcolor
+            x ButtonSize w y ButtonSize sub rectpath fill
+            x y h add w ItemHeight ButtonSize sub y sub h sub rectpath fill
+
+            %
+            % do the big scroll box
+            %
+            /ybut ItemValue ValueToY def
+            .5 setgray
+            x y w ybut y sub rectpath fill
+            x ybut ButtonSize add w h ButtonSize sub ybut sub y add rectpath fill
+            %
+            % do the little scroll box
+            %
+            ItemValue BoxPath
+            BoxFillColor setcolor gsave fill grestore
+            ItemBorderColor setcolor eofill
+        } ifelse
+        end
+        /ItemPaintedValue ItemValue def
+        grestore
+        
+        /Notify Owner send
+    } def
+
+    /EventInItem? {    % - => bool
+        ScrollMotion
+        {
+            /ScrollAbsolute { false }
+            /ScrollPageForward    % top
+            {
+                LastX dup 0 ge exch ButtonSize le
+                LastY ItemValue ValueToY ButtonSize add ge
+                LastY ItemHeight ButtonSize sub le
+                and and and
+            }
+            /ScrollPageBackward    % bottom
+            {
+                LastX dup 0 ge exch ButtonSize le
+                LastY ButtonSize ge
+                LastY ItemValue ValueToY le
+                and and and
+            }
+            /ScrollLineForward    % top
+            {
+                LastX 0 ge
+                LastX ButtonSize le
+                LastY ItemHeight ButtonSize sub ge
+                LastY ItemHeight le
+                and and and
+            }
+            /ScrollLineBackward    % bottom
+            {
+                LastX 0 ge
+                LastX ButtonSize le
+                LastY 0 ge
+                LastY ButtonSize le
+                and and and
+            }
+        } case
+        BarViewPercent 1 le { pop false } if
+    } def 
+
+    /CheckItem {
+        ScrollMotion
+        {
+            /ScrollAbsolute {DoScroll}
+            /ScrollPageForward    % top
+            {
+                /MouseInItem? EventInItem? def
+            }
+            /ScrollPageBackward    % bottom
+            {
+                /MouseInItem? EventInItem? def
+            }
+            /ScrollLineForward    % top
+            {
+                EventInItem? dup
+                    { MouseInItem? not { HiliteItem } if }
+                    { MouseInItem? { UnhiliteItem } if }
+                ifelse
+                /MouseInItem? exch def
+            }
+            /ScrollLineBackward    % bottom
+            {
+                EventInItem? dup
+                    { MouseInItem? not { HiliteItem } if }
+                    { MouseInItem? { UnhiliteItem } if }
+                ifelse
+                /MouseInItem? exch def
+            }
+        } case
+    } def 
+
+    /HiliteItem {
+        ScrollMotion
+        {
+            /ScrollAbsolute { }
+            /ScrollPageForward { }
+            /ScrollPageBackward { }
+            /ScrollLineForward    % top
+            {
+                0 ItemHeight ButtonSize ButtonSize neg rectpath
+                5 setrasteropcode fill
+            }
+            /ScrollLineBackward    % bottom
+            {
+                0 0 ButtonSize ButtonSize rectpath
+                5 setrasteropcode fill
+            }
+        } case
+    } def
+
+
+    /UnhiliteItem {
+        gsave
+        ScrollMotion
+        {
+            /ScrollAbsolute    {}
+            /ScrollPageForward    {}
+            /ScrollPageBackward    {}
+            /ScrollLineForward    % top
+            {
+                0 ItemHeight ButtonSize sub ButtonSize ButtonSize rectpath
+                clip
+                PaintButtons
+            }
+            /ScrollLineBackward    % bottom
+            {
+                0 0 ButtonSize ButtonSize rectpath
+                clip
+                PaintButtons
+            }
+        } case
+        grestore
+    } def
+
+classend
+def
+
+
+/Picture Item
+dictbegin
+    /BufferCanvas    null    def
+    /BufferWidth    0        def
+    /BufferHeight    0        def
+
+    /HScrollbar        null    def
+    /VScrollbar        null    def
+    /HScrollbar?    true    def
+    /VScrollbar?    true    def
+    /HScrollWidth    0        def
+    /VScrollWidth    0        def
+
+    /ScrollWidth    16        def
+    /ZoomFactor        1        def
+
+    /NotifyUserDown        { pop pop }    def    % x y => -
+    /NotifyUserUp        { pop pop }    def    % x y => -
+    /NotifyUserDrag        { pop pop }    def    % x y => -
+    /NotifyUserEnter    { pop pop }    def    % x y => -
+    /NotifyUserExit        { pop pop }    def    % x y => -
+
+dictend
+classbegin
+    /new {    % parentcanvas width height => instance
+        % (new begin\n) [] dbgprintf
+        /new super send
+        begin
+            /BufferHeight    ItemHeight    def
+            /BufferWidth    ItemWidth    def
+            CreateScrollbars
+            CreateBuffer
+            currentdict
+        end
+        % (new end\n) [] dbgprintf
+    } def
+
+    /destroy {
+        HScrollbar null ne { null /setowner HScrollbar send } if
+        VScrollbar null ne { null /setowner VScrollbar send } if
+        %% BufferCanvas /Mapped false put
+        %% /BufferCanvas null def
+    } def
+
+
+    /setzoom { % zoomfactor => -
+        /ZoomFactor exch def
+    } def
+
+
+    /reshape { % x y w h => -
+        /reshape super send
+        ReshapeScrollbars
+    } def
+
+    /reshapebuffer { % w h => -
+        /BufferHeight exch def
+        /BufferWidth exch def
+        ReshapeBuffer
+        ReshapeScrollbars
+    } def
+
+    /getcanvas {
+        BufferCanvas
+    } def
+
+    /updatecanvas {
+        PaintBuffer
+    } def
+
+    /makestartinterests { 
+        /makestartinterests HScrollbar send
+        /makestartinterests VScrollbar send
+        [ exch aload length 2 add -1 roll aload pop ]    % join 2 arrays
+        /makestartinterests super send
+        [ exch aload length 2 add -1 roll aload pop ]    % join 2 arrays
+    } def
+
+    /PaintItem {
+        %% (PaintItem begin\n) [] dbgprintf
+        %% ItemCanvas setcanvas .9 fillcanvas
+        PaintBuffer
+        /paint VScrollbar send
+        /paint HScrollbar send
+        %% (PaintItem end\n) [] dbgprintf
+    } def
+
+    /Notify {
+        % (picture got notified\n) [] dbgprintf
+        NotifyUser
+        PaintBuffer
+    } def
+
+    /PaintBuffer {
+        % (PaintBuffer begin \n) [ ] dbgprintf
+        gsave
+        ItemCanvas setcanvas
+
+        %
+        % compute clipping region
+        %
+        0
+        HScrollWidth
+        ItemWidth VScrollWidth sub
+        ItemHeight HScrollWidth sub
+        rectpath
+        % (clip to % % % %\n) [ pathbbox ] dbgprintf
+        clip
+
+        %
+        % compute translation
+        %
+        BufferWidth ZoomFactor mul ItemWidth sub VScrollWidth add neg
+        dup 0 lt
+        {
+            1 /getvalue HScrollbar send sub
+            mul
+        }
+        { pop 0 } ifelse
+
+        BufferHeight ZoomFactor mul ItemHeight sub HScrollWidth add neg
+        dup 0 lt
+        {
+            1 /getvalue VScrollbar send sub
+            mul
+        }
+        { } ifelse
+        HScrollWidth add
+
+        % 2 copy (translate by % %\n) [ 4 2 roll ] dbgprintf
+        translate
+
+        BufferWidth BufferHeight 
+        % 2 copy (scale by % %\n) [ 4 2 roll ] dbgprintf
+        scale
+        ZoomFactor dup scale
+
+        pause
+        BufferCanvas imagecanvas
+        pause
+        grestore
+        % (PaintBuffer end\n) [ ] dbgprintf
+    } def
+
+    /CreateBuffer { % - => -
+        /BufferCanvas framebuffer newcanvas def
+        BufferCanvas /Retained true put
+        BufferCanvas /Opaque true put
+
+        ReshapeBuffer
+    } def
+
+    /ReshapeBuffer { % - => -
+        gsave
+        framebuffer setcanvas
+        0 0 BufferWidth BufferHeight
+        rectpath
+        BufferCanvas reshapecanvas
+        grestore
+    } def
+
+    /CreateScrollbars { % - => - 
+        % (begin CreateScrollbars\n) [] dbgprintf
+        /HScrollWidth HScrollbar? { ScrollWidth } { 0 } ifelse def
+        /VScrollWidth VScrollbar? { ScrollWidth } { 0 } ifelse def
+
+        ItemWidth VScrollWidth le { /VScrollWidth ScrollWidth 2 div def } if
+        ItemHeight HScrollWidth le { /HScrollWidth ScrollWidth 2 div def } if
+
+        /HScrollbar
+            [1 0 .01 .1 BufferWidth ItemWidth VScrollWidth sub div ]
+            1 {} ItemCanvas
+            /new PicScrollbar send
+            dup /BarVertical? false put
+        def
+        /VScrollbar
+            [1 0 .01 .1 BufferHeight ItemHeight HScrollWidth sub div ]
+            1 {} ItemCanvas
+            /new PicScrollbar send
+        def
+
+        self /setowner HScrollbar send
+        self /setowner VScrollbar send
+        % (end CreateScrollbars\n) [] dbgprintf
+    } def
+
+    /ReshapeScrollbars {
+        /HScrollWidth HScrollbar? { ScrollWidth } { 0 } ifelse def
+        /VScrollWidth VScrollbar? { ScrollWidth } { 0 } ifelse def
+        10 dict begin
+            /h ItemHeight def /w ItemWidth def
+            /s ScrollWidth def
+                
+            [1 0 .01 .1 BufferWidth ItemWidth VScrollWidth sub div ]
+            /setrange HScrollbar send
+            [1 0 .01 .1 BufferHeight ItemHeight HScrollWidth sub div ]
+            /setrange VScrollbar send
+
+
+            HScrollbar?
+                { 0 0 w VScrollWidth sub s }
+                { 0 0 0 0 }
+            ifelse
+            % 4 copy (hscroll % % % %\n) [ 6 2 roll ] dbgprintf
+            /reshape HScrollbar send
+
+            VScrollbar?
+                {  w s sub HScrollWidth s h HScrollWidth sub }
+                { 0 0 0 0 }
+            ifelse
+            % 4 copy (vscroll % % % %\n) [ 6 2 roll ] dbgprintf
+            /reshape VScrollbar send
+        end
+    } def
+
+    /ClientDown {
+        % (Picture ClientDown\n) [] dbgprintf
+
+        % compute translation
+        %
+        BufferWidth ZoomFactor mul ItemWidth sub VScrollWidth add neg
+        dup 0 lt
+        {
+            1 /getvalue HScrollbar send sub
+            mul
+        }
+        { pop 0 } ifelse
+
+        BufferHeight ZoomFactor mul ItemHeight sub HScrollWidth add neg
+        dup 0 lt
+        {
+            1 /getvalue VScrollbar send sub
+            mul
+        }
+        { } ifelse
+        HScrollWidth add
+
+        % translatex translatey
+        CurrentEvent /YLocation get sub neg exch
+        CurrentEvent /XLocation get sub neg exch
+		% (n: %\n) [ NotifyUserDown ] dbgprintf
+        { NotifyUserDown } fork
+
+    } def
+
+    /ClientUp {
+        % (Picture ClientUp\n) [] dbgprintf
+        CurrentEvent begin XLocation YLocation end
+        NotifyUserUp
+    } def
+
+    /ClientDrag    {
+        % (client drag\n) [] dbgprintf
+        CurrentEvent begin XLocation YLocation end
+        NotifyUserDrag
+    } def
+
+    /ClientEnter {
+        %% (client enter\n) [] dbgprintf
+        CurrentEvent begin XLocation YLocation end NotifyUserEnter
+    } def
+
+    /ClientExit    {
+        %% (client exit\n) [] dbgprintf
+        CurrentEvent begin XLocation YLocation end NotifyUserExit
+    } def
+
+classend
+def

@@ -1,0 +1,268 @@
+
+diff -c -r /cdrom/usr/src/lib/libcdrom/common.c ./common.c
+*** /cdrom/usr/src/lib/libcdrom/common.c	Mon Mar  8 01:13:11 1993
+--- ./common.c	Fri Jun 25 02:23:30 1993
+***************
+*** 28,33 ****
+--- 28,34 ----
+  	scsi2_status,
+  	scsi2_eject,
+  	scsi2_volume,
++ 	scsi2_volume2,
+  },
+  {
+  	"panasonic",
+***************
+*** 38,43 ****
+--- 39,45 ----
+  	panasonic_status,
+  	panasonic_eject,
+  	panasonic_volume,
++ 	panasonic_volume2,
+  },
+  {
+  	"toshiba",
+***************
+*** 48,53 ****
+--- 50,56 ----
+  	toshiba_status,
+  	toshiba_eject,
+  	toshiba_volume,
++ 	toshiba_volume2,
+  },
+  { 
+  	"mitsumi",
+***************
+*** 58,63 ****
+--- 61,67 ----
+  	mitsumi_status,
+  	mitsumi_eject,
+  	mitsumi_volume,
++ 	mitsumi_volume2,
+  },
+  { NULL },
+  };
+***************
+*** 198,201 ****
+--- 202,216 ----
+  int volume;
+  {
+  	return((*cdinfo->funcs->volume)(cdinfo, volume));
++ }
++ 
++ /*
++  * Set the stereo volume level 0 = min, 255 = max
++  */
++ int
++ cdvolume2(cdinfo, left, right)
++ struct cdinfo *cdinfo;
++ int left, right;
++ {
++ 	return((*cdinfo->funcs->volume2)(cdinfo, left, right));
+  }
+diff -c -r /cdrom/usr/src/lib/libcdrom/devs.h ./devs.h
+*** /cdrom/usr/src/lib/libcdrom/devs.h	Mon Mar  8 11:42:08 1993
+--- ./devs.h	Fri Jun 25 02:21:35 1993
+***************
+*** 21,26 ****
+--- 21,27 ----
+  	int	__P((*status)(struct cdinfo *, struct cdstatus *));
+  	int	__P((*eject)(struct cdinfo *));
+  	int	__P((*volume)(struct cdinfo *, int));
++ 	int	__P((*volume2)(struct cdinfo *, int, int));
+  };
+  
+  struct	cdinfo *scsi2_probe __P((int, char *, char *, char *, int));
+***************
+*** 30,35 ****
+--- 31,37 ----
+  int	scsi2_status __P((struct cdinfo *, struct cdstatus *));
+  int	scsi2_eject __P((struct cdinfo *));
+  int	scsi2_volume __P((struct cdinfo *, int));
++ int	scsi2_volume2 __P((struct cdinfo *, int, int));
+  
+  struct cdinfo *panasonic_probe __P((int, char *, char *, char *, int));
+  int	panasonic_close __P((struct cdinfo *));
+***************
+*** 38,43 ****
+--- 40,46 ----
+  int	panasonic_status __P((struct cdinfo *, struct cdstatus *));
+  int	panasonic_eject __P((struct cdinfo *));
+  int	panasonic_volume __P((struct cdinfo *, int));
++ int	panasonic_volume2 __P((struct cdinfo *, int, int));
+  
+  struct cdinfo *toshiba_probe __P((int, char *, char *, char *, int));
+  int	toshiba_close __P((struct cdinfo *));
+***************
+*** 46,51 ****
+--- 49,55 ----
+  int	toshiba_status __P((struct cdinfo *, struct cdstatus *));
+  int	toshiba_eject __P((struct cdinfo *));
+  int	toshiba_volume __P((struct cdinfo *, int));
++ int	toshiba_volume2 __P((struct cdinfo *, int, int));
+  
+  struct cdinfo *mitsumi_probe __P((int, char *, char *, char *, int));
+  int	mitsumi_close __P((struct cdinfo *));
+***************
+*** 54,59 ****
+--- 58,64 ----
+  int	mitsumi_status __P((struct cdinfo *, struct cdstatus *));
+  int	mitsumi_eject __P((struct cdinfo *));
+  int	mitsumi_volume __P((struct cdinfo *, int));
++ int	mitsumi_volume2 __P((struct cdinfo *, int, int));
+  
+  struct cdinfo *make_cdinfo __P((int, int));
+  int	scsi_inquiry __P((int, char *, char *, char *, int *));
+diff -c -r /cdrom/usr/src/lib/libcdrom/mitsumi.c ./mitsumi.c
+*** /cdrom/usr/src/lib/libcdrom/mitsumi.c	Mon Mar  8 01:14:05 1993
+--- ./mitsumi.c	Fri Jun 25 02:24:40 1993
+***************
+*** 238,247 ****
+  	if (val > 255)
+  		val = 255;
+  
+  	bzero(args, sizeof args);
+  	args[0] = 0xae;
+! 	args[1] = val;
+! 	args[3] = val;
+  	mitsumi_cmd(cdinfo->fd, args, 5, (char *)buf, 5);
+  	if (buf[0] & 1)
+  		fprintf(stderr, "error setting volume: %x\n", buf[0] & 0xff);
+--- 238,258 ----
+  	if (val > 255)
+  		val = 255;
+  
++ 	return mitsumi_volume2(cdinfo, val, val);
++ }
++ 
++ int
++ mitsumi_volume2(cdinfo, left, right)
++ 	struct cdinfo *cdinfo;
++ 	int left, right;
++ {
++ 	char args[20];
++ 	char buf[20];
++ 
+  	bzero(args, sizeof args);
+  	args[0] = 0xae;
+! 	args[1] = left;
+! 	args[3] = right;
+  	mitsumi_cmd(cdinfo->fd, args, 5, (char *)buf, 5);
+  	if (buf[0] & 1)
+  		fprintf(stderr, "error setting volume: %x\n", buf[0] & 0xff);
+diff -c -r /cdrom/usr/src/lib/libcdrom/panasonic.c ./panasonic.c
+*** /cdrom/usr/src/lib/libcdrom/panasonic.c	Mon Mar  8 11:42:10 1993
+--- ./panasonic.c	Fri Jun 25 02:24:55 1993
+***************
+*** 218,220 ****
+--- 218,228 ----
+  {
+  	return (0);
+  }
++ 
++ int
++ panasonic_volume2(cdinfo, left, right)
++ struct cdinfo *cdinfo;
++ int left, right;
++ {
++ 	return (0);
++ }
+diff -c -r /cdrom/usr/src/lib/libcdrom/scsi2.c ./scsi2.c
+*** /cdrom/usr/src/lib/libcdrom/scsi2.c	Mon Mar  8 11:42:11 1993
+--- ./scsi2.c	Fri Jun 25 02:26:24 1993
+***************
+*** 233,240 ****
+  	struct cdinfo *cdinfo;
+  	int volume;
+  {
+- 	char cdb[10];
+- 	char buf[100];
+  	int val;
+  
+  	val = (volume * 255) / 100;
+--- 233,238 ----
+***************
+*** 243,252 ****
+  	if (val > 255)
+  		val = 255;
+  
+  	/* mode select */
+  	bzero(cdb, 6);
+  	cdb[0] = 0x15;
+! 	cdb[1] = 0x10;
+  	cdb[4] = 20;
+  
+  	bzero(buf, sizeof buf);
+--- 241,260 ----
+  	if (val > 255)
+  		val = 255;
+  
++ 	return scsi2_volume2(cdinfo, val, val);
++ }
++ 
++ /* each side is [0 .. 255] */
++ int
++ scsi2_volume2(struct cdinfo *cdinfo, int left, int right)
++ {
++ 	char cdb[10];
++ 	char buf[100];
++ 
+  	/* mode select */
+  	bzero(cdb, 6);
+  	cdb[0] = 0x15;
+! 	cdb[1] = 0x10;			/* SCSI-2 format */
+  	cdb[4] = 20;
+  
+  	bzero(buf, sizeof buf);
+***************
+*** 257,271 ****
+  
+  	buf[4] = 0xe; /* page code */
+  	buf[5] = 14;
+! 	buf[6] = 4;
+! 	buf[12] = 1;
+! 	buf[13] = val;
+! 	buf[14] = 2;
+! 	buf[15] = val;
+! 
+! 	if (scsi_cmd_write(cdinfo->fd, cdb, buf, 18) < 0) {
+! 		perror("scsi command: mode select");
+! 		return (-1);
+  	}
+  
+  	return (0);
+--- 265,279 ----
+  
+  	buf[4] = 0xe; /* page code */
+  	buf[5] = 14;
+! 	buf[6] = 4;			/* immed */
+! 	buf[12] = 1;			/* port 0 to channel 0 */
+! 	buf[13] = left;
+! 	buf[14] = 2;			/* port 1 to channel 1 */
+! 	buf[15] = right;
+! 
+! 	if (scsi_cmd_write(cdinfo->fd, cdb, buf, 20) < 0) {
+! 	    perror("scsi command: mode select (volume):");
+! 	    return (-1);
+  	}
+  
+  	return (0);
+diff -c -r /cdrom/usr/src/lib/libcdrom/toshiba.c ./toshiba.c
+*** /cdrom/usr/src/lib/libcdrom/toshiba.c	Mon Mar  8 11:42:12 1993
+--- ./toshiba.c	Fri Jun 25 02:25:25 1993
+***************
+*** 272,274 ****
+--- 272,283 ----
+  	/* Not supported by drive */
+  	return (0);
+  }
++ 
++ int
++ toshiba_volume2(cdinfo, left, right)
++ struct cdinfo *cdinfo;
++ int left, right;
++ {
++ 	/* Not supported by drive */
++ 	return (0);
++ }
+

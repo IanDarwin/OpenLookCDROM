@@ -1,0 +1,5908 @@
+From sq.com!ian Wed Aug  3 10:49:39 1994
+From: mreynold@qualcomm.com (Matthew Reynolds)
+Subject: v22i097:  xpserv - Xlib/PostScript Printing server, Part01/03
+Date: 2 Aug 1994 12:46:50 -0500
+Nntp-Posting-Host: sparky.sterling.com
+X-Md4-Signature: 7514d1a4fdaaa2b7314d6a75aa99ad7b
+Content-Length: 59496
+X-Lines: 2048
+Status: RO
+
+Submitted-by: mreynold@qualcomm.com (Matthew Reynolds)
+Posting-number: Volume 22, Issue 97
+Archive-name: xpserv/part01
+Environment: X11, Postscript
+
+This server translates (almost all of) the X protocol to PostScrip
+for printing.  It is modeled as a second server, and the commands
+for controlling printing are modeled as an extension.  
+
+Does anybody know the mail address for the X consortium R6 contrib
+tape?
+
+					Matt Reynolds
+					mreynold@qualcomm.com
+
+
+#! /bin/sh
+# This is a shell archive.  Remove anything before this line, then feed it
+# into a shell via "sh file" or similar.  To overwrite existing files,
+# type "sh file -c".
+# Contents:  xpserv xpserv/decode11.c
+# Wrapped by chris@sparky on Tue Aug  2 12:45:06 1994
+PATH=/bin:/usr/bin:/usr/ucb:/usr/local/bin:/usr/lbin:$PATH ; export PATH
+echo If this archive is complete, you will see the following message:
+echo '          "shar: End of archive 1 (of 3)."'
+if test ! -d 'xpserv' ; then
+    echo shar: Creating directory \"'xpserv'\"
+    mkdir 'xpserv'
+fi
+if test -f 'xpserv/decode11.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'xpserv/decode11.c'\"
+else
+  echo shar: Extracting \"'xpserv/decode11.c'\" \(55380 characters\)
+  sed "s/^X//" >'xpserv/decode11.c' <<'END_OF_FILE'
+X/*
+XCopyright (c) 1994  Matthew Reynolds and Qualcomm Inc.
+X
+XPermission is hereby granted, free of charge, to any person obtaining a copy
+Xof this software and associated documentation files (the "Software"), to deal
+Xin the Software without restriction, including without limitation the rights
+Xto use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+Xcopies of the Software, and to permit persons to whom the Software is
+Xfurnished to do so, subject to the following conditions:
+X
+XThe above copyright notice and this permission notice shall be included in
+Xall copies or substantial portions of the Software.
+X
+XTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+XIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+XFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+XQUALCOMM INC., OR MATTHEW REYNOLDS BE LIABLE FOR ANY CLAIM, 
+XDAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR 
+XOTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+XOR OTHER DEALINGS IN THE SOFTWARE.
+X
+XExcept as contained in this notice, the name of Qualcomm Inc., or Matthew 
+XReynolds shall not be used in advertising or otherwise to promote the sale, 
+Xuse or other dealings in this Software without their prior written 
+Xauthorization.
+X
+X*/
+X
+X#include <stdio.h>
+X#include <malloc.h>
+X#include <string.h>
+X#define NEED_REPLIES 1
+X#include <X11/Xproto.h>
+X#include <X11/Xlib.h>
+X#include "printer.h"
+X#include "printlib.h"
+X#include "printlibP.h"
+X
+X/*
+X  There are 4 types of things in X11: requests, replies, errors, and events.
+X
+X  Each of them has a format defined by a small integer that defines
+X  the type of the thing.
+X
+X  Requests have an opcode in the first byte.
+X  Events have a code in the first byte.
+X  Errors have a code in the second byte (the first byte is 0)
+X  Replies ...
+X
+X  Replies have a sequence number in bytes 2 and 3.  The sequence
+X  number should be used to identify the request that was sent, and
+X  from that request we can determine the type of the reply.
+X*/
+X
+X#define REQ_HEADERSIZE  sizeof( xReq)
+X#define RPLY_HEADERSIZE sizeof( xGenericReply)
+X#define EXTENSION_BASE  128
+X
+X/* opcode for our private protocol */
+X
+Xextern int debug;
+Xint THE_OPCODE = 144;
+Xextern Display *THE_DISPLAY;
+Xextern struct PrintClient PCS[ STATICMAXFD];
+X
+X/* font information mapping tables and cache of loaded fonts */
+X
+Xextern int              num_cache_font;
+X
+X/* standard GC created with all default values */
+X
+XXGCValues initial_GC = {
+X    GXcopy,     	/* function */
+X    AllPlanes,  	/* plane_mask */
+X    0L,         	/* foreground */
+X    1L,         	/* background */
+X    0,          	/* line_width */
+X    LineSolid,  	/* line_style */
+X    CapButt,    	/* cap_style */
+X    JoinMiter,  	/* join_style */
+X    FillSolid,  	/* fill_style */
+X    EvenOddRule,	/* fill_rule */
+X    ArcPieSlice,	/* arc_mode */
+X    ~0L,        	/* tile, impossible (unknown) resource */
+X    ~0L,        	/* stipple, impossible (unknown) resource */
+X    0,          	/* ts_x_origin */
+X    0,          	/* ts_y_origin */
+X    ~0L,        	/* font, impossible (unknown) resource */
+X    ClipByChildren, 	/* subwindow_mode */
+X    True,       	/* graphics_exposures */
+X    0,          	/* clip_x_origin */
+X    0,          	/* clip_y_origin */
+X    None,       	/* clip_mask */
+X    0,          	/* dash_offset */
+X    4           	/* dashes (list [4,4]) */
+X};
+X
+XXWindowAttributes initial_Attrs = {
+X    0,			/* x */
+X    0,			/* y */
+X    0,			/* width */
+X    0,			/* height */
+X    0,			/* border width */
+X    8,			/* default depth */
+X    NULL, 		/* visual */
+X    0,			/* root window of containing screen */
+X    InputOutput,	/* class */
+X    0,			/* bit gravity */
+X    0, 			/* win gravity */
+X    NotUseful,		/* backing store */
+X    0,			/* backing pixel */
+X    False,		/* save under */
+X    0,			/* colormap */
+X    False,		/* colormap installed flag */
+X    IsUnmapped,		/* map state */
+X    0,			/* all event mask */
+X    0,			/* my event mask */
+X    0,			/* do-not-propogate mask */
+X    False,		/* override-redirect */
+X    NULL		/* screen pointer */
+X};
+X
+X/* set window attributes from a request */
+X
+Xvoid set_winattrs( XWindowAttributes	*attr,
+X		   unsigned long	value_mask,
+X		   unsigned long	*request)
+X{
+X#if 0
+X    if ( value_mask & CWBackPixmap) {
+X	attr->background_pixmap = *request++;
+X    }
+X    if ( value_mask & CWBackPixel) {
+X	attr->background_pixel = *request++;
+X    }
+X    if ( value_mask & CWBorderPixmap) {
+X	attr->border_pixmap = *request++;
+X    }
+X#endif
+X    if ( value_mask & CWBitGravity) {
+X	attr->bit_gravity = *request++;
+X    }
+X    if ( value_mask & CWWinGravity) {	
+X	attr->win_gravity = *request++;
+X    }
+X    if ( value_mask & CWBackingStore) {	
+X	attr->backing_store = *request++;
+X    }
+X    if ( value_mask & CWBackingPlanes) {	
+X	attr->backing_planes = *request++;
+X    }
+X    if ( value_mask & CWBackingPixel) {	
+X	attr->backing_pixel = *request++;
+X    }
+X    if ( value_mask & CWOverrideRedirect) {	
+X	attr->override_redirect = *request++;
+X    }
+X    if ( value_mask & CWSaveUnder) {	
+X	attr->save_under = *request++;
+X    }
+X#if 0
+X    if ( value_mask & CWEventMask) {	
+X	attr->event_mask = *request++;
+X    }
+X#endif
+X    if ( value_mask & CWDontPropagate) {	
+X	attr->do_not_propagate_mask = *request++;
+X    }
+X    if ( value_mask & CWColormap) {	
+X	attr->colormap = *request++;
+X    }
+X#if 0
+X    if ( value_mask & CWCursor) {	
+X	attr->cursor = *request++;
+X    }
+X#endif
+X}
+X
+X/* request decoder for graphics commands */
+X
+Xwinfo_table_p		winfo_table = NULL;
+Xgcinfo_table_p		gcinfo_table = NULL;
+Xcmapinfo_table_p	cmapinfo_table = NULL;
+Xatom_table_p		atom_table = NULL;
+Xfont_table_p		font_table = NULL;
+X
+Xatom_p getatom( unsigned long	atom,
+X		atom_table_p	atom_table)
+X{
+X    int	i;
+X
+X    for ( i = 0; i < atom_table->num_atoms; i++) {
+X	if( atom_table->atom_table[ i].id == atom) {
+X	    return( &atom_table->atom_table[ i]);
+X	}
+X    }
+X    return( NULL);
+X}
+X
+X/* get the colormap attributes corresponding to a colormap id */
+X
+Xcmapinfo_p getcmapinfo( unsigned long 		cmap,
+X		        cmapinfo_table_p	table)
+X{
+X    int i;
+X
+X    for ( i = 0; i < table->num_cmap; i++) {
+X	if ( table->cmap_table[ i].cmap == cmap) {
+X	    return( &( table->cmap_table[ i]));
+X	}
+X    }
+X
+X/* set the pixels and allocation for this colormap.  If it's the default
+X   colormap, set the writeable flags to false */
+X
+X    for ( i = 0; i < NUM_COLORS; i++) {
+X	table->cmap_table[ table->num_cmap].colors[ i].pixel = i;
+X	table->cmap_table[ table->num_cmap].num_alloc[ i] = 0;
+X	table->cmap_table[ table->num_cmap].writeable[ i] = TRUE;
+X#if 0
+X	   ( cmap == DefaultColormap( THE_DISPLAY, 
+X				      DefaultScreen( THE_DISPLAY)));
+X#endif
+X    }
+X    table->cmap_table[ table->num_cmap++].cmap = cmap;
+X    return( &table->cmap_table[ table->num_cmap - 1]);
+X}
+X
+X/* get the GC attributes corresponding to a GC id */
+X
+Xgcinfo_p getgcinfo( unsigned long 	gcid, 
+X		    gcinfo_table_p 	table)
+X{
+X    int i;
+X
+X    for ( i = 0; i < table->num_gc; i++) {
+X	if ( table->gc_table[ i].gcid == gcid) {
+X	    return( &( table->gc_table[ i]));
+X	}
+X    }
+X    return( NULL);
+X}
+X
+X/* get the window attributes corresponding to a window */
+X
+Xwinfo_p getwinfo( unsigned long	win,
+X		  winfo_table_p	table)
+X{
+X    int i;
+X
+X    for ( i = 0; i < table->num_win; i++) {
+X	if ( table->win_table[ i].win == win) {
+X	    return( &( table->win_table[ i]));
+X	}
+X    }
+X
+X/* this probably indicates that the window is on the REAL server */
+X
+X    return( NULL);
+X}
+X
+X/* remove the window structures associated with a client */
+X
+Xvoid removewins( int		fd,
+X		 winfo_table_p	table)
+X{
+X    int	i, j;
+X
+X    for ( i = 0, j = 0; i < table->num_win; i++) {
+X	if ( table->win_table[ i].fd != fd) {
+X	    table->win_table[ j++] = table->win_table[ i];
+X	}
+X    }
+X    table->num_win = j;
+X}
+X
+X/* remove the GC structures associate with a client */
+X
+Xvoid removegcs( int		fd,
+X		gcinfo_table_p	table)
+X{
+X    int	i, j;
+X
+X    for ( i = 0, j = 0; i < table->num_gc; i++) {
+X	if ( table->gc_table[ i].fd != fd) {
+X	    table->gc_table[ j++] = table->gc_table[ i];
+X	}
+X    }
+X    table->num_gc = j;
+X}
+X
+X/* remove the cmap structures associate with a client */
+X
+Xvoid removecmaps( int			fd,
+X		  cmapinfo_table_p	table)
+X{
+X    int	i, j;
+X
+X    for ( i = 0, j = 0; i < table->num_cmap; i++) {
+X	if ( table->cmap_table[ i].fd != fd) {
+X	    table->cmap_table[ j++] = table->cmap_table[ i];
+X	}
+X    }
+X    table->num_cmap = j;
+X}
+X
+X/* delete a window from a table of windows */
+X
+Xvoid delete_win( winfo_table_p	table,
+X		 unsigned long	win)
+X{
+X    int	i, j;
+X
+X    for ( i = 0, j = 0; i < table->num_win; i++) {
+X	if ( table->win_table[ i].win != win) {
+X	    table->win_table[ j++] = table->win_table[ i];
+X	}
+X    }
+X    table->num_win = j;
+X}
+X
+X/* delete a GC from a table of GCs */
+X
+Xvoid delete_gc( gcinfo_table_p	table,
+X		unsigned long	gcid)
+X{
+X    int	i, j;
+X
+X    for ( i = 0, j = 0; i < table->num_gc; i++) {
+X	if ( table->gc_table[ i].gcid != gcid) {
+X	    table->gc_table[ j++] = table->gc_table[ i];
+X	}
+X    }
+X    table->num_gc = j;
+X}
+X
+X/* delete a colormap from a table of colormaps */
+X
+Xvoid delete_cmap( cmapinfo_table_p	table,
+X		  unsigned long		cmap)
+X{
+X    int	i, j;
+X
+X    for ( i = 0, j = 0; i < table->num_cmap; i++) {
+X	if ( table->cmap_table[ i].cmap != cmap) {
+X	    table->cmap_table[ j++] = table->cmap_table[ i];
+X	}
+X    }
+X    table->num_cmap = j;
+X}
+X		  
+X/* clean up the structures associated with a client */
+X
+Xvoid remove_client( int	fd)
+X{
+X    removewins( fd, winfo_table);
+X    removegcs( fd, gcinfo_table);
+X    removecmaps( fd, cmapinfo_table);
+X}
+X
+X/* return TRUE/FALSE as to whether this request should be forwarded to the
+X   server */
+X
+XBool DecodeRequest( FD 		  	fd,
+X		    unsigned char 	*buf,
+X		    unsigned char	*newmsg,
+X		    int			*newlen)
+X{
+X    short   		Request = *buf;
+X    unsigned long	value_mask, *request;
+X    unsigned short	val, x, y, width, height;
+X    unsigned char	flag, depth;
+X    XGCValues		*gcvp;
+X    int			index, i, nrect, nextensions;
+X    winfo_p		winfo;
+X    gcinfo_p		gcinfo;
+X    cmapinfo_p		cmapinfo;
+X    atom_p		atom;
+X    FILE		*print_fp = PCS[ fd].printfp;
+X    Drawable		drawable = PCS[ fd].win;
+X    xGenericReply	*reply = ( xGenericReply *) newmsg;
+X
+X    *newlen = 0;
+X
+X/* set reply sequence # in advance */
+X
+X    reply->sequenceNumber = ++(PCS[ fd].sequence);
+X    reply->type = X_Reply;
+X
+X/* initialize the window and gc tables if they haven't been created yet. */
+X
+X    if ( winfo_table == NULL) {
+X
+X/* have to define the RootWindow (and the defaultGC, I think) */
+X
+X	winfo_table = ( winfo_table_p) malloc( sizeof( winfo_table_s));
+X	winfo_table->win_table = ( winfo_p) malloc( sizeof( winfo_s)*NUMWIN);
+X	winfo_table->num_win = 1;
+X	winfo_table->win_table[ 0].win = 0;
+X	winfo_table->win_table[ 0].attr = initial_Attrs;
+X	gcinfo_table = ( gcinfo_table_p) malloc( sizeof( gcinfo_table_s));
+X	gcinfo_table->gc_table = ( gcinfo_p) malloc( sizeof( gcinfo_s)*NUMGC);
+X	gcinfo_table->num_gc = 0;
+X	cmapinfo_table = 
+X	    ( cmapinfo_table_p) malloc( sizeof( cmapinfo_table_s));
+X	cmapinfo_table->cmap_table = 
+X	    ( cmapinfo_p) malloc( sizeof( cmapinfo_s)*NUMGC);
+X	cmapinfo_table->num_cmap = 0;
+X	atom_table = ( atom_table_p) malloc( sizeof( atom_table_s));
+X	atom_table->atom_table = ( atom_p) malloc( sizeof( atom_s)*NUMATOM);
+X	atom_table->num_atoms = 0;
+X	font_table = ( font_table_p) malloc( sizeof( font_table_s));
+X	font_table->font_table = ( font_p) malloc( sizeof( font_s)*NUMFONT);
+X	font_table->num_fonts = 0;
+X    }
+Xif ( debug) printf( "request opcode = %d\n", Request);
+X    if ( Request <= 0 || 127 < Request) {
+X	xOpenPrintReq   *open_req;
+X	xClosePrintReq  *close_req;
+X	xSetPrintReq    *set_req;
+X	xPrintReply	*print_rply = ( xPrintReply *) newmsg;
+X
+X	if ( *buf == THE_OPCODE) {
+X	    print_rply->type = 1;
+X	    print_rply->length = 0;
+X	    switch( buf[ 1]) {
+X	    case X_OpenPrint:
+X
+X/* read the print request */
+X
+X		open_req = ( xOpenPrintReq *) buf;
+X		PCS[ fd].printfile = 
+X		    ( char *) malloc( open_req->strlength + 1);
+X		strncpy( PCS[ fd].printfile, open_req->filename, 
+X			 open_req->strlength);
+X		PCS[ fd].printfile[ open_req->strlength] = '\0';
+X		PCS[ fd].printfp = fopen( PCS[ fd].printfile, "w");
+X		print_rply->flag = ( PCS[ fd].printfp != NULL);
+X		PCS[ fd].win = open_req->drawable;
+X
+X/* put in the postscript header information */
+X
+X		if ( print_rply->flag) {
+X		    initprocs( &PCS[ fd], fd);
+X		}
+X		*newlen = sizeof( print_rply);
+X		break;
+X
+X/* print showpage, and close the file */
+X
+X	    case X_ClosePrint:
+X		close_req = ( xClosePrintReq *) buf;
+X		if ( PCS[ fd].printfp != NULL) {
+X		    fprintf( PCS[ fd].printfp, "\nshowpage\n");
+X		    fclose( PCS[ fd].printfp);
+X		    PCS[ fd].printfp = NULL;
+X		}
+X		break;
+X
+X/* for setting printer attributes, can be extended */
+X
+X	    case X_SetPrint:
+X		set_req = ( xSetPrintReq *) buf;
+X		PCS[ fd].preserve_aspect = set_req->aspect;
+X		PCS[ fd].font_scale = set_req->fontScale;
+X		PCS[ fd].pixmap_scale = set_req->pixmapScale;
+X		PCS[ fd].page_width = set_req->pageWidth;
+X		PCS[ fd].page_height = set_req->pageHeight;
+X		break;
+X	    default:
+X		fprintf( stderr, "received erroroneous minor opcode\n");
+X		break;
+X	    }
+X	}
+X    } else {
+X	switch (Request) {
+X	case X_CreateWindow:
+X	    {
+X		xCreateWindowReq *req = ( xCreateWindowReq *) buf;
+X		XWindowAttributes	*attr;
+X		
+X		index = winfo_table->num_win++;
+X		winfo_table->win_table[ index].created = TRUE;
+X		winfo_table->win_table[ index].win = req->wid;
+X		winfo_table->win_table[ index].parent = req->parent;
+X		winfo_table->win_table[ index].fd = fd;
+X		memcpy(( void *) &winfo_table->win_table[ index].attr,
+X		       ( void *) &initial_Attrs, sizeof( XWindowAttributes));
+X		attr = &winfo_table->win_table[ index].attr;
+X		attr->x = req->x;
+X		attr->y = req->y;
+X		attr->width = req->width;
+X		attr->height = req->height;
+X		attr->class = req->class;
+X		attr->colormap = 
+X		    DefaultColormap( THE_DISPLAY, DefaultScreen( THE_DISPLAY));
+X#if 0
+X		attr->visual = req->visual; /* FTM, we have only one visual */
+X#endif
+X		set_winattrs( attr, req->mask, 
+X			      ( unsigned long *) 
+X			       ( buf + sizeof( xCreateWindowReq)));
+X	    }
+X	    return( FALSE);		/* don't forward the request */
+X	    break;
+X	case X_ChangeWindowAttributes:
+X	    {
+X		xChangeWindowAttributesReq 	*req =
+X		    ( xChangeWindowAttributesReq *) buf;
+X
+X		winfo = getwinfo( PCS[ fd].win, winfo_table);
+X		if ( winfo != NULL) {
+X		    set_winattrs( &winfo->attr, req->valueMask,
+X				  ( unsigned long *)
+X				   ( buf + 
+X				     sizeof( xChangeWindowAttributesReq)));
+X		} else {
+X		    fprintf( stderr, "X_ChangeWindowAttributes bad window %d\n",
+X			     req->window);
+X		}
+X	    }	
+X	    break;
+X	case X_GetWindowAttributes: 
+X	    {
+X		xResourceReq			*req = ( xResourceReq *) buf;
+X		xGetWindowAttributesReply	*reply = 
+X		    ( xGetWindowAttributesReply *) newmsg;
+X		
+X		winfo = getwinfo( req->id, winfo_table);
+X		if ( winfo != NULL) {
+X		    reply->backingStore = winfo->attr.backing_store;
+X		    reply->length = 3;
+X		    reply->class = winfo->attr.class;
+X		    reply->bitGravity = winfo->attr.bit_gravity;
+X		    reply->winGravity = winfo->attr.win_gravity;
+X		    reply->backingBitPlanes = winfo->attr.backing_planes;
+X		    reply->backingPixel = winfo->attr.backing_pixel;
+X		    reply->saveUnder = winfo->attr.save_under;
+X		    reply->colormap = winfo->attr.colormap;
+X		    reply->allEventMasks = winfo->attr.all_event_masks;
+X		    reply->doNotPropagateMask = 
+X			winfo->attr.do_not_propagate_mask;
+X		    *newlen = sizeof( *reply);
+X		} else {
+X		    fprintf( stderr, "X_GetWindowAttributes bad window %d\n",
+X			     req->id);
+X		}
+X	    }
+X	    break;
+X	case X_DestroyWindow:
+X	    {
+X		xResourceReq	*req = ( xResourceReq *) buf;
+X
+X		delete_win( winfo_table, req->id);
+X	    }
+X	    break;
+X	case X_DestroySubwindows:	/* I really should do something here */
+X	    break;
+X	case X_ChangeSaveSet:
+X	    break;
+X	case X_ReparentWindow:
+X	    break;
+X	case X_MapWindow:
+X	    break;
+X	case X_MapSubwindows:
+X	    break;
+X	case X_UnmapWindow:
+X	    break;
+X	case X_UnmapSubwindows:
+X	    break;
+X	case X_ConfigureWindow:
+X	    break;
+X	case X_CirculateWindow:
+X	    break;
+X	case X_GetGeometry:
+X	    { 
+X		xResourceReq	   *req = ( xResourceReq *) buf;
+X		xGetGeometryReply  *reply = ( xGetGeometryReply *) newmsg;
+X
+X		winfo = getwinfo( req->id, winfo_table);
+X		if ( winfo != NULL) {
+X		    reply->x = winfo->attr.x;
+X		    reply->y = winfo->attr.y;
+X		    reply->width = winfo->attr.width;
+X		    reply->height = winfo->attr.height;
+X		    reply->depth = winfo->attr.depth;
+X		    reply->length = 0;
+X		    reply->root = winfo_table->win_table[ 0].win;
+X		    reply->borderWidth = winfo->attr.border_width;
+X		    *newlen = sizeof( *reply);
+X		} else {
+X		    fprintf( stderr, "X_GetGeometry bad window id %d\n",
+X			     req->id);
+X		}
+X	    }
+X	    break;
+X	case X_QueryTree:
+X	    {
+X		xResourceReq	*req = ( xResourceReq *) buf;
+X		xQueryTreeReply	*reply = ( xQueryTreeReply *) newmsg;
+X
+X		winfo = getwinfo( req->id, winfo_table);
+X		if ( winfo != NULL) {
+X		    reply->root = winfo_table->win_table[ 0].win;
+X		    reply->parent = winfo->parent;
+X
+X/* FTM, number of children is zero */
+X
+X		    reply->nChildren = 0;
+X		    reply->length = 0;
+X		    *newlen = sizeof( *reply);
+X		} else {
+X		    fprintf( stderr, "X_QueryTree bad window id %d\n", req->id);
+X		}
+X	    }	
+X	    break;
+X	case X_InternAtom:
+X	    {
+X		xInternAtomReq	*req = ( xInternAtomReq	*) buf;
+X		xInternAtomReply *reply = ( xInternAtomReply *) newmsg;
+X
+X		atom_table->atom_table[ atom_table->num_atoms].id = 
+X		    atom_table->num_atoms;
+X		atom_table->atom_table[ atom_table->num_atoms].name = 
+X		    ( char *) malloc( req->nbytes + 1);
+X		strncpy( atom_table->atom_table[ atom_table->num_atoms].name,
+X			 ( char *) buf + sizeof( *req), req->nbytes + 1);
+X		reply->atom = atom_table->num_atoms++;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_GetAtomName:
+X	    {
+X		xResourceReq	*req = ( xResourceReq *) buf;
+X		xGetAtomNameReply *reply = ( xGetAtomNameReply *) newmsg;
+X
+X		atom = getatom( req->id, atom_table);
+X		if ( atom != NULL) {
+X		    reply->nameLength = strlen( atom->name);
+X		    strncpy(( char *) newmsg + sizeof( *reply), 
+X			    ( char *) newmsg, reply->nameLength); 
+X		} else {
+X		    reply->nameLength = 0;
+X		}
+X		*newlen = sizeof( *reply);
+X	    }	
+X	    break;
+X	case X_ChangeProperty:
+X	    break;
+X	case X_DeleteProperty:
+X	    break;
+X	case X_GetProperty:
+X	    {
+X
+X/* FTM, don't return ANY properties */
+X
+X		xGetPropertyReq		*req = ( xGetPropertyReq *) buf;
+X		xGetPropertyReply	*reply = ( xGetPropertyReply *) newmsg;
+X
+X		reply->propertyType = None;
+X		reply->bytesAfter = 0;
+X		reply->length = 0;
+X		reply->format = 0;
+X		reply->nItems = 0;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_ListProperties:
+X	    { 
+X		xListPropertiesReply	*reply = 
+X		    ( xListPropertiesReply *) newmsg;
+X		
+X		reply->nProperties = 0;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_SetSelectionOwner:
+X	    break;
+X	case X_GetSelectionOwner:
+X	    {
+X		 xGetSelectionOwnerReply	*reply = 
+X		     ( xGetSelectionOwnerReply *) newmsg;
+X		 
+X		 reply->owner = 0;
+X		 *newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_ConvertSelection:
+X	    break;
+X	case X_SendEvent:
+X	    break;
+X	case X_GrabPointer:
+X	    {
+X		xGrabPointerReply	*reply = ( xGrabPointerReply *) newmsg;
+X
+X		reply->status = False;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_UngrabPointer:
+X	    break;
+X	case X_GrabButton:
+X	    break;
+X	case X_UngrabButton:
+X	    break;
+X	case X_ChangeActivePointerGrab:
+X	    break;
+X	case X_GrabKeyboard:
+X	    {
+X		xGrabKeyboardReply	*reply = ( xGrabKeyboardReply *) newmsg;
+X
+X		reply->status = False;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	    break;
+X	case X_UngrabKeyboard:
+X	    break;
+X	case X_GrabKey:
+X	    break;
+X	case X_UngrabKey:
+X	    break;
+X	case X_AllowEvents:
+X	    break;
+X	case X_GrabServer:
+X	    break;
+X	case X_UngrabServer:
+X	    break;
+X	case X_QueryPointer:
+X
+X/* obviously, this is truly bogus */
+X
+X	    {
+X		xQueryPointerReply	*reply = ( xQueryPointerReply *) newmsg;
+X
+X		reply->root = 0;
+X		reply->child = 0;
+X		reply->rootX = 0;
+X		reply->rootY = 0;
+X		reply->winX = 0;
+X		reply->winY = 0;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_GetMotionEvents:
+X	    {
+X		xGetMotionEventsReply	*reply = 
+X		    ( xGetMotionEventsReply *) newmsg;
+X		
+X		reply->nEvents =0;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_TranslateCoords:
+X	    {
+X		xTranslateCoordsReply	*reply = 
+X		    ( xTranslateCoordsReply *) newmsg;
+X		
+X		reply->dstX = 0;
+X		reply->dstY = 0;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_WarpPointer:
+X	    break;
+X	case X_SetInputFocus:
+X	    break;
+X	case X_GetInputFocus:
+X	    {
+X		xReq			*req = ( xReq *) buf;
+X		xGetInputFocusReply	*reply = 
+X			( xGetInputFocusReply *) newmsg;
+X
+X		reply->focus = 0;	/* make it the root window */
+X		reply->revertTo = None;
+X		reply->length = 0;	/* the documentation says this is 0 */
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_QueryKeymap:	/* needs reply */
+X	    break;
+X	case X_OpenFont:
+X
+X/* add the font to the font cache. */
+X
+X	    {
+X		xOpenFontReq	*req = ( xOpenFontReq *) buf;
+X		char		*font_name = 
+X				    ( char *) buf + sizeof( xOpenFontReq);
+X		int		found = FALSE, n = font_table->num_fonts;
+X		font_p		font;
+X
+X		for ( i = 0; i < font_table->num_fonts; i++) {
+X		    if ( !strncmp( font_table->font_table[ i].xfont_name, 
+X				   font_name, req->nbytes)) {
+X			found = TRUE;
+X		    }
+X		}
+X
+X/* save the name and font ID, get the postscript name for the font, 
+X   then query the font for the font struct information */
+X
+X		if ( !found) {
+X		    font = &font_table->font_table[ n];
+X		    font->fd = fd;
+X		    font->fid = req->fid;
+X		    font->server_fid = 0;
+X		    font->xfont_name = 
+X			( char *) malloc( req->nbytes + 1);
+X		    strncpy( font->xfont_name, font_name, req->nbytes);
+X		    font->post_name = get_post_name( font->xfont_name);
+X		    if ( font->post_name == NULL) {
+X			fprintf( stderr, "PostScript font for X %s not found\n",
+X				 font->xfont_name);
+X		    }
+X		    font->font_info = 
+X			XLoadQueryFont( THE_DISPLAY, font->xfont_name);
+X		    if ( font->font_info == NULL) {
+X			fprintf( stderr, "X font %s not found\n",
+X				 font->xfont_name);
+X		    }
+X		    font_table->num_fonts++;
+X		}
+X	    }
+X	    break;
+X	case X_CloseFont:
+X	    break;
+X	case X_QueryFont:		/* needs reply */	
+X	    {
+X		xResourceReq	*req = ( xResourceReq *) buf;
+X		xQueryFontReply	*reply = ( xQueryFontReply *) newmsg;
+X		XFontStruct	*font_struct;
+X		int		found = FALSE;
+X
+X		for ( i = 0; i < font_table->num_fonts; i++) {
+X		    if ( font_table->font_table[ i].fid == req->id) {
+X			found = TRUE;
+X		    }
+X		}
+X
+X/* if the font is not loaded on the server, we have to load it before
+X   querying the font */
+X	
+X		if ( !found) {
+X		    fprintf( stderr, "font ID %d not found\n");
+X		    reply->length = 
+X			( sizeof( xQueryFontReply) - sizeof( xReply)) >> 2;
+X		    reply->nFontProps = 0;
+X		    reply->nCharInfos = 0;
+X		    *newlen = sizeof( *reply);
+X		} else {
+X		    if ( font_table->font_table[ i].server_fid == 0) {
+X			font_table->font_table[ i].server_fid = 
+X			    XLoadFont( THE_DISPLAY, 
+X				       font_table->font_table[ i].xfont_name);
+X		    }
+X		    font_struct = 
+X			XQueryFont( THE_DISPLAY, 
+X				    font_table->font_table[ i].server_fid); 
+X		    reply->minBounds = *( xCharInfo *) &font_struct->min_bounds;
+X		    reply->maxBounds = *( xCharInfo *) &font_struct->max_bounds;
+X		    reply->minCharOrByte2 = font_struct->min_char_or_byte2;
+X		    reply->maxCharOrByte2 = font_struct->max_char_or_byte2;
+X		    reply->defaultChar = font_struct->default_char;
+X		    reply->nFontProps = font_struct->n_properties;
+X		    reply->drawDirection = font_struct->direction;
+X		    reply->minByte1 = font_struct->min_byte1;
+X		    reply->maxByte1 = font_struct->max_byte1;
+X		    reply->allCharsExist = font_struct->all_chars_exist;
+X		    reply->fontAscent = font_struct->ascent;
+X		    reply->fontDescent = font_struct->descent;
+X		    reply->nCharInfos = font_struct->max_char_or_byte2 - 
+X					    font_struct->min_char_or_byte2;
+X
+X/* copy the charinfo + fontprop structures */
+X
+X		    memcpy(( void *) (req + sizeof( xQueryFontReply)),
+X			   ( void *) font_struct->per_char, 
+X			   sizeof( xCharInfo)*reply->nCharInfos);
+X		    memcpy(( void *) (req + sizeof( xQueryFontReply) +
+X			       sizeof( XCharStruct)*reply->nCharInfos),
+X			   ( void *) font_struct->properties,
+X			   sizeof( xFontProp)*reply->nFontProps);
+X		    *newlen = sizeof( *reply) + 
+X			      sizeof( xCharInfo)*reply->nCharInfos + 
+X			      sizeof( xFontProp)*reply->nFontProps;
+X		    reply->length = 7 + reply->nFontProps*2 +
+X				    reply->nCharInfos*3;
+X		}
+X	    }
+X	    break;
+X	case X_QueryTextExtents:	/* needs reply */
+X	    {
+X		xQueryTextExtentsReq	*req = 
+X		    ( xQueryTextExtentsReq *) buf;
+X		xQueryTextExtentsReply	*reply = 
+X		    ( xQueryTextExtentsReply *) newmsg;
+X		int			nchars, dir, ascent, descent,
+X					found = FALSE;
+X		XCharStruct		overall;
+X
+X		for ( i = 0; i < font_table->num_fonts; i++) {
+X		    if ( font_table->font_table[ i].fid != req->fid) {
+X			found = TRUE;
+X		    }
+X		}
+X		if ( font_table->font_table[ i].server_fid == 0) {
+X		    font_table->font_table[ i].server_fid = 
+X			XLoadFont( THE_DISPLAY, 
+X				   font_table->font_table[ i].xfont_name);
+X		}
+X		nchars = (req->length >> 1) - req->oddLength;
+X		XQueryTextExtents16( THE_DISPLAY, 
+X				     font_table->font_table[ i].server_fid,
+X				     ( XChar2b *) buf + sizeof( *req),
+X				     nchars, &dir, &ascent, &descent, &overall);
+X		reply->fontAscent = ascent;
+X		reply->fontDescent = descent;
+X		reply->overallAscent = overall.ascent;
+X		reply->overallDescent = overall.descent;
+X		reply->overallWidth = overall.width;
+X		reply->overallLeft = overall.lbearing;
+X		reply->overallRight = overall.rbearing;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_ListFonts:		/* needs reply */
+X	    {
+X		xListFontsReq	*req = ( xListFontsReq *) buf;
+X		xListFontsReply	*reply = ( xListFontsReply *) newmsg;
+X		char		**fonts; 
+X		unsigned char	*ptr;
+X		int		i, length = 0, nfonts;
+X
+X		fonts = XListFonts( THE_DISPLAY, 
+X				    ( char *) buf + sizeof( *req),
+X				    req->maxNames, &nfonts);
+X		reply->nFonts = nfonts;
+X		for ( i = 0, ptr = buf + sizeof( *req); 
+X		      i < nfonts;
+X		      i++, ptr += strlen( fonts[ i]) + 1) {
+X		    strcpy(( char *) ptr, fonts[ i]);
+X		    length += strlen( fonts[ i]) + 1;
+X		}
+X		reply->length = ( length + 3) >> 2;
+X		*newlen = sizeof( *reply) + reply->length << 2;
+X	    }
+X	    break;
+X	case X_ListFontsWithInfo:	/* needs reply */
+X	    {
+X		xListFontsWithInfoReq	*req = 
+X		    ( xListFontsWithInfoReq *) buf;
+X		xListFontsWithInfoReply	*reply = 
+X		    ( xListFontsWithInfoReply *) newmsg;
+X		char		**fonts, *ptr;
+X		int		i, nfonts;
+X		XFontStruct	*finfo_vec;
+X
+X		*newlen = 0;
+X		fonts = XListFontsWithInfo( THE_DISPLAY, 
+X					    ( char *) buf + sizeof( *req),
+X					    req->maxNames, &nfonts,
+X					    &finfo_vec);
+X
+X/* this generates a set of replies.  Right now, all I do is write then,
+X   but there's a high likelihood of overflow */
+X  
+X		for ( i = 0; i < nfonts; i++) {
+X		    reply->nameLength = strlen( fonts[ i]) + 1;
+X		    reply->minBounds = 
+X			*( xCharInfo *) &finfo_vec[ i].min_bounds;
+X		    reply->maxBounds = 
+X			*( xCharInfo *) &finfo_vec[ i].max_bounds;
+X		    reply->minCharOrByte2 = finfo_vec[ i].min_char_or_byte2;
+X		    reply->maxCharOrByte2 = finfo_vec[ i].max_char_or_byte2;
+X		    reply->defaultChar = finfo_vec[ i].default_char;
+X		    reply->nFontProps = finfo_vec[ i].n_properties;
+X		    reply->drawDirection = finfo_vec[ i].direction;
+X		    reply->minByte1 = finfo_vec[ i].min_byte1;
+X		    reply->maxByte1 = finfo_vec[ i].max_byte1;
+X		    reply->allCharsExist = finfo_vec[ i].all_chars_exist;
+X		    reply->fontAscent = finfo_vec[ i].ascent;
+X		    reply->fontDescent = finfo_vec[ i].descent;
+X		    reply->nReplies = nfonts - (i + 1);
+X
+X/* copy the propertyu structures, but not char infos */
+X
+X		    memcpy(( void *) (req + sizeof( xQueryFontReply)),
+X			   ( void *) finfo_vec[ i].properties,
+X			   sizeof( xFontProp)*reply->nFontProps);
+X
+X/* copy the name of the font */
+X
+X		    strcpy(( char *) req + sizeof( xQueryFontReply) +
+X			    sizeof( xFontProp)*reply->nFontProps, 
+X			    fonts[ i]);
+X		    *newlen += sizeof( *reply) + strlen( fonts[ i]) + 1 +
+X			       sizeof( xFontProp)*reply->nFontProps;
+X		    reply = ( xListFontsWithInfoReply *) (buf + pad( *newlen));
+X		}
+X
+X/* nameLength = 0 implies end of sequence */
+X
+X		reply->nameLength = 0;
+X		*newlen += sizeof( reply);
+X	    }
+X	    break;
+X	case X_SetFontPath:
+X	    break;
+X	case X_GetFontPath:		/* needs reply */
+X	    {
+X		xReq			*req = ( xReq *) buf;
+X		xGetFontPathReply	*reply = 
+X		    ( xGetFontPathReply *) newmsg;
+X		char			**paths; 
+X		unsigned char		*ptr;
+X		int			npaths, i, length = 0;
+X	
+X		paths = XGetFontPath( THE_DISPLAY, &npaths);
+X		reply->nPaths = npaths;
+X		for ( i = 0, ptr = buf + sizeof( *req); 
+X		      i < npaths; 
+X		      i++, ptr += strlen( paths[ i]) + 1) {
+X		    length += strlen( paths[ i]) + 1;
+X		    strcpy(( char *) ptr, paths[ i]);
+X		}
+X		reply->length = ( length + 3) >> 2;
+X		*newlen = sizeof( *reply) + length << 2;
+X	    }
+X	    break;
+X	case X_CreatePixmap:		/* FTM, these are ignored */
+X	    break;
+X	case X_FreePixmap:
+X	    {
+X		xResourceReq	*req = ( xResourceReq *) buf;
+X
+X		delete_win( winfo_table, req->id);
+X	    }
+X	    break;
+X	case X_CreateGC:
+X	    {
+X		xCreateGCReq	*req = ( xCreateGCReq *) buf;
+X
+X/* copy the standard GC, then use the flags to get the attributes from
+X   the message */
+X
+X		index = gcinfo_table->num_gc++;
+X		gcinfo_table->gc_table[ index].attr = initial_GC;
+X		gcinfo_table->gc_table[ index].gcid = req->gc;
+X		gcinfo_table->gc_table[ index].clip_rects = NULL;
+X		gcinfo_table->gc_table[ index].num_clip_rects = 0;
+X		gcinfo_table->gc_table[ index].fd = fd;
+X		gcvp = &( gcinfo_table->gc_table[ index].attr);
+X
+X/* pull out the value mask and use it to get the values from the request, 
+X   set a pointer into the values section of the request */
+X		
+X		winfo = getwinfo( req->drawable, winfo_table);
+X		if ( winfo != NULL) {
+X		    set_gcvalues( fd, print_fp, gcvp, req->mask, 
+X				  ( unsigned long *) 
+X				      (buf + sizeof( xCreateGCReq)), 
+X				  winfo->attr.colormap);
+X		} else {
+X		    fprintf( stderr, "X_CreateGC: bad window id %d\n", 
+X			     req->drawable);
+X		}
+X	    }
+X	    break;
+X	case X_ChangeGC:
+X	    {
+X		xChangeGCReq	*req = ( xChangeGCReq *) buf;
+X
+X/* have to intercept these, because there's no other way to get the info 
+X   send the print window down for the colormap for setcolor */
+X
+X		gcinfo = getgcinfo( req->gc, gcinfo_table);
+X		if ( gcinfo != NULL) {
+X		    winfo = getwinfo( PCS[ fd].win, winfo_table);
+X		    set_gcvalues( fd, print_fp, &gcinfo->attr, req->mask, 
+X				  ( unsigned long *)
+X				      ( buf + sizeof( xChangeGCReq)),
+X				  winfo->attr.colormap);
+X		} else {
+X		    fprintf( stderr, "X_ChangeGC bad GC %d\n", req->gc);
+X		}
+X	    }
+X	    break;
+X	case X_CopyGC:
+X	    { 
+X		xCopyGCReq	*req = ( xCopyGCReq *) buf;
+X		gcinfo_p	gcinfo2;
+X
+X		gcinfo = getgcinfo( req->srcGC, gcinfo_table);
+X		gcinfo2 = getgcinfo( req->dstGC, gcinfo_table);
+X		if ( gcinfo && gcinfo2) {
+X		    copy_gcvalues( &gcinfo->attr, &gcinfo2->attr, req->mask);
+X		}
+X	    }
+X	    break;
+X	case X_SetDashes:
+X	    {
+X		xSetDashesReq	*req = ( xSetDashesReq *) buf;
+X		
+X		gcinfo = getgcinfo( req->gc, gcinfo_table);
+X		if ( gcinfo != NULL) {
+X		    gcvp = &( gcinfo->attr);
+X		    gcvp->dash_offset = req->dashOffset;
+X		    gcinfo->num_dashes = req->nDashes;
+X		    gcinfo->dashes = ( char *) malloc( req->nDashes);
+X		    memcpy( gcinfo->dashes, buf + sizeof( *req), 
+X			    gcinfo->num_dashes);
+X		} else {
+X		    fprintf( stderr, "X_SetDashes bad GC %d\n", req->gc);
+X		}
+X	    }
+X	    break;
+X	case X_SetClipRectangles:
+X	    {
+X		xSetClipRectanglesReq 	*req = 
+X			( xSetClipRectanglesReq *) buf;
+X
+X		gcinfo = getgcinfo( req->gc, gcinfo_table);
+X		if ( gcinfo != NULL) {
+X		    gcvp = &( gcinfo->attr);
+X
+X/* set the clip x and y origin */
+X
+X		    gcvp->clip_x_origin = req->xOrigin;
+X		    gcvp->clip_y_origin = req->yOrigin;
+X
+X/* then copy the clip rectangles */
+X
+X		    if ( gcinfo->clip_rects != NULL) {
+X			free( gcinfo->clip_rects);
+X		    }
+X		    nrect = ( req->length - 3) >> 1;
+X		    gcinfo->clip_rects = 
+X			( XRectangle *) malloc( sizeof( XRectangle)*nrect);
+X		    memcpy( gcinfo->clip_rects, 
+X			    buf + sizeof( xSetClipRectanglesReq),
+X			    nrect*sizeof( XRectangle));
+X		    gcinfo->num_clip_rects = nrect;
+X		} else {
+X		    fprintf( stderr, "X_SetClipRectangles bad GC %d\n", 
+X			     req->gc);
+X		}
+X	    }
+X	    break;
+X	case X_FreeGC:
+X	    {
+X		xResourceReq	*req = ( xResourceReq *) buf;
+X
+X		delete_gc( gcinfo_table, req->id);
+X		break;
+X	    }
+X	    break;
+X	case X_ClearArea:
+X	    {
+X		xClearAreaReq	*req = ( xClearAreaReq *) buf;
+X
+X		winfo = getwinfo( req->window, winfo_table);
+X		if ( winfo != NULL) {
+X		    cleararea( print_fp, req->window, &( winfo->attr), 
+X			       req->x, req->y, req->width, req->height);
+X		} else {
+X		    fprintf( stderr, "X_ClearArea: bad window ID %d\n", 
+X			     req->window);
+X		}
+X	    }
+X	    break;
+X	case X_CopyArea:
+X	    {
+X		xCopyAreaReq	*req = ( xCopyAreaReq *) buf;
+X
+X		winfo = getwinfo( req->dstDrawable, winfo_table);
+X		if ( winfo != NULL) {
+X		    cmapinfo = getcmapinfo( winfo->attr.colormap, 
+X					    cmapinfo_table);
+X		    copyarea( print_fp, req->srcDrawable, req->dstDrawable,
+X			      req->srcX, req->srcY, req->dstX, req->dstY,
+X			      req->width, req->height,
+X			      NUM_COLORS, cmapinfo->colors);
+X		} else {
+X		    fprintf( stderr, "X_CopyArea: bad window ID %d\n", 
+X			     req->dstDrawable);
+X		}
+X	    }
+X	    break;
+X	case X_CopyPlane:
+X	    break;
+X	case X_PolyPoint:
+X	    {
+X		xPolyPointReq	*req = ( xPolyPointReq *) buf;
+X
+X		flag = req->coordMode;
+X		gcinfo = getgcinfo( req->gc, gcinfo_table);
+X		if ( gcinfo == NULL) {
+X		    fprintf( stderr, "X_Polyline bad GC %d\n", req->gc);
+X		    gcvp = &initial_GC;
+X		} else {
+X		    gcvp = &gcinfo->attr;
+X		}
+X		winfo = getwinfo( req->drawable, winfo_table);
+X		if ( winfo != NULL) {
+X		    cmapinfo = getcmapinfo( winfo->attr.colormap, 
+X					    cmapinfo_table);
+X		    set_curr_gc( fd, print_fp, gcvp, cmapinfo->cmap);
+X		    polypoint( print_fp, req->drawable, gcvp, 
+X			       req->length - 3, ( int) req->coordMode,
+X			       ( XPoint *) (buf + sizeof( xPolyPointReq)));
+X		} else {
+X		    fprintf( stderr, "X_PolyPoint: bad window ID %d\n",
+X			     req->drawable);
+X		}
+X	    }
+X	    break;
+X	case X_PolyLine:
+X	    {
+X		xPolyLineReq	*req = ( xPolyLineReq *) buf;
+X
+X		flag = req->coordMode;
+X		gcinfo = getgcinfo( req->gc, gcinfo_table);
+X		if ( gcinfo == NULL) {
+X		    fprintf( stderr, "X_Polyline bad GC %d\n", req->gc);
+X		    gcvp = &initial_GC;
+X		} else {
+X		    gcvp = &gcinfo->attr;
+X		}
+X		winfo = getwinfo( req->drawable, winfo_table);
+X		if ( winfo != NULL) {
+X		    cmapinfo = getcmapinfo( winfo->attr.colormap, 
+X					    cmapinfo_table);
+X		    set_curr_gc( fd, print_fp, gcvp, cmapinfo->cmap);
+X		    polyline( print_fp, req->drawable, gcvp, 
+X			      req->length - 3, ( int) req->coordMode,
+X			      ( XPoint *) (buf + sizeof( xPolyLineReq)));
+X		} else {
+X		    fprintf( stderr, "X_PolyLine: bad window ID %d\n",
+X			     req->drawable);
+X		}
+X	    }
+X	    break;
+X	case X_PolySegment:
+X	    {
+X		xPolySegmentReq	*req = ( xPolySegmentReq *) buf;
+X
+X		gcinfo = getgcinfo( req->gc, gcinfo_table);
+X		if ( gcinfo == NULL) {
+X		    fprintf( stderr, "X_PolySegment bad GC %d\n", req->gc);
+X		    gcvp = &initial_GC;
+X		} else {
+X		    gcvp = &gcinfo->attr;
+X		}
+X		winfo = getwinfo( req->drawable, winfo_table);
+X		if ( winfo != NULL) {
+X		    cmapinfo = getcmapinfo( winfo->attr.colormap, 
+X					    cmapinfo_table);
+X		    set_curr_gc( fd, print_fp, gcvp, cmapinfo->cmap);
+X		    polysegment( print_fp, req->drawable, gcvp, 
+X				 ( req->length - 3) >> 1,
+X				 ( XSegment *) 
+X				 	(buf + sizeof( xPolySegmentReq)));
+X		} else {
+X		    fprintf( stderr, "X_PolySegment: bad window ID %d\n",
+X			     req->drawable);
+X		}
+X	    }
+X	    break;
+X	case X_PolyRectangle:
+X	    { 
+X		xPolyRectangleReq	*req = ( xPolyRectangleReq *) buf;
+X
+X		gcinfo = getgcinfo( req->gc, gcinfo_table);
+X		if ( gcinfo == NULL) {
+X		    fprintf( stderr, "X_PolyRectangle bad GC %d\n", req->gc);
+X		    gcvp = &initial_GC;
+X		} else {
+X		    gcvp = &gcinfo->attr;
+X		}
+X		winfo = getwinfo( req->drawable, winfo_table);
+X		if ( winfo != NULL) {
+X		    cmapinfo = getcmapinfo( winfo->attr.colormap, 
+X					    cmapinfo_table);
+X		    set_curr_gc( fd, print_fp, gcvp, cmapinfo->cmap);
+X		    polyrectangle( print_fp, req->drawable, gcvp, 
+X				   ( req->length - 3) >> 1,
+X				   ( XRectangle *) 
+X				       ( buf + sizeof( xPolyRectangleReq)));
+X		} else {
+X		    fprintf( stderr, "X_PolyRectangle: bad window ID %d\n",
+X			     req->drawable);
+X		}
+X	    }
+X	    break;
+X	case X_PolyArc:
+X	    {
+X		xPolyArcReq 	*req = ( xPolyArcReq *) buf;
+X
+X		gcinfo = getgcinfo( req->gc, gcinfo_table);
+X		if ( gcinfo == NULL) {
+X		    fprintf( stderr, "X_Polyline bad GC %d\n", req->gc);
+X		    gcvp = &initial_GC;
+X		} else {
+X		    gcvp = &gcinfo->attr;
+X		}
+X		winfo = getwinfo( req->drawable, winfo_table);
+X		if ( winfo != NULL) {
+X		    cmapinfo = getcmapinfo( winfo->attr.colormap, 
+X					    cmapinfo_table);
+X		    set_curr_gc( fd, print_fp, gcvp, cmapinfo->cmap);
+X		    polyarc( print_fp, req->drawable, gcvp, (req->length - 3)/3,
+X			     ( xArc *) buf + sizeof( xPolyArcReq));
+X		} else {
+X		    fprintf( stderr, "X_PolyRectangle: bad window ID %d\n",
+X			     req->drawable);
+X		}
+X	    }
+X	    break;
+X	case X_FillPoly:
+X	    {
+X		xFillPolyReq	*req = ( xFillPolyReq *) buf;
+X
+X/* flag for coordinate mode */
+X
+X		gcinfo = getgcinfo( req->gc, gcinfo_table);
+X		if ( gcinfo == NULL) {
+X		    fprintf( stderr, "X_FillPoly bad GC %d\n", req->gc);
+X		    gcvp = &initial_GC;
+X		} else {
+X		    gcvp = &gcinfo->attr;
+X		}
+X		winfo = getwinfo( req->drawable, winfo_table);
+X		if ( winfo != NULL) {
+X		    cmapinfo = getcmapinfo( winfo->attr.colormap, 
+X					    cmapinfo_table);
+X		    set_curr_gc( fd, print_fp, gcvp, cmapinfo->cmap);
+X		    fillpoly( print_fp, req->drawable, &( gcinfo->attr), 
+X			      req->length - 4, req->coordMode,
+X			      ( XPoint *) (buf + sizeof( xFillPolyReq)));
+X		} else {
+X		    fprintf( stderr, "X_PolyRectangle: bad window ID %d\n",
+X			     req->drawable);
+X		}
+X	    }
+X	    break;
+X	case X_PolyFillRectangle:
+X	    {
+X		xPolyRectangleReq	*req = ( xPolyRectangleReq *) buf;
+X
+X		gcinfo = getgcinfo( req->gc, gcinfo_table);
+X		if ( gcinfo == NULL) {
+X		    fprintf( stderr, "X_PolyFillRectangle bad GC %d\n", 
+X			    req->gc);
+X		    gcvp = &initial_GC;
+X		} else {
+X		    gcvp = &gcinfo->attr;
+X		}
+X		winfo = getwinfo( req->drawable, winfo_table);
+X		if ( winfo != NULL) {
+X		    cmapinfo = getcmapinfo( winfo->attr.colormap, 
+X					    cmapinfo_table);
+X		    set_curr_gc( fd, print_fp, gcvp, cmapinfo->cmap);
+X		    polyfillrectangle( print_fp, req->drawable, gcvp, 
+X				       (req->length - 3) >> 1,
+X				       ( XRectangle *) 
+X					   ( buf + sizeof( xPolyRectangleReq)));
+X		} else {
+X		    fprintf( stderr, "X_PolyFillRectangle: bad window ID %d\n",
+X			     req->drawable);
+X		}
+X	    }
+X	    break;
+X	case X_PolyFillArc:
+X	    break;
+X	case X_PutImage:
+X	    { 
+X		xPutImageReq 	*req = ( xPutImageReq *) buf;
+X
+X		gcinfo = getgcinfo( req->gc, gcinfo_table);
+X		if ( gcinfo == NULL) {
+X		    fprintf( stderr, "X_PutImage bad GC %d\n", req->gc);
+X		    gcvp = &initial_GC;
+X		} else {
+X		    gcvp = &gcinfo->attr;
+X		}
+X
+X/* get the window's colormap so we know what colors to use for the image */
+X
+X		winfo = getwinfo( req->drawable, winfo_table);
+X		if ( winfo != NULL) {
+X		    cmapinfo = getcmapinfo( winfo->attr.colormap, 
+X					    cmapinfo_table);
+X		    set_curr_gc( fd, print_fp, gcvp, cmapinfo->cmap);
+X		    putimage( print_fp, req->drawable, gcvp,
+X			      req->depth, req->width, req->height, 
+X			      req->dstX, req->dstY, req->pad, req->format, 
+X			      NUM_COLORS, cmapinfo->colors,
+X			      buf + sizeof( xPutImageReq));
+X		} else {
+X		    fprintf( stderr, "X_PutImage: bad window ID %d\n",
+X			     req->drawable);
+X		}
+X	    }
+X	    break;
+X
+X/* GetImage is totally kludged,  It sends back an entirely blank image */
+X
+X	case X_GetImage:		/* needs reply */
+X	    {
+X		xGetImageReq	*req = ( xGetImageReq *) buf;
+X		xGetImageReply	*reply = ( xGetImageReply *) newmsg;
+X
+X		reply->depth = 8;
+X		reply->length = req->width*req->height*2;
+X		*newlen = sizeof( *reply) + reply->length*2;
+X	    }
+X	    break;
+X	case X_PolyText8:
+X	    {
+X		xPolyText8Req	*req = ( xPolyText8Req *) buf;
+X
+X		gcinfo = getgcinfo( req->gc, gcinfo_table);
+X		if ( gcinfo == NULL) {
+X		    fprintf( stderr, "X_PolyText8 bad GC %d\n", req->gc);
+X		    gcvp = &initial_GC;
+X		} else {
+X		    gcvp = &gcinfo->attr;
+X		}
+X		winfo = getwinfo( req->drawable, winfo_table);
+X		if ( winfo != NULL) {
+X		    cmapinfo = getcmapinfo( winfo->attr.colormap, 
+X					    cmapinfo_table);
+X		    set_curr_gc( fd, print_fp, gcvp, cmapinfo->cmap);
+X		    polytext8( print_fp, req->drawable, gcvp, req->x, req->y, 
+X			       ( req->length*4) - sizeof( xPolyText8Req), 
+X			       buf + sizeof( xPolyText8Req));
+X		} else {
+X		    fprintf( stderr, "X_PolyText8: bad window ID %d\n",
+X			     req->drawable);
+X		}
+X	    }
+X	    break;
+X	case X_PolyText16:
+X	    { 
+X		xPolyText16Req	*req = ( xPolyText16Req *) buf;
+X
+X		gcinfo = getgcinfo( req->gc, gcinfo_table);
+X		if ( gcinfo == NULL) {
+X		    fprintf( stderr, "X_PolyText16 bad GC %d\n", req->gc);
+X		    gcvp = &initial_GC;
+X		} else {
+X		    gcvp = &gcinfo->attr;
+X		}
+X		winfo = getwinfo( req->drawable, winfo_table);
+X		if ( winfo != NULL) {
+X		    cmapinfo = getcmapinfo( winfo->attr.colormap, 
+X					    cmapinfo_table);
+X		    set_curr_gc( fd, print_fp, gcvp, cmapinfo->cmap);
+X		    polytext16( print_fp, req->drawable, gcvp, req->x, req->y, 
+X				(req->length - 4) >> 2,
+X				buf + sizeof( xPolyText16Req));
+X		} else {
+X		    fprintf( stderr, "X_PolyText8: bad window ID %d\n",
+X			     req->drawable);
+X		}
+X	    }
+X	    break;
+X	case X_ImageText8:
+X	    {
+X		xImageText8Req	*req = ( xImageText8Req *) buf;
+X
+X		gcinfo = getgcinfo( req->gc, gcinfo_table);
+X		if ( gcinfo == NULL) {
+X		    fprintf( stderr, "X_ImageText8 bad GC %d\n", req->gc);
+X		    gcvp = &initial_GC;
+X		} else {
+X		    gcvp = &gcinfo->attr;
+X		}
+X		winfo = getwinfo( req->drawable, winfo_table);
+X		if ( winfo != NULL) {
+X		    cmapinfo = getcmapinfo( winfo->attr.colormap, 
+X					    cmapinfo_table);
+X		    set_curr_gc( fd, print_fp, gcvp, cmapinfo->cmap);
+X		    imagetext8( print_fp, req->drawable, gcvp, req->x, req->y, 
+X				( req->length*4) - sizeof( xPolyText8Req), 
+X				buf + sizeof( xImageText8Req));
+X		} else {
+X		    fprintf( stderr, "X_ImageText8: bad window ID %d\n",
+X			     req->drawable);
+X		}
+X	    }
+X	    break;
+X	case X_ImageText16:
+X	    {
+X		xImageText16Req	*req = ( xImageText16Req *) buf;
+X
+X		gcinfo = getgcinfo( req->gc, gcinfo_table);
+X		if ( gcinfo == NULL) {
+X		    fprintf( stderr, "X_ImageText16 bad GC %d\n", req->gc);
+X		    gcvp = &initial_GC;
+X		} else {
+X		    gcvp = &gcinfo->attr;
+X		}
+X		winfo = getwinfo( req->drawable, winfo_table);
+X		if ( winfo != NULL) {
+X		    cmapinfo = getcmapinfo( winfo->attr.colormap, 
+X					    cmapinfo_table);
+X		    set_curr_gc( fd, print_fp, gcvp, cmapinfo->cmap);
+X		    imagetext16( print_fp, req->drawable, gcvp, req->x, req->y, 
+X				 ( req->length - 4) >> 2,
+X				 buf + sizeof( xImageText16Req));
+X		} else {
+X		    fprintf( stderr, "X_ImageText16: bad window ID %d\n",
+X			     req->drawable);
+X		}
+X	    }
+X	    break;
+X	case X_CreateColormap:
+X	    {
+X		xCreateColormapReq *req = ( xCreateColormapReq *) buf;
+X		int		   i, n = cmapinfo_table->num_cmap++;
+X
+X		cmapinfo_table->cmap_table[ n].num_colors = 0;
+X		cmapinfo_table->cmap_table[ n].cmap = req->mid;
+X		cmapinfo_table->cmap_table[ n].fd = fd;
+X		for ( i = 0; i < NUM_COLORS; i++) {
+X		    cmapinfo_table->cmap_table[ n].colors[ i].pixel = i;
+X		    cmapinfo_table->cmap_table[ n].num_alloc[ i] = 0;
+X		}
+X	    }
+X	    break;
+X	case X_FreeColormap:
+X	    {
+X		xResourceReq	*req = ( xResourceReq *) buf;
+X
+X		delete_cmap( cmapinfo_table, req->id);
+X	    }
+X	    break;
+X	case X_CopyColormapAndFree:
+X	    {
+X
+X/* create a new colormap and copy the old colormap to it */
+X
+X		xCopyColormapAndFreeReq *req = ( xCopyColormapAndFreeReq *) buf;
+X		int			i, n = cmapinfo_table->num_cmap;
+X
+X		cmapinfo = getcmapinfo( req->srcCmap, cmapinfo_table);
+X		cmapinfo_table->cmap_table[ n].num_colors = 
+X		    cmapinfo->num_colors;
+X		for ( i = 0; i < NUM_COLORS; i++) {
+X		    cmapinfo_table->cmap_table[ n].colors[ i] = 
+X			cmapinfo->colors[ i];
+X		    cmapinfo_table->cmap_table[ n].num_alloc[ i] = 
+X			cmapinfo->num_alloc[ i];
+X		}
+X		cmapinfo_table->num_cmap++;
+X	    }
+X	    break;
+X	case X_InstallColormap:
+X	    break;
+X	case X_UninstallColormap:
+X	    break;
+X	case X_ListInstalledColormaps:		/* needs reply */
+X	    break;
+X	case X_AllocColor:			/* needs reply */
+X	    {
+X		xAllocColorReq		*req = ( xAllocColorReq *) buf;
+X		xAllocColorReply	*reply = ( xAllocColorReply *) newmsg;
+X		int			found;
+X		
+X		cmapinfo = getcmapinfo( req->cmap, cmapinfo_table);
+X		found = FALSE;
+X		for ( i = 0; i < NUM_COLORS; i++) {
+X		    if (( cmapinfo->colors[ i].red == req->red) &&
+X			( cmapinfo->colors[ i].green == req->green) &&
+X			( cmapinfo->colors[ i].blue == req->blue) &&
+X			( cmapinfo->num_alloc[ i] > 0))  {
+X			cmapinfo->num_alloc[ i]++;
+X			found = TRUE;
+X			break;
+X		    }
+X		}
+X
+X/* allocate a new pixel, then return it (whether allocated or not) */ 
+X
+X		if ( !found) {
+X		    for ( i = 0; i < NUM_COLORS; i++) {
+X			if ( cmapinfo->num_alloc[ i] == 0) {
+X			    break;
+X			}
+X		    }
+X		    if ( i < NUM_COLORS) {
+X			cmapinfo->colors[ i].red = req->red;
+X			cmapinfo->colors[ i].green = req->green;
+X			cmapinfo->colors[ i].blue = req->blue;
+X			cmapinfo->num_alloc[ i]++;
+X			cmapinfo->num_colors++;
+X		    }
+X		}
+X		reply->pixel = i;
+X		reply->red = req->red;
+X		reply->green = req->green;
+X		reply->blue = req->blue;
+X
+X/* increment the number of people allocated to this color */
+X
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_AllocNamedColor:			/* needs reply */
+X	    {
+X		xAllocNamedColorReq	*req = ( xAllocNamedColorReq *) buf;
+X		xAllocNamedColorReply	*reply = 
+X		    ( xAllocNamedColorReply *) newmsg;
+X		char 			name[ 256];
+X		XColor			exact;
+X		int			found;
+X
+X/* use the real server to get the mapping from the name to RGB values */
+X
+X		strncpy( name, ( char *) buf + sizeof( *req), req->nbytes);
+X		XParseColor( THE_DISPLAY, 
+X		    DefaultColormap( THE_DISPLAY, DefaultScreen( THE_DISPLAY)),
+X		    name, &exact);
+X		cmapinfo = getcmapinfo( req->cmap, cmapinfo_table);
+X		found = FALSE;
+X		for ( i = 0; i < NUM_COLORS; i++) {
+X		    if (( cmapinfo->colors[ i].red == exact.red) &&
+X			( cmapinfo->colors[ i].green == exact.green) &&
+X			( cmapinfo->colors[ i].blue == exact.blue)) {
+X			cmapinfo->num_alloc[ i]++;
+X			found = TRUE;
+X			break;
+X		    }
+X		}
+X
+X/* need to allocate color in vector here */
+X
+X		if ( !found) {
+X		    for ( i = 0; i < NUM_COLORS; i++) {
+X			if ( cmapinfo->num_alloc[ i] == 0) {
+X			    break;
+X			}
+X		    }
+X		    if ( i < NUM_COLORS) {
+X			cmapinfo->colors[ i] = exact;
+X			cmapinfo->num_alloc[ i]++;
+X			cmapinfo->num_colors++;
+X		    }
+X		}
+X		reply->pixel = i;
+X		reply->exactRed = exact.red;
+X		reply->exactGreen = exact.green;
+X		reply->exactBlue = exact.blue;
+X		reply->screenRed = exact.red;
+X		reply->screenGreen = exact.green;
+X		reply->screenBlue = exact.blue;
+X
+X/* increment the number of people allocated to this color */
+X
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X
+X/* both of these are just hacked so that I've got a reply */
+X
+X	case X_AllocColorCells:			/* needs reply */
+X	    {
+X		xAllocColorCellsReq	*req = ( xAllocColorCellsReq *) buf;
+X		xAllocColorCellsReply 	*reply = 
+X		    ( xAllocColorCellsReply *) newmsg;
+X		unsigned long		*pixel;
+X		
+X		cmapinfo = getcmapinfo( req->cmap, cmapinfo_table);
+X		reply->nPixels = req->colors;
+X		reply->nMasks = req->planes;
+X		pixel = ( unsigned long *) buf + sizeof( *req);
+X		for ( i = 0; i < reply->nPixels; i++) {
+X		    *pixel++ = i;
+X		}
+X		for ( i = 0; i < reply->nMasks; i++) {
+X		    *pixel++ = ( 1 << i);
+X		}
+X		reply->length = reply->nPixels + reply->nMasks;
+X		*newlen = sizeof( *reply) + ( reply->nPixels << 2) +
+X			  ( reply->nMasks << 2);
+X	    }
+X	    break;
+X	case X_AllocColorPlanes:		/* needs reply */
+X	    {
+X		xAllocColorPlanesReq	*req = ( xAllocColorPlanesReq *) buf;
+X		xAllocColorPlanesReply	*reply = 
+X		    ( xAllocColorPlanesReply *) newmsg;
+X		unsigned long		*pixel;
+X
+X		cmapinfo = getcmapinfo( req->cmap, cmapinfo_table);
+X		reply->nPixels = req->colors;
+X		pixel = ( unsigned long *) (buf + sizeof( *req));
+X		for ( i = 0; i < reply->nPixels; i++) {
+X		    *pixel++ = i;
+X		}
+X		reply->redMask = 0;
+X		reply->greenMask = 0;
+X		reply->blueMask = 0;
+X		reply->length = reply->nPixels;
+X		*newlen = sizeof( *reply) + ( reply->nPixels << 2);
+X	    }
+X	    break;
+X	case X_FreeColors:
+X	    {
+X		xFreeColorsReq	*req = ( xFreeColorsReq *) buf;
+X		unsigned long	*pixel;
+X
+X		pixel = ( unsigned long *) (buf + sizeof( *req));
+X		cmapinfo = getcmapinfo( req->cmap, cmapinfo_table);
+X		for ( i = 0; i < req->length - 3; i++) {
+X		    if (( *pixel >= 0) && ( *pixel < NUM_COLORS)) {
+X			cmapinfo->num_alloc[ *pixel]--;
+X		    } else {  
+X			fprintf( stderr, "pixel out of range %d\n", *pixel);
+X		    }
+X		}
+X	    }
+X	    break;
+X	case X_StoreColors:
+X	    {
+X		xStoreColorsReq	*req = ( xStoreColorsReq *) buf;
+X		int		ncolors = (req->length - 2)/3, index;
+X		xColorItem	*color = ( xColorItem *) ( buf + sizeof( *req));
+X
+X		cmapinfo = getcmapinfo( req->cmap, cmapinfo_table);
+X		for ( i = 0; i < ncolors; i++) {
+X		    index = color->pixel;
+X		    if (( index >= 0) && ( index < NUM_COLORS)) {
+X			if ( cmapinfo->writeable[ i]) {
+X			    cmapinfo->colors[ index].red = color->red;
+X			    cmapinfo->colors[ index].green = color->green;
+X			    cmapinfo->colors[ index].blue = color->blue;
+X			    cmapinfo->colors[ index].pixel = index;
+X			}
+X		    } else {
+X			fprintf( stderr, "pixel out of range %d\n", index);
+X		    }
+X		    color++;
+X		}
+X	    }
+X	    break;
+X	case X_StoreNamedColor:
+X	    {
+X		xStoreNamedColorReq	*req = ( xStoreNamedColorReq *) buf;
+X		XColor			exact, screen;
+X		int			index = req->pixel;
+X		char			colorname[ 256];
+X
+X		strncpy( colorname, ( char *) buf + sizeof( *req), req->nbytes);
+X		XLookupColor( THE_DISPLAY,
+X		    DefaultColormap( THE_DISPLAY, DefaultScreen( THE_DISPLAY)),
+X		    colorname, &exact, &screen);
+X		cmapinfo = getcmapinfo( req->cmap, cmapinfo_table);
+X		if (( index >= 0) && ( index < NUM_COLORS)) {
+X		    if ( cmapinfo->writeable[ i]) {
+X			cmapinfo->colors[ index].red = exact.red;
+X			cmapinfo->colors[ index].green = exact.green;
+X			cmapinfo->colors[ index].blue = exact.blue;
+X			cmapinfo->colors[ index].pixel = index;
+X		    } else {
+X			fprintf( stderr, "pixel out of range %d\n", index);
+X		    }
+X		}
+X	    }
+X	    break;
+X	case X_QueryColors:			/* needs reply */
+X	    {
+X		xQueryColorsReq	*req = ( xQueryColorsReq *) buf;
+X		xQueryColorsReply *reply = ( xQueryColorsReply *) newmsg;
+X
+X		reply->length = 2*(req->length - 2);
+X	    }
+X	    break;
+X	case X_LookupColor:			/* needs reply */
+X	    {
+X		xLookupColorReq		*req = ( xLookupColorReq *) buf;
+X		xLookupColorReply 	*reply = ( xLookupColorReply *) newmsg;
+X		char 		*colorname = ( char *) buf + sizeof( *req);
+X		XColor			exact, screen;
+X
+X		XLookupColor( THE_DISPLAY,
+X		    DefaultColormap( THE_DISPLAY, DefaultScreen( THE_DISPLAY)),
+X		    colorname, &exact, &screen);
+X		reply->exactRed = exact.red;
+X		reply->exactGreen = exact.green;
+X		reply->exactBlue = exact.blue;
+X		reply->screenRed = screen.red;
+X		reply->screenGreen = screen.green;
+X		reply->screenBlue = screen.blue;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_CreateCursor:
+X	    break;
+X	case X_CreateGlyphCursor:
+X	    break;
+X	case X_FreeCursor:
+X	    break;
+X	case X_RecolorCursor:
+X	    break;
+X	case X_QueryBestSize:			/* needs reply */
+X	    {
+X		xQueryBestSizeReply	*reply = 
+X		    ( xQueryBestSizeReply *) newmsg;
+X		
+X		reply->width = 16;		/* guesses.. */
+X		reply->height = 16;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_QueryExtension:
+X
+X/* delete the extension request from the client and insert our reply that
+X   the extension exists */
+X	    {
+X		xQueryExtensionReq    *req= ( xQueryExtensionReq *) buf;
+X		xQueryExtensionReply  *reply = 
+X		    ( xQueryExtensionReply *) newmsg;
+X		char		      *extname, **extlist;
+X
+X		extname = ( char *) buf + sizeof( xQueryExtensionReq);
+X		if ( strncmp( extname, PRINTNAME, strlen( PRINTNAME)) == 0) {
+X
+X/* set up our fake reply */
+X
+X		    reply->length = 0;
+X		    reply->present = True;
+X
+X/* find out the number of extensions supported by the server, and use that
+X   for basing the major opcode # on */
+X
+X		    extlist = XListExtensions( THE_DISPLAY, &nextensions);
+X		    reply->major_opcode = EXTENSION_BASE + nextensions + 1;
+X		    THE_OPCODE = EXTENSION_BASE + nextensions + 1;
+X		    reply->first_event = 0;
+X		    reply->first_error = 0;
+X		} else {
+X		    reply->length = 0;
+X		    reply->present = False;
+X		}
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_ListExtensions:			/* needs reply */
+X	    {
+X		xListExtensionsReply	*reply = 
+X		    ( xListExtensionsReply *) newmsg;
+X		
+X		reply->nExtensions = 1;		/* just this extension */
+X		strcpy(( char *) newmsg + sizeof( reply), "Printer");
+X		reply->length = ( strlen( "Printer") + 3) >> 2;
+X		*newlen = sizeof( *reply) + ( reply->length << 2);
+X	    }
+X	    break;
+X	case X_ChangeKeyboardMapping:	
+X	    break;
+X	case X_GetKeyboardMapping:			/* needs reply */
+X	    {
+X		xGetKeyboardMappingReq	*req = 
+X		     ( xGetKeyboardMappingReq *) buf;
+X		xGetKeyboardMappingReply *reply = 
+X		     ( xGetKeyboardMappingReply *) newmsg;
+X
+X		reply->keySymsPerKeyCode = 1;
+X		reply->length = req->count;
+X		*newlen = sizeof( *reply) + (reply->length << 2);
+X	    }
+X	    break;
+X	case X_ChangeKeyboardControl:
+X	    break;
+X	case X_GetKeyboardControl:			/* needs reply */
+X	    {
+X		xGetKeyboardControlReply *reply = 
+X		     ( xGetKeyboardControlReply *) newmsg;
+X	
+X/* fake it totally, don't even bother with the masks */ 
+X
+X		reply->globalAutoRepeat = False;
+X		reply->ledMask = 0;
+X		reply->keyClickPercent = 0;
+X		reply->bellPercent = 0;
+X		reply->bellPitch = 0;
+X		reply->bellDuration = 0;
+X		reply->length = 5;
+X		*newlen = sizeof( *reply) + (reply->length << 2);
+X	    }
+X	    break;
+X	case X_Bell:
+X	    break;
+X	case X_ChangePointerControl:
+X	    break;
+X	case X_GetPointerControl:			/* needs reply */
+X	    {
+X		xGetPointerControlReply	*reply =
+X		    ( xGetPointerControlReply *) newmsg;
+X		
+X		reply->accelNumerator = 1;
+X		reply->accelDenominator = 1;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_SetScreenSaver:
+X	    break;
+X	case X_GetScreenSaver:			/* needs reply */
+X	    {
+X		xGetScreenSaverReply	*reply =
+X		    ( xGetScreenSaverReply *) newmsg;
+X		
+X		reply->timeout = 10;
+X		reply->interval = 10;
+X		reply->preferBlanking = FALSE;
+X		reply->allowExposures = FALSE;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_ChangeHosts:
+X	    break;
+X	case X_ListHosts:	/* no other hosts */	
+X	    {
+X		xListHostsReq	*req = ( xListHostsReq *) buf;
+X		xListHostsReply	*reply = ( xListHostsReply *) newmsg;
+X
+X		reply->nHosts = 0;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_SetAccessControl:
+X	    break;
+X	case X_SetCloseDownMode:
+X	    break;
+X	case X_KillClient:
+X	    break;
+X	case X_RotateProperties:
+X	    break;
+X	case X_ForceScreenSaver:
+X	    break;
+X	case X_SetPointerMapping:
+X	    break;
+X	case X_GetPointerMapping: /* generate a totally bogus response */
+X	    {
+X		xGetPointerMappingReply	*reply = 
+X		    ( xGetPointerMappingReply *) newmsg;
+X		
+X		reply->nElts = 0;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_SetModifierMapping:
+X	    break;
+X	case X_GetModifierMapping:			/* needs reply */
+X	    {
+X		xGetModifierMappingReply *reply =
+X		    ( xGetModifierMappingReply *) newmsg;
+X		reply->numKeyPerModifier  = 0;
+X		*newlen = sizeof( *reply);
+X	    }
+X	    break;
+X	case X_NoOperation:
+X	    break;
+X	default:
+X	    fprintf( stderr, "Unimplemented request opcode");
+X	    break;
+X	}
+X    }
+X    return( True);		/* maybe this will be useful in the future */
+X}
+X
+X/* round up to next multiple of 4 */
+X
+Xlong pad( long n)
+X{
+X    return((n + 3) & ~0x3);
+X}
+X
+Xlong pad2( long n)
+X{
+X    return(( n + 1) & ~0x1);
+X}
+X
+END_OF_FILE
+  if test 55380 -ne `wc -c <'xpserv/decode11.c'`; then
+    echo shar: \"'xpserv/decode11.c'\" unpacked with wrong size!
+  fi
+  # end of 'xpserv/decode11.c'
+fi
+echo shar: End of archive 1 \(of 3\).
+cp /dev/null ark1isdone
+MISSING=""
+for I in 1 2 3 ; do
+    if test ! -f ark${I}isdone ; then
+	MISSING="${MISSING} ${I}"
+    fi
+done
+if test "${MISSING}" = "" ; then
+    echo You have unpacked all 3 archives.
+    rm -f ark[1-9]isdone
+else
+    echo You still must unpack the following archives:
+    echo "        " ${MISSING}
+fi
+exit 0
+exit 0 # Just in case...
+-- 
+  // chris@Sterling.COM           | Send comp.sources.x submissions to:
+\X/  Amiga: The only way to fly!  |    sources-x@sterling.com
+GCS d++(--) h++ s++:+ g+++(?) p? au(*)(0) a w+ v-(*) C++ US+++ P+ L+ 3 N++ K
+  !W M V-- -po+ Y+ t+ 5++ j- r+ G+ v b+++ D- b-- e+ u+ h- f+ r+++ !n y+++
+
+From sq.com!ian Wed Aug  3 10:49:42 1994
+From: mreynold@qualcomm.com (Matthew Reynolds)
+Subject: v22i098:  xpserv - Xlib/PostScript Printing server, Part02/03
+Date: 2 Aug 1994 12:46:59 -0500
+Nntp-Posting-Host: sparky.sterling.com
+X-Md4-Signature: 3df637675a7652ae19c72cec7c3b7bbb
+Content-Length: 61605
+X-Lines: 2212
+Status: RO
+
+Submitted-by: mreynold@qualcomm.com (Matthew Reynolds)
+Posting-number: Volume 22, Issue 98
+Archive-name: xpserv/part02
+Environment: X11, Postscript
+
+#! /bin/sh
+# This is a shell archive.  Remove anything before this line, then feed it
+# into a shell via "sh file" or similar.  To overwrite existing files,
+# type "sh file -c".
+# Contents:  xpserv/Makefile xpserv/drawcmd.c xpserv/printlibP.h
+#   xpserv/printopts xpserv/pserver.c
+# Wrapped by chris@sparky on Tue Aug  2 12:45:06 1994
+PATH=/bin:/usr/bin:/usr/ucb:/usr/local/bin:/usr/lbin:$PATH ; export PATH
+echo If this archive is complete, you will see the following message:
+echo '          "shar: End of archive 2 (of 3)."'
+if test -f 'xpserv/Makefile' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'xpserv/Makefile'\"
+else
+  echo shar: Extracting \"'xpserv/Makefile'\" \(13138 characters\)
+  sed "s/^X//" >'xpserv/Makefile' <<'END_OF_FILE'
+X# Makefile generated by imake - do not edit!
+X# $XConsortium: imake.c,v 1.87 94/04/17 20:10:28 rws Exp $
+X
+X# -----------------------------------------------------------------------
+X# Makefile generated from "Imake.tmpl" and <Imakefile>
+X# $XConsortium: Imake.tmpl,v 1.218 94/03/31 20:11:26 matt Exp $
+X#
+X
+X.SUFFIXES: .i
+X
+X# $XConsortium: Imake.cf,v 1.12 94/03/29 15:42:08 gildea Exp $
+X
+X# -----------------------------------------------------------------------
+X# site-specific configuration parameters that need to come before
+X# the platform-specific parameters - edit site.def to change
+X
+X# site:  $XConsortium: site.sample,v 1.9 94/04/08 17:02:06 rws Exp $
+X
+X# -----------------------------------------------------------------------
+X# platform-specific configuration parameters - edit sun.cf to change
+X
+X# platform:  $XConsortium: sun.cf,v 1.129 94/04/09 16:06:28 rws Exp $
+X
+X# operating system:  SunOS 5.3
+X
+X# $XConsortium: svr4.cf,v 1.6 94/04/08 18:56:33 rws Exp $
+X
+X# $XConsortium: sv4Lib.rules,v 1.14 94/04/09 12:00:10 rws Exp $
+X
+X.c.o:
+X	$(CC) -c $(CFLAGS) $*.c
+X
+X# -----------------------------------------------------------------------
+X# site-specific configuration parameters that go after
+X# the platform-specific parameters - edit site.def to change
+X
+X# site:  $XConsortium: site.sample,v 1.9 94/04/08 17:02:06 rws Exp $
+X
+X# -----------------------------------------------------------------------
+X# Imake rules for building libraries, programs, scripts, and data files
+X# rules:  $XConsortium: Imake.rules,v 1.193 94/04/10 17:39:55 rws Exp $
+X
+X          PATHSEP = /
+X            SHELL = /bin/sh
+X
+X              TOP = ../..
+X      CURRENT_DIR = programs/xpserver
+X
+X            IMAKE = $(IMAKESRC)/imake
+X           DEPEND = $(DEPENDSRC)/makedepend
+X        MKDIRHIER = $(SHELL) $(CONFIGSRC)/util/mkdirhier.sh
+X        CONFIGSRC = $(TOP)/config
+X         IMAKESRC = $(CONFIGSRC)/imake
+X        DEPENDSRC = $(CONFIGSRC)/makedepend
+X           IXXSRC = $(UNSUPPORTEDSRC)/programs/ixx
+X              IXX = $(IXXSRC)/ixx
+X         IXXFLAGS = -s BaseObject -m TypeObj -r RequestObj -p Xf
+X      IXXINCLUDES = -i '<X11/Fresco/enter-scope.h>'
+X
+X          INCROOT = /usr/local/packages/X11r6/include
+X        USRLIBDIR = /usr/local/packages/X11r6/lib
+X         SHLIBDIR = /usr/local/packages/X11r6/lib
+X       LINTLIBDIR = $(USRLIBDIR)/lint
+X          MANPATH = /usr/local/packages/X11r6/man
+X    MANSOURCEPATH = $(MANPATH)/man
+X           MANDIR = $(MANSOURCEPATH)1
+X        LIBMANDIR = $(MANSOURCEPATH)3
+X       FILEMANDIR = $(MANSOURCEPATH)$(FILEMANSUFFIX)
+X
+X               AR = /usr/ccs/bin/ar cq
+X  BOOTSTRAPCFLAGS = -DSVR4
+X               CC = gcc -fpcc-struct-return
+X               AS = /usr/ccs/bin/as
+X
+X         COMPRESS = compress
+X              CPP = /usr/ccs/lib/cpp $(STD_CPP_DEFINES)
+X    PREPROCESSCMD = gcc -fpcc-struct-return -E $(STD_CPP_DEFINES)
+X          INSTALL = $(SHELL) $(CONFIGSRC)/util/bsdinst.sh
+X     INSTALLFLAGS = -c
+X               LD = /usr/ccs/bin/ld
+X              LEX = /usr/ccs/bin/lex
+X           LEXLIB = -ll
+X             YACC = /usr/ccs/bin/yacc
+X           CCYACC = /usr/ccs/bin/yacc
+X             LINT = lint
+X      LINTLIBFLAG = -o
+X         LINTOPTS = -bh
+X               LN = ln -s
+X             MAKE = /usr/ccs/bin/make
+X               MV = mv
+X               CP = cp
+X
+X               RM = rm -f
+X        MANSUFFIX = 1x
+X     LIBMANSUFFIX = 3x
+X    FILEMANSUFFIX = 4
+X            TROFF = psroff
+X         MSMACROS = -ms
+X              TBL = tbl
+X              EQN = eqn
+X
+X     STD_INCLUDES =
+X  STD_CPP_DEFINES = -Dsun -DSVR4
+X      STD_DEFINES = -Dsun -DSVR4
+X EXTRA_LOAD_FLAGS =
+X  EXTRA_LDOPTIONS =
+X  EXTRA_LIBRARIES = -lsocket -lnsl
+X             TAGS = ctags
+X
+X    SHAREDCODEDEF =
+X         SHLIBDEF =
+X
+X     SHLIBLDFLAGS = -G -z text
+X
+X         PICFLAGS = -fpic
+X
+X      CXXPICFLAGS = -K PIC
+X
+X    PROTO_DEFINES =
+X
+X     INSTPGMFLAGS =
+X
+X     INSTBINFLAGS = -m 0755
+X     INSTUIDFLAGS = -m 4755
+X     INSTLIBFLAGS = -m 0644
+X     INSTINCFLAGS = -m 0444
+X     INSTMANFLAGS = -m 0444
+X     INSTDATFLAGS = -m 0444
+X    INSTKMEMFLAGS = -g sys -m 2755
+X
+X      PROJECTROOT = /usr/local/packages/X11r6
+X
+X     TOP_INCLUDES = -I$(TOP)
+X
+X      CDEBUGFLAGS = -O2
+X        CCOPTIONS =
+X
+X      ALLINCLUDES = $(INCLUDES) $(EXTRA_INCLUDES) $(TOP_INCLUDES) $(STD_INCLUDES)
+X       ALLDEFINES = $(ALLINCLUDES) $(STD_DEFINES) $(EXTRA_DEFINES) $(PROTO_DEFINES) $(THREADS_DEFINES) $(DEFINES)
+X           CFLAGS = $(CDEBUGFLAGS) $(CCOPTIONS) $(THREADS_CFLAGS) $(ALLDEFINES)
+X        LINTFLAGS = $(LINTOPTS) -DLINT $(ALLDEFINES) $(DEPEND_DEFINES)
+X         LDPRELIB = -L$(BUILDLIBDIR)
+X        LDPOSTLIB =
+X        LDOPTIONS = $(CDEBUGFLAGS) $(CCOPTIONS)  $(EXTRA_LDOPTIONS) $(THREADS_LDFLAGS) $(LOCAL_LDFLAGS) $(LDPRELIB)
+X     CXXLDOPTIONS = $(CDEBUGFLAGS) $(CXXOPTIONS) $(EXTRA_LDOPTIONS) $(THREADS_CXXLDFLAGS) $(LOCAL_LDFLAGS) $(LDPRELIB)
+X
+X           LDLIBS = $(LDPOSTLIB) $(THREADS_LIBS) $(SYS_LIBRARIES) $(EXTRA_LIBRARIES)
+X
+X       CCENVSETUP = LD_RUN_PATH=$(USRLIBDIR)
+X           CCLINK = $(CCENVSETUP) $(CC)
+X
+X      CXXENVSETUP = LD_RUN_PATH=$(USRLIBDIR)
+X          CXXLINK = $(CXXENVSETUP) $(CXX)
+X
+X     LDSTRIPFLAGS = -x
+X   LDCOMBINEFLAGS = -r
+X      DEPENDFLAGS =
+X
+X        MACROFILE = sun.cf
+X           RM_CMD = $(RM)
+X
+X    IMAKE_DEFINES =
+X
+X         IRULESRC = $(CONFIGSRC)/cf
+X        IMAKE_CMD = $(IMAKE) -I$(IRULESRC) $(IMAKE_DEFINES)
+X
+X     ICONFIGFILES = $(IRULESRC)/Imake.tmpl $(IRULESRC)/Project.tmpl \
+X			$(IRULESRC)/site.def $(IRULESRC)/$(MACROFILE) \
+X			 $(EXTRA_ICONFIGFILES)
+X
+X# -----------------------------------------------------------------------
+X# X Window System Build Parameters and Rules
+X# $XConsortium: Project.tmpl,v 1.242 94/04/13 14:58:40 rws Exp $
+X
+X# -----------------------------------------------------------------------
+X# X Window System make variables; these need to be coordinated with rules
+X
+X           BINDIR = /usr/local/packages/X11r6/bin
+X     BUILDINCROOT = $(TOP)
+X      BUILDINCDIR = $(BUILDINCROOT)/X11
+X      BUILDINCTOP = ..
+X      BUILDLIBDIR = $(TOP)/usrlib
+X      BUILDLIBTOP = ..
+X           INCDIR = $(INCROOT)/X11
+X           ADMDIR = /usr/adm
+X           LIBDIR = $(USRLIBDIR)/X11
+X
+X          FONTDIR = $(LIBDIR)/fonts
+X         XINITDIR = $(LIBDIR)/xinit
+X           XDMDIR = $(LIBDIR)/xdm
+X           TWMDIR = $(LIBDIR)/twm
+X           NLSDIR = $(LIBDIR)/nls
+X       XLOCALEDIR = $(LIBDIR)/locale
+X        PEXAPIDIR = $(LIBDIR)/PEX
+X      XAPPLOADDIR = $(LIBDIR)/app-defaults
+X       FONTCFLAGS = -t
+X
+X     INSTAPPFLAGS = $(INSTDATFLAGS)
+X
+X              RGB = $(RGBSRC)/rgb
+X            FONTC = $(BDFTOPCFSRC)/bdftopcf
+X        MKFONTDIR = $(MKFONTDIRSRC)/mkfontdir
+X
+X       DOCUTILSRC = $(TOP)/doc/util
+X       XDOCMACROS = $(DOCUTILSRC)/macros.t
+X       XIDXMACROS = $(DOCUTILSRC)/indexmacros.t
+X       PROGRAMSRC = $(TOP)/programs
+X           LIBSRC = $(TOP)/lib
+X          FONTSRC = $(TOP)/fonts
+X       INCLUDESRC = $(TOP)/X11
+X        SERVERSRC = $(TOP)/programs/Xserver
+X       CONTRIBSRC = $(TOP)/../contrib
+X   UNSUPPORTEDSRC = $(TOP)/unsupported
+X           DOCSRC = $(TOP)/doc
+X           RGBSRC = $(TOP)/programs/rgb
+X      BDFTOPCFSRC = $(PROGRAMSRC)/bdftopcf
+X     MKFONTDIRSRC = $(PROGRAMSRC)/mkfontdir
+X    FONTSERVERSRC = $(PROGRAMSRC)/xfs
+X       FONTINCSRC = $(TOP)/include/fonts
+X        EXTINCSRC = $(TOP)/include/extensions
+X     TRANSCOMMSRC = $(LIBSRC)/xtrans
+X   TRANS_INCLUDES = -I$(TRANSCOMMSRC)
+X
+X# $XConsortium: sunLib.tmpl,v 1.36 94/04/08 19:13:50 rws Exp $
+X
+X# $XConsortium: sv4Lib.tmpl,v 1.19 93/12/03 10:48:36 kaleb Exp $
+X
+XXMULIBONLY = -lXmu
+X
+X          XLIBSRC = $(LIBSRC)/X11
+X
+XSOXLIBREV = 6.0
+XDEPXONLYLIB =
+XXONLYLIB =  -lX11
+X
+XLINTXONLY = $(XLIBSRC)/llib-X11.ln
+X
+X         XLIBONLY = $(XONLYLIB)
+X
+X      XEXTLIBSRC = $(LIBSRC)/Xext
+X
+XSOXEXTREV = 6.0
+XDEPEXTENSIONLIB =
+XEXTENSIONLIB =  -lXext
+X
+XLINTEXTENSION = $(XEXTLIBSRC)/llib-Xext.ln
+X
+XLINTEXTENSIONLIB = $(LINTEXTENSION)
+X          DEPXLIB = $(DEPEXTENSIONLIB) $(DEPXONLYLIB)
+X             XLIB = $(EXTENSIONLIB) $(XONLYLIB)
+X         LINTXLIB = $(LINTXONLYLIB)
+X
+X         XAUTHSRC = $(LIBSRC)/Xau
+X
+XDEPXAUTHLIB = $(BUILDLIBDIR)/libXau.a
+XXAUTHLIB =  -lXau
+X
+XLINTXAUTH = $(XAUTHSRC)/llib-Xau.ln
+X
+X      XDMCPLIBSRC = $(LIBSRC)/Xdmcp
+X
+XDEPXDMCPLIB = $(BUILDLIBDIR)/libXdmcp.a
+XXDMCPLIB =  -lXdmcp
+X
+XLINTXDMCP = $(XDMCPLIBSRC)/llib-Xdmcp.ln
+X
+X           XMUSRC = $(LIBSRC)/Xmu
+X
+XSOXMUREV = 6.0
+XDEPXMULIB =
+XXMULIB =  -lXmu
+X
+XLINTXMU = $(XMUSRC)/llib-Xmu.ln
+X
+X       OLDXLIBSRC = $(LIBSRC)/oldX
+X
+XSOOLDXREV = 6.0
+XDEPOLDXLIB =
+XOLDXLIB =  -loldX
+X
+XLINTOLDX = $(OLDXLIBSRC)/llib-oldX.ln
+X
+X       TOOLKITSRC = $(LIBSRC)/Xt
+X
+XSOXTREV = 6.0
+XDEPXTOOLONLYLIB =
+XXTOOLONLYLIB =  -lXt
+X
+XLINTXTOOLONLY = $(TOOLKITSRC)/llib-Xt.ln
+X
+X      DEPXTOOLLIB = $(DEPXTOOLONLYLIB) $(DEPSMLIB) $(DEPICELIB)
+X         XTOOLLIB = $(XTOOLONLYLIB) $(SMLIB) $(ICELIB)
+X     LINTXTOOLLIB = $(LINTXTOOLONLYLIB)
+X
+X       AWIDGETSRC = $(LIBSRC)/Xaw
+X
+XSOXAWREV = 6.0
+XDEPXAWLIB =
+XXAWLIB =  -lXaw
+X
+XLINTXAW = $(AWIDGETSRC)/llib-Xaw.ln
+X
+X       XTFSRC = $(TOP)/workInProgress/Xtf
+X
+XSOXTFREV = 0.7
+XDEPXTFLIB =
+XXTFLIB =  -lXtf
+X
+XLINTXTF = $(XTFSRC)/llib-Xtf.ln
+X
+X       FRESCOSRC = $(TOP)/workInProgress/Fresco
+X
+XSOFRESCOREV = 0.7
+XDEPFRESCOLIB =
+XFRESCOLIB =  -lFresco
+X
+XLINTFRESCO = $(FRESCOSRC)/src/llib-Fresco.ln
+X
+X         XILIBSRC = $(LIBSRC)/Xi
+X
+XSOXINPUTREV = 6.0
+XDEPXILIB =
+XXILIB =  -lXi
+X
+XLINTXI = $(XILIBSRC)/llib-Xi.ln
+X
+X      XTESTLIBSRC = $(LIBSRC)/Xtst
+X
+XSOXTESTREV = 6.0
+XDEPXTESTLIB =
+XXTESTLIB =  -lXtst
+X
+XLINTXTEST = $(XTESTLIBSRC)/llib-Xtst.ln
+X
+X        PEXLIBSRC = $(LIBSRC)/PEX5
+X
+XSOPEXREV = 6.0
+XDEPPEXLIB =
+XPEXLIB =  -lPEX5
+X
+XLINTPEX = $(PEXLIBSRC)/llib-PEX5.ln
+X
+X        XIELIBSRC = $(LIBSRC)/XIE
+X
+XSOXIEREV = 6.0
+XDEPXIELIB =
+XXIELIB =  -lXIE
+X
+XLINTXIE = $(XIELIBSRC)/llib-XIE.ln
+X
+X      PHIGSLIBSRC = $(LIBSRC)/PHIGS
+X
+XDEPPHIGSLIB = $(BUILDLIBDIR)/libphigs.a
+XPHIGSLIB =  -lphigs
+X
+XLINTPHIGS = $(PHIGSLIBSRC)/llib-phigs.ln
+X
+XDEPXBSDLIB = $(BUILDLIBDIR)/libXbsd.a
+XXBSDLIB =  -lXbsd
+X
+XLINTXBSD = $(LIBSRC)/Xbsd/llib-Xbsd.ln
+X
+X           ICESRC = $(LIBSRC)/ICE
+X
+XSOICEREV = 6.0
+XDEPICELIB =
+XICELIB =  -lICE
+X
+XLINTICE = $(ICESRC)/llib-ICE.ln
+X
+X            SMSRC = $(LIBSRC)/SM
+X
+XSOSMREV = 6.0
+XDEPSMLIB =
+XSMLIB =  -lSM
+X
+XLINTSM = $(SMSRC)/llib-SM.ln
+X
+X         FSLIBSRC = $(LIBSRC)/FS
+X
+XDEPFSLIB = $(BUILDLIBDIR)/libFS.a
+XFSLIB =  -lFS
+X
+XLINTFS = $(FSLIBSRC)/llib-FS.ln
+X
+X         FONTLIBSRC = $(LIBSRC)/font
+X
+XDEPFONTLIB = $(BUILDLIBDIR)/libfont.a
+XFONTLIB =  -lfont
+X
+XLINTFONT = $(FONTLIBSRC)/llib-font.ln
+X
+X          DEPLIBS = $(DEPXAWLIB) $(DEPXMULIB) $(DEPXTOOLLIB) $(DEPXLIB)
+X
+X         DEPLIBS1 = $(DEPLIBS)
+X         DEPLIBS2 = $(DEPLIBS)
+X         DEPLIBS3 = $(DEPLIBS)
+X
+X        CONFIGDIR = $(LIBDIR)/config
+X
+X# -----------------------------------------------------------------------
+X# start of Imakefile
+X
+X# $XConsortium: Imakefile,v 1.14 93/08/17 21:16:19 rws Exp $
+XDEPLIBS = $(DEPXMULIB) $(DEPXTOOLLIB) $(DEPXLIB)
+XLOCAL_LIBRARIES = $(XMULIB) $(XTOOLLIB) $(XLIB)
+X
+XSRCS = pserver.c decode11.c drawcmd.c tcpip.c
+XOBJS = pserver.o decode11.o drawcmd.o tcpip.o
+XINCLUDES = -I$(XLIBSRC) -I$(EXTINCSRC)
+X
+X PROGRAM = pserver
+X
+Xall:: pserver
+X
+Xpserver: $(OBJS) $(DEPLIBS)
+X	$(RM) $@
+X	$(CCLINK) -o $@ $(LDOPTIONS) $(OBJS) $(LOCAL_LIBRARIES) $(LDLIBS)  $(EXTRA_LOAD_FLAGS)
+X
+Xinstall:: pserver
+X	@if [ -d $(DESTDIR)$(BINDIR) ]; then set +x; \
+X	else (set -x; $(MKDIRHIER) $(DESTDIR)$(BINDIR)); fi
+X	$(INSTALL) $(INSTALLFLAGS) $(INSTPGMFLAGS)  pserver $(DESTDIR)$(BINDIR)/pserver
+X
+Xinstall.man:: pserver.man
+X	@if [ -d $(DESTDIR)$(MANDIR) ]; then set +x; \
+X	else (set -x; $(MKDIRHIER) $(DESTDIR)$(MANDIR)); fi
+X	$(INSTALL) $(INSTALLFLAGS) $(INSTMANFLAGS) pserver.man $(DESTDIR)$(MANDIR)/pserver.$(MANSUFFIX)
+X
+Xdepend:: $(DEPEND)
+X
+X$(DEPEND):
+X	@echo "checking $@ over in $(DEPENDSRC) first..."; \
+X	cd $(DEPENDSRC); $(MAKE); \
+X	echo "okay, continuing in $(CURRENT_DIR)"
+X
+Xdepend::
+X	$(DEPEND) $(DEPENDFLAGS) -- $(ALLDEFINES) $(DEPEND_DEFINES) -- $(SRCS)
+X
+Xlint:
+X	$(LINT) $(LINTFLAGS) $(SRCS) $(LINTLIBS)
+Xlint1:
+X	$(LINT) $(LINTFLAGS) $(FILE) $(LINTLIBS)
+X
+Xclean::
+X	$(RM) pserver
+X
+Xall:: libprint.a
+X
+Xlibprint.a: printlib.o
+X	$(RM) $@
+X	$(AR) $@ printlib.o
+X	$(_NULLCMD_)
+X	$(_NULLCMD_)
+X
+X# -----------------------------------------------------------------------
+X# common rules for all Makefiles - do not edit
+X
+X.c.i:
+X	$(RM) $@
+X	$(CC) -E $(CFLAGS) $(_NOOP_) $*.c > $@
+X
+Xemptyrule::
+X
+Xclean::
+X	$(RM_CMD) *.CKP *.ln *.BAK *.bak *.o core errs ,* *~ *.a .emacs_* tags TAGS make.log MakeOut   "#"*
+X
+XMakefile:: $(IMAKE)
+X
+X$(IMAKE):
+X	-@(cd $(IMAKESRC); if [ -f Makefile ]; then \
+X	echo "checking $@ in $(IMAKESRC) first..."; $(MAKE) all; else \
+X	echo "bootstrapping $@ from Makefile.ini in $(IMAKESRC) first..."; \
+X	$(MAKE) -f Makefile.ini BOOTSTRAPCFLAGS="$(BOOTSTRAPCFLAGS)"; fi; \
+X	echo "okay, continuing in $(CURRENT_DIR)")
+X
+XMakefile::
+X	-@if [ -f Makefile ]; then set -x; \
+X	$(RM) Makefile.bak; $(MV) Makefile Makefile.bak; \
+X	else exit 0; fi
+X	$(IMAKE_CMD) -DTOPDIR=$(TOP) -DCURDIR=$(CURRENT_DIR)
+X
+Xtags::
+X	$(TAGS) -w *.[ch]
+X	$(TAGS) -xw *.[ch] > TAGS
+X
+X# -----------------------------------------------------------------------
+X# empty rules for directories that do not have SUBDIRS - do not edit
+X
+Xinstall::
+X	@echo "install in $(CURRENT_DIR) done"
+X
+Xinstall.man::
+X	@echo "install.man in $(CURRENT_DIR) done"
+X
+XMakefiles::
+X
+Xincludes::
+X
+Xdepend::
+X
+X# -----------------------------------------------------------------------
+X# dependencies generated by makedepend
+X
+END_OF_FILE
+  if test 13138 -ne `wc -c <'xpserv/Makefile'`; then
+    echo shar: \"'xpserv/Makefile'\" unpacked with wrong size!
+  fi
+  # end of 'xpserv/Makefile'
+fi
+if test -f 'xpserv/drawcmd.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'xpserv/drawcmd.c'\"
+else
+  echo shar: Extracting \"'xpserv/drawcmd.c'\" \(26683 characters\)
+  sed "s/^X//" >'xpserv/drawcmd.c' <<'END_OF_FILE'
+X/*
+XCopyright (c) 1994  Matthew Reynolds and Qualcomm Inc.
+X
+XPermission is hereby granted, free of charge, to any person obtaining a copy
+Xof this software and associated documentation files (the "Software"), to deal
+Xin the Software without restriction, including without limitation the rights
+Xto use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+Xcopies of the Software, and to permit persons to whom the Software is
+Xfurnished to do so, subject to the following conditions:
+X
+XThe above copyright notice and this permission notice shall be included in
+Xall copies or substantial portions of the Software.
+X
+XTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+XIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+XFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+XQUALCOMM INC., OR MATTHEW REYNOLDS BE LIABLE FOR ANY CLAIM, 
+XDAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR 
+XOTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+XOR OTHER DEALINGS IN THE SOFTWARE.
+X
+XExcept as contained in this notice, the name of Qualcomm Inc., or Matthew 
+XReynolds shall not be used in advertising or otherwise to promote the sale, 
+Xuse or other dealings in this Software without their prior written 
+Xauthorization.
+X
+X*/
+X
+X#include <stdio.h>
+X#include <malloc.h>
+X#include <string.h>
+X#include <X11/Xproto.h>
+X#include <X11/Xlib.h>
+X#include <X11/Xatom.h>
+X#include "printer.h"
+X#include "printlib.h"
+X
+X/* current GC values pointer */
+X
+Xextern XGCValues 		initial_GC;
+Xstatic XGCValues 		*curr_gcvp = &initial_GC;
+Xextern struct PrintClient	PCS[];
+X
+X/* font information mapping tables and cache of loaded fonts */
+X
+Xint				num_cache_font = 0;
+Xextern winfo_table_p           	winfo_table;
+Xextern gcinfo_table_p          	gcinfo_table;
+Xextern cmapinfo_table_p        	cmapinfo_table;
+Xextern font_table_p		font_table;
+Xextern char			**fontlist;
+X
+X
+X/* set up the initial definitions in the postscript file */
+X
+Xvoid initprocs( struct PrintClient	*pc, 
+X		int			fd)
+X{
+X    XWindowAttributes	*win_attr;
+X    winfo_p		winfo;
+X    Drawable		drawable = pc->win;
+X    FILE		*fp = pc->printfp;
+X
+X    winfo = getwinfo( drawable, winfo_table);
+X    if ( winfo == NULL) {
+X	fprintf( stderr, "couldn't find window id %d\n", drawable);
+X	return;
+X    }
+X    win_attr = &winfo->attr;
+X
+X/* postscript has images reverse from real world */
+X
+X    fprintf( fp, "%%!PS-Adobe-2.0\n");
+X    fprintf( fp, "%%%%Creator: X to PostScript server\n");
+X    fprintf( fp, "%%%%Pages: 1\n");
+X    if ( win_attr->width < win_attr->height) {
+X	fprintf( fp, "%%%%Orientation: Portrait\n");
+X    } else {
+X	fprintf( fp, "%%%%Orientation: Landscape\n");
+X    }
+X    fprintf( fp, "%%%%EndComments\n");
+X
+X/* definition for image drawing function */
+X 
+X    fprintf( fp, "/imagedraw\n");
+X    fprintf( fp, "{\n");
+X    fprintf( fp, "/matrix exch cvlit def\n");
+X    fprintf( fp, "/depth exch cvlit def\n");
+X    fprintf( fp, "/height exch cvlit def\n");
+X    fprintf( fp, "/width exch cvlit def\n");
+X    fprintf( fp, "/picstr width string def\n");
+X    fprintf( fp, "width height depth matrix\n");
+X    fprintf( fp, "    { currentfile picstr readhexstring pop }\n");
+X    fprintf( fp, "    false 3 colorimage\n");
+X    fprintf( fp, "} def\n");
+X
+X/* definition of arc drawing function */
+X
+X    fprintf( fp, "/elliparc\n");
+X    fprintf( fp, "{\n");
+X    fprintf( fp, "/x exch cvlit def\n");
+X    fprintf( fp, "/y exch cvlit def\n");
+X    fprintf( fp, "/width exch cvlit def\n");
+X    fprintf( fp, "/height exch cvlit def\n");
+X    fprintf( fp, "/angle1 exch cvlit def\n");
+X    fprintf( fp, "/angle2 exch cvlit def\n");
+X    fprintf( fp, "1 height width div scale\n");
+X    fprintf( fp, "x width 2 div add\n");		/* x: center */
+X    fprintf( fp, "y height 2 div add\n");		/* y: center */
+X    fprintf( fp, "width 2 div\n");			/* radius */
+X    fprintf( fp, "angle1 angle2 arc\n");		/* ang1 ang2 arc */
+X    fprintf( fp, "} def\n");
+X
+X/* use the window and postscript output dimensions to determine the scaling
+X   to use for the drawing to this window depending on which size is larger, 
+X   rotate by 90 deg for landscape */
+X
+X    if ( win_attr->width < win_attr->height) {
+X	fprintf( fp, "[ %d %d] /pagesize exch cvlit def\n",
+X		 pc->page_width, pc->page_height);
+X	fprintf( fp, "0 pagesize 1 get translate\n");
+X	fprintf( fp, "pagesize 0 get %d div ", win_attr->width); 
+X	fprintf( fp, "pagesize 1 get %d div neg ", win_attr->height); 
+X	fprintf( fp, "scale\n");
+X    } else {
+X	fprintf( fp, "4 dict begin\n");
+X	fprintf( fp, "0 0 %d %d\n", pc->page_width, pc->page_height);
+X	fprintf( fp, "/ury exch def /urx exch def\n");
+X	fprintf( fp, "/lly exch def /llx exch def\n");
+X	fprintf( fp, "90 rotate\n");
+X	fprintf( fp, "llx neg llx urx sub lly sub translate\n");
+X	fprintf( fp, "end\n");
+X	fprintf( fp, "[ %d %d] /pagesize exch cvlit def\n", 
+X		 pc->page_height, pc->page_width);
+X	fprintf( fp, "0 pagesize 1 get translate\n");
+X	fprintf( fp, "pagesize 0 get %d div ", win_attr->width); 
+X	fprintf( fp, "pagesize 1 get %d div neg ", win_attr->height); 
+X	fprintf( fp, "scale\n");
+X    }
+X
+X/* just a temporary font */
+X
+X    fprintf( fp, "/Times-Roman findfont 14 scalefont setfont\n");
+X}
+X
+X/* set the foreground color according to the pixel and the current colormap */
+X
+Xvoid setcolor( FILE 		*fp,		
+X	       unsigned long	pixel,
+X	       Colormap		cmap)
+X{
+X    double	red, green, blue;
+X    cmapinfo_p	cmapinfo;
+X
+X    cmapinfo = getcmapinfo( cmap, cmapinfo_table);
+X    if ( cmapinfo == NULL) {
+X       return;
+X    }
+X    if (( pixel >= 0) && ( pixel < NUM_COLORS)) {
+X	red = ( double) cmapinfo->colors[ pixel].red / 65536.0;
+X	green = ( double) cmapinfo->colors[ pixel].green / 65535.0;
+X	blue = ( double) cmapinfo->colors[ pixel].blue / 65535.0;
+X	fprintf( fp, "%.3f %.3f %.3f setrgbcolor\n", red, green, blue);
+X    }
+X}
+X
+X/* set the line width of the current line */
+X
+Xvoid setlinewidth( FILE	*fp,
+X		   int	line_width)
+X{
+X    fprintf( fp, "%d setlinewidth\n", line_width);
+X}
+X
+X/* set the line cap parameter for the graphics state */
+X
+Xvoid setlinecap( FILE 	*fp,
+X		 int  	cap_style)
+X{
+X    int style;
+X
+X    switch ( cap_style) {
+X    case CapNotLast:
+X    case CapButt:
+X	style = 0;
+X	break;
+X    case CapRound:
+X	style = 1;
+X	break;
+X    case CapProjecting:
+X	style = 2;
+X	break;
+X    default:
+X	break;
+X    }
+X    fprintf( fp, "%d setlinecap\n", style);
+X}
+X
+X/* set the line join style */
+X
+Xvoid setlinejoin( FILE	*fp,
+X		  int	join_style)
+X{
+X    int	style;
+X
+X    switch ( join_style) {
+X    case JoinMiter:
+X	style = 0;
+X	break;
+X    case JoinRound:
+X	style = 1;
+X	break;
+X    case JoinBevel:
+X	style = 2;
+X	break;
+X    default:
+X	break;
+X    }
+X    fprintf( fp, "%d setlinejoin\n", style);
+X}
+X
+X/* set an appropriate postscript font from an X bitmap font */
+X
+Xint setfont( FD		fd,
+X	     FILE	*fp,
+X	     Font	font_id)	/* unsigned long font ID */
+X{
+X    int	   	i, size;
+X    font_p	font;
+X
+X/* first, look in the font cache to see if there's a matching font */
+X
+X    for ( i = 0, font = font_table->font_table; 
+X	  i < font_table->num_fonts; 
+X	  i++, font++) {
+X	if ( font_id == font->fid) {
+X	    if (( font->post_name != NULL) && ( font->font_info != NULL)) {
+X		size = PCS[ fd].font_scale*
+X			( font->font_info->ascent + font->font_info->descent);
+X		fprintf( fp, "/%s findfont %d scalefont setfont\n",
+X			 font->post_name, size);
+X	    }
+X	    return( TRUE);
+X	}
+X    }
+X    fprintf( stderr, "server font id %d not found\n", font_id);
+X    return( FALSE);
+X}
+X
+X/* fill a list of rectangles */
+X
+Xvoid polyfillrectangle( FILE 		*fp,		
+X			Window		win,
+X			XGCValues	*gcv,
+X			int		nrect,
+X			XRectangle	*rectangles)
+X{
+X    while ( nrect-- > 0) {
+X	fprintf( fp, "newpath\n");
+X	fprintf( fp, "%d %d moveto\n", 
+X		( int) rectangles->x, ( int) rectangles->y);
+X	fprintf( fp, "0 %d rlineto\n", ( int) rectangles->height);
+X	fprintf( fp, "%d 0 rlineto\n", ( int) rectangles->width);
+X	fprintf( fp, "0 %d rlineto\n", ( int) -rectangles->height);
+X	fprintf( fp, "closepath fill\n");	/* closepath does last vertex */
+X
+X/* next rectangle */
+X
+X	rectangles++;
+X    }
+X}
+X
+X/* fill a list of rectangles */
+X
+Xvoid polyrectangle( FILE 	*fp,		
+X		    Window	win,
+X		    XGCValues	*gcv,
+X		    int		nrect,
+X		    XRectangle	*rectangles)
+X{
+X    while ( nrect-- > 0) {
+X	fprintf( fp, "newpath\n");
+X	fprintf( fp, "%d %d moveto\n", 
+X		( int) rectangles->x, ( int) rectangles->y);
+X	fprintf( fp, "0 %d rlineto\n", ( int) rectangles->height);
+X	fprintf( fp, "%d 0 rlineto\n", ( int) rectangles->width);
+X	fprintf( fp, "0 %d rlineto\n", ( int) -rectangles->height);
+X	fprintf( fp, "closepath stroke\n");	/* closepath does last vertex */
+X
+X/* next rectangle */
+X
+X	rectangles++;
+X    }
+X}
+X
+X/* draw a filled polygon */
+X
+Xvoid fillpoly( FILE 		*fp,
+X	       Window		win,
+X	       XGCValues	*gcv,
+X	       int		npoint,
+X	       int		coordmode,
+X	       XPoint		*points)
+X{
+X    fprintf( fp, "newpath\n");
+X    fprintf( fp, "%d %d moveto\n", ( int) points->x, ( int) points->y);
+X    points++;
+X    while ( --npoint > 1) {
+X	if ( coordmode == CoordModePrevious) {
+X	    fprintf( fp, "%d %d rlineto\n", ( int) points->x, ( int) points->y);
+X	} else {
+X	    fprintf( fp, "%d %d lineto\n", ( int) points->x, ( int) points->y);
+X	}
+X	points++;
+X    }
+X    fprintf( fp, "closepath fill\n");
+X}
+X
+X/* draw a polyline */
+X
+Xvoid polyline( FILE 		*fp,
+X	       Window		win,
+X	       XGCValues	*gcv,
+X	       int		npoint,
+X	       int		coordmode,
+X	       XPoint		*points)
+X{
+X    fprintf( fp, "newpath\n");
+X    fprintf( fp, "%d %d moveto\n", ( int) points->x, ( int) points->y);
+X    points++;
+X    while ( --npoint > 0) {
+X	if ( coordmode == CoordModePrevious) {
+X	    fprintf( fp, "%d %d rlineto\n", ( int) points->x, ( int) points->y);
+X	} else {
+X	    fprintf( fp, "%d %d lineto\n", ( int) points->x, ( int) points->y);
+X	}
+X	points++;
+X    }
+X    fprintf( fp, "stroke\n");
+X}
+X
+X/* draw a polypoint */
+X
+Xvoid polypoint( FILE 		*fp,
+X	        Window		win,
+X	        XGCValues	*gcv,
+X	        int		npoint,
+X	        int		coordmode,
+X	        XPoint		*points)
+X{
+X    fprintf( fp, "newpath\n");
+X    if ( coordmode == CoordModePrevious) {
+X	fprintf( fp, "%d %d moveto\n", ( int) points->x, ( int) points->y);
+X	npoint--;
+X	points++;
+X    }
+X    while ( npoint-- > 0) {
+X	if ( coordmode == CoordModeOrigin) {
+X	    fprintf( fp, "%d %d moveto\n", ( int) points->x, ( int) points->y);
+X	    fprintf( fp, "0 0 rlineto\n", ( int) points->x, ( int) points->y);
+X	} else {
+X	    fprintf( fp, "%d %d rmoveto\n", ( int) points->x, ( int) points->y);
+X	    fprintf( fp, "0 0 rlineto\n", ( int) points->x, ( int) points->y);
+X	}
+X	points++;
+X    }
+X    fprintf( fp, "stroke\n");
+X}
+X
+X/* arc draw function */
+X
+Xvoid polyarc( FILE	*fp,
+X	      Window	win,
+X	      XGCValues	*gcv,
+X	      int	narc,
+X	      xArc	*arcs)
+X{
+X    double	angle1, angle2;
+X
+X    fprintf( fp, "newpath\n");
+X    while ( narc--) { 
+X	angle1 = (( double) arcs->angle1)/ 64.0;
+X	angle2 = (( double) arcs->angle2)/ 64.0;
+X	fprintf( fp, "%d %d %d %d %f %f elliparc\n",
+X		 arcs->x, arcs->y, arcs->width, arcs->height,
+X		 arcs->angle1, arcs->angle2);
+X    }
+X    fprintf( fp, "stroke\n");
+X}
+X
+X
+X/* draw a polysegment set */
+X
+Xvoid polysegment( FILE 		*fp,
+X		  Window	win,
+X		  XGCValues	*gcv,
+X		  int		nseg,
+X		  XSegment	*segments)
+X{
+X    fprintf( fp, "newpath\n");
+X    while ( nseg-- > 0) {
+X       fprintf( fp, "%d %d moveto\n", segments->x1, segments->y1);
+X       fprintf( fp, "%d %d lineto\n", segments->x2, segments->y2);
+X       segments++;
+X    }
+X    fprintf( fp, "stroke\n");
+X}
+X
+X
+X/* draw text, which is set up in chunks, and may be interspersed with
+X   font information */
+X
+Xvoid polytext8( FILE 		*fp,
+X	        Window		win,
+X	        XGCValues	*gcv,
+X		int		x,
+X		int		y,
+X	        int		textlen,
+X	        unsigned char 	*buffer)
+X{
+X    char textbuf[ 1024];
+X    int	 size, delta;
+X
+X    fprintf( fp, "%d %d moveto\n", x, y);
+X    fprintf( fp, "gsave\n");
+X    fprintf( fp, "1 -1 scale\n");
+X    while ( textlen > 0) {
+X
+X/* we'll skip over the font information for the moment */
+X
+X	if ( buffer[ 0] == 255) {
+X	    buffer += 5;
+X	} else {
+X	    size = *buffer++;
+X	    textlen -= size;
+X	    delta = *buffer++;
+X	    fprintf( fp, "0 %d rmoveto\n", delta);
+X	    strncpy( textbuf, ( char *) buffer, size);
+X	    textbuf[ size] = '\0';
+X	    fprintf( fp, "(%s) show\n", textbuf);
+X	    buffer += size;
+X	    break;
+X	}
+X    }
+X    fprintf( fp, "grestore\n");
+X}
+X
+X/* draw text, which is set up in chunks, and may be interspersed with
+X   font information */
+X
+Xvoid polytext16( FILE 		*fp,
+X	         Window		win,
+X	         XGCValues	*gcv,
+X		 int		x,
+X		 int		y,
+X	         int		ntext,
+X	         unsigned char 	*buffer)
+X{
+X
+X/* stubbed out, because I'm not sure how to do this */
+X
+X#if 0
+X    char textbuf[ 512];
+X    int	 size;
+X
+X    fprintf( fp, "%d %d moveto\n", x , y);
+X    while ( ntext-- > 0) {
+X
+X/* we'll skip over the font information for the moment */
+X
+X	if ( buffer[ 0] == 255) {
+X	    buffer += 5;
+X	} else {
+X	    size = *buffer++;
+X	    strncpy( textbuf, buffer, size);
+X	    fprintf( fp, "(%s) show\n", textbuf);
+X	    buffer += size;
+X	}
+X    }
+X#endif
+X}
+X
+X
+X/* draw text, which is set up in chunks, and may be interspersed with
+X   font information */
+X
+Xvoid imagetext8( FILE 		*fp,
+X	         Window		win,
+X	         XGCValues	*gcv,
+X		 int		x,
+X		 int		y,
+X	         int		textlen,
+X	         unsigned char 	*buffer)
+X{
+X    char textbuf[ 512];
+X    int	 size, delta;
+X
+X    fprintf( fp, "%d %d moveto\n", x , y);
+X    fprintf( fp, "gsave\n");
+X    fprintf( fp, "1 -1 scale\n");
+X    while ( textlen-- > 0) {
+X
+X/* we'll skip over the font information for the moment */
+X
+X	if ( buffer[ 0] == 255) {
+X	    buffer += 5;
+X	} else {
+X            size = *buffer++;
+X            textlen -= size;
+X            delta = *buffer++;
+X            fprintf( fp, "0 %d rmoveto\n", delta);
+X            strncpy( textbuf, ( char *) buffer, size);
+X            textbuf[ size] = '\0';
+X            fprintf( fp, "(%s) show\n", textbuf);
+X            buffer += size;
+X            break;
+X	}
+X    }
+X    fprintf( fp, "grestore\n");
+X}
+X
+X/* draw text, which is set up in chunks, and may be interspersed with
+X   font information */
+X
+Xvoid imagetext16( FILE 		*fp,
+X	          Window	win,
+X	          XGCValues	*gcv,
+X		  int		x,
+X		  int		y,
+X	          int		ntext,
+X	          unsigned char *buffer)
+X{
+X
+X/* stubbed out, because I'm not sure how to do this */
+X
+X#if 0
+X    char textbuf[ 512];
+X    int	 size;
+X
+X    fprintf( fp, "%d %d moveto\n", x , y);
+X    while ( ntext-- > 0) {
+X
+X/* we'll skip over the font information for the moment */
+X
+X	if ( buffer[ 0] == 255) {
+X	    buffer += 5;
+X	} else {
+X	    size = *buffer++;
+X	    strncpy( textbuf, buffer, size);
+X	    fprintf( fp, "(%s) show\n", textbuf);
+X	    buffer += size;
+X	}
+X    }
+X#endif
+X}
+X
+X/* clear an area of a window ( draw a rectangle in the window's background 
+X   color).  This should really use the window background, but I can't get
+X   that value from the server ( can you believe it?) */
+X
+Xvoid cleararea( FILE			*fp,
+X	        Window			win,
+X		XWindowAttributes	*attr,
+X		int			x,
+X		int			y,
+X		int			width,
+X		int			height)
+X{
+X    setcolor( fp, BlackPixel( THE_DISPLAY, DefaultScreen( THE_DISPLAY)),
+X	      attr->colormap);
+X    fprintf( fp, "%d %d moveto\n", x, y);
+X    fprintf( fp, "%d 0 rlineto\n", width);
+X    fprintf( fp, "0 %d rlineto\n", height);
+X    fprintf( fp, "%d 0 rlineto\n", -width);
+X    fprintf( fp, "closepath fill\n");	
+X}
+X
+X/* put an image */
+X
+Xvoid putimage( FILE 		*fp,
+X	       Window		win,
+X	       XGCValues	*gcv,
+X	       int		depth,
+X	       int		width,
+X	       int		height,
+X	       int		x,
+X	       int		y,
+X	       int		leftpad,	
+X	       int		format,	
+X	       int		num_colors,
+X	       XColor		*colors,
+X	       unsigned char	*data)
+X{
+X
+X/* even though it's not documented anywhere, it seems that the width
+X   needs to be padded by 2 */
+X
+X    fprintf( fp, "gsave\n");
+X    print_image_grey(( char *) data, x, y, pad( width), height, depth, colors, 
+X		      num_colors, fp, PRINT_OPTIONS.index_cspace_support);
+X    fprintf( fp, "grestore\n");
+X}
+X
+X/* if the current GC pointer changes, reset it and set a new graphics state */
+X
+Xvoid set_curr_gc( FD		fd,
+X		  FILE		*fp,
+X		  XGCValues	*gcvp,
+X		  Colormap	cmap)
+X{
+X    if ( gcvp != curr_gcvp) {
+X
+X/* plane mask and function haven't been addressed yet */
+X
+X	setcolor( fp, gcvp->foreground, cmap);
+X#if 0
+X	setcolor( fp, gcvp->background, cmap);
+X#endif
+X	setlinewidth( fp, gcvp->line_width);
+X	setlinecap( fp, gcvp->cap_style);
+X	setlinejoin( fp, gcvp->join_style);
+X	setfont( fd, fp, gcvp->font);
+X	curr_gcvp = gcvp;
+X    }
+X}
+X
+X/* set the values in a GC given the flags and the data buffer from a request,
+X   and if it's the current GC, set the value immediately */
+X
+Xvoid set_gcvalues( FD		 fd,
+X		   FILE		 *fp,
+X		   XGCValues 	 *gcvp, 
+X		   unsigned long value_mask, 
+X		   unsigned long *request,	/* each val is a long */
+X		   Colormap	 cmap)
+X{
+X    if ( value_mask & GCFunction) {
+X	gcvp->function = *request++;
+X    }
+X    if ( value_mask & GCPlaneMask) {
+X	gcvp->plane_mask = *request++;
+X    }
+X
+X/* set the foreground color */
+X
+X    if ( value_mask & GCForeground) {
+X	gcvp->foreground = *request++;
+X	if ( gcvp == curr_gcvp) {
+X	    if (( gcvp->foreground > 0) && ( gcvp->foreground < NUM_COLORS)) {
+X		setcolor( fp, gcvp->foreground, cmap);
+X	    } else {
+X		fprintf( stderr, "pixel %d out of range\n", gcvp->foreground);
+X	    }
+X	}
+X    }
+X    if ( value_mask & GCBackground) {
+X	gcvp->background = *request++;
+X    }
+X    if ( value_mask & GCLineWidth) {
+X	gcvp->line_width = *request++;
+X    }
+X    if ( value_mask & GCLineStyle) {
+X	gcvp->line_style = *request++;
+X    }
+X    if ( value_mask & GCCapStyle) {
+X	gcvp->cap_style = *request++;
+X    }
+X    if ( value_mask & GCJoinStyle) {
+X	gcvp->join_style = *request++;
+X    }
+X    if ( value_mask & GCFillStyle) {
+X	gcvp->fill_style = *request++;
+X    }
+X    if ( value_mask & GCFillRule) {
+X	gcvp->fill_rule = *request++;
+X    }
+X    if ( value_mask & GCTile) {
+X	gcvp->tile = *request++;
+X    }
+X    if ( value_mask & GCStipple) {
+X	gcvp->stipple = *request++;
+X    }
+X    if ( value_mask & GCTileStipXOrigin) {
+X	gcvp->ts_x_origin = *request++;
+X    }
+X    if ( value_mask & GCTileStipYOrigin) {
+X	gcvp->ts_y_origin = *request++;
+X    }
+X    if ( value_mask & GCFont) {
+X	gcvp->font = *request++;
+X	setfont( fd, fp, gcvp->font);
+X    }
+X    if ( value_mask & GCSubwindowMode) {
+X	gcvp->subwindow_mode = *request++;
+X    }
+X    if ( value_mask & GCGraphicsExposures) {
+X	gcvp->graphics_exposures = *request++;
+X    }
+X    if ( value_mask & GCClipXOrigin) {
+X	gcvp->clip_x_origin = *request++;
+X    }
+X    if ( value_mask & GCClipYOrigin) {
+X	gcvp->clip_y_origin = *request++;
+X    }
+X    if ( value_mask & GCClipMask) {
+X	gcvp->clip_mask = *request++;
+X    }
+X    if ( value_mask & GCDashOffset) {
+X	gcvp->dash_offset = *request++;
+X    }
+X    if ( value_mask & GCDashList) {
+X	gcvp->dashes = *request++;
+X    }
+X    if ( value_mask & GCArcMode) {
+X	gcvp->arc_mode = *request++;
+X    }
+X}
+X
+X/* set the values in a GC given the flags and the data buffer from a request,
+X   and if it's the current GC, set the value immediately */
+X
+Xvoid copy_gcvalues( XGCValues 	 *gcvp, 
+X		    XGCValues	 *src_gcvp,
+X		    unsigned long value_mask)
+X{
+X    if ( value_mask & GCFunction) {
+X	gcvp->function = src_gcvp->function;
+X    }
+X    if ( value_mask & GCPlaneMask) {
+X	gcvp->plane_mask = src_gcvp->plane_mask;
+X    }
+X
+X/* set the foreground color */
+X
+X    if ( value_mask & GCForeground) {
+X	gcvp->foreground = src_gcvp->foreground;
+X    }
+X    if ( value_mask & GCBackground) {
+X	gcvp->background = src_gcvp->background;
+X    }
+X    if ( value_mask & GCLineWidth) {
+X	gcvp->line_width = src_gcvp->line_width;
+X    }
+X    if ( value_mask & GCLineStyle) {
+X	gcvp->line_style = src_gcvp->line_style;
+X    }
+X    if ( value_mask & GCCapStyle) {
+X	gcvp->cap_style = src_gcvp->cap_style;
+X    }
+X    if ( value_mask & GCJoinStyle) {
+X	gcvp->join_style = src_gcvp->join_style;
+X    }
+X    if ( value_mask & GCFillStyle) {
+X	gcvp->fill_style = src_gcvp->fill_style;
+X    }
+X    if ( value_mask & GCFillRule) {
+X	gcvp->fill_rule = src_gcvp->fill_rule;
+X    }
+X    if ( value_mask & GCTile) {
+X	gcvp->tile = src_gcvp->tile;
+X    }
+X    if ( value_mask & GCStipple) {
+X	gcvp->stipple = src_gcvp->stipple;
+X    }
+X    if ( value_mask & GCTileStipXOrigin) {
+X	gcvp->ts_x_origin = src_gcvp->ts_x_origin;
+X    }
+X    if ( value_mask & GCTileStipYOrigin) {
+X	gcvp->ts_y_origin = src_gcvp->ts_y_origin;
+X    }
+X    if ( value_mask & GCFont) {
+X	gcvp->font = src_gcvp->font;
+X    }
+X    if ( value_mask & GCSubwindowMode) {
+X	gcvp->subwindow_mode = src_gcvp->subwindow_mode;
+X    }
+X    if ( value_mask & GCGraphicsExposures) {
+X	gcvp->graphics_exposures = src_gcvp->graphics_exposures;
+X    }
+X    if ( value_mask & GCClipXOrigin) {
+X	gcvp->clip_x_origin = src_gcvp->clip_x_origin;
+X    }
+X    if ( value_mask & GCClipYOrigin) {
+X	gcvp->clip_y_origin = src_gcvp->clip_y_origin;
+X    }
+X    if ( value_mask & GCClipMask) {
+X	gcvp->clip_mask = src_gcvp->clip_mask;
+X    }
+X    if ( value_mask & GCDashOffset) {
+X	gcvp->dash_offset = src_gcvp->dash_offset; 
+X    }
+X    if ( value_mask & GCDashList) {
+X	gcvp->dashes = src_gcvp->dashes;
+X    }
+X    if ( value_mask & GCArcMode) {
+X	gcvp->arc_mode = src_gcvp->arc_mode;
+X    }
+X}
+X
+X/* copy the pixmap from the screen and draw it on the page */
+X
+Xvoid copyarea( FILE		*fp,
+X	       Drawable		src,
+X	       Window		win,
+X	       int		src_x,
+X	       int		src_y,
+X	       int		dst_x,
+X	       int		dst_y,
+X	       int		width,
+X	       int		height,
+X	       int		num_colors,
+X	       XColor		*colors)
+X{
+X    XImage	*image;
+X    int		screen = DefaultScreen( THE_DISPLAY);
+X    winfo_p	winfo;
+X
+X    winfo = getwinfo( src, winfo_table);
+X    if ( winfo == NULL) { 
+X
+X/* use an XImage and GetImage to get the area being copied */
+X
+X	image = XCreateImage( THE_DISPLAY, 
+X			      DefaultVisual( THE_DISPLAY, screen),
+X			      DefaultDepth( THE_DISPLAY, screen),
+X			      ZPixmap, 0, NULL, width, height, 8, 0);
+X	image->data = ( char *) malloc( image->bytes_per_line*image->height);
+X	XGetImage( THE_DISPLAY, src, src_x, src_y, width, height, 0, ZPixmap);
+X	print_image_grey( image->data, dst_x, dst_y, 
+X			  pad( width), height, 
+X			  DefaultDepth( THE_DISPLAY, screen), colors, 
+X			  num_colors, fp, PRINT_OPTIONS.index_cspace_support);
+X	free( image->data);
+X	free( image);
+X    } else {
+X
+X/*  I can't seem to find an operator for copying areas in PostScript */
+X
+X    }
+X}
+X
+X/* match a string with '*'s and '?'s */
+X
+Xstatic char *strqncmp( char 	*str1,
+X		       char 	*str2,
+X		       int	n)
+X{
+X    int	i;
+X    
+X    for ( i = 0; i < n; i++) {
+X	if ( *str2 == '*') {
+X	    return( str2 + 1); 
+X	}
+X	if ( *str1 != *str2) {
+X	    if ( *str1 != '?') {
+X		return( NULL);
+X	    }
+X	}
+X	str1++;
+X	str2++;
+X    }
+X    return( str2);
+X}
+X
+X/* see if two font wildcards match */
+X
+Xstatic int match_font_wild( char 	*wild1, 
+X			    char 	*wild2)
+X{
+X    char *p, *q, *r;
+X    
+X    for ( p = strtok( wild1, "*"); p != NULL; p = strtok( NULL, "*")) {
+X	q = wild2;
+X	r = strqncmp( p, q, strlen( p));
+X	if ( r == NULL) {
+X	    return( FALSE);
+X	}
+X    }
+X    if ( *r == '\0') {
+X	return( TRUE);
+X    }
+X}
+X
+Xchar *get_post_name( char *xfont)
+X{
+X    char **p;
+X
+X/* names are x font names interspersed with postscript names */
+X
+X    for ( p = fontlist; *p != NULL; p += 2) {
+X	if ( match_font_wild( xfont, *p)) {
+X	    return( p[ 1]);
+X	}
+X    }
+X    return( NULL);
+X}
+X
+X/* initialize the default values for the print clients */
+X
+Xvoid init_print_clients( struct PrintClient 	*pcs, 
+X			 int			numclients)
+X{
+X    int		i;
+X
+X    for ( i = 0; i < numclients; i++) {
+X	pcs[ i].preserve_aspect = 0;
+X	pcs[ i].font_scale = 1;
+X	pcs[ i].pixmap_scale = 1;
+X	pcs[ i].page_width = 612;	/* 8 1/2 x 11 is default size */
+X	pcs[ i].page_height = 792;
+X    }
+X}
+X
+Xstatic char hexchars[] = "0123456789abcdef";
+X
+X/* print an image to a file in hex format according to postscript format by
+X   changing the colormap to greyscale */
+X
+Xvoid print_image_grey( unsigned char 	*image,
+X		       int		x,
+X		       int		y,
+X		       int		width,
+X		       int		height,
+X		       int		depth,
+X		       XColor		*colors,
+X		       int		num_colors,
+X		       FILE		*fp,
+X		       int		index_support)
+X{
+X    unsigned char 	val, *image_end = image + width*height, *row_end;
+X    char		*printrow, *printptr;
+X    int	 		i, p, pixel, index_vec[ NUM_COLORS];
+X    XColor		*res_color;
+X
+X    if ( depth != 8) {
+X	fprintf( stderr, "depth %d not supported in image operator\n", depth);
+X	return;
+X    }
+X    if ( index_support) {
+X	printrow = ( char *) malloc( width*2);
+X
+X/* create an indexed color space for displaying the image */
+X
+X	fprintf( fp, "[/Indexed /DeviceRGB %d\n", num_colors - 1);
+X	fprintf( fp, "<\n");
+X	for ( i = 0; i < num_colors; i++) {
+X	    val = colors[ i].red >> 8;
+X	    fprintf( fp, "%x", (val & 0xf0) >> 4);
+X	    fprintf( fp, "%x", val & 0xf);
+X	    val = colors[ i].green >> 8;
+X	    fprintf( fp, "%x", (val & 0xf0) >> 4);
+X	    fprintf( fp, "%x", val & 0xf);
+X	    val = colors[ i].blue >> 8;
+X	    fprintf( fp, "%x", (val & 0xf0) >> 4);
+X	    fprintf( fp, "%x", val & 0xf);
+X	    fprintf( fp, "\n");
+X	}
+X	fprintf( fp, "> ] setcolorspace\n");
+X
+X/* print the image dictionary */
+X
+X	fprintf( fp, "/picstr %d string def\n", width);
+X	fprintf( fp, "<<\n");
+X	fprintf( fp, "/ImageType 1\n");
+X	fprintf( fp, "/Width %d /Height %d\n", width, height);
+X	fprintf( fp, "/BitsPerComponent 8\n");
+X	fprintf( fp, "/Decode [0 255]\n");
+X	fprintf( fp, "/ImageMatrix [ 1 0 0 1 %d %d]\n", -x, -y);
+X	fprintf( fp, "/DataSource { currentfile picstr readhexstring pop }\n");
+X	fprintf( fp, ">>\n");
+X	fprintf( fp, "image\n");
+X	while ( image < image_end) {
+X	    row_end = image + width;
+X	    printptr = printrow;
+X
+X/* translate the image pixels to hex characters and print the row in a 
+X   single shot */
+X
+X	    while ( image < row_end) {
+X		val = *image++;
+X		*printptr++ = hexchars[ (val & 0xf0) >> 4];
+X		*printptr++ = hexchars[ val & 0xf];
+X	    }
+X	    fwrite( printrow, 1, width*2, fp);
+X	    fprintf( fp, "\n");
+X	}
+X	free( printrow);
+X    } else {
+X	printrow = ( char *) malloc( width*6);
+X
+X/* create an index vector of the colors */
+X
+X	for ( i = 0; i < NUM_COLORS; i++) {
+X	    index_vec[ i] = 0;
+X	}
+X	for ( i = 0; i < num_colors; i++) {
+X	    if (( colors[ i].pixel >= 0) && ( colors[ i].pixel < NUM_COLORS)) {
+X		index_vec[ colors[ i].pixel] = i;
+X	    }
+X	}
+X
+X/* image header..presumes we have defined imagedraw function. y translation
+X   negative as inverse of moveto */
+X
+X	fprintf( fp, "%d %d %d [ 1 0 0 1 %d %d] imagedraw\n", 
+X		 width, height, depth, -x, -y);
+X	while ( image < image_end) {
+X	    row_end = image + width;
+X
+X/* get the print pixel corresponding to the image pixel */
+X
+X	    printptr = printrow;
+X	    while ( image < row_end) {
+X		pixel = *image++;
+X		res_color = &( colors[ index_vec[ pixel]]);
+X		val = res_color->red >> 8;
+X		*printptr++ = hexchars[ (val & 0xf0) >> 4];
+X		*printptr++ = hexchars[ val & 0xf];
+X		val = res_color->green >> 8;
+X		*printptr++ = hexchars[ (val & 0xf0) >> 4];
+X		*printptr++ = hexchars[ val & 0xf];
+X		val = res_color->blue >> 8;
+X		*printptr++ = hexchars[ (val & 0xf0) >> 4];
+X		*printptr++ = hexchars[ val & 0xf];
+X	    }
+X	    fwrite( printrow, 1, width*6, fp);
+X	    fprintf( fp, "\n");
+X	}
+X	free( printrow);
+X    }
+X}
+END_OF_FILE
+  if test 26683 -ne `wc -c <'xpserv/drawcmd.c'`; then
+    echo shar: \"'xpserv/drawcmd.c'\" unpacked with wrong size!
+  fi
+  # end of 'xpserv/drawcmd.c'
+fi
+if test -f 'xpserv/printlibP.h' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'xpserv/printlibP.h'\"
+else
+  echo shar: Extracting \"'xpserv/printlibP.h'\" \(2935 characters\)
+  sed "s/^X//" >'xpserv/printlibP.h' <<'END_OF_FILE'
+X/*
+XCopyright (c) 1994  Matthew Reynolds and Qualcomm Inc.
+X
+XPermission is hereby granted, free of charge, to any person obtaining a copy
+Xof this software and associated documentation files (the "Software"), to deal
+Xin the Software without restriction, including without limitation the rights
+Xto use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+Xcopies of the Software, and to permit persons to whom the Software is
+Xfurnished to do so, subject to the following conditions:
+X
+XThe above copyright notice and this permission notice shall be included in
+Xall copies or substantial portions of the Software.
+X
+XTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+XIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+XFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+XQUALCOMM INC., OR MATTHEW REYNOLDS BE LIABLE FOR ANY CLAIM, 
+XDAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR 
+XOTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+XOR OTHER DEALINGS IN THE SOFTWARE.
+X
+XExcept as contained in this notice, the name of Qualcomm Inc., or Matthew 
+XReynolds shall not be used in advertising or otherwise to promote the sale, 
+Xuse or other dealings in this Software without their prior written 
+Xauthorization.
+X
+X*/
+X
+X#ifndef _PRINTLIBP_H_
+X#define _PRINTLIBP_H_
+X#include <X11/Xlib.h>
+X#include <X11/Xmd.h>
+X
+X/* the X_, sz_ and xName all follow a naming convention for the hideous
+X   macros */
+X
+X#define X_OpenPrint		1
+X#define X_ClosePrint		2
+X#define X_SetPrint		3
+X
+X#define BadPrintWindow		0
+X#define PrintNumberErrors	(BadPrintWindow + 1)
+X
+Xtypedef struct _xOpenPrintReq {
+X    CARD8	reqType;
+X    CARD8	printReqType;
+X    CARD16	length;
+X    CARD16 	strlength;
+X    Drawable	drawable;
+X    char	filename[ 512];
+X    CARD16	pad;
+X} xOpenPrintReq;
+X
+Xtypedef struct _xSetPrintReq {
+X    CARD8	reqType;		/* set printer parameters request */
+X    CARD8 	printReqType;
+X    CARD16	length;
+X    CARD16	aspect;			/* preserve printout aspect ratio. */
+X    CARD16	fontScale;		/* font scaling (default=1) */
+X    CARD16	pixmapScale;		/* pixmap scaling (default=1) */
+X    CARD16	pageWidth;		/* page width and height in points */
+X    CARD16 	pageHeight;
+X    CARD16	pad;
+X} xSetPrintReq;
+X
+Xtypedef struct _xPrintReply {
+X    CARD8	type;			/* reply from XOpenPrintWindow req */
+X    CARD8	data1;
+X    CARD16	sequenceNumber;
+X    CARD32	length;
+X    CARD16 	flag;
+X    CARD16 	data00;		/* padding */
+X    CARD32 	data01;
+X    CARD32 	data02;
+X    CARD32 	data03;
+X    CARD32 	data04;
+X    CARD32 	data05;
+X} xPrintReply;
+X
+Xtypedef struct _xClosePrintReq {
+X    CARD8	reqType;		/* reply from XClosePrintWindow */
+X    CARD8	printReqType;
+X    CARD16	length;
+X    Drawable	drawable;
+X} xClosePrintReq;
+X
+X#define sz_xOpenPrintReq	sizeof( xOpenPrintReq)
+X#define sz_xClosePrintReq	sizeof( xClosePrintReq)
+X#define sz_xSetPrintReq		sizeof( xSetPrintReq)
+X
+X#endif /* _PRINTLIBP_H_ */
+END_OF_FILE
+  if test 2935 -ne `wc -c <'xpserv/printlibP.h'`; then
+    echo shar: \"'xpserv/printlibP.h'\" unpacked with wrong size!
+  fi
+  # end of 'xpserv/printlibP.h'
+fi
+if test -f 'xpserv/printopts' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'xpserv/printopts'\"
+else
+  echo shar: Extracting \"'xpserv/printopts'\" \(2 characters\)
+  sed "s/^X//" >'xpserv/printopts' <<'END_OF_FILE'
+X0
+END_OF_FILE
+  if test 2 -ne `wc -c <'xpserv/printopts'`; then
+    echo shar: \"'xpserv/printopts'\" unpacked with wrong size!
+  fi
+  # end of 'xpserv/printopts'
+fi
+if test -f 'xpserv/pserver.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'xpserv/pserver.c'\"
+else
+  echo shar: Extracting \"'xpserv/pserver.c'\" \(13292 characters\)
+  sed "s/^X//" >'xpserv/pserver.c' <<'END_OF_FILE'
+X/*
+XCopyright (c) 1994  Matthew Reynolds and Qualcomm Inc.
+X
+XPermission is hereby granted, free of charge, to any person obtaining a copy
+Xof this software and associated documentation files (the "Software"), to deal
+Xin the Software without restriction, including without limitation the rights
+Xto use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+Xcopies of the Software, and to permit persons to whom the Software is
+Xfurnished to do so, subject to the following conditions:
+X
+XThe above copyright notice and this permission notice shall be included in
+Xall copies or substantial portions of the Software.
+X
+XTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+XIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+XFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+XQUALCOMM INC., OR MATTHEW REYNOLDS BE LIABLE FOR ANY CLAIM, 
+XDAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR 
+XOTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+XOR OTHER DEALINGS IN THE SOFTWARE.
+X
+XExcept as contained in this notice, the name of Qualcomm Inc., or Matthew 
+XReynolds shall not be used in advertising or otherwise to promote the sale, 
+Xuse or other dealings in this Software without their prior written 
+Xauthorization.
+X
+X*/
+X
+X#include <stdio.h>
+X#include <string.h>
+X#include <stdlib.h>
+X#include <errno.h>
+X#include <signal.h>
+X#include <sys/time.h>
+X#include <sys/types.h>
+X#define NEED_REPLIES		/* because Xproto.h is stupid */
+X#include <X11/Xproto.h>
+X#include <X11/Xlib.h>
+X#include "tcpip.h"
+X#include "printer.h"
+X
+X#define SERVBASE		6000
+X#define MAXREQSZ		262140
+X#define RESOURCE_ID_MASK	0x3FFFFF
+X#define CLIENTOFFSET		22
+X#define VENBYTES		16
+X#define STATICMAXFD		32
+X
+XDisplay	*THE_DISPLAY;
+Xstruct PrintClient	PCS[ STATICMAXFD];
+Xchar **fontlist;
+X
+Xtypedef union xmsg_ {
+X    xReq		req;
+X    unsigned char	buf[ MAXREQSZ];
+X} xmsg_u;
+X
+Xtypedef union xreply_ {
+X    xGenericReply	reply;
+X    unsigned char	buf[ MAXREQSZ];
+X} xreply_u;
+X
+Xint debug = 1;
+X
+Xprint_options_s	PRINT_OPTIONS; 
+X
+Xvoid main( int argc, char *argv[])
+X{
+X    int 		port, accept_fd, client_fd, reply_len, highest_fd, 
+X			client_flag, i, c;
+X    xmsg_u		message; 
+X    xreply_u		reply;
+X    fd_set		readfds, writefds, exceptfds, readmask;
+X    struct sigaction	act, oact;
+X    char		*disp_name;
+X    FILE		*fp;
+X
+X/* options:
+X	-p <port #>			port # for server 
+X	-d <display-name>		name of real display to connect to 
+X	-g 				debug flag on/off
+X
+X   set the defaults:
+X*/
+X
+X    debug = FALSE;
+X    port = SERVBASE + 1;
+X    disp_name = getenv( "DISPLAY");
+X    if ( disp_name == NULL) {
+X	disp_name = "unix:0.0";
+X    }
+X
+X/* parse the arguments */
+X
+X    while (( c = getopt( argc, argv, "gp:d:")) != EOF) {
+X	switch (c) {
+X	case 'g':
+X	    debug = TRUE;
+X	    break;
+X	case 'p':
+X	    port = atoi( optarg) + SERVBASE;
+X	    break;
+X	case 'd':
+X	    disp_name = strdup( optarg);
+X	    break;
+X	default:
+X	    fprintf( stderr, 
+X		     "Usage %s [-p port#][-d display][ -g]\n", argv[ 0]);
+X	    exit( -1);
+X	    break;
+X	}
+X    }
+X
+X/* try to open the display to the real server */
+X
+X    THE_DISPLAY = XOpenDisplay( disp_name);
+X    if ( THE_DISPLAY == NULL) {
+X	fprintf( stderr, "failed to open display %s\n", disp_name);
+X	exit( -1);
+X    }
+X
+X/* open and read the font file */
+X
+X    if ( getenv( "XPRINTFONTS") == NULL) { 
+X	fprintf( stderr, "you must set the environment variable XPRINTFONTS\n");
+X	exit( -1);
+X    }
+X    fontlist = read_strvec( getenv( "XPRINTFONTS"));
+X    if ( fontlist == NULL) {
+X	fprintf( stderr, "failed to open font mapping file %s\n",
+X		 getenv( "XPRINTFONTS"));
+X	exit( -1);
+X    }
+X
+X/* set the defaults, and read the options file if there is one */
+X
+X    PRINT_OPTIONS.index_cspace_support = TRUE;
+X    if ( getenv( "XPRINTOPTS") == NULL) {
+X	if ( debug) printf( "no options file set, using default values\n");
+X    } else {
+X	fp = fopen( getenv( "XPRINTOPTS"), "r");
+X	if ( fp == NULL) {
+X	    fprintf( stderr, "failed to open file %s, using defaults\n",
+X		     getenv( "XPRINTOPTS"));
+X	} else {
+X
+X/* read options here. Add more for extensions */
+X
+X	    fscanf( fp, "%d", &PRINT_OPTIONS.index_cspace_support);
+X	    fclose( fp);
+X	}
+X    }
+X
+X/* block out SIGPIPE for when clients die */
+X
+X    act.sa_flags = 0;
+X    act.sa_handler = SIG_IGN;
+X    sigaction( SIGPIPE, &act, &oact);
+X
+X/* create the accept socket and the file descriptors for the select call */
+X
+X    if (( accept_fd = create_accept_socket( port)) < 0) {
+X	perror( "create_accept_socket failed");
+X	exit( -1);
+X    }
+X    highest_fd = accept_fd;
+X    FD_ZERO( &readfds);
+X    FD_ZERO( &writefds);
+X    FD_ZERO( &exceptfds);
+X    FD_SET( accept_fd, &readfds);
+X
+X/* initialize the client data structures */
+X
+X    init_print_clients( PCS, STATICMAXFD);
+X    do {
+X
+X/* copy to the select mask */
+X
+X	for ( i = 0; i <= highest_fd; i++){
+X	    if ( FD_ISSET( i, &readfds)) {
+X		FD_SET( i, &readmask);
+X	    }
+X	}
+X	if ( select( highest_fd + 1, &readmask, &writefds, 
+X		     &exceptfds, NULL) < 0) {
+X
+X/* some client disconnected */
+X
+X	    if ( errno == EBADF) {
+Xif ( debug) printf( "client closed connection\n");
+X		for ( client_fd = 0; client_fd <= highest_fd; client_fd++) {
+X		    if ( client_fd == accept_fd) {
+X			continue;
+X		    }
+X		    if ( FD_ISSET( client_fd, &readmask)) {
+X			FD_CLR( client_fd, &readfds);
+X		    }
+X		}
+X	    }
+X
+X/* if there's an input on the accept socket, accept the connection */
+X
+X	} else if ( FD_ISSET( accept_fd, &readmask)) {
+X	    client_fd = accept_connection( accept_fd);
+Xif ( debug) printf( "accepting connection\n");
+X
+X/* do the "init" conversation right away, since it's a little different 
+X   than the rest */
+X
+X	    if ( init_connection( client_fd)) {
+X		FD_SET( client_fd, &readmask);
+X		PCS[ client_fd].printfp = NULL;
+X		if ( client_fd > highest_fd) {
+X		    highest_fd = client_fd;
+X		}
+X	    }
+X
+X/* otherwise, it's just input from the client, and a response */
+X
+X	} else {
+X	    for ( client_fd = 0; client_fd <= highest_fd; client_fd++) {
+X		if ( client_fd == accept_fd) {
+X		    continue;
+X		}
+X		if ( FD_ISSET( client_fd, &readmask)) {
+X		    client_flag = True;
+X
+X/* read the request, find out how big it is, and read the rest of it, 
+X   then send the reply if there is one */
+X
+X		    if ( read_loop( client_fd, &message.req, 
+X				    sizeof( message.req)) <= 0) {
+Xif ( debug) printf( "client %d disconnected\n", client_fd);
+X			client_flag = False;
+X		    }
+X		    if ( message.req.length > 1) {
+X			if ( read_loop( client_fd, 
+X					message.buf + sizeof( xReq), 
+X					( message.req.length << 2) - 
+X					sizeof( xReq)) <= 0) {
+Xif ( debug) printf( "client %d disconnected\n", client_fd);
+X			    client_flag = False;
+X			}
+X		    }
+Xif ( debug) printf( "reading request %d words\n", message.req.length);
+X		    DecodeRequest( client_fd, message.buf, reply.buf, 
+X				   &reply_len);
+X		    if ( reply_len > 0) {
+X
+X/* if the reply length is less than the length of a generic reply, then 
+X   pump up the volume */
+X
+X			if ( reply_len < sizeof( xGenericReply)) {
+X			    reply_len = sizeof( xGenericReply);
+X			}
+X
+Xif ( debug) printf( "sending reply %d words\n", reply_len >> 2);
+X
+X/* if the reply write failed, then the client disconnected */
+X
+X			if ( write( client_fd, reply.buf, reply_len) < 0){
+Xif ( debug) printf( "client %d disconnected\n", client_fd);
+X			    client_flag = False;
+X			}
+X		    }
+X
+X/* if anything failed, the close out the client, and remove the 
+X   associated structures */
+X
+X		    if ( !client_flag) {
+X			close( client_fd);
+X			remove_client( client_fd);
+X			FD_CLR( client_fd, &readmask);
+X		    }
+X		}
+X	    }
+X	}
+X    } while ( True);
+X}
+X
+X/* initialize the connection with the client. Some of these are wild guesses */
+X
+Xint init_connection( int	client_fd)
+X{
+X    xConnClientPrefix	prefix_msg;
+X    xConnSetupPrefix	setup_msg;
+X    xConnSetup		conn_setup_msg;
+X    xPixmapFormat	pix_format_msg;
+X    xWindowRoot		window_msg;
+X    xDepth		depth_msg;
+X    xVisualType		visual_msg;
+X    unsigned char	*auth_msg;
+X    int			auth_len, prefix_len;
+X    char		vendor[ VENBYTES];
+X
+X/* read the prefix message from the client */
+X
+X    if ( read_loop( client_fd, &prefix_msg, sizeof( prefix_msg)) < 0) {
+X	perror( "prefix read failed");
+X	return( False);
+X    }
+X
+X/* read the authorization information if there is any */
+X
+X    auth_len = prefix_msg.nbytesAuthProto + prefix_msg.nbytesAuthString;
+X    if ( auth_len > 0) {
+X	auth_msg = ( unsigned char *) malloc( auth_len);
+X	if ( read_loop( client_fd, auth_msg, auth_len) < 0) {
+X	    perror( "auth read failed");
+X	    free( auth_msg);
+X	    return( False);
+X	}
+X	free( auth_msg);
+X    }
+X
+X/* write the setup message to the client */
+X
+X    setup_msg.success = True;
+X    setup_msg.lengthReason = 0;
+X    setup_msg.majorVersion = 11;
+X    setup_msg.minorVersion = 0;
+X    setup_msg.length = ( sizeof( xConnSetup) +
+X			 VENBYTES + 2*sizeof( xPixmapFormat) +
+X			 1*sizeof( xWindowRoot) + sizeof( xDepth) +
+X			 sizeof( xVisualType))/4;
+X    if ( write( client_fd, &setup_msg, sizeof( setup_msg)) < 0) {
+X	perror( "setup write failed");
+X	return( False);
+X    }
+X
+X/* write the connection setup  message to the client */
+X
+X    conn_setup_msg.release = 1;
+X    conn_setup_msg.ridBase = client_fd << CLIENTOFFSET;
+X    conn_setup_msg.ridMask = RESOURCE_ID_MASK;
+X    conn_setup_msg.motionBufferSize = 256;
+X    conn_setup_msg.nbytesVendor = VENBYTES;
+X    conn_setup_msg.maxRequestSize = MAXREQSZ / 4;
+X    conn_setup_msg.numRoots = 1;
+X    conn_setup_msg.numFormats = 2;
+X    conn_setup_msg.imageByteOrder = MSBFirst;
+X    conn_setup_msg.bitmapBitOrder = MSBFirst;
+X    conn_setup_msg.bitmapScanlineUnit = 8;
+X    conn_setup_msg.bitmapScanlinePad = 32;
+X    conn_setup_msg.minKeyCode = 8;
+X    conn_setup_msg.maxKeyCode = 132;
+Xif ( debug) {
+X    printf(  "rid base = %d, mask = 0x%x, maxrequest = %d\n",
+X	    conn_setup_msg.ridBase, conn_setup_msg.ridMask,
+X	    conn_setup_msg.maxRequestSize);
+X}
+X    if ( write( client_fd, &conn_setup_msg, sizeof( conn_setup_msg)) < 0) {
+X	perror( "conn setup message write failed");
+X	return( False);
+X    }
+X
+X/* write out the vendor string */
+X
+X    strcpy( vendor, "print server");
+X    if ( write( client_fd, vendor, sizeof( vendor)) < 0) {
+X	perror( "vendor write failed");
+X	return( False);
+X    }
+X
+X/* write the pixmap formats */
+X
+X    pix_format_msg.depth = 1;
+X    pix_format_msg.bitsPerPixel = 1;
+X    pix_format_msg.scanLinePad = 32;
+X    if ( write( client_fd, &pix_format_msg, sizeof( pix_format_msg)) < 0) {
+X	perror( "pixmap format message write failed");
+X	return( False);
+X    }
+X    pix_format_msg.depth = 8;
+X    pix_format_msg.bitsPerPixel = 8;
+X    pix_format_msg.scanLinePad = 32;
+X    if ( write( client_fd, &pix_format_msg, sizeof( pix_format_msg)) < 0) {
+X	perror( "pixmap format message write failed");
+X	return( False);
+X    }
+X
+X/* write the message describing our hypothetical screen and root window */
+X
+X    window_msg.windowId = 0;
+X    window_msg.defaultColormap = 
+X	DefaultColormap( THE_DISPLAY, DefaultScreen( THE_DISPLAY));
+X    window_msg.whitePixel = 0;
+X    window_msg.blackPixel = 1;
+X    window_msg.currentInputMask = 0;
+X    window_msg.pixWidth = 1024;
+X    window_msg.pixHeight = 1024;
+X    window_msg.mmWidth = 256;
+X    window_msg.mmHeight = 256;
+X    window_msg.minInstalledMaps = 1;
+X    window_msg.maxInstalledMaps = 12;
+X    window_msg.rootVisualID = 0x20;
+X    window_msg.backingStore = False;
+X    window_msg.saveUnders = False;
+X    window_msg.rootDepth = 8;
+X    window_msg.nDepths = 1;
+X    if ( write( client_fd, &window_msg, sizeof( window_msg)) < 0) {
+X	perror( "window message write failed");
+X	return( False);
+X    }
+X
+X/* write the depth information */
+X
+X    depth_msg.depth = 8;
+X    depth_msg.nVisuals = 1;
+X    if ( write( client_fd, &depth_msg, sizeof( depth_msg)) < 0) {
+X	perror( "window message write failed");
+X	return( False);
+X    }
+X
+X/* write the visual */
+X
+X    visual_msg.visualID = 0x20;
+X    visual_msg.class = PseudoColor;
+X    visual_msg.bitsPerRGB = 8;
+X    visual_msg.redMask = 0;
+X    visual_msg.greenMask = 0;
+X    visual_msg.blueMask = 0;
+X    if ( write( client_fd, &visual_msg, sizeof( visual_msg)) < 0) {
+X	perror( "window message write failed");
+X	return( False);
+X    }
+X    return( True);
+X}
+X
+X/* call read in a loop, to make sure we read everything we're supposed to */
+X
+Xint read_loop( int	fd,
+X	       char 	*msg,
+X	       int	length)
+X{
+X    int	nbytes, total = 0;
+X
+X    do {
+X	nbytes = read( fd, msg, length);
+X	if ( nbytes <= 0) {
+X	    return( nbytes);
+X	} else {
+X	    length -= nbytes;
+X	    total += nbytes;
+X	    msg += nbytes;
+X	}
+X    } while ( length > 0);
+Xif ( debug) printf( "read %d bytes\n", total);
+X    return( total);
+X}
+X
+X/* read a NULL-terminated vector of strings from a file */
+X
+Xchar **read_strvec( char *filename)
+X{
+X    FILE 	*fp;
+X    char	buffer[ 512];
+X    int		lineno = 1;
+X    char	**vector, **vec_ptr;
+X
+X/* read it to find the number of lines */
+X
+X    if (( fp = fopen( filename, "r")) == NULL) {
+X	return( NULL);
+X    }
+X    do {	
+X	if ( fgets( buffer, sizeof( buffer), fp) == NULL) {
+X	    break;
+X	}
+X	lineno++;
+X    } while ( TRUE);
+X
+X/* rewind and allocate the vector */
+X
+X    rewind( fp);
+X    vector = vec_ptr = ( char **) malloc( sizeof( char *) * ( lineno + 1));
+X
+X/* read the lines and "strdup" them after getting rid of the \n */
+X
+X    do {
+X	if ( fgets( buffer, sizeof( buffer), fp) == NULL) {
+X	    break;
+X	}
+X	buffer[ strlen( buffer) - 1] = '\0';
+X	*vec_ptr++ = strdup( buffer);
+X    } while ( TRUE);
+X    *vec_ptr = NULL;
+X
+X/* close and return */
+X
+X    fclose( fp);
+X    return( vector);
+X}
+END_OF_FILE
+  if test 13292 -ne `wc -c <'xpserv/pserver.c'`; then
+    echo shar: \"'xpserv/pserver.c'\" unpacked with wrong size!
+  fi
+  # end of 'xpserv/pserver.c'
+fi
+echo shar: End of archive 2 \(of 3\).
+cp /dev/null ark2isdone
+MISSING=""
+for I in 1 2 3 ; do
+    if test ! -f ark${I}isdone ; then
+	MISSING="${MISSING} ${I}"
+    fi
+done
+if test "${MISSING}" = "" ; then
+    echo You have unpacked all 3 archives.
+    rm -f ark[1-9]isdone
+else
+    echo You still must unpack the following archives:
+    echo "        " ${MISSING}
+fi
+exit 0
+exit 0 # Just in case...
+-- 
+  // chris@Sterling.COM           | Send comp.sources.x submissions to:
+\X/  Amiga: The only way to fly!  |    sources-x@sterling.com
+GCS d++(--) h++ s++:+ g+++(?) p? au(*)(0) a w+ v-(*) C++ US+++ P+ L+ 3 N++ K
+  !W M V-- -po+ Y+ t+ 5++ j- r+ G+ v b+++ D- b-- e+ u+ h- f+ r+++ !n y+++
+
+From sq.com!ian Wed Aug  3 10:49:44 1994
+From: mreynold@qualcomm.com (Matthew Reynolds)
+Subject: v22i099:  xpserv - Xlib/PostScript Printing server, Part03/03
+Date: 2 Aug 1994 12:47:19 -0500
+Nntp-Posting-Host: sparky.sterling.com
+X-Md4-Signature: f31c0e341e9aa465630daf1a268996f7
+Content-Length: 46376
+X-Lines: 1616
+
+Submitted-by: mreynold@qualcomm.com (Matthew Reynolds)
+Posting-number: Volume 22, Issue 99
+Archive-name: xpserv/part03
+Environment: X11, Postscript
+
+#! /bin/sh
+# This is a shell archive.  Remove anything before this line, then feed it
+# into a shell via "sh file" or similar.  To overwrite existing files,
+# type "sh file -c".
+# Contents:  xpserv/Imakefile xpserv/README xpserv/printer.h
+#   xpserv/printfonts xpserv/printlib.c xpserv/printlib.h
+#   xpserv/tcpip.c xpserv/tcpip.h xpserv/testcli.c
+# Wrapped by chris@sparky on Tue Aug  2 12:45:07 1994
+PATH=/bin:/usr/bin:/usr/ucb:/usr/local/bin:/usr/lbin:$PATH ; export PATH
+echo If this archive is complete, you will see the following message:
+echo '          "shar: End of archive 3 (of 3)."'
+if test -f 'xpserv/Imakefile' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'xpserv/Imakefile'\"
+else
+  echo shar: Extracting \"'xpserv/Imakefile'\" \(363 characters\)
+  sed "s/^X//" >'xpserv/Imakefile' <<'END_OF_FILE'
+XXCOMM $XConsortium: Imakefile,v 1.14 93/08/17 21:16:19 rws Exp $
+XDEPLIBS = $(DEPXMULIB) $(DEPXTOOLLIB) $(DEPXLIB)
+XLOCAL_LIBRARIES = $(XMULIB) $(XTOOLLIB) $(XLIB)
+X
+XSRCS = pserver.c decode11.c drawcmd.c tcpip.c
+XOBJS = pserver.o decode11.o drawcmd.o tcpip.o
+XINCLUDES = -I$(XLIBSRC) -I$(EXTINCSRC)
+X
+XComplexProgramTarget(pserver)
+XNormalLibraryTarget(print,printlib.o)
+END_OF_FILE
+  if test 363 -ne `wc -c <'xpserv/Imakefile'`; then
+    echo shar: \"'xpserv/Imakefile'\" unpacked with wrong size!
+  fi
+  # end of 'xpserv/Imakefile'
+fi
+if test -f 'xpserv/README' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'xpserv/README'\"
+else
+  echo shar: Extracting \"'xpserv/README'\" \(5724 characters\)
+  sed "s/^X//" >'xpserv/README' <<'END_OF_FILE'
+X
+X		    X to PostScript Printing Server
+X
+X	Finally! a printing model for X-Windows!  The X to PostScript 
+X    server is modelled as an extension to the X protocol, using a 
+X    second display.  Connect to the server, use the extension to
+X    specify which window you want printed, send the Xlib calls to 
+X    the second server, close the print window, and voila, a PostScript
+X    file is created.
+X
+X	There are three calls in the API:
+X
+X	include "printlib.h"
+X
+X	Bool XOpenPrintWindow( Display	*dpy,
+X			       Window	win,
+X			       char	*printfile)
+X	
+X	dpy		Specifies the connection to the printing server.
+X
+X	Window		Specifies the window for which Xlib commands are
+X			to be converted to PostScript.  All commands directed
+X			to other windows are ignored.
+X	
+X	printfile	Specifies the name of the PostScript file to be
+X			generated.
+X
+X	The XOpenPrintWindow function directs the print server to translate
+X	Xlib commands directed to "win" into PostScript calls.
+X
+X
+X	Bool XClosePrintWindow( Display	*dpy,
+X				Window	win)
+X		    
+X
+X	dpy		Specifies the connection to the printing server.
+X
+X	Window		Specifies the window to stop generating Xlib
+X			commands for.
+X    
+X
+X	XClosePrintWindow directs the server to stop translating Xlib 
+X	calls sent to the specified window.
+X
+X
+X	Bool XSetPrintParams( Display	*dpy,
+X			      Bool	preserve_aspect,
+X			      int	font_scale,
+X			      int	pixmap_scale,
+X			      int	page_width,
+X			      int	page_height)
+X	
+X	dpy		Specifies the connection to the printing server
+X
+X	preserve_aspect	Flag to tell server to preserve the aspect ratio 
+X			of the print window, instead of trying to fill
+X			the page.
+X	
+X	font_scale	Scaling to apply to X font.
+X
+X	pixmap_scale	Scaling to apply to pixmaps.
+X
+X	page_width	Width of output page in points.
+X
+X	page_height	Height of output page in points.
+X
+X
+X	XSetPrintParams sets the parameters for the PostScript output.
+X	You're going to want to print at a higher resolution than the
+X	screen, so chances are you'll create a print window that's
+X	much larger than the screen window.  When you do this, your
+X	bitmap fonts and symbols ( pixmaps) don't get scaled, so you 
+X	have to rescale them.  The scaling is simply a multiplier for
+X	the size of  the corresponding PostScript font.  Be careful
+X	if you've done any calculations for font or symbol positioning.
+X
+X	By default, the server prints the output to fill the page, and
+X	decides whether to use portrait or landscape mode, depending on
+X	what fits better.  You can override the server by setting
+X	preserve_aspect to TRUE.
+X
+X	page_width and page_height set the size of the output page in 
+X	points.
+X
+X
+X    The server is run from the command line with the following options:
+X
+X	pserver [-g][-p port#][-d disp_name]
+X
+X	-g 		Turn on debugging output for the server.
+X
+X	-p port #	Give an alternate port number for the server.
+X			The default is 1, ex: "stonehenge:1.0"
+X	
+X	-d disp_name	Specifies the name of the *real* X server to
+X			connect to for queries.  Default is "unix:0.0"
+X
+X
+X    In addition, the server requires the following environment variables:
+X
+X	XPRINTFONTS:  	This specifies the file which maps X fonts to
+X			PostScript fonts.  A sample file is given in
+X			"printfonts". The format of the file is the
+X			"X wildcard" on one line, followed by the
+X			PostScript font name on the next line.
+X	
+X	XPRINTOPTS:	This is a file which contains printer options.
+X			Right now, it just controls the image/colorimage
+X			operator, but the file is intended to be a hook
+X			to be able to deal with all the different quirks
+X			of different PostScript printers.
+X
+X    
+X    Limitations of the X Printing Server:
+X
+X	All of the resources (GC's, Fonts, Colors) which you wish to use
+X    must be loaded on the printing server.  If you try to use a GC which
+X    is on the real display server, it'll choke on the printing server.  
+X    Same thing for fonts.  You have to use XLoadFont so it can divine
+X    the font name to map to the PostScript font.  The server can't get
+X    the font name from just the font id.  All colors have to be allocated
+X    or stored using XStoreColor or XAllocColor.  Remember, this is
+X    a separate server that you're communicating with.
+X
+X	The server attempts to spoof the X protocol, and there are some
+X    obvious limitations.  Basically, anything dealing with events
+X    (XGrabKey, XGrabPointer, etc.) are ignored. Replies are sent when
+X    neccessary, but chances are they contain garbage.  The intention of
+X    this server is that you take the Xlib portion of your expose callbacks,
+X    send it to the printing server, and that's it.  It's strictly output
+X    only.
+X
+X	The function XCopyArea is not supported for the printing window
+X    as the source.  You can copy from a server pixmap or window 
+X    to the printing window, but not from the window to itself, because
+X    (at least to my knowledge), that there isn't a corresponding PostScript
+X    operator.  XAllocColorCells and XAllocColorPlanes return garbage,
+X    because, quite frankly, I don't know what they're really supposed to
+X    do.  The  stuff for setting and getting atoms is in there, but I haven't
+X    had time to test it.  Not all of the more obscure portions of GC's are
+X    supported.  Clip_mask doesn't do anything, tile and stipple are 
+X    unused, and dashes don't do anything.
+X
+X	The server only works between systems which have the same endian-ness.
+X    (Intels to Intels and Sparcs to Sparcs, but no mixing).  This is 
+X    priority #1 for version 1.01.
+X
+X	There's a sample program, called "testcli", which shows how to
+X    communicate with the printing server and set options.  Please forward
+X    any comments, bug reports, fixes, etc. to mreynold@qualcomm.com
+X
+X
+X    Systems:
+X	
+X	The printserver has only been compiled and tested on Sparcs running
+X    Solaris 2.3
+END_OF_FILE
+  if test 5724 -ne `wc -c <'xpserv/README'`; then
+    echo shar: \"'xpserv/README'\" unpacked with wrong size!
+  fi
+  # end of 'xpserv/README'
+fi
+if test -f 'xpserv/printer.h' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'xpserv/printer.h'\"
+else
+  echo shar: Extracting \"'xpserv/printer.h'\" \(12812 characters\)
+  sed "s/^X//" >'xpserv/printer.h' <<'END_OF_FILE'
+X/*
+XCopyright (c) 1994  Matthew Reynolds and Qualcomm Inc.
+X
+XPermission is hereby granted, free of charge, to any person obtaining a copy
+Xof this software and associated documentation files (the "Software"), to deal
+Xin the Software without restriction, including without limitation the rights
+Xto use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+Xcopies of the Software, and to permit persons to whom the Software is
+Xfurnished to do so, subject to the following conditions:
+X
+XThe above copyright notice and this permission notice shall be included in
+Xall copies or substantial portions of the Software.
+X
+XTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+XIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+XFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+XQUALCOMM INC., OR MATTHEW REYNOLDS BE LIABLE FOR ANY CLAIM, 
+XDAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR 
+XOTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+XOR OTHER DEALINGS IN THE SOFTWARE.
+X
+XExcept as contained in this notice, the name of Qualcomm Inc., or Matthew 
+XReynolds shall not be used in advertising or otherwise to promote the sale, 
+Xuse or other dealings in this Software without their prior written 
+Xauthorization.
+X
+X*/
+X
+X#ifndef _PRINTER_H_
+X#define _PRINTER_H_
+X
+X#include <stdio.h>
+X#include <X11/Xlib.h>
+X
+X#define DEFAULTPORT	6000
+X#define TRUE		1
+X#define FALSE		0
+X#define BACKLOG 	5
+X#define STATICMAXFD	32
+X#define NUM_COLORS	256
+X#define NUMWIN  	64
+X#define NUMGC   	64
+X#define NUMATOM   	64
+X#define NUMFONT		64
+X#define NUMCMAP   	8
+X#define MAXFONTS	1024
+X#define MAXCACHEFONTS	128
+X#define FONTFILE	"/usr/lib/X11/printfonts.dir"
+X
+X/*
+X   the following structure remembers for each file descriptor its
+X   state.  In particular, we need to know if it is busy or free
+X   and if it is in use, by whom.
+X*/
+X
+Xtypedef int FD;
+X
+Xstruct FDDescriptor {
+X    Bool    Busy;
+X    int     (*InputHandler)();
+X};
+X
+Xtypedef struct reply_del_ {
+X    unsigned char	*reply;		/* if there's reply to substitute */
+X    int			reply_length;
+X} reply_del_s, *reply_del_p;
+X
+X/* this is the structure for adding in printer options. I started off with
+X   a flag for indexed colorspaces, because our stupid versatec doesn't
+X   support them... */
+X
+Xtypedef struct print_options_ {		/* options used in the program. */
+X    int		index_cspace_support;
+X} print_options_s, *print_options_p;
+X
+Xextern print_options_s	PRINT_OPTIONS;	/* global ( only one of it, anyway) */
+X
+Xstruct PrintClient {
+X    Window		win;
+X    Bool		server_win;		/* X server window or ours */
+X    char		*printfile;
+X    FILE		*printfp;
+X    unsigned char	*buffer;
+X    int			bufsize;
+X    int			(*bytefn)();
+X    int			sequence;
+X    int			preserve_aspect;	/* flag for aspect ratio */
+X    int			font_scale;		/* font scale factor */
+X    int			pixmap_scale;		/* pixmap scale factor */
+X    int			page_width;		/* page size in points */
+X    int			page_height;
+X}; 
+X
+X/* window information */
+X
+Xtypedef struct winfo_ {
+X    Window		parent;
+X    Window		win;
+X    XWindowAttributes	attr;
+X    int			created;
+X    int			fd;
+X} winfo_s, *winfo_p;
+X
+X/* window table */
+X
+Xtypedef struct winfo_table_ {
+X    winfo_p	win_table;
+X    int		num_win;
+X} winfo_table_s, *winfo_table_p;
+X
+X/* colormap information */
+X
+Xtypedef struct cmapinfo_ {
+X    XColor	colors[ NUM_COLORS];
+X    int		num_alloc[ NUM_COLORS];
+X    int		num_colors;
+X    int		writeable[ NUM_COLORS];
+X    Colormap	cmap;
+X    int		fd;
+X} cmapinfo_s, *cmapinfo_p;
+X
+X/* table of colormaps */
+X
+Xtypedef struct cmapinfo_table_ {
+X    cmapinfo_p	cmap_table;
+X    int		num_cmap;
+X} cmapinfo_table_s, *cmapinfo_table_p;
+X
+X/* GC information */
+X
+Xtypedef struct gcinfo_ {
+X    XID		gcid;
+X    XGCValues	attr;
+X    XRectangle	*clip_rects;
+X    int		num_clip_rects;
+X    char	*dashes;
+X    int		num_dashes;
+X    int		fd;
+X} gcinfo_s, *gcinfo_p;
+X
+X/* gc table */
+X
+Xtypedef struct gcinfo_table_ {
+X    gcinfo_p	gc_table;
+X    int		num_gc;
+X} gcinfo_table_s, *gcinfo_table_p;
+X
+X/* for enum-string lookup tables */
+X
+Xtypedef struct lookup_ {
+X    int		tag;
+X    char	*name;
+X} lookup_s, *lookup_p;
+X
+Xtypedef struct font_ {
+X    FD		fd;
+X    Font	fid;
+X    Font	server_fid;
+X    char	*xfont_name;
+X    char	*post_name;
+X    XFontStruct	*font_info;
+X} font_s, *font_p;
+X
+Xtypedef struct font_table_ {
+X    font_p	font_table;
+X    int		num_fonts;
+X} font_table_s, *font_table_p;
+X
+Xtypedef struct atom_ {
+X    char	*name;
+X    int		id;
+X} atom_s, *atom_p;
+X
+Xtypedef struct atom_table_ {
+X    atom_p	atom_table;
+X    int		num_atoms;
+X} atom_table_s, *atom_table_p;
+X
+X
+Xextern lookup_s XFN_NAMES[];
+Xextern Display	*THE_DISPLAY;
+X
+Xvoid polyfillrectangle( FILE            *fp,            
+X                        Window          win,
+X                        XGCValues       *gcv,
+X                        int             nrect,
+X                        XRectangle      *rectangles);
+X
+Xvoid fillpoly( FILE             *fp,
+X               Window           win,
+X               XGCValues        *gcv,
+X               int              npoint,
+X               int              coordmode,
+X               XPoint           *points);
+X
+Xvoid polyline( FILE             *fp,
+X               Window           win,
+X               XGCValues        *gcv,
+X               int              npoint,
+X               int              coordmode,
+X               XPoint           *points);
+X
+Xvoid polytext8( FILE            *fp,
+X                Window          win,
+X                XGCValues       *gcv,
+X                int             x,
+X                int             y,
+X                int             ntext,
+X                unsigned char   *buffer);
+X
+Xvoid polytext16( FILE           *fp,
+X                 Window         win,
+X                 XGCValues      *gcv,
+X                 int            x,
+X                 int            y,
+X                 int            ntext,
+X                 unsigned char  *buffer);
+X
+X
+Xvoid imagetext8( FILE            *fp,
+X                 Window          win,
+X                 XGCValues       *gcv,
+X                 int             x,
+X                 int             y,
+X                 int             ntext,
+X                 unsigned char   *buffer);
+X
+Xvoid imagetext16( FILE           *fp,
+X                  Window         win,
+X                  XGCValues      *gcv,
+X                  int            x,
+X                  int            y,
+X                  int            ntext,
+X                  unsigned char  *buffer);
+X
+Xshort GetServerPort();
+X
+Xshort GetScopePort();
+X
+Xchar *OfficialName( 
+X    char *name
+X);
+X
+Xvoid Usage();
+X
+Xvoid ScanArgs( 
+X    int     argc,
+X    char    **argv
+X);
+X
+Xvoid SetUpPair( 
+X    FD client,
+X    FD server
+X);
+X
+Xvoid CloseConnection( 
+X    FD fd
+X);
+X
+XFD FDPair( 
+X    FD fd
+X);
+X
+XFD ClientHalf( 
+X    FD fd
+X);
+X
+XFD ServerHalf( 
+X    FD fd
+X);
+X
+Xchar *ClientName( 
+X    FD fd
+X);
+X
+Xint DataFromClient( 
+X    FD fd
+X);
+X
+Xint DataFromServer( 
+X    FD fd
+X);
+X
+Xint NewConnection( 
+X    FD fd
+X);
+X
+XFD ConnectToClient( 
+X    FD ConnectionSocket
+X);
+X
+XFD ConnectToServer( 
+X    Bool report
+X);
+X
+Xchar *OfficialName( 
+X    char *name
+X);
+X
+Xvoid InitializeFD();
+X
+Xvoid UsingFD( 
+X    FD     fd,
+X    int    (*Handler)()
+X);
+X
+Xvoid NotUsingFD( 
+X    FD	fd
+X);
+X
+Xvoid EOFonFD( 
+X    FD	fd
+X);
+X
+Xvoid MainLoop();
+X
+Xvoid SetUpConnectionSocket(
+X    int		iport
+X);
+X
+Xlong pad( 
+X    long n
+X);
+X
+Xlong pad2( 
+X    long n
+X);
+X
+Xint GetConnSetupLength(
+X    unsigned char *buf
+X);
+X
+Xint GetRequestLength(
+X    unsigned char *buf
+X);
+X
+Xint GetReplyLength(
+X    unsigned char *buf
+X);
+X
+Xint GetConnSetupReplyLength(
+X    unsigned char *buf
+X);
+X
+Xvoid StartClientConnection(
+X     FD fd
+X);
+X
+Xvoid scrunch( 
+X    unsigned char *buf,
+X    int           start,
+X    int           length
+X);
+X
+Xvoid splice( 
+X    unsigned char *buf,
+X    unsigned char *insert,
+X    int           buflen,
+X    int           inslen
+X);
+X
+XBool InterceptRequest( 
+X    FD		  fd,
+X    unsigned char *buf,
+X    unsigned char **newmsg,
+X    int		  *newlen
+X);
+X
+Xvoid ReplaceReply( 
+X    FD		  fd,
+X    unsigned char *buf,
+X    int		  length
+X);
+X
+Xvoid ProcessRequest( 
+X    FD            fd,
+X    unsigned char *buf,
+X    unsigned char **sndbuf,
+X    int           *sendlen
+X);
+X
+Xvoid EatMessage( 
+X    FD            fd,
+X    int           length
+X);
+X
+Xvoid ProcessReply( 
+X    FD            fd,
+X    unsigned char *buf,
+X    unsigned char **sndbuf,
+X    int           *sendlen
+X);
+X
+Xchar *lookup_tag( 
+X    int		tag,
+X    lookup_p	table
+X);
+X
+XBool ReplyExpected( 
+X    unsigned char *buf
+X);
+X
+XBool isReply( 
+X    unsigned char *buf
+X);
+X
+Xunsigned char *HeadDelete(
+X    struct PrintClient	*pcs,
+X    unsigned char	*buf,
+X    int			*sendlen
+X);
+X
+XBool MidDelete( 
+X    struct PrintClient *pcs,
+X    unsigned char      *p,
+X    unsigned char      **end,
+X    int                *sendlen
+X);
+X
+Xvoid set_curr_gc( 
+X    FD		fd,
+X    FILE	*fp,
+X    XGCValues	*gcvp,
+X    Colormap	cmap
+X);
+X
+X/* set the values in a GC given the flags and the data buffer from a request */
+X
+Xvoid set_gcvalues( 
+X    FD			fd,
+X    FILE		*fp,
+X    XGCValues 		*gcvp, 
+X    unsigned long 	value_mask, 
+X    unsigned long 	*request,
+X    Colormap		cmap
+X);
+X
+Xgcinfo_p getgcinfo( 
+X    unsigned long 	gcid, 
+X    gcinfo_table_p 	table
+X);
+X
+Xwinfo_p getwinfo( 
+X    unsigned long	win,
+X    winfo_table_p	table
+X);
+X
+Xcmapinfo_p getcmapinfo( 
+X    unsigned long	cmap,
+X    cmapinfo_table_p	table
+X);
+X
+Xwinfo_p getgenwinfo( 
+X    unsigned long 	win,
+X    winfo_table_p	table
+X);
+X
+XBool DecodeRequest( FD                  fd,
+X                    unsigned char       *buf,
+X                    unsigned char       *newmsg,
+X                    int                 *newlen);
+X
+Xvoid initprocs(
+X    struct PrintClient	*pc,
+X    int			fd
+X);
+X
+Xvoid setcolor(
+X    FILE *fp,
+X    unsigned long pixel,
+X    Colormap cmap
+X);
+X
+Xvoid setlinewidth(
+X    FILE *fp,
+X    int line_width
+X);
+X
+Xvoid setlinecap(
+X    FILE *fp,
+X    int cap_style
+X);
+X
+Xvoid setlinejoin(
+X    FILE *fp,
+X    int join_style
+X);
+X
+Xint setfont(
+X    FD	fd,
+X    FILE *fp,
+X    Font font_id
+X);
+X
+Xvoid polyfillrectangle(
+X    FILE *fp,
+X    Window win,
+X    XGCValues *gcv,
+X    int nrect,
+X    XRectangle *rectangles
+X);
+X
+Xvoid polyrectangle(
+X    FILE *fp,
+X    Window win,
+X    XGCValues *gcv,
+X    int nrect,
+X    XRectangle *rectangles
+X);
+X
+Xvoid fillpoly(
+X    FILE *fp,
+X    Window win,
+X    XGCValues *gcv,
+X    int npoint,
+X    int coordmode,
+X    XPoint *points
+X);
+X
+Xvoid polyline(
+X    FILE *fp,
+X    Window win,
+X    XGCValues *gcv,
+X    int npoint,
+X    int coordmode,
+X    XPoint *points
+X);
+X
+Xvoid polysegment(
+X    FILE *fp,
+X    Window win,
+X    XGCValues *gcv,
+X    int nseg,
+X    XSegment *segments
+X);
+X
+Xvoid polytext8(
+X    FILE *fp,
+X    Window win,
+X    XGCValues *gcv,
+X    int x,
+X    int y,
+X    int ntext,
+X    unsigned char *buffer
+X);
+X
+Xvoid polytext16(
+X    FILE *fp,
+X    Window win,
+X    XGCValues *gcv,
+X    int x,
+X    int y,
+X    int ntext,
+X    unsigned char *buffer
+X);
+X
+Xvoid imagetext8(
+X    FILE *fp,
+X    Window win,
+X    XGCValues *gcv,
+X    int x,
+X    int y,
+X    int ntext,
+X    unsigned char *buffer
+X);
+X
+Xvoid imagetext16(
+X    FILE *fp,
+X    Window win,
+X    XGCValues *gcv,
+X    int x,
+X    int y,
+X    int ntext,
+X    unsigned char *buffer
+X);
+X
+Xvoid cleararea(
+X    FILE *fp,
+X    Window win,
+X    XWindowAttributes *attr,
+X    int x,
+X    int y,
+X    int width,
+X    int height
+X);
+X
+Xvoid putimage(
+X    FILE 		*fp,
+X    Window 		win,
+X    XGCValues 		*gcv,
+X    int 		depth,
+X    int 		width,
+X    int 		height,
+X    int 		x,
+X    int 		y,
+X    int 		leftpad,
+X    int 		format,
+X    int 		num_colors,
+X    XColor 		*colors,
+X    unsigned char 	*data
+X);
+X
+Xvoid copyarea( 
+X       FILE             *fp,
+X       Drawable         src,
+X       Window           win,
+X       int              src_x,
+X       int              src_y,
+X       int              dst_x,
+X       int              dst_y,
+X       int              width,
+X       int              height,
+X       int              num_colors,
+X       XColor           *colors
+X);
+X
+Xextern int debug;
+X
+Xvoid copy_gcvalues( XGCValues 	 *gcvp, 
+X		    XGCValues	 *src_gcvp,
+X		    unsigned long value_mask);
+X
+Xchar *get_post_name( char *xfont);
+X
+Xvoid init_print_clients( struct PrintClient     *pcs, 
+X			 int                    numclients);
+X
+Xvoid remove_client( int fd);
+X
+Xvoid removecmaps( int                   fd,
+X		  cmapinfo_table_p      table);
+X
+Xvoid removegcs( int             fd,
+X		gcinfo_table_p  table);
+X
+Xvoid removewins( int            fd,
+X		 winfo_table_p  table);
+X
+Xvoid delete_win( winfo_table_p  winfo_table,
+X                 unsigned long  win);
+X
+Xvoid delete_gc( gcinfo_table_p  gcinfo_table,
+X                unsigned long   gc);
+X
+Xvoid delete_cmap( cmapinfo_table_p      cmapinfo_table,
+X                  unsigned long         cmap);
+X
+Xint read_loop( int	fd,
+X	       char	*msg,
+X	       int	length);
+X
+Xchar **read_strvec( char *filename);
+X
+Xvoid print_image_grey( unsigned char 	*image,
+X		       int		x,
+X		       int		y,
+X		       int		width,
+X		       int		height,
+X		       int		depth,
+X		       XColor		*colors,
+X		       int		num_colors,
+X		       FILE		*fp,
+X		       int		index_support);
+X
+X#endif /* _PRINTER_H_ */
+END_OF_FILE
+  if test 12812 -ne `wc -c <'xpserv/printer.h'`; then
+    echo shar: \"'xpserv/printer.h'\" unpacked with wrong size!
+  fi
+  # end of 'xpserv/printer.h'
+fi
+if test -f 'xpserv/printfonts' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'xpserv/printfonts'\"
+else
+  echo shar: Extracting \"'xpserv/printfonts'\" \(1894 characters\)
+  sed "s/^X//" >'xpserv/printfonts' <<'END_OF_FILE'
+XFixed
+XCourier-Oblique
+X-adobe-courier-medium-o-normal-*
+XCourier-Oblique
+X-b&h-lucidabright-demibold-r-normal-*
+XLucida-BrightDemiBold
+X-adobe-courier-bold-r-normal-*
+XCourier-Bold
+X-b&h-lucidabright-medium-i-normal-*
+XLucida-Bright
+X-adobe-courier-bold-o-normal-*
+XCourier-BoldOblique
+X-b&h-lucidabright-medium-r-normal-*
+XLucida-Bright
+X-dec-terminal-bold-r-normal-*
+XCourier-Bold
+X-adobe-courier-bold-r-normal-*
+XCourier-Bold
+X-adobe-courier-bold-o-normal-*
+XCourier-BoldOblique
+X-b&h-lucidabright-medium-i-normal-*
+XLucida-BrightItalic
+X-adobe-helvetica-bold-o-normal-*
+XHelvetica-BoldOblique
+X-b&h-lucidabright-demibold-i-normal-*
+XLucida-BrightDemiBoldItalic
+X-adobe-courier-medium-r-normal-*
+XCourier
+X-bitstream-charter-bold-r-normal-*
+XCourier-Bold
+X-bitstream-charter-medium-i-normal-*
+XCourier-Italic
+X-b&h-lucida-medium-r-normal-sans-*
+XLucidaSans
+X-bitstream-charter-medium-r-normal-*
+XCourier
+X-b&h-lucidatypewriter-medium-r-normal-*
+XLucida
+X-b&h-lucida-medium-i-normal-sans-*
+XLucidaSans-Italic
+X-adobe-times-bold-i-normal-*
+XTimes-BoldItalic
+X-b&h-lucida-bold-r-normal-sans-*
+XTimes-Bold
+X-b&h-lucidatypewriter-bold-r-normal-sans-*
+XLucidaSansTypewriter-Bold
+X-adobe-times-medium-i-normal-*
+XTimes-Italic
+X-adobe-times-bold-r-normal-*
+XTimes-Bold
+X-dec-terminal-medium-r-normal-*
+XCourier
+X-adobe-times-medium-r-normal-*
+XTimes
+X-adobe-helvetica-bold-r-normal-*
+XHelvetica-Bold
+X-adobe-helvetica-medium-o-normal-*
+XHelvetica-Oblique
+X-adobe-helvetica-medium-r-normal-*
+XHelvetica
+X-b&h-lucida-bold-i-normal-sans-*
+XLuciaSans-BoldItalic
+X-adobe-new century schoolbook-bold-i-normal-*
+XNewCenturySchlbk-BoldItalic
+X-adobe-symbol-medium-r-normal-*
+XSymbol
+X-adobe-new century schoolbook-bold-r-normal-*
+XNewCenturySchlbk-Bold
+X-adobe-new century schoolbook-medium-i-normal-*
+XNewCenturySchlbk-Italic
+X-adobe-new century schoolbook-medium-r-normal-*
+XNewCenturySchlbk
+X-bitstream-charter-bold-i-normal-*
+XCourier-Bold
+X-bitstream-charter-bold-i-normal-*
+END_OF_FILE
+  if test 1894 -ne `wc -c <'xpserv/printfonts'`; then
+    echo shar: \"'xpserv/printfonts'\" unpacked with wrong size!
+  fi
+  # end of 'xpserv/printfonts'
+fi
+if test -f 'xpserv/printlib.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'xpserv/printlib.c'\"
+else
+  echo shar: Extracting \"'xpserv/printlib.c'\" \(5183 characters\)
+  sed "s/^X//" >'xpserv/printlib.c' <<'END_OF_FILE'
+X/*
+XCopyright (c) 1994  Matthew Reynolds and Qualcomm Inc.
+X
+XPermission is hereby granted, free of charge, to any person obtaining a copy
+Xof this software and associated documentation files (the "Software"), to deal
+Xin the Software without restriction, including without limitation the rights
+Xto use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+Xcopies of the Software, and to permit persons to whom the Software is
+Xfurnished to do so, subject to the following conditions:
+X
+XThe above copyright notice and this permission notice shall be included in
+Xall copies or substantial portions of the Software.
+X
+XTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+XIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+XFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+XQUALCOMM INC., OR MATTHEW REYNOLDS BE LIABLE FOR ANY CLAIM, 
+XDAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR 
+XOTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+XOR OTHER DEALINGS IN THE SOFTWARE.
+X
+XExcept as contained in this notice, the name of Qualcomm Inc., or Matthew 
+XReynolds shall not be used in advertising or otherwise to promote the sale, 
+Xuse or other dealings in this Software without their prior written 
+Xauthorization.
+X
+X*/
+X
+X#include <string.h>
+X#include <X11/Xlib.h>
+X#define NODXFLUSH 	1
+X#define NEED_REPLIES 
+X#include <X11/Xlibint.h>
+X#include <X11/Xproto.h>
+X#include "printlib.h"
+X#include "printlibP.h"
+X#include "extutil.h"
+X
+Xstatic XExtensionInfo *print_info;
+Xstatic char *print_extension_name = PRINTNAME;
+X
+X/* there are X macros dependent on the "dpy" naming convention for display */
+X
+X#define PrintCheckExtension( dpy, i, val) \
+X    XextCheckExtension( dpy, i, print_extension_name, val)
+X
+Xstatic int close_display();
+Xstatic char *error_string();
+X
+Xstatic XExtensionHooks print_extension_hooks = { 
+X    NULL,                               /* create_gc */
+X    NULL,                               /* copy_gc */
+X    NULL,                               /* flush_gc */
+X    NULL,                               /* free_gc */
+X    NULL,                               /* create_font */
+X    NULL,                               /* free_font */
+X    close_display,                      /* close_display */
+X    NULL,                      		/* wire_to_event */
+X    NULL,                      		/* event_to_wire */
+X    NULL,                               /* error */
+X    error_string,                       /* error_string */
+X};
+X
+Xstatic char *print_error_list[] = {
+X    "BadPrintWindow",
+X};
+X
+Xstatic XEXT_GENERATE_FIND_DISPLAY (find_display, print_info, 
+X				   print_extension_name,
+X                                   &print_extension_hooks, 0, NULL)
+X
+Xstatic XEXT_GENERATE_CLOSE_DISPLAY (close_display, print_info)
+X
+Xstatic XEXT_GENERATE_ERROR_STRING (error_string, print_extension_name,
+X                                   PrintNumberErrors, print_error_list)
+X
+X
+X/* request to open a print window, and generate PostScript for all draw 
+X   commands sent to that window */
+X
+XBool XOpenPrintWindow( Display     *dpy,
+X		       Window      win,
+X		       char        *printfile)
+X{
+X    XExtDisplayInfo	*info = find_display( dpy);
+X    xOpenPrintReq	*req;
+X    xPrintReply		rep;
+X
+X    PrintCheckExtension( dpy, info, False);
+X    LockDisplay( dpy);
+X    GetReq( OpenPrint, req);
+X    req->strlength = strlen( printfile);
+X    req->reqType = info->codes->major_opcode;
+X    req->printReqType = X_OpenPrint;
+X    req->drawable = win;
+X
+X/* copy except for the '\0' */
+X
+X    strncpy( req->filename, printfile, req->strlength);
+X    if ( !_XReply( dpy, ( xReply *) &rep, 0, xFalse)) {
+X	UnlockDisplay( dpy);
+X	SyncHandle();
+X	return( False);
+X    }
+X    UnlockDisplay( dpy);
+X    SyncHandle();
+X    return( rep.flag);
+X}
+X
+X/* request to close the print window and the postscript output file */
+X
+XBool XClosePrintWindow( Display     *dpy,
+X			Window      win)
+X{
+X    XExtDisplayInfo	*info = find_display( dpy);
+X    xClosePrintReq	*req;
+X    xPrintReply		rep;
+X
+X    PrintCheckExtension( dpy, info, False);
+X    LockDisplay( dpy);
+X    GetReq( ClosePrint, req);
+X    req->reqType = info->codes->major_opcode;
+X    req->printReqType = X_ClosePrint;
+X    req->drawable = win;
+X
+X/* the server doesn't send a reply */
+X
+X#if 0
+X    if ( !_XReply( dpy, ( xReply *) &rep, 0, xFalse)) {
+X	UnlockDisplay( dpy);
+X	SyncHandle();
+X	return( False);
+X    }
+X#endif
+X    UnlockDisplay( dpy);
+X    SyncHandle();
+X    return( True);
+X}
+X
+X/* set the printer paramters for our output ( like preserving aspect ratio) */
+X
+XBool XSetPrintParams( Display	*dpy,
+X		      Bool	preserve_aspect,
+X		      int	font_scale,
+X		      int	pixmap_scale,
+X		      int	page_width,
+X		      int	page_height)
+X{
+X    XExtDisplayInfo	*info = find_display( dpy);
+X    xSetPrintReq	*req;
+X
+X    PrintCheckExtension( dpy, info, False);
+X    LockDisplay( dpy);
+X    GetReq( SetPrint, req);
+X    req->reqType = info->codes->major_opcode;
+X    req->printReqType = X_SetPrint;
+X    req->aspect = preserve_aspect;
+X    req->fontScale = font_scale;
+X    req->pixmapScale = pixmap_scale;
+X    req->pageWidth = page_width;
+X    req->pageHeight = page_height;
+X    UnlockDisplay( dpy);
+X    SyncHandle();
+X    return( True);
+X}
+END_OF_FILE
+  if test 5183 -ne `wc -c <'xpserv/printlib.c'`; then
+    echo shar: \"'xpserv/printlib.c'\" unpacked with wrong size!
+  fi
+  # end of 'xpserv/printlib.c'
+fi
+if test -f 'xpserv/printlib.h' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'xpserv/printlib.h'\"
+else
+  echo shar: Extracting \"'xpserv/printlib.h'\" \(1852 characters\)
+  sed "s/^X//" >'xpserv/printlib.h' <<'END_OF_FILE'
+X/*
+XCopyright (c) 1994  Matthew Reynolds and Qualcomm Inc.
+X
+XPermission is hereby granted, free of charge, to any person obtaining a copy
+Xof this software and associated documentation files (the "Software"), to deal
+Xin the Software without restriction, including without limitation the rights
+Xto use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+Xcopies of the Software, and to permit persons to whom the Software is
+Xfurnished to do so, subject to the following conditions:
+X
+XThe above copyright notice and this permission notice shall be included in
+Xall copies or substantial portions of the Software.
+X
+XTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+XIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+XFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+XQUALCOMM INC., OR MATTHEW REYNOLDS BE LIABLE FOR ANY CLAIM, 
+XDAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR 
+XOTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+XOR OTHER DEALINGS IN THE SOFTWARE.
+X
+XExcept as contained in this notice, the name of Qualcomm Inc., or Matthew 
+XReynolds shall not be used in advertising or otherwise to promote the sale, 
+Xuse or other dealings in this Software without their prior written 
+Xauthorization.
+X
+X*/
+X
+X#ifndef _PRINTLIB_H_
+X#define _PRINTLIB_H_
+X#include <X11/Xlib.h>
+X#include <X11/Xmd.h>
+X
+X#define PRINTNAME	"xprint"
+X#define PrintWindow	-1
+X
+XBool XOpenPrintWindow( 
+X    Display	*dpy,
+X    Drawable	drawable,
+X    char	*printfile
+X);
+X
+XBool XClosePrintWindow(
+X    Display	*dpy,
+X    Drawable	drawable
+X);
+X
+XBool XSetPrintParams(
+X    Display	*dpy,
+X    Bool      preserve_aspect,
+X    int       font_scale,
+X    int       pixmap_scale,
+X    int       page_width,			/* in points */
+X    int       page_height
+X);
+X
+X#endif /* _PRINTLIB_H_ */
+END_OF_FILE
+  if test 1852 -ne `wc -c <'xpserv/printlib.h'`; then
+    echo shar: \"'xpserv/printlib.h'\" unpacked with wrong size!
+  fi
+  # end of 'xpserv/printlib.h'
+fi
+if test -f 'xpserv/tcpip.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'xpserv/tcpip.c'\"
+else
+  echo shar: Extracting \"'xpserv/tcpip.c'\" \(4109 characters\)
+  sed "s/^X//" >'xpserv/tcpip.c' <<'END_OF_FILE'
+X/*
+XCopyright (c) 1994  Matthew Reynolds and Qualcomm Inc.
+X
+XPermission is hereby granted, free of charge, to any person obtaining a copy
+Xof this software and associated documentation files (the "Software"), to deal
+Xin the Software without restriction, including without limitation the rights
+Xto use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+Xcopies of the Software, and to permit persons to whom the Software is
+Xfurnished to do so, subject to the following conditions:
+X
+XThe above copyright notice and this permission notice shall be included in
+Xall copies or substantial portions of the Software.
+X
+XTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+XIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+XFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+XQUALCOMM INC., OR MATTHEW REYNOLDS BE LIABLE FOR ANY CLAIM, 
+XDAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR 
+XOTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+XOR OTHER DEALINGS IN THE SOFTWARE.
+X
+XExcept as contained in this notice, the name of Qualcomm Inc., or Matthew 
+XReynolds shall not be used in advertising or otherwise to promote the sale, 
+Xuse or other dealings in this Software without their prior written 
+Xauthorization.
+X
+X*/
+X
+X#include <sys/types.h>
+X#include <sys/uio.h>
+X#include <sys/socket.h>
+X#include <netinet/in.h>
+X#include <netdb.h>
+X#include "tcpip.h"
+X
+X/* create a socket for accepting connections on and listen on it.  If the
+X   port_no is 0, then create a socket using INADDR_ANY for the port number */
+X
+Xint create_accept_socket( int	port_no)
+X{
+X    int                 conn_sock, length, opt = 1;
+X    struct sockaddr_in  sin;
+X    char                hostname[ 128];
+X    struct hostent      *hp;
+X
+X/* create a socket file desciptor */
+X
+X    conn_sock = socket( AF_INET, SOCK_STREAM, 0);
+X
+X/* create the structure to bind it to for a well-known address */
+X
+X    memset(( char *) &sin, 0, sizeof( sin));
+X    sin.sin_family = AF_INET;
+X    gethostname( hostname, sizeof( hostname));
+X    hp = gethostbyname( hostname);
+X    memcpy(( void *) &sin.sin_addr, ( void *) hp->h_addr, hp->h_length);
+X
+X/* if the requested port number is 0, then we generate a port number */
+X
+X    sin.sin_port = ( port_no) ? htons( port_no) : INADDR_ANY;
+X
+X/* bind the socket to its address */
+X
+X    if ( bind( conn_sock, ( struct sockaddr *) &sin, sizeof( sin)) < 0) {
+X        perror( "bind failed\n");
+X        return( -1);
+X    }
+X
+X/* make sure the name was bound properly and listen on it for connections */
+X
+X    length = sizeof( sin);
+X    if ( getsockname( conn_sock, ( struct sockaddr *) &sin, &length) < 0) {
+X        perror( "bad address for socket");
+X        return( -1);
+X    }
+X    if ( listen( conn_sock, BACKLOG) < 0) {
+X        perror( "listen failed");
+X        return( -1);
+X    }
+X    return( conn_sock);
+X}
+X
+X/* accept a connection from a socket */
+X
+Xint accept_connection( int accept_fd)
+X{
+X    struct sockaddr	addr;
+X    int			addrlen = sizeof( struct sockaddr);
+X
+X    return( accept( accept_fd, &addr, &addrlen));
+X}
+X
+X/* get the port number of the socket */
+X
+Xint get_port_no( int	socket)
+X{
+X    struct sockaddr_in	name;
+X    int			length = sizeof( name);
+X
+X    if ( getsockname( socket, &name, &length) < 0) {
+X	perror( "getsockname failed");
+X	return( -1);
+X    }
+X    return(( int) name.sin_port);
+X}
+X
+X/* create a socket and use it to connect to another host */
+X
+Xint create_connect_socket( int	port,
+X			   char	*hostname)
+X{
+X    struct sockaddr_in  sin;
+X    struct hostent      *hp;
+X    int			conn_sock;
+X
+X/* set up the socket for making connections on */
+X
+X    conn_sock = socket( AF_INET, SOCK_STREAM, 0);
+X    memset(( char *) &sin, 0, sizeof( sin));
+X    sin.sin_family = AF_INET;
+X    hp = gethostbyname( hostname);
+X    memcpy(( void *) &sin.sin_addr, ( void *) hp->h_addr, hp->h_length);
+X    sin.sin_port = htons( port);
+X
+X/* connect and bind the socket to its address */
+X
+X    if ( connect( conn_sock, ( struct sockaddr *) &sin, sizeof( sin)) < 0) {
+X        perror( "connect failed");
+X        return( -1);
+X    }
+X    return( conn_sock);
+X}
+END_OF_FILE
+  if test 4109 -ne `wc -c <'xpserv/tcpip.c'`; then
+    echo shar: \"'xpserv/tcpip.c'\" unpacked with wrong size!
+  fi
+  # end of 'xpserv/tcpip.c'
+fi
+if test -f 'xpserv/tcpip.h' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'xpserv/tcpip.h'\"
+else
+  echo shar: Extracting \"'xpserv/tcpip.h'\" \(1633 characters\)
+  sed "s/^X//" >'xpserv/tcpip.h' <<'END_OF_FILE'
+X/*
+XCopyright (c) 1994  Matthew Reynolds and Qualcomm Inc.
+X
+XPermission is hereby granted, free of charge, to any person obtaining a copy
+Xof this software and associated documentation files (the "Software"), to deal
+Xin the Software without restriction, including without limitation the rights
+Xto use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+Xcopies of the Software, and to permit persons to whom the Software is
+Xfurnished to do so, subject to the following conditions:
+X
+XThe above copyright notice and this permission notice shall be included in
+Xall copies or substantial portions of the Software.
+X
+XTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+XIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+XFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+XQUALCOMM INC., OR MATTHEW REYNOLDS BE LIABLE FOR ANY CLAIM, 
+XDAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR 
+XOTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+XOR OTHER DEALINGS IN THE SOFTWARE.
+X
+XExcept as contained in this notice, the name of Qualcomm Inc., or Matthew 
+XReynolds shall not be used in advertising or otherwise to promote the sale, 
+Xuse or other dealings in this Software without their prior written 
+Xauthorization.
+X
+X*/
+X
+X#ifndef _TCPIP_H_
+X#define _TCPIP_H_
+X
+X#define BACKLOG		5
+X#define HNSIZE 		12
+X
+Xint create_accept_socket( 
+X    int	port_no 
+X);
+X
+Xint get_port_no( 
+X    int	socket 
+X);
+X
+Xint create_connect_socket( 
+X    int		port,
+X    char	*hostname 
+X);
+X
+Xint accept_connection( 
+X    int		accept_fd
+X);
+X
+X#endif /* _TCPIP_H_ */
+END_OF_FILE
+  if test 1633 -ne `wc -c <'xpserv/tcpip.h'`; then
+    echo shar: \"'xpserv/tcpip.h'\" unpacked with wrong size!
+  fi
+  # end of 'xpserv/tcpip.h'
+fi
+if test -f 'xpserv/testcli.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'xpserv/testcli.c'\"
+else
+  echo shar: Extracting \"'xpserv/testcli.c'\" \(6208 characters\)
+  sed "s/^X//" >'xpserv/testcli.c' <<'END_OF_FILE'
+X/*
+XCopyright (c) 1994  Matthew Reynolds and Qualcomm Inc.
+X
+XPermission is hereby granted, free of charge, to any person obtaining a copy
+Xof this software and associated documentation files (the "Software"), to deal
+Xin the Software without restriction, including without limitation the rights
+Xto use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+Xcopies of the Software, and to permit persons to whom the Software is
+Xfurnished to do so, subject to the following conditions:
+X
+XThe above copyright notice and this permission notice shall be included in
+Xall copies or substantial portions of the Software.
+X
+XTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+XIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+XFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+XQUALCOMM INC., OR MATTHEW REYNOLDS BE LIABLE FOR ANY CLAIM, 
+XDAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR 
+XOTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE 
+XOR OTHER DEALINGS IN THE SOFTWARE.
+X
+XExcept as contained in this notice, the name of the Qualcomm Inc., or Matthew 
+XReynolds shall not be used in advertising or otherwise to promote the sale, 
+Xuse or other dealings in this Software without their prior written 
+Xauthorization.
+X
+X*/
+X
+X#include <stdio.h>
+X#include <math.h>
+X#include <values.h>
+X#include <stdlib.h>
+X#include <X11/Xlib.h>
+X
+Xvoid main( int argc, char *argv[]) 
+X{
+X    Display			*pdisplay, *display;
+X    GC				gc, gc2, gc3;
+X    Window			window, window2;
+X    int				i, x, y, screen, j, index;
+X    XColor			color, exact;
+X    XGCValues			gcv;
+X    Colormap			cmap;
+X    XPoint			points[ 20];
+X    XEvent			event;
+X    XSetWindowAttributes	attr;
+X    Font			font;
+X    XImage			*image;
+X    XColor			vector[ 32];
+X    Pixmap			pixmap;
+X
+X    if ( argc < 2) {
+X	display = XOpenDisplay( "unix:0.0");
+X    } else {
+X	display = XOpenDisplay( argv[ 1]);
+X    }
+X    if ( display == NULL) {
+X	fprintf( stderr, "Graphics XOpenDisplay failed\n");
+X	exit( -1);
+X    } else {
+X	fprintf( stderr, "Graphics XOpenDisplay succeeded\n");
+X    }
+X    pdisplay = XOpenDisplay( getenv( "PRINTSERVER"));
+X    if ( pdisplay == NULL) {
+X	fprintf( stderr, "Printer XOpenDisplay failed\n");
+X	exit( -1);
+X    } else {
+X	fprintf( stderr, "Printer XOpenDisplay succeeded\n");
+X    }
+X    cmap = DefaultColormap( pdisplay, DefaultScreen( pdisplay));
+X    screen = DefaultScreen( pdisplay);
+X    window = XCreateSimpleWindow( pdisplay,
+X				  DefaultRootWindow( pdisplay),
+X				  10, 10, 600, 1200, 1, 1, 0);
+X    XSetPrintParams( pdisplay, False, 2, 2, 612, 792);
+X    XOpenPrintWindow( pdisplay, window, "printfile");
+X    color.red = 255 << 8;
+X    color.green = 0;
+X    color.blue = 0;
+X    XAllocColor( pdisplay, cmap, &color);
+X    font = XLoadFont( pdisplay, 
+X	    "-adobe-courier-bold-o-normal--14-140-75-75-m-90-iso8859-1");
+X    gcv.foreground = color.pixel;
+X    gcv.font = font;
+X    gc = XCreateGC( pdisplay, window, GCForeground | GCFont, &gcv);
+X    XDrawLine( pdisplay, window, gc, 10, 10, 20, 20);
+X    XDrawPoint( pdisplay, window, gc, 20, 20);
+X    XDrawString( pdisplay, window, gc, 20, 20, "this is a test", 14);
+X    XDrawString( pdisplay, window, gc, 20, 100, "this is a test", 14);
+X    XDrawString( pdisplay, window, gc, 20, 200, "this is a test", 14);
+X    XDrawImageString( pdisplay, window, gc, 20, 300, "this is a test", 14);
+X    for ( i = 0; i < 100; i++) {
+X	x = 100+100*cos(( i*M_PI)/50); 
+X	y = 100+100*sin(( i*M_PI)/50);
+X	XDrawLine( pdisplay, window, gc, 100, 100, x, y);
+X    }
+X    XDrawArc( pdisplay, window, gc, 0, 0, 200, 200, 0, 360*64);
+X    XAllocNamedColor( pdisplay, cmap, "Blue", &color, &exact);
+X    gcv.foreground = color.pixel;
+X    gcv.line_width = 4;
+X    gc2 = XCreateGC( pdisplay, window , GCForeground, &gcv);
+X    XDrawRectangle( pdisplay, window, gc2, 200, 200, 300, 200);
+X    XFillRectangle( pdisplay, window, gc2, 100, 100, 200, 100);
+X    points[ 0].x = 310;
+X    points[ 0].y = 320;
+X    points[ 1].x = 410;
+X    points[ 1].y = 220;
+X    points[ 2].x = 250;
+X    points[ 2].y = 320;
+X    points[ 3].x = 300;
+X    points[ 3].y = 210;
+X    points[ 4] = points[ 0];
+X    XFillPolygon( pdisplay, window, gc2, points, 5, Complex, CoordModeOrigin);
+X    XDrawLines( pdisplay, window, gc2, points, 5, CoordModeOrigin);
+X    XCopyArea( pdisplay, window, window, gc2, 0, 0, 300, 300, 0, 300);
+X    for ( i = 0; i < 32; i++) {
+X	vector[ i].red = i << 11;
+X	vector[ i].blue = i << 11;
+X	vector[ i].green = i << 11;
+X	XAllocColor( pdisplay, cmap, &vector[ i]);
+X    }
+X    XStoreColors( pdisplay, cmap, vector, 32);
+X    image = XCreateImage( pdisplay, DefaultVisual( pdisplay, screen),
+X			  DefaultDepth( pdisplay, screen),
+X			  ZPixmap, 0, NULL, 128, 128, 8, 0);
+X    image->data = ( char *) malloc( image->height*image->bytes_per_line);
+X    for ( i = 0; i < image->height; i++) {
+X	for ( j = 0; j < image->bytes_per_line; j++) {
+X	    index = 16 + 16*sin((( double) i)/12)*cos((( double) j)/12);
+X	    if ( index < 0) {
+X		index = 0;
+X	    } else if ( index >= 32) {
+X		index = 31;
+X	    }
+X	    image->data[ i*image->bytes_per_line + j] = vector[ index].pixel;
+X	}
+X    }
+X    XPutImage( pdisplay, window, gc, image, 0, 0, 64, 64, 128, 128);
+X#if 0
+X    for (i = 0; i < 500; i++) {
+X	y = 100+ 100*sin( i/100.0);
+X	XDrawPoint( pdisplay, window, gc, i + 20, y);
+X    }
+X#endif
+X
+X/* create a pixmap and copy it from the real display to the print display */
+X
+X    pixmap = XCreatePixmap( display, DefaultRootWindow( display), 128, 128,
+X			    DefaultDepth( display, DefaultScreen( display)));
+X    gc3 = XCreateGC( display, DefaultRootWindow( display), 0, NULL);
+X    XPutImage( display, pixmap, gc3, image, 0, 0, 0, 0, 128, 128);
+X    XCopyArea( pdisplay, pixmap, window, gc2, 0, 0, 128, 128, 200, 300);
+X    XClosePrintWindow( pdisplay, window);
+X    XCloseDisplay( pdisplay);
+X    window = XCreateSimpleWindow( display, DefaultRootWindow( display),
+X				  10, 10, 400, 200, 1, 1, 0);
+X    attr.event_mask = ButtonPressMask | ExposureMask;
+X    XChangeWindowAttributes( display, window, CWEventMask, &attr);
+X    XMapWindow( display, window);
+X    do {
+X	XNextEvent( display, &event);
+X	if ( event.type == ButtonPress) {
+X	    XCloseDisplay( display);
+X	    exit( 0);
+X	}
+X    } while ( 1);
+X}
+END_OF_FILE
+  if test 6208 -ne `wc -c <'xpserv/testcli.c'`; then
+    echo shar: \"'xpserv/testcli.c'\" unpacked with wrong size!
+  fi
+  # end of 'xpserv/testcli.c'
+fi
+echo shar: End of archive 3 \(of 3\).
+cp /dev/null ark3isdone
+MISSING=""
+for I in 1 2 3 ; do
+    if test ! -f ark${I}isdone ; then
+	MISSING="${MISSING} ${I}"
+    fi
+done
+if test "${MISSING}" = "" ; then
+    echo You have unpacked all 3 archives.
+    rm -f ark[1-9]isdone
+else
+    echo You still must unpack the following archives:
+    echo "        " ${MISSING}
+fi
+exit 0
+exit 0 # Just in case...
+-- 
+  // chris@Sterling.COM           | Send comp.sources.x submissions to:
+\X/  Amiga: The only way to fly!  |    sources-x@sterling.com
+GCS d++(--) h++ s++:+ g+++(?) p? au(*)(0) a w+ v-(*) C++ US+++ P+ L+ 3 N++ K
+  !W M V-- -po+ Y+ t+ 5++ j- r+ G+ v b+++ D- b-- e+ u+ h- f+ r+++ !n y+++
+

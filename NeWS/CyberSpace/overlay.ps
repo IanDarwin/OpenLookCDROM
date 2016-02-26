@@ -1,0 +1,577 @@
+%!
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 
+% Class OverlayWindow
+% Copyright (C) 1989.
+% By Don Hopkins. (don@brillig.umd.edu)
+% All rights reserved.
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 
+%  This program is provided for UNRESTRICTED use provided that this
+%  copyright message is preserved on all copies and derivative works.
+%  This is provided without any warranty. No author or distributor
+%  accepts any responsibility whatsoever to any person or any entity
+%  with respect to any loss or damage caused or alleged to be caused
+%  directly or indirectly by this program. This includes, but is not
+%  limited to, any interruption of service, loss of business, loss of
+%  information, loss of anticipated profits, core dumps, abuses of the
+%  virtual memory system, or any consequential or incidental damages
+%  resulting from the use of this program.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 
+% Overlay plane compatibility hack for cg4 frame buffer.
+% This is a nebulous layer abstracted from a messy program, to make it run 
+% on generic NeWS servers. It should be rethought and rewritten. Repent!
+% 
+% Requires the devices /dev/cgfour0, /dev/cgfour0_ovl, and /dev/cgfour0_ove
+% (which can all be major 39 minor 0, or whatever), and the following patch 
+% to the NeWS 1.1 server sources (but X11/NeWS doesn't need to be patched!),
+% in order to take advantage of a cg4 under NeWS 1.1 (Otherwise it falls back
+% to using exclusive-or).
+% 
+% Put the flag -DCG4_ENABLE_HACK into COPTS in the top level server Makefile.
+% Make the following patch to the file SUN/src/server/dev/sunw/pixrectint.c:
+% In function cg4_make:
+% Replace the block starting with the following comment:
+% 	/* set up pixrect initial state */
+% 	{
+% #ifdef CG4_ENABLE_HACK
+% 		int initplanes, initfb = CG4_INITFB;
+% 		extern char *sun_fb_name;
+% 		char *index();
+% 		int len = strlen (sun_fb_name);
+% 
+% 		/* Special file names get overlay and enable planes */
+% 		if (index(sun_fb_name, '_') != NULL) {
+% 		    if (sun_fb_name[len-1] == 'l') /* cgfour0_ovl */
+% 			initfb = 0; /* overlay plane */
+% 		    else if (sun_fb_name[len-1] == 'e') /* cgfour0_ove */
+% 			initfb = 1; /* enable plane */
+% 		    else initfb = 2; /* color plane */
+% 		}
+% 
+% 		initplanes = 
+% 			PIX_GROUP(fbdesc[initfb].group) |
+% 			fbdesc[initfb].allplanes;
+% #else !CG4_ENABLE_HACK
+% 		int initplanes = 
+% 			PIX_GROUP(fbdesc[CG4_INITFB].group) |
+% 			fbdesc[CG4_INITFB].allplanes;
+% #endif !CG4_ENABLE_HACK
+% 
+% 		(void) cg4_putattributes(pr, &initplanes);
+% 	}
+%
+% Damn damn damn! X11/NeWS Version 1.0 FCS on a cg4 can open up the
+% enable plane, but there's a bug that trashes the enable plane color map,
+% so we can draw in gray scales but we can't draw in white (black?).
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+systemdict begin
+
+systemdict /XNeWS? known not {
+  systemdict /XNeWS? false put
+} if
+
+/overlay-dev (/dev/cgfour0_ovl) def
+/enable-dev (/dev/cgfour0_ove) def
+/color-dev (/dev/cgfour0) def
+
+mark
+systemdict /fb_overlay known not {
+  /fb_overlay null def  /fb_enable null def  /fb_color null def
+  /mono? framebuffer /Color get not def
+  systemdict /no_funny_stuff known
+  XNeWS? or % disabled, because of pre-fsc X11/NeWS...
+  { true } {
+    {
+      /fb_overlay overlay-dev createdevice store
+      %fb_overlay /Retained true put 
+      /fb_enable enable-dev createdevice store
+      XNeWS? {
+% this-is-currently-disabled % delete this line to re-enable, but it don't work
+	% Attempt to work around bug with X11/NeWS pre-fcs:
+	% The color map of the enable plane is bogus.
+	% 1 setgray results in black instead of white.
+	% All other setgrays < 1 come out the right color.
+	/fb_enable fb_enable
+{
+	fb_overlay begin
+	  Visual Colormap
+	end
+} pop
+	newcanvas store
+	framebuffer setcanvas
+	clippath fb_enable reshapecanvas
+	fb_enable /Transparent false put
+	fb_enable /Mapped true put
+      } if
+      fb_enable /Retained true put % is there any damage?
+      % if so, have event mgr clean it up instead of retaining?
+      /fb_color color-dev createdevice store
+      % createdevice bug: ignores file name (MacNeWS)
+      fb_enable /Color get not fb_color /Color get and {
+        gsave 
+	  fb_enable setcanvas
+	  mono? 0 1 ifelse fillcanvas
+        grestore
+      } {
+	/fb_overlay null store
+	/fb_enable null store
+	/fb_color null store
+	that-aint-no-overlay-plane!
+      } ifelse
+    } errored
+  } ifelse
+  /cg4? exch not def
+  cg4? not {
+    systemdict /fb_overlay undef
+    systemdict /fb_enable undef
+    systemdict /fb_color undef
+  } if
+} if
+cleartomark
+
+/OverlayWindow DefaultWindow 
+dictbegin
+  /EnableCanvas null def
+  /EnableOverlay null def
+  /OverlayCanvas null def
+  /ColorCanvas null def
+  /TrackCanvas null def
+  /OtherCanvas null def
+  /HiliteCanvas null def
+  /SpriteCanvas null def
+  /SpriteMaskCanvas null def
+  /BubbleRadius 32 def
+  /LastX 0 def /LastY 0 def 
+  /LastW 0 def /LastH 0 def
+  /InitialOverlayGray 0 def
+  /InitialEnableGray 1 def
+dictend
+classbegin
+
+cg4? { % cg4
+
+  /ShapeClientCanvas {
+    /ShapeClientCanvas super send
+      gsave
+	ClientCanvas setcanvas 
+        /nouse /nouse_m ClientCanvas setstandardcursor
+	clippath OverlayCanvas reshapecanvas
+	clippath EnableCanvas reshapecanvas
+	EnableCanvas setcanvas
+	InitialEnableGray fillcanvas
+	OverlayCanvas setcanvas
+	InitialOverlayGray fillcanvas
+	ClientCanvas setcanvas
+	ClientWidth 2 div ClientHeight 2 div
+        SpriteShape
+        SpriteMaskCanvas reshapecanvas
+      grestore
+      DrawSpriteMask
+  } def
+
+  /UpdateSprite { % x y => -
+    gsave
+      SpriteMaskCanvas setcanvas
+      XNeWS? not {
+        SpriteHotY
+        dup add sub
+      } if % ARGH!
+      movecanvas
+      SpriteMaskCanvas /Mapped true put
+    grestore
+  } def
+
+  /HideSprite {
+    SpriteCanvas /Mapped false put
+    SpriteMaskCanvas /Mapped false put
+  } def
+
+  /SpriteShape { % x y => -
+    translate
+    SpriteHotX neg SpriteHotY neg translate
+    0 0 BubbleRadius 0 360 arc
+    closepath
+  } def
+
+  /SpriteHotX {
+    BubbleRadius
+  } def
+
+  /SpriteHotY {
+    BubbleRadius
+  } def
+
+  /DrawSprite {
+    gsave
+      SpriteCanvas setcanvas
+      clippath 
+      gsave 0 setgray fill grestore
+      BubbleRadius dup dup 3 sub 0 360 arc 
+      1 setgray eofill
+
+%       0 BubbleRadius moveto
+%       BubbleRadius dup add 0 rlineto
+%       BubbleRadius 0 moveto
+%       0 BubbleRadius dup add rlineto
+%       0 setlinewidth
+%       0 setgray stroke
+    grestore
+  } def
+
+  /DrawSpriteMask {
+    gsave
+      SpriteMaskCanvas setcanvas 
+      .5 fillcanvas
+
+      4 {
+	0 0 moveto
+        0 BubbleRadius lineto
+	90 rotate
+      } repeat
+      0 setlinewidth
+      1 setgray stroke
+    grestore
+  } def
+
+  /move {
+    /move super send
+    gsave
+      framebuffer setcanvas
+      TrackCanvas getcanvaslocation
+      OtherCanvas setcanvas
+      2 copy movecanvas
+      EnableCanvas setcanvas movecanvas
+    grestore
+  } def
+
+  /map {
+    /map super send
+    Iconic? not {
+      OtherCanvas /Mapped true put
+      EnableCanvas /Mapped true put
+    } if
+  } def
+
+  /unmap {
+    /unmap super send
+    Iconic? not {
+      ColorCanvas /Mapped false put
+      EnableCanvas /Mapped false put
+    } if
+  } def
+
+  /totop {
+    /totop super send
+    EnableCanvas canvastotop
+    ColorCanvas canvastotop
+  } def
+
+  /tobottom {
+    /tobottom super send
+    EnableCanvas canvastobottom
+    ColorCanvas canvastobottom
+  } def
+
+  /PaintFocus {
+    /PaintFocus super send
+    gsave
+      EnableCanvas setcanvas
+      KeyFocus? KeyFocusFill 1 ifelse
+      fillcanvas
+    grestore
+  } def
+
+  /destroy {
+    framebuffer setcanvas
+    pause
+    OverlayCanvas /Retained false put
+    OverlayCanvas /Mapped false put
+    EnableCanvas /Retained false put
+    EnableCanvas /Mapped false put
+    pause
+    ColorCanvas /Retained false put
+    pause
+    ColorCanvas /Mapped false put
+    pause
+    FrameCanvas /Retained false put
+    pause
+    FrameCanvas /Mapped false put
+    pause
+    SpriteCanvas /Retained false put
+    SpriteCanvas /Mapped false put
+    SpriteMaskCanvas /Retained false put
+    SpriteMaskCanvas /Mapped false put
+    pause
+    /destroy super send
+  } def
+
+  /FullColor {
+    gsave
+      EnableCanvas setcanvas 1 fillcanvas
+    grestore
+    DrawSpriteMask
+  } def
+
+  /FullOverlay {
+    gsave
+      EnableCanvas setcanvas 0 fillcanvas
+    grestore
+  } def
+
+  /BlackOverlay {
+    gsave
+      OverlayCanvas setcanvas 0 fillcanvas
+    grestore
+  } def
+
+  /WhiteOverlay {
+    gsave
+      OverlayCanvas setcanvas 1 fillcanvas
+    grestore
+  } def
+
+  /TrackSprite { % event => -
+    gsave begin
+        ClientCanvas setcanvas
+        XLocation YLocation 
+      end
+      UpdateSprite
+    grestore
+  } def  
+
+  /DarkColor {
+    gsave
+      OverlayCanvas setcanvas 0 fillcanvas
+      EnableCanvas setcanvas .5 fillcanvas
+    grestore
+    DrawSpriteMask
+  } def
+
+  mono? { % cg4 and mono
+
+    /KeyFocusFill .85 def
+
+    /CreateClientCanvas {
+      /CreateClientCanvas super send
+      /TrackCanvas ClientCanvas def
+      /OverlayCanvas ClientCanvas def
+      /ColorCanvas fb_color newcanvas def
+      /OtherCanvas ColorCanvas def
+      ColorCanvas /Mapped true put
+      ColorCanvas /Transparent false put
+      ColorCanvas /Retained true put
+
+      /EnableCanvas fb_enable newcanvas def
+      /EnableOverlay EnableCanvas createoverlay def
+      EnableCanvas /Mapped true put
+      EnableCanvas /Transparent false put
+      EnableCanvas /Retained true put
+      /ClientCanvas ColorCanvas def
+
+      /SpriteCanvas OverlayCanvas newcanvas def
+      SpriteCanvas /Transparent false put
+      SpriteCanvas /Retained true put
+      /SpriteMaskCanvas EnableCanvas newcanvas def
+      SpriteMaskCanvas /Transparent false put
+      SpriteMaskCanvas /Retained true put
+
+      % ARRGH! I'm getting damage on the retained opeque FrameCanvas
+      % when mapping transparent children of the transparent ClientCanvas!
+      XNeWS? {
+        OverlayCanvas /Transparent false put
+	OverlayCanvas /Retained true put
+      } if
+    } def
+
+    /KindaColor {
+      gsave
+        EnableCanvas setcanvas .5 fillcanvas
+      grestore
+    } def
+
+    /HiliteCan { % gray can => -
+      dup null eq { pop pop } {
+	gsave
+	  setcanvas clippath
+	  setgray fill
+	grestore
+      } ifelse
+    } def
+
+    /ShimmerCan { % gray can => -
+	gsave
+	  setcanvas clippath
+	  setgray fill
+	grestore
+    } def
+
+    /LoliteCan { % can => -
+      0 exch HiliteCan
+    } def
+
+  } { % else cg4 and not mono
+
+    /KeyFocusFill 1 def
+
+    /CreateClientCanvas { % Monochrome cg4
+      /CreateClientCanvas super send
+      /TrackCanvas ClientCanvas def
+      /ColorCanvas ClientCanvas def
+      /OverlayCanvas fb_overlay newcanvas def
+      /OtherCanvas OverlayCanvas def
+      OverlayCanvas /Mapped true put
+      OverlayCanvas /Transparent false put
+      OverlayCanvas /Retained true put
+      FrameCanvas /Retained true put
+
+      /EnableCanvas fb_enable newcanvas def
+      /EnableOverlay EnableCanvas createoverlay def
+      EnableCanvas /Mapped true put
+      EnableCanvas /Transparent false put
+      EnableCanvas /Retained true put
+      /ClientCanvas ColorCanvas def
+
+      /SpriteCanvas OverlayCanvas newcanvas def
+      SpriteCanvas /Transparent false put
+      SpriteCanvas /Retained true put
+      /SpriteMaskCanvas EnableCanvas newcanvas def
+      SpriteMaskCanvas /Transparent false put
+      SpriteMaskCanvas /Retained true put
+
+      /HiliteCanvas OverlayCanvas newcanvas store
+      HiliteCanvas /Transparent true put
+      HiliteCanvas /Mapped true put
+
+      % ARRGH! I'm getting damage on the retained opeque FrameCanvas
+      % when mapping transparent children of the transparent ClientCanvas!
+      XNeWS? {
+        ColorCanvas /Transparent false put
+	ColorCanvas /Retained true put
+      } if
+    } def
+
+    /KindaColor {
+      FullColor
+    } def
+
+    /HiliteCan { % gray can => -
+	gsave
+	  setcanvas clippath
+	  HiliteCanvas reshapecanvas
+	  HiliteCanvas setcanvas
+	  clippath
+	  setgray fill
+	grestore
+    } def
+
+    /LoliteCan {
+      0 exch HiliteCan
+    } def
+
+    /ShimmerCan { % gray can => -
+	gsave
+	  setcanvas clippath
+	  HiliteCanvas reshapecanvas
+	  HiliteCanvas setcanvas
+	  clippath
+	  setgray fill
+	grestore
+    } def
+
+  } ifelse
+
+} { % else not cg4
+
+  /KeyFocusFill .85 def
+
+  /CreateClientCanvas { % Monochrome cg4
+    /CreateClientCanvas super send
+    /TrackCanvas ClientCanvas def
+    /OverlayCanvas ClientCanvas def
+    /ColorCanvas ClientCanvas def
+    /EnableCanvas ClientCanvas def
+    /EnableOverlay EnableCanvas createoverlay def
+    /OtherCanvas ClientCanvas def
+    FrameCanvas /Retained true put
+% Fucks up damage distribution in X11/NeWS!
+% If the FrameCanvas is retained, and the ClientCanvas is transparent,
+% then creating transparent children of the ClientCanvas causes damage
+% to happen on the FrameCanvas!
+% So we have to make the ClientCanvas retained too (because if we make
+% just the ClientCanvas but not the FrameCanvas retained, damage on the
+% frame causes repainting of the ClientCanvas! Argh!
+    XNeWS? {
+      %ClientCanvas /Transparent false put
+      %ClientCanvas /Retained true put
+      %FrameCanvas /Retained false put
+    } if
+  } def
+
+  /destroy {
+    framebuffer setcanvas
+    ClientCanvas /Retained false put
+    ClientCanvas /Mapped false put
+    FrameCanvas /Retained false put
+    FrameCanvas /Mapped false put
+    /destroy super send
+  } def
+
+  /FullColor {
+  } def
+
+  /FullOverlay {
+  } def
+
+  /FullColorCursor { % can event => -
+    pop pop
+  } def  
+
+  /TrackSprite {
+    pop
+  } def
+
+  /HideSprite {
+  } def
+
+  /BlackOverlay {
+  } def
+
+  /WhiteOverlay {
+  } def
+
+  /DarkColor {
+  } def
+
+  /KindaColor {
+  } def
+
+  /HiliteCan { % gray can => -
+    dup null eq { pop pop } {
+      gsave
+	setcanvas
+	pop
+	5 setrasteropcode
+	clippath fill
+      grestore
+    } ifelse
+  } def
+
+  /LoliteCan { % can => -
+    0 exch HiliteCan
+  } def
+
+  /ShimmerCan { % gray can => -
+    2 copy HiliteCan HiliteCan
+  } def
+
+} ifelse % cg4
+
+classend def
+
+end % systemdict

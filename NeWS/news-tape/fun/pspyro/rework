@@ -1,0 +1,470 @@
+#! /usr/NeWS/bin/psh
+%
+% Date: Tue, 27 Jun 89 12:29:26 EDT
+% From: alexis%yummy@gateway.mitre.org
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Another rework of the psPyro
+% 
+% Yet another remake/tweek of the psPyro program, making it more 
+% worthy of a workstation (read as "it sucks us cpu cycles").  This 
+% version has lots of colors, more interesting explosions, more than 
+% one firecracker in the air at once (I have it set to 3, but it's 
+% just a variable), and general tweeking (they fly faster, explode 
+% slower, etc).  This just assumes you're running on a color machine.
+% 
+% alexis wieland
+% alexis%yummy@gateway.mitre.org
+% 
+% ---------------------------  cut here  ----------------------
+
+%
+%  psPyro, a user extensible fireworks display screen saver.
+%
+
+%
+% Physical screen dimensions ------------------------------------------
+%
+/screen_width  0 def
+/screen_height 0 def
+
+%
+% Heuristics for firework creation and display (user configurable) ----
+%
+/unusable_screen_width  0.1  def     % set to percent of physical screen width
+/unusable_screen_height 0.1  def     % set to percent of physical screen height
+/minimum_trail_height   0.75 def     % set to percent of physical screen height
+
+/minimum_explosion_angle 100 def
+/maximum_explosion_angle 150 def
+
+/minimum_#_explosions 2 def
+/maximum_#_explosions 6 def
+
+/trail_length 5 def		% the length of the firework trail
+/n-in-air-at-once 3 def		% number of fireworks at any time
+/multiple_explosion_radius 100 def % radius of multiple explosions from original
+
+% array of colors
+/colortable [
+	1 1 1 rgbcolor
+	1 0 0 rgbcolor
+	0 1 0 rgbcolor
+	0 0 1 rgbcolor
+	1 1 0 rgbcolor
+	0 1 1 rgbcolor
+	1 .5 0 rgbcolor
+	1 0 .5 rgbcolor
+	.8 .5 .2 rgbcolor
+	.92 .68 .92 rgbcolor
+	.86 .44 .86 rgbcolor
+] def
+
+% randomly set color
+/randcolor {
+  colortable random colortable length 1 sub mul floor get setcolor
+} def
+
+%
+% Firework explosion definitions
+%
+% array to keep the names of the different explosions in
+/explosion_kinds [
+	/dots_explosion		/circle_explosion
+	/star_explosion		/colored_circle_explosion
+] def
+
+
+%
+%  Dots explosion.
+/draw_one_quarter {
+  30 0 moveto 2 -2 rlineto 2  2 rlineto -2  2 rlineto closepath fill
+  20 10 3 3 rectpath fill 10 20 3 3 rectpath fill
+} def
+
+/dots_explosion { % x y => -
+  gsave
+    translate
+    360 random mul rotate
+    8 random mul cvi 2 add
+    .5 random add dup scale
+    gsave
+      5 {
+	 randcolor
+        dup {
+          draw_one_quarter
+          360 1 index div rotate
+        } repeat
+        1.3 1.3 scale
+	big_delay
+      } repeat
+    grestore
+    gsave
+      5 {
+        0 setgray
+        dup {
+          draw_one_quarter
+          360 1 index div rotate
+        } repeat
+        1.3 1.3 scale
+	big_delay
+      } repeat
+      pop
+    grestore
+  grestore
+} def  % dots_explosion
+
+
+%
+%  Circle explosion.
+%
+
+/draw_circle { % - => -
+  0 0 10 0 360 arc stroke
+} def
+
+/circle_explosion { % x y => -
+  gsave
+    translate
+    .5 random add dup scale
+    gsave
+      6 {
+        1.4 dup scale
+	 randcolor
+        big_delay
+        draw_circle
+      } repeat
+    grestore
+    gsave
+      6 {
+        1.4 dup scale
+        0 setgray
+        big_delay
+        draw_circle
+      } repeat
+    grestore
+  grestore
+} def
+
+
+%
+%  Star explosion.
+%
+
+/draw_star { % n-lines => n-lines
+  gsave
+    dup {
+      -30 0 moveto
+      60 0 rlineto stroke
+      360 1 index div rotate
+    } repeat
+  grestore
+} def
+
+/star_explosion { % x y => -
+  gsave
+    translate
+    .5 random add dup scale
+    360 random mul rotate
+    10 random mul 4 add
+    gsave
+      4 {
+        1.4 dup scale
+         randcolor
+        big_delay
+        draw_star
+      } repeat
+    grestore
+    gsave
+      4 {
+        1.4 dup scale
+        0 setgray
+        big_delay
+        draw_star
+      } repeat
+    grestore
+    pop
+  grestore
+} def
+
+
+%
+%  Colored circle explosion.
+%
+
+/draw_dot { % - => -
+  0 0 10 0 360 arc fill
+} def
+
+/colored_circle_explosion { % x y => -
+  gsave
+    translate
+    .5 random add dup scale
+    gsave
+      10 {
+        1.2 dup scale
+	randcolor
+        big_delay
+        draw_dot
+      } repeat
+      0 setgray
+      big_delay big_delay
+      draw_dot
+    grestore
+  grestore
+} def
+
+
+%
+% Support utilities ---------------------------------------------------
+%
+
+%
+%  Delay loops.
+%
+/big_delay {
+  1 2048 div sleep
+} def
+
+%
+%  Draw one instance of a firework trail from:
+%    angle     to angle
+%        theta        theta + trail_length - 1
+%
+/draw_trail { % theta => -
+  /theta exch def
+
+  % erase the first degree from the previous trail
+  0 setgray
+  0 0 1 theta 1 sub theta newpath arc stroke
+
+  1 setgray
+  theta 1 theta trail_length add 1 sub {
+    0 0 1
+    4 -1 roll
+    dup 1 add newpath arc stroke
+  } for
+} def
+
+
+%
+%  Animate the entire firework trail up until the explosion.
+%
+/animate_trail { % - => -
+  % draw the first trail instance
+  1 setgray
+  0 1 trail_length 1 sub {
+    0 0 1
+    4 -1 roll
+    dup 1 add newpath arc stroke
+  } for
+  % draw the rest of the trail
+  1 1 explosion_angle {
+    draw_trail
+    pause
+  } for
+  % remove the last trail instance
+  0 setgray
+  explosion_angle 1 explosion_angle trail_length add 1 sub {
+    0 0 1
+    4 -1 roll
+    dup 1 add newpath arc stroke
+  } for
+} def
+
+
+%
+%  Determine the characterictics of the next firework.
+%
+/determine_firework_characteristics { % - => -
+  % randomly pick the starting position to fire the firework from
+  /trail_start_x screen_width random mul store
+
+  %
+  % pick the direction of the firework trail
+  %
+  % if the picked starting position is too close to a screen
+  % edge, force the direction to be towards the opposite screen
+  % side, otherwise randomly pick the direction
+  %
+  trail_start_x unusable_screen_width le {
+    /trail_going_left? false store
+  } {
+    trail_start_x screen_width unusable_screen_width sub ge {
+      /trail_going_left? true store
+    } {
+      % randomly pick the direction
+      /trail_going_left? random round 0 eq store
+    } ifelse
+  } ifelse
+
+  % randomly pick the width of the firework trail
+  trail_going_left? {
+    /trail_width trail_start_x random mul store
+  } {
+    /trail_width screen_width trail_start_x sub random mul store
+  } ifelse
+
+  % randomly pick the height of the firework trail
+  /trail_height screen_height random mul store
+
+  trail_height minimum_trail_height le {
+    /trail_height minimum_trail_height store
+  } if
+
+  % randomly pick the ending angle of the firework explosion
+  /explosion_angle
+    maximum_explosion_angle minimum_explosion_angle sub
+    random mul
+    minimum_explosion_angle add round store
+} def
+
+
+%
+%  Animate a firework explosion.
+%
+/animate_explosion { % explosion_x explosion_y #explosions => -
+  /#explosions exch store
+  /explosion_y exch store
+  /explosion_x exch store
+
+  % randomly pick which explosion to use
+  /which_explosion explosion_kinds explosion_kinds length random mul floor get def
+
+  % explode the first of the explosions
+  explosion_x explosion_y which_explosion cvx exec
+
+  % explode the remaining number of explosions (possible none),
+  % randomly picking each location based upon the initial explosion
+  % location
+  #explosions 1 sub {
+    % randomly pick another explosion location
+    360 random mul dup
+    cos multiple_explosion_radius mul
+    explosion_x add
+    exch
+    sin multiple_explosion_radius mul
+    explosion_y add
+    which_explosion cvx exec
+  } repeat
+} def
+
+/do-it     { gsave
+	/trail_width          0 def
+	/trail_height         0 def
+	/trail_start_x        0 def
+	/trail_going_left? true def
+	/explosion_angle      0 def
+	/#explosions null store
+	/explosion_y null store
+	/explosion_x null store
+	/which_explosion null store
+
+      initmatrix
+      sky setcanvas
+
+      % create a new firework
+      determine_firework_characteristics
+
+      % translate to the center of the firework trail arc
+      trail_start_x unusable_screen_width add
+      trail_width 2 div
+      trail_going_left? { sub } { add } ifelse
+      0 translate
+
+      trail_going_left? not { -1 1 scale } if
+
+      % create the firing of the firework
+      randcolor
+      trail_width 2 div 0 20 0 180 arc fill
+
+      3 { big_delay } repeat
+      0 setgray
+      trail_width 2 div 0 20 0 180 arc fill
+
+      % create the firework trail
+      trail_width 2 div trail_height scale
+      animate_trail
+
+      % calculate the location of the firework explosion
+      initmatrix
+      trail_start_x unusable_screen_width add
+      trail_width 2 div
+      trail_going_left? { sub } { add } ifelse
+
+      explosion_angle trail_length add cos trail_width 2 div mul
+      trail_going_left? { add } { sub } ifelse
+      explosion_angle trail_length add sin trail_height mul
+
+      % calculate the number of explosions for the firework
+      maximum_#_explosions random mul round 
+      minimum_#_explosions max
+
+      % create the explosion!
+      animate_explosion
+
+      grestore
+} def
+
+
+%
+%  Continually make fireworks.
+%
+/make_fireworks { % - => -
+ {
+	n-in-air-at-once {
+	  { 32 dict begin
+	      { do-it } loop
+	    end
+	   } fork
+	} repeat
+ } fork
+} def
+
+
+%
+% Main ----------------------------------------------------------
+%
+
+% get the dimensions of the physical screen
+clippath pathbbox
+/screen_height exch def
+/screen_width exch def
+
+clear
+
+% calculate the actual values of the firework creation and display heuristics
+/unusable_screen_width screen_width unusable_screen_width mul def
+/unusable_screen_height screen_height unusable_screen_height mul def
+/minimum_trail_height screen_height minimum_trail_height mul def
+
+% calculate the usable screen area
+/screen_height screen_height unusable_screen_height sub def
+/screen_width screen_width unusable_screen_width dup add sub def
+
+% create the black sky
+clippath pathbbox
+rectpath
+/sky framebuffer newcanvas def
+sky reshapecanvas
+sky /Mapped true put
+sky setcanvas
+0 fillcanvas
+
+% remove the cursor
+/nouse /nouse_m sky setstandardcursor
+
+% start the fireworks display
+make_fireworks
+
+% wait for a mouse movement or click to end the fireworks display
+createevent dup begin
+  /Name [
+          /LeftMouseButton
+          /MiddleMouseButton
+          /RightMouseButton
+          /MouseDragged
+        ] def
+  /Canvas sky def
+end expressinterest
+awaitevent
+currentprocess killprocessgroup

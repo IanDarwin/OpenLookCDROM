@@ -1,0 +1,18 @@
+static void delete_char_act P_((Widget, XEvent*, String*, Cardinal*));
+static void delete_view P_((Widget));
+static void dispatch_act P_((Widget, XEvent*, String*, Cardinal*));
+static void help_cb P_((Widget, caddr_t, caddr_t));
+static void help_context_f P_(());
+static void insert_char_act P_((Widget, XEvent*, String*, Cardinal*));
+static void insert_space_act P_((Widget, XEvent*, String*, Cardinal*));
+static void my_popup_act P_((Widget, XEvent*, String*, Cardinal*));
+static void position_dialog_cb P_((Widget, caddr_t, caddr_t));
+static void resizebb_act P_((Widget, XEvent*, String*, Cardinal*));
+static void set_retry_cb P_((Widget, caddr_t, caddr_t));
+static void set_use_gateway_cb P_((Widget, caddr_t, caddr_t));
+static void set_view_file_cb P_((Widget, XtPointer, XtPointer));
+static void set_view_text_top_cb P_((Widget, XtPointer, XtPointer));
+static void set_width_cb P_((Widget, XtPointer, XtPointer));
+static void travers_act P_((Widget, XEvent*, String*, Cardinal*));
+static void travers_cb P_((Widget, caddr_t, caddr_t));
+static void traverse P_((Widget));

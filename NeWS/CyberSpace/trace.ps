@@ -1,0 +1,939 @@
+% Copyright (c) 1989, Sun Microsystems, Inc.  RESTRICTED RIGHTS LEGEND:
+% Use, duplication, or disclosure by the Government is subject to
+% restrictions as set forth in subparagraph (c)(1)(ii) of the Rights in
+% Technical Data and Computer Software clause at DFARS 52.227-7013 and
+% in similar clauses in the FAR and NASA FAR Supplement.
+%
+%	@(#)trace.ps 1.9 89/05/17
+%
+
+% Trace utilities.
+
+% How to use the trace utilities.
+%
+% Here is a summary of the most commonly used trace functions.  See the
+% documentation above the function definitions in the code for more
+% information and for more functions.
+%
+% /<function> trace			% find fn in dict stack
+% /<method> /trace <object> send	% find fn in class dict stack
+% /<function> untrace
+% /<method> /untrace <object> send
+%
+% listtraces				% list all set traces
+% untraceall				% remove all set traces
+%
+% /traceclass <class> send		% trace all methods in a class
+% /untraceclass <class> send
+%
+% /<method> /tracesupers <object> send	% trace method in class & all supers
+% /<method> /untracesupers <object> send
+%
+% The trace works by replacing the function's definition with one that
+% wraps the original definition with calls to functions tracein and
+% traceout.  The default versions of these functions print the
+% dictionary and name of the traced function, and the dictionary stack.
+% Untrace removes the wrapper.  Here are some samples:
+%
+% /reshape /trace ClassButton send
+% /but /demo OpenLookButton send def
+% /B /setname but send
+% 0 0 100 20 /reshape but send
+% In  ClassButton /reshape ["B"]:  0 0 100 20 
+% Out ClassButton /reshape ["B"]:  Empty stack
+%
+% The last two lines are produced by trace.  They show the class and
+% method being entered and exited, the object on the top of the dict
+% stack, i.e. the instance to which /reshape was sent, and the operand
+% stack contents.  Since we used /setname to name the instance "B", that
+% is what trace prints.
+%
+% Here's a more involved example:
+%
+% /newinit /tracesupers ClassButton send
+% listtraces
+% Object: /newinit
+% ClassCanvas: /newinit
+% ClassControl: /newinit
+% ClassButton: /newinit
+%
+% (Hello) {pop} framebuffer /new OpenLookButton send
+% In  ClassButton /newinit [.OpenLookButton]:  (Hello) array{1} 
+%  In  ClassControl /newinit [.OpenLookButton]:  (Hello) array{1} 
+%   In  ClassCanvas /newinit [.OpenLookButton]:  (Hello) array{1} 
+%    In  Object /newinit [.OpenLookButton]:  (Hello) array{1} 
+%    Out Object /newinit [.OpenLookButton]:  (Hello) array{1} 
+%   Out ClassCanvas /newinit [.OpenLookButton]:  (Hello) array{1} 
+%  Out ClassControl /newinit [.OpenLookButton]:  (Hello) 
+%  In  Object /newinit [.OpenLookButtonGraphic]:  (Hello) 
+%  Out Object /newinit [.OpenLookButtonGraphic]:  (Hello) 
+% Out ClassButton /newinit [.OpenLookButton]:  Empty stack
+%
+% This illustrates:
+%   /tracesupers traces a method in all superclasses.
+%   listtraces shows traced methods and their classes.
+%   Trace output is indented to show nested calls.
+%   Unnamed instances of classes are printed as .ClassName
+%
+% If you turn off autobinding you can trace operators:
+%
+% false setautobind
+% /add trace
+% 5 6 add
+% In  systemdict /add []:  5 6 
+% Out systemdict /add []:  11 
+%
+% You can even trace send.  If you are feeling real adventurous, try
+% tracing def or store!
+
+
+% Implementation:
+%
+% The /trace function finds the named function in a dictionary then wraps
+% the function with calls to the tracein and traceout functions.  The
+% /untrace function finds the function, looks at it to see if it has the
+% trace wrapper, then removes the wrapper.
+%
+% An array of traced functions is kept in tracelist.  Since the first
+% two elements of the trace wrapper are the dictionary and function name
+% of the traced function, they can be used to locate the function for
+% removing the trace.  Function /untraceall goes through the list and
+% removes all the traces.  Function /listtraces displays all functions
+% in the list.
+
+systemdict begin
+
+/print-operator /print load def
+/printf-operator /printf load def
+
+    % NeWS 1.1 compatibility
+
+    %
+
+    systemdict /XNeWS? known not {
+      systemdict /XNeWS? false put
+    } if
+
+    XNeWS? not { % Is it NeWS 1.1?
+
+% Force print not to autobind
+/print {//print-operator} def
+/printf {//printf-operator} def
+
+/setpacking {pop} ?def
+/currentpacking false ?def
+
+% from basics.ps
+
+%
+% A "cond" (condition) statement: Consists of predicate-proc pairs.
+% The first predicate that evaluates to true executes its correnponding
+% procedure.  Thus:
+%
+%    2 {
+%        {dup 1 eq}	{(one)}
+%        {dup 2 eq}	{(two)}
+%        true		{(other)}
+%    } cond
+%
+% results in "2 (two)" being left on the stack.  Note "true" effects
+% a default branch.
+%
+% The implementation is very wierd.  Here are the author's notes:
+% Here's another entry in the cond-test.  It's like Owen & Jerry's last
+% ones in that it uses forall to step through all the elements, except
+% instead of leaving a boolean or integer on the top of the stack to tell
+% it what to do on the next iteration, it puts the code to be executed
+% itself.  Notice the mind-bending self referentiality:
+% 
+% NextProc contains the code to be executed the next time a test is to be
+% made, "exec null exit" gets executed in the clause after a true result,
+% "pop /NextProc" gets executed in the clause after a false result -
+% which is setting up for the next test.
+%
+% The "/NextProc" in the definition of /NextProc should really be
+% //NextProc except that NextProc isn't defined yet...
+% I then reach into the array and install it after /NextProc
+% is defined.
+% 
+currentpacking	    	% bool left on stack for later setpacking call
+false setpacking
+% Beginning of string
+% This is a string so the scanner doesn't see //NextProc before it's defined.
+(
+/NextProc { exec { { exec null exit } } { { pop /NextProc } } ifelse } def
+//NextProc 2 get 0 get 1 //NextProc put % replace placeholder by a recursion
+setpacking
+
+/cond { % args array => args
+    //NextProc			% args a nextproc
+    exch {			% args nextproc ai
+	exch exec		% args newnextproc
+    } forall
+    pop
+} ?def
+currentdict /NextProc undef
+% End the string and execute it:
+) cvx exec
+
+/isarray? { % any => boolean
+    type dup /arraytype eq  exch /packedarraytype eq or
+} def
+
+% from util.ps
+
+%%%%%%%%%%%%%%%%%%%
+% array utilities %
+%%%%%%%%%%%%%%%%%%%
+
+/arraycontains? { % array value => bool ; returns true if value is in array.
+    exch false exch {			% value bool ai
+	2 index eq {pop true exit} if
+    } forall				% value bool
+    exch pop
+} def
+
+/arraysequal? { % A B => bool
+    0 exch {				% A i bi
+    	2 index 2 index get ne		% A i bool
+	{exit} {1 add} ifelse		% A i
+    } forall
+    exch length eq
+} def
+
+/arrayindex { 	% array value => index true -or- false
+    exch 0 exch {				% value i ai
+	2 index eq				% value i
+	    {exch pop true exit} {1 add} ifelse
+    } forall					% i true -or- value i
+    dup true ne {pop pop false} if		% i true -or- false
+} def
+
+% From class.ps
+(
+/Temp 10 dict dup begin
+   /dicttype dup def
+   /canvastype dup def
+   /eventtype dup def
+   /processtype dup def
+end def
+/isobject? { % obj => bool; test for "sendable" object (instance or class).
+  //Temp 1 index type known {
+      /ParentDictArray known
+  } {pop false} ifelse
+} def
+/isclass? { % obj => bool; test for class.
+  //Temp 1 index type known {
+      /ClassName known
+  } {pop false} ifelse
+} def
+/isinstance? { % obj => bool; test for instance of class.
+  //Temp 1 index type known {
+      dup /ParentDictArray known exch /ClassName known not and
+  } {pop false} ifelse
+} def
+) cvx exec
+
+{ % Send to Object:
+  /installmethod { % name proc => -; compile and install a new method.
+      ParentDict % NeWS 1.1 /methodcompile takes different args!
+      /methodcompile self send def
+  } dup exec % what convenience!
+
+  /superclasses { % - => array ;return inheritance array.
+      ParentDictArray
+      dup type /dicttype eq {
+	  dup /ParentDictArray get
+	  exch 1 array astore append
+      } if
+  } installmethod
+  % NeWS 1.1 has subclass names, instead of the actual subclasses
+  /subclasses {
+      [ SubClasses {
+	  dup where {
+	    exch get
+	  } { pop } ifelse
+	} forall 
+      ]
+  } installmethod
+
+  % Routines to handle promotion of defaults to instance vars.
+  % promote: promote a class variable to an instance variable.
+  % promoted?: check if the variable is an instance variable.
+  % ?promote: promote variable if it differs from the class version.
+  % unpromote: remove variable from instance vars.
+  /promote {self 3 1 roll put} installmethod % name object => -
+  /promoted? {self exch known} installmethod % name => bool
+  /unpromote {self exch undef} installmethod % name => -; remove name as an instance
+  /?promote { % name object => -
+      % Note: the value of the variable is determined by /send because
+      % it may be executable.
+      2 copy exch self send eq {pop pop} {/promote self send} ifelse
+  } installmethod
+
+    /classname { ClassName } def
+
+    /name { Name } installmethod % - => name
+    /setname { self /Name 3 -1 roll put } installmethod % name => -
+    /id { ID } installmethod % - => name
+    /setid { self /ID 3 -1 roll put } installmethod % name => -
+
+% Class Variables
+    /Name	{ClassName} def
+    /ID		null def
+
+} Object send
+
+    } if % end if NeWS 1.1
+
+    % CyberSpace pallet interface
+
+/args { pop pop } ?def
+
+/TraceDict 200 dict def
+TraceDict begin
+  /list-traces /listtraces def
+  /show-trace-stats /showtracestats def
+  /list-callcount-stats {
+    /callcount listtracestats
+  } def
+  /list-totaltime-stats {
+    /totaltime listtracestats
+  } def
+  /clear-trace-stats { {procname} null args
+    cleartracestats
+  } def
+  /set-trace-output { null null args
+    currentfile settraceoutput
+  } def
+  /set-trace-default { null null args
+    /defaulttracein /defaulttraceout settracefunctions
+  } def
+  /set-trace-fast { null null args
+    /fasttracein /fasttraceout settracefunctions
+  } def
+  /trace-name { {procname} null args
+    trace
+  } def
+  /trace-class-method { {class procname} null args
+    exch /trace exch send
+  } def
+  /untrace-name { {procname} null args
+    trace
+  } def
+  /untrace-all /untraceall def
+  /trace-list { null {array} args
+    tracelist
+  } def
+  /trace-class { {class} null args
+    /traceclass exch send
+  } def
+  /untrace-class { {class} null args
+    /traceclass exch send
+  } def
+  /trace-supers { {class procname} null args
+    exch /tracesupers exch send
+  } def
+  /untrace-supers { {class procname} null args
+    exch /untracesupers exch send
+  } def
+  /trace-subclasses { {class} null args
+    /tracesubclasses exch send
+  } def
+  /trace-superclasses { {class} null args
+    /tracesubclasses exch send
+  } def
+end
+
+    % This function in systemdict makes sure ClassName is always in a
+    % dictionary on the dict stack.  Objects all have their own class
+    % name.  This function provides names for /systemdict and /userdict.
+    % It returns the dictionary itself for other dictionaries.
+    %
+    % The use of this is a little bad and hacky because /ClassName is used
+    % as a method for any object (including classes themselves), even though
+    % it is not an advertised method in class Object.
+    %
+    /ClassName { % - => name | dict
+        currentdict
+        dup userdict   eq {pop /userdict} if
+        dup systemdict eq {pop /systemdict} if
+    } def
+    
+    % Each traced function has a dictionary of information about the function.
+    % The dictionary contains:
+    %
+    % Key	    	Value
+    % /dictname		Printable name of dictionary (class) containing routine
+    % /fnname		Printable name of function
+    % /fndict		The actual dictionary containing the routine
+    % /callcount	Number of times routine is called
+    % /totaltime	Total time spent in the routine
+    % /stackdelta	Change in # of objects on stack from entry to exit
+    
+    % Array of info dicts for all traced functions.
+    %
+    /tracelist [] def
+    
+    
+% Functions for Setting and Removing Traces:
+    
+    % Add trace to a function.  Usually used in a send context on a
+    % method in a class.
+    %
+    %    /procname trace
+    %    /procname /trace object send
+    %
+    /trace { % procname => -
+        %
+        % Locate the named proc by finding the given name in the current
+        % dictionary stack.  Get the value associated with it, usually a
+        % function.  Construct a new function that is the old one with a
+        % wrapper around it.  The new function is:
+        %
+        % {<tracedict> tracein <oldproc> exec <tracedict> traceout}
+        %
+        % Where <tracedict> is a dictionary with the keys listed above.
+        %
+        % If the proc is already of the form above, i.e. is already being
+        % traced, the trace function does nothing.
+        %
+        4 dict begin
+    	/proc exch def
+    	proc where {
+    	    /dct exch def
+    	    /dctname /ClassName dct send def
+    	    
+    	    dct proc get istraced? not {
+    
+    		% Create trace info dictionary.
+    		/tracedict 6 dict dup begin
+    		    /dictname dctname def
+    		    /fnname proc def
+    		    /fndict dct def
+    		    /callcount 0 def
+    		    /stackdelta null def
+    		    /totaltime 0 def
+    		end def
+    
+    		% Add trace info dict to trace array.
+     		tracelist [tracedict] append
+    		/tracelist exch store
+    
+    		% Build wrapper code.
+    		[
+    		    tracedict /tracein cvx 
+    		    dct proc get
+    		    dup isarray? {/exec cvx} if
+    		    tracedict /traceout cvx
+    		] cvx
+    		
+    		% Store new wrapped code in place of old.
+    		dct proc 3 -1 roll put
+    	    } if
+    	} if
+        end
+    } def
+    
+    % Remove trace from one method.
+    %
+    %    /procname untrace
+    %    /procname /untrace object send
+    %
+    /untrace { % procname => -
+        %
+        % The given proc is located in the current dictionary stack, and
+        % if it has the trace wrapper code, the wrapper code is removed
+        % and the trace dict is removed from the tracelist array.
+        %
+        1 dict begin
+    	/proc exch def
+    
+    	proc load      	    	    	% proc
+    	dup istraced? {
+    	    dup 0 get exch    	    	% tracedict proc
+    	    2 get 			% tracedict oldproc
+    	    proc exch store		% tracedict
+    
+    	    % Remove from tracelist.
+    	    tracelist exch arrayindex {
+    		tracelist exch arraydelete
+    		/tracelist exch store
+    	    } if
+    	} {pop} ifelse
+        end
+    } def
+    
+    % Return true if the given proc has the trace wrapper around it.
+    %
+    /istraced? { % proc => -
+	dup isarray? {
+	    dup length 5 ge {
+		1 get /tracein eq
+	    } {pop false} ifelse
+	} {pop false} ifelse
+    } def
+    
+    % Remove all traces that have been set.
+    %
+    /untraceall { % - => -
+	% Note: we loop through a copy of the tracelist array because
+	% untrace alters the original array.
+	tracelist dup length array copy {
+	    begin   	    	    	    % tracedict	
+		fndict begin	    	    % dict containing routine
+		    fnname untrace
+		end
+	    end
+	    pause
+	} forall
+	/trace_level 0 store
+    } def
+    
+    % Trace all methods in a class. 
+    % 
+    %    /traceclass class send
+    %
+    /traceclass { % - => -
+	% Note: check for class Object is a kludge because some methods
+	% in that class are used by the trace utilities and infinite
+	% loops can occur if they are traced.
+	Object currentdict ne {
+	    currentdict {
+		xcheck {trace} {pop} ifelse
+	    } forall
+	} if
+    } def
+    
+    % Untrace all methods in a class.
+    %
+    %    /untraceclass class send
+    %
+    /untraceclass { % - => -
+	currentdict {
+	    xcheck {untrace} {pop} ifelse
+	} forall
+    } def
+    
+    % Trace a method in a class and all its superclasses.
+    %
+    %    /method /tracesupers class send
+    %    /method /tracesupers object send
+    %
+    /tracesupers { % method => -
+	/superclasses self send self arrayappend {
+	    2 copy exch known {
+		2 copy /trace exch send
+	    } if
+	    pop
+	} forall
+	pop
+    } def
+    
+    % Untrace a method in a class and all its superclasses.
+    %
+    %    /method /untracesupers class send
+    %    /method /untracesupers object send
+    %
+    /untracesupers { % method => -
+	/superclasses self send self arrayappend {
+	    2 copy exch known {
+		2 copy /untrace exch send
+	    } if
+	    pop
+	} forall
+	pop
+    } def
+    
+    % Trace a class and all its subclasses.
+    %
+    %    /tracesubclasses class send
+    %
+    /tracesubclasses { % - => -
+	{(Tracing %\n) [/classname self send] printf} traceoutput
+	/traceclass self send
+	/subclasses self send {
+	    pause
+	    /tracesubclasses exch send
+	} forall
+    } def
+    
+    % Trace a class and all its superclasses.
+    %
+    %    /tracesuperclasses class|instance send
+    %
+    /tracesuperclasses { % - => -
+	{(Tracing %\n) [/classname self send] printf} traceoutput
+	/traceclass self send
+	/superclasses self send {
+	    pause
+	    /traceclass exch send
+	} forall
+    } def
+    
+    
+% Functions for Displaying Traces and Statistics:
+    
+    % List all traced functions.
+    %
+    /listtraces { % - => -
+	{
+	    tracelist {
+		begin
+		    (%: /%\n)
+		    [dictname fnname] printf
+		end
+	    } forall
+	} traceoutput
+    } def
+    
+    % Display the stats collected for a particular proc.
+    %
+    /showtracestats { % procname => -
+        load
+        dup istraced? {
+    	0 get begin
+    	    {
+    		(% /%:\n) [dictname fnname] printf
+    		(  Calls:        %\n) [callcount] printf
+    		(  Time:         %\n) [totaltime] printf
+    		(  Stack delta:  ) printf stackdelta ==
+    	    } traceoutput
+    	end
+        } {pop} ifelse
+    } def
+    
+    % Show a sorted list of all traced functions with statistics.
+    % Argument is the name of the field to sort by: /callcount or /totaltime.
+    %
+    %    /callcount: sort by how often function was called
+    %    /totaltime: sort by total time spent in function
+    %
+    /listtracestats { % sortby => -
+        1 dict begin
+    	/attribute exch def
+    
+    	% Build array of all functions that were called at least once.
+    	[tracelist {dup /stackdelta get null eq {pop} if} forall]
+    
+    	% Sort the array.
+    	{
+    	    attribute get exch
+    	    attribute get exch
+    	    lt
+    	} quicksort 	    	    	% array
+    	
+    	{
+    	    {
+    		begin
+    		    (%  %: /% /callcount=% /totaltime=% stack=%\n)
+    		    [attribute cvx exec
+    			dictname fnname callcount totaltime stackdelta]
+    		    printf
+    		end
+    	    } forall
+    	} traceoutput
+        end
+    } def
+    
+    % Zero the function call counts for all traced routines.
+    %
+    /cleartracestats { % - => -
+	tracelist {
+	    dup /callcount 0 put
+	    /totaltime 0 put
+	} forall
+    } def
+    
+    
+% Functions Called on Entry and Exit of Traced Functions:
+    
+    % Note: Functions called within traces are bound immediately so you can
+    % trace any operator inside them (e.g. send, store) without worrying about
+    % infinite recursion. It is assumed that these operators are not
+    % traced when these functions are defined.
+    
+    /trace_level 0 def
+    /trace_indent 1 def
+    /trace_stackcounts 100 array def
+    /trace_entertimes 100 array def
+    
+    % Function called on entry to traced function.
+    %
+    /tracein { % tracedict => -
+        pop
+    } def
+    
+    % Function called on exit from traced function.
+    %
+    /traceout { % tracedict => -
+        pop
+    } def
+    
+    % Change trace in and trace out functions. The arguments are either 
+    % executable arrays or the names of functions.
+    %
+    /settracefunctions { % tracein traceout => -
+        dup xcheck not {load} if
+        /traceout exch store
+        dup xcheck not {load} if
+        /tracein exch store
+    } def
+    
+    % The next two functions display messages of the form
+    %
+    %     In/Out <class> /<method> [<object>]: <stack>
+    %
+    % Where <class> is the dictionary containing the traced function,
+    %      <method> is the name of the traced function,
+    %      <object> is the printable name of the currentdict
+    %       <stack> is the current contents of the operand stack.
+    %
+    % The messages are prefixed by blank spaces so the nesting structure
+    % is apparent visually.  Each Out message is always aligned directly
+    % below its corresponding In message.
+    
+    % Function called on entry into a traced function.
+    %
+    /defaulttracein { % tracedict => -
+        count trace_stackcounts trace_level 3 -1 roll put
+    
+        {
+    	begin
+    	    trace_level trace_indent mul { ( ) print } repeat
+    	    (In  % /% [%]:  )
+    	    [dictname fnname
+    		currentdict end
+    		currentdict isobject?
+    		    {currentdict objectstring} {nullstring} ifelse
+    		exch begin
+    	    ] printf
+    	    /callcount callcount 1 add store
+    	end
+    	showstack
+        } traceoutput
+    
+        trace_entertimes trace_level
+        /trace_level trace_level 1 add store
+        currenttime put
+    } bind def
+    
+    % Function called on exit from a traced function.
+    %
+    /defaulttraceout { % tracedict => -
+        currenttime
+        /trace_level trace_level 1 sub store
+        trace_entertimes trace_level get sub exch   	    % time tracedict
+    
+        begin				      	    % time
+    	count trace_stackcounts trace_level get sub	    % time count
+    	
+    	% Update the stack delta.
+    	dup stackdelta eq {pop}{
+    	    stackdelta type {
+    		/integertype {[exch stackdelta]}
+    		/arraytype {
+    		    stackdelta 1 index arraycontains? {
+    			pop stackdelta
+    		    }{
+    			[exch] stackdelta append
+    		    } ifelse
+    		}
+    	    } case
+    	    /stackdelta exch store
+    	} ifelse
+    	
+    	totaltime add
+    	/totaltime exch store
+    	{
+    	    trace_level trace_indent mul { ( ) print } repeat
+    	    (Out % /% [%]:  )
+    	    [dictname fnname
+    		currentdict end
+    		currentdict isobject?
+        		    {currentdict objectstring} {nullstring} ifelse
+    		exch begin
+    	    ] printf
+    	    showstack
+    	} traceoutput
+        end
+    } bind def
+    
+    % A tracein function that collects stats without printing anything.
+    %
+    /fasttracein { % tracedict => -
+        begin
+    	/callcount callcount 1 add store
+    	/stackdelta 99 store
+        end
+    
+        trace_entertimes trace_level
+        /trace_level trace_level 1 add store
+        currenttime put
+    } bind def
+    
+    % A traceout function that collects stats without printing anything.
+    %
+    /fasttraceout { % tracedict => -
+        currenttime
+        /trace_level trace_level 1 sub store
+        trace_entertimes trace_level get sub exch   	 % time tracedict
+    
+        begin
+    	totaltime add
+    	/totaltime exch store
+        end
+    } bind def
+
+    % Initialize the tracein and traceout functions to the defaults.
+    %
+    /defaulttracein /defaulttraceout settracefunctions
+
+% Functions for Printing Objects:
+    
+    % Return a printable string for an object.
+    %
+    % type = nametype:
+    %   Executable: 	    name
+    %   Non-executable:     /name
+    % type = stringtype:    (string)
+    % Objects:
+    %   Class: 	    	    ClassName
+    %   Named instance:	    "name"
+    %   Other instances:    .ClassName
+    % Special dicts:
+    %   systemdict:  	    systemdict
+    %	userdict:	    userdict
+    %
+    /objectstring { % object => string
+	dup type {
+	    /nametype {dup xcheck {(%)}{(/%)} ifelse [3 -1 roll] sprintf}
+	    /stringtype {((%)) [3 -1 roll] sprintf}
+	    /Default {
+		dup isobject? {
+		    dup isclass? {
+			/ClassName exch send 50 string cvs
+		    }{
+			% REMIND - incestuous knowledge of class Object
+			/Name /promoted? 2 index send
+			{("%")} {(.%)} ifelse	    	% obj str
+			/name 3 -1 roll send		% obj str name
+			[exch] sprintf
+		    } ifelse
+		}{
+		    % Note: this is cond, not case, so the userdict in the
+		    % comparison will not be bound to a particular userdict.
+		    % Userdict must be evaluated each time this routine
+		    % is called, so the test works when called from different
+		    % processes with different userdicts.
+		    {
+			{dup systemdict eq}    {pop (systemdict)}
+			{dup userdict eq}      {pop (userdict)}
+			true		       {50 string cvs}
+		    } cond
+		} ifelse
+	    }
+	} case
+    } def
+    
+    % Like PostScript Red Book = operator, but display name of class
+    % instead of "dictionary[N]".  Also, don't do a newline.
+    %
+    /showobject { % object => -
+        objectstring print
+    } bind def
+    
+    % Like PostScript Red Book stack operator, but use showobject instead of =.
+    %
+    /showstack { % - => -
+	count 0 eq {
+	    (Empty stack) print
+	} {
+	    count 1 sub -1 0 {
+		index showobject ( ) print
+	    } for
+	} ifelse
+	(\n) print
+    } bind def
+    
+    
+% Output Functions (to redirect trace output):
+    
+    % Trace output file.  Null to not redirect trace output.  Use
+    % settraceoutput to change.
+    %
+    /trace_output null def
+    
+    % Function for changing where trace output goes.  Use this instead
+    % of changing trace_output directly.  This prevents the problem of
+    % changing traceout instead by mistake.
+    %
+    /settraceoutput { % file => -
+        /trace_output exch store
+    } bind def
+    
+    % Execute a procedure with output redirected to the specified file.
+    %
+    % Note: the output is redirected by saving the current /Stdout,
+    % changing it to the given file, then restoring it.  The file
+    % is saved as /trace_savedStdout in systemdict rather than on the
+    % stack or in a local dict so neither the operand nor dict
+    % stacks is changed when the proc parameter is executed.
+    %
+    % Note: /trace_savedStdout must be set to null to prevent an extra
+    % reference to the current output file from lingering.
+    %
+XNeWS? {
+    /outputtofile { % file proc
+        systemdict /trace_savedStdout  currentprocess /Stdout get  put
+        currentprocess /Stdout 4 -1 roll put
+        stopped
+        currentprocess /Stdout  systemdict /trace_savedStdout get  put
+	systemdict /trace_savedStdout null put
+        {(process stopped\n) print} if
+    } bind def
+} { % else if NeWS 1.1
+
+% NeWS 1.1 processes do not have a /Stdout field, so we redefine print above
+% so it does not get autobound in these definitions. 
+
+    % Depends on above /print kludge!
+    /outputtofile { % file proc
+      10 dict begin
+	/print {
+	  /_ProcessStdoutKludge where {
+	    pop _ProcessStdoutKludge exch writestring
+	  } {
+	    systemdict /print get exec
+	  } ifelse
+	} def
+	/printf {
+	  /_ProcessStdoutKludge where {
+	    pop sprintf _ProcessStdoutKludge exch writestring
+	  } {
+	    systemdict /printf get exec
+	  } ifelse
+	} def
+        exch /_ProcessStdoutKludge exch def % proc
+	stopped
+        {(process stopped\n) print} if
+      end % 10 dict
+    } bind def
+} ifelse
+    
+    % Execute a proc with output redirected to the trace output file,
+    % if there is one.  If not, just execute the proc.
+    %
+    /traceoutput { % proc => -
+	trace_output null eq {exec} {
+	    trace_output exch outputtofile
+	    trace_output flushfile
+	} ifelse
+    } bind def
+    
+/print /print-operator load def % undo above /print kludge
+systemdict /print-operator undef
+/printf /printf-operator load def
+systemdict /printf-operator undef
+
+end % systemdict

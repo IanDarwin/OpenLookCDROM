@@ -1,0 +1,270 @@
+<html>
+<head>
+<!-- @(#)porting.html	1.1 02 Jun 1995 -->
+<title>WorkMan porting notes</title>
+</head>
+
+<body>
+<h1>Porting notes</h1>
+
+<p>
+Porting WorkMan to a new platform is a two-step process.  The first step
+is to get the XView toolkit, version 3.0 or higher, running on your system.
+If you're lucky, someone else has already done so.  The alt.toolkits.xview
+and comp.windows.open-look newsgroups are good places to find out whether
+XView exists for your system.
+
+<p>
+Once you have XView installed, you can work on porting WorkMan itself.
+If your system has builtin libraries for manipulating audio CDs, you can
+use them.  Or you can use your system's user-level SCSI interface, if any.
+(Or both!)
+
+<p>
+All of the user interface modules ought to compile without modification.
+For the most part they're just standard C and documented XView calls.
+
+<p>
+The platform-dependent code in WorkMan is in source files named plat_xxx.c,
+where xxx is the platform name.  If you look at a directory listing you'll
+see that there are files like this for Sun, HP, Linux, and other platforms
+already.  Each of these files (called "platform modules") contains a set of
+well-defined functions for controlling and getting information from a CD-ROM
+drive.  You'll find a list of those functions below.  Ordinarily, porting
+WorkMan is simply a matter of writing those functions for your platform,
+and you can usually use one of the existing platform modules as a starting
+point.
+
+<p>
+WorkMan supports the notion of running any kind of drive on any platform,
+assuming the platform has facilities for sending arbitrary SCSI commands
+from user processes.  To this end, you'll also find "drive modules" named
+drv_xxx.c.  Each drive module contains replacement functions along the
+lines of the functions in the platform modules; these replacement functions
+are called when the drive doesn't respond to generic requests or when
+something unusual needs to be done.  For instance, the Sony CDU-8012 (also
+known as the SunCD drive) has a weird volume scale, so we need to do a
+transformation on the volume setting before passing it to the drive.  But
+other than that, the drive responds to generic CD-ROM commands, so
+drv_sony.c only has code relating to volume control.
+
+<p>
+Implementing drive modules is fairly simple, but usually isn't necessary
+so it won't be discussed here.  Mail me if you need to do it.
+
+<p>
+Here are the functions a platform module needs to implement.  All functions
+should return integers.  Unless otherwise noted, they should return 0 on
+okay status, -1 on an error condition.
+
+<p>
+The first parameter of each function is a pointer to a wm_drive structure.
+You'll find it defined in "struct.h".  It's discussed after the function call
+list.  You will probably find it helpful to look at one of the existing
+platform modules while reading this list.  The Sun module is one of the
+simpler ones.
+
+<p>
+<dl>
+<dt>
+wmcd_open(struct wm_drive *d)
+<dd>
+	Figure out the drive type and fill in pointers to the rest of the
+	routines listed here.  This routine should set up the device to
+	receive CD-ROM commands if necessary.  If the wm_drive structure
+	says the drive is already open, this routine should return 0 --
+	in other words, it shouldn't hurt to call wmcd_open ten times
+	in a row.  If the drive couldn't be opened yet, or initialization
+	couldn't be performed yet, the function should clean up and
+	return 1; it will be called again after a short delay.  A common
+	example is an open() call failing because there's no CD in the
+	drive.
+
+	<p>
+	wmcd_open() should determine the drive type if possible.  If the
+	wm_scsi() function has been implemented, it can simply call
+	wm_scsi_get_drive_type() (which is in scsi.c) to retrieve the
+	necessary information.  Then find_drive_struct() (from cdrom.c)
+	should be called to look up the drive from the list of drive
+	modules; it returns a pointer to a wm_drive structure, which
+	should be copied into the buffer pointed to by the "d" parameter.
+	Finally, the drive init function should be called.
+
+	<p>
+	Some systems can't determine the drive type at all, for instance
+	because the CD-ROM drive can only be accessed through a limited
+	set of function calls.  In that case, just pass empty strings
+	to find_drive_struct() and it'll return a wm_drive structure
+	pointing to the generic platform module routines.
+
+<p>
+<dt>
+wm_scsi(struct wm_drive *d, unsigned char *cdb, int cdblen,
+		unsigned char *buf, int len, int getdata)
+<dd>
+	Send a command to the SCSI device referenced by the wm_drive
+	structure.  A CDB of appropriate size is passed in, as is a data
+	buffer.  If "getdata" is true, read some data into the buffer in
+	response to the command.  Otherwise the buffer might contain some
+	data to be written out as part of the command.  "buf" can be
+	NULL if the caller doesn't want to pass in or receive any data.
+	Return -1 if the command doesn't complete successfully.  If your
+	system doesn't support SCSI passthrough, this function should just
+	return -1 without doing anything else.
+
+</dl>
+
+<p>
+The following functions can be overridden by drive modules, as they're
+always called indirectly via the wm_drive structure.
+
+<p>
+<dl>
+<dt>
+gen_init(struct wm_drive *d)
+<dd>
+	Initialize whatever drive-specific settings are required.  For the
+	platform module this is usually just { return (0); } since any
+	platform-specific initialization should be performed in wmcd_open(),
+	but the function needs to be defined.
+
+<p>
+<dt>
+gen_get_trackcount(struct wm_drive *d, int *tracks)
+<dd>
+	Store the number of tracks on the CD in *tracks.
+
+<p>
+<dt>
+gen_get_cdlen(struct wm_drive *d, int *frames)
+<dd>
+	Store the total number of frames on the CD in *frames.
+
+<p>
+<dt>
+gen_get_trackinfo(struct wm_drive *d, int track, int *data, int *startframe)
+<dd>
+	Get the starting frame number and type (1 = data track, 0 = audio) of
+	a particular track.  Tracks are numbered starting at 1, as on the CD.
+
+<p>
+<dt>
+gen_get_drive_status(struct wm_drive *d, enum mode oldmode, enum mode *mode,
+			int *pos, int *track, int *index)
+<dd>
+	Get the current status of the drive.  Mode is one of PLAYING, PAUSED,
+	TRACK_DONE, STOPPED, and EJECTED, as is oldmode (which will be the
+	previous mode value returned by the routine.)  The other parameters
+	are filled in if the drive is playing or paused: the absolute position
+	in frames, the track number, and the index number.
+
+<p>
+<dt>
+gen_get_volume(struct wm_drive *d, int *left, int *right)
+<dd>
+	Get the current volume settings for the left and right channels, or
+	-1 if that information can't be read from the drive.  Values range
+	from 0 to 100 on a linear scale.
+
+<p>
+<dt>
+gen_set_volume(struct wm_drive *d, int left, int right)
+<dd>
+	Set the current volume for each channel.  Values are from 0 to 100,
+	on the same linear scale as returned by gen_get_volume().
+
+<p>
+<dt>
+gen_pause(struct wm_drive *d)
+<dd>
+	Pause the CD.
+
+<p>
+<dt>
+gen_resume(struct wm_drive *d)
+<dd>
+	Resume playing the CD after a pause.
+
+<p>
+<dt>
+gen_stop(struct wm_drive *d)
+<dd>
+	Stop the CD if it's playing or paused.
+
+<p>
+<dt>
+gen_play(struct wm_drive *d, int start, int end)
+<dd>
+	Play a stretch of the CD.  Both times are in frames.  This can return
+	negative values other than -1 if playing a CD is a multi-step process,
+	e.g. a "start motor" command followed by a "play audio" command.
+
+<p>
+<dt>
+gen_eject(struct wm_drive *d)
+<dd>
+	Eject the CD.  Return -3 if the CD can't be ejected because it
+	contains a mounted filesystem.
+
+</dl>
+
+<p>
+The wm_drive structure has at least the following elements:
+
+<pre>struct wm_drive {
+	int	fd;		/* File descriptor, if used by platform */
+	char	vendor[16];	/* Vendor name */
+	char	model[24];	/* Drive model */
+	void	*aux;		/* Pointer to optional platform-specific info */
+	void	*daux;		/* Pointer to optional drive-specific info */
+
+	int	(*init)();
+	int	(*get_trackcount)();
+	int	(*get_cdlen)();
+	int	(*get_trackinfo)();
+	int	(*get_drive_status)();
+	int	(*get_volume)();
+	int	(*set_volume)();
+	int	(*pause)();
+	int	(*resume)();
+	int	(*stop)();
+	int	(*play)();
+	int	(*eject)();
+}</pre>
+
+<p>
+The "fd" and/or "aux" elements should be filled in by the wmcd_open()
+function after find_drive_struct() is called.  The "fd" element is for an
+open file descriptor pointing to the drive, though if your platform doesn't
+use file descriptors to refer to CD-ROM drives (e.g. the BSD/386 platform,
+whose CD library uses structure pointers) you can use the "fd" element for
+something else or ignore it completely.
+
+<p>
+The "aux" element should be used to point to any state information you
+need to keep across calls to these functions.  Since WorkMan may eventually
+support controlling multiple drives simultaneously, you should not use
+global variables to keep per-drive state.  Define a structure for whatever
+state you need, and point "aux" to it.  You can get at it in any of the
+routines since they are all passed the wm_drive structure you fill in in
+wmcd_open().  On many platforms, "aux" isn't needed.
+
+<p>
+The "daux" element is reserved for use in drive modules.
+
+<p>
+If you have questions, don't hesitate to send me E-mail.  I want to see
+WorkMan as widely ported as possible.
+
+<p>
+-Steven Grimm
+<a href="mailto:koreth@hyperion.com">&lt;koreth@hyperion.com&gt;</a>
+
+<p>
+<hr>
+<a href="index.html">To the WorkMan home page</a>
+
+<h5>Last update: 02 Jun 1995</h5>
+
+</body>
+</html>

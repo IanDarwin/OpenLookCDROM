@@ -1,0 +1,1228 @@
+head	1.10;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.10
+date	92.12.13.10.22.46;	author lacey;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	92.12.11.15.45.50;	author lacey;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	92.12.10.09.05.18;	author lacey;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	92.12.10.06.14.35;	author lacey;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	92.12.10.01.47.24;	author lacey;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	92.12.10.00.53.43;	author lacey;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	92.12.09.21.20.48;	author lacey;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	92.12.09.14.36.10;	author lacey;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	92.12.09.14.34.24;	author lacey;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	92.12.08.22.28.22;	author lacey;	state Exp;
+branches;
+next	;
+
+
+desc
+@LaTeX PERT chart generation
+@
+
+
+1.10
+log
+@*** empty log message ***
+@
+text
+@/* FILE latepert.c ****************************************
+ *
+ * xplan - project planning tool
+ * Copyright (C) 1992 Brian Gaubert, Mark M. Lacey, Richard Malingkas,
+ * and Mike Marlow.
+ * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation.
+ * 
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License (distributed with this program in the file
+ * COPYING) for more details.
+ * 
+ * If you did not received a copy of the GNU General Public License
+ * along with this program, write to the Free Software Foundation,
+ * Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * 
+ * Since this was a project for a one semester software engineering
+ * course, the authors will not be offering support for the product
+ * after its release.
+ *
+ * DESCRIPTION OF CONTENTS
+ *
+ * Functions to generate LaTeX picture environment code for PERT
+ * charts.  It is not complete, as it does not draw the dependency
+ * lines.
+ *  
+ */   
+
+#include <stdio.h>
+#include <math.h>
+#include "db.h"
+#include "pagelist.h"
+#include "latpert.h"
+
+extern char export_filename[];
+
+int gcd(int, int);
+
+void strfix(char []);
+void latex_line_scale(int, int, int *, int *);
+
+void calculate_latex_pert_pages(void);
+void calculate_latex_pert_lines(void);
+void write_pert_chart(void);
+void breaklines(int startx, int starty, int endx, int endy, int cp);
+
+struct page_list *list;
+
+/* FUNCTION generate_latex_pert_pages ************************************
+
+   PURPOSE
+
+   Generates LaTeX representation of a PERT chart.
+   
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 9 Dec 1992
+   Tester.... Mark M. Lacey, 9 Dec 1992
+
+   MODIFICATIONS (most recent to least)
+
+*/
+void generate_latex_pert_pages()
+{
+   struct task_node *node;
+   int      
+     large_x = 0,
+     large_y = 0;
+
+   /* fill in formatting information */
+   traverse_task_list();
+   /* fill in critical path information */
+   calc_critical();
+
+   /* get head of list */
+   node = get_main_task_list()->head;
+
+   /* find the largest x and y coordinates */
+   while (node) {
+      if (node->data->x_pert > large_x) large_x = node->data->x_pert;
+      if (node->data->y_pert > large_y) large_y = node->data->y_pert;
+      node = node->next;
+   }
+
+   /* create a page list (see pagelist.c) */
+   list = create_page_list((large_x-1)/PERT_BOXES_ACROSS+1, 
+			   (large_y)/PERT_BOXES_DOWN+1);
+
+
+   /* find the positions of the pages */
+   calculate_latex_pert_pages();
+   /* find the positions of the lines */
+   calculate_latex_pert_lines();
+   /* write the LaTeX file for the chart */
+   write_pert_chart();
+}
+
+/* FUNCTION calculate_latex_pert_pages ************************************
+
+   PURPOSE
+
+   Finds the positions of the boxes in the PERT chart.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 9 Dec 1992
+   Tester.... Mark M. Lacey, 9 Dec 1992
+
+   MODIFICATIONS (most recent to least)
+
+*/
+void calculate_latex_pert_pages()
+{
+   struct 
+     task_node *node;
+   struct
+     object_node *onode;
+   int 
+     across,
+     down,
+     gridx,
+     gridy,
+     viewx,
+     viewy;
+   
+   node = get_main_task_list()->head;
+
+   /* fill our list of pages with information */
+   while (node) {
+      across = (node->data->x_pert-1) / PERT_BOXES_ACROSS + 1;
+      down = (node->data->y_pert) / PERT_BOXES_DOWN + 1;
+
+      gridx = (node->data->x_pert-1) - ((across-1)*PERT_BOXES_ACROSS);
+      viewx = gridx * (LATEX_PERT_BOX_WIDTH+LATEX_PERT_BOX_X_SKIP)-
+	LATEX_PERT_BOX_X_SKIP;
+
+      gridy = (node->data->y_pert) - ((down-1)*PERT_BOXES_DOWN);
+      viewy = (PAGE_HEIGHT-LATEX_PERT_BOX_HEIGHT)-
+	gridy * (LATEX_PERT_BOX_HEIGHT+LATEX_PERT_BOX_Y_SKIP);
+
+      onode = create_object_node(PERT_BOX, 
+				 viewx,
+				 viewy,
+				 0, 0, 0, 0, 0,
+				 node->data->critical_path,
+				 node->data->name, NULL);
+      add_object_to_page(list, across, down, onode);
+
+      node = node->next;
+   }
+}
+
+/* FUNCTION calculate_latex_pert_pages ************************************
+
+   PURPOSE
+
+   Finds the positions of the lines in the PERT chart.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 9 Dec 1992
+   Tester.... Mark M. Lacey, 9 Dec 1992
+
+   MODIFICATIONS (most recent to least)
+
+*/
+void calculate_latex_pert_lines()
+{
+   struct task_node 
+     *node, *deps;
+   struct
+     object_node *onode;
+   int
+     across, down,
+     end_page_across,
+     end_page_down,
+     endgridx, endgridy,
+     endx, endy,
+     startx, starty,
+     gridx, viewx,
+     gridy, viewy,
+     endviewx, endviewy;
+
+   char blah[100];
+
+   node = get_main_task_list()->head;
+
+   /* fill our list of pages with information */
+   while (node) {
+      startx = (node->data->x_pert)*
+	(LATEX_PERT_BOX_WIDTH+LATEX_PERT_BOX_X_SKIP)-
+	  LATEX_PERT_BOX_X_SKIP;
+      starty = (node->data->y_pert+1)*
+	(LATEX_PERT_BOX_HEIGHT+LATEX_PERT_BOX_Y_SKIP)-
+	  LATEX_PERT_BOX_Y_SKIP;
+
+      /* line drawing code not working
+      deps = node->data->dependents->head;
+
+      while (deps) {
+	 endx = (deps->data->x_pert)*
+	   (LATEX_PERT_BOX_WIDTH+LATEX_PERT_BOX_X_SKIP)-
+	     LATEX_PERT_BOX_X_SKIP;
+	 endy = (deps->data->y_pert+1)*
+	   (LATEX_PERT_BOX_HEIGHT+LATEX_PERT_BOX_Y_SKIP)-
+	     LATEX_PERT_BOX_Y_SKIP;
+
+	 breaklines(startx, starty, endx, endy,
+		    node->data->critical_path &&
+		    deps->data->critical_path);
+
+	 deps = deps->next;
+      }
+      */
+      node = node->next;
+   }
+}
+
+/* FUNCTION breaklines ************************************
+
+   PURPOSE
+
+   Break a single line across pages --- DOES NOT WORK
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 13 Dec 1992
+   Tester.... Mark M. Lacey, 13 Dec 1992
+
+   MODIFICATIONS (most recent to least)
+
+*/
+void breaklines(int startx, int starty, int endx, int endy, int cp)
+{
+   struct object_node *onode;
+   int 
+     dx, dy,
+     newdx, newdy,
+     start_viewx, start_viewy,
+     end_viewx, end_viewy,
+     borderx, bordery,
+     page_across, page_down;
+   double slope;
+   char dumbbuf[100];
+
+   slope = (double) dy/(double) dx;
+
+   latex_line_scale(dx, dy, &newdx, &newdy);
+
+   printf("startx=%d, starty=%d, endx=%d, endy=%d\n",
+	  startx, starty, endx, endy);
+
+   while (startx < endx) {
+      page_across = startx/PAGE_WIDTH+1;
+      page_down = starty/PAGE_HEIGHT+1;
+
+      borderx = page_across*PAGE_WIDTH;
+      bordery = page_down*PAGE_HEIGHT;
+
+      start_viewx = PAGE_WIDTH-(borderx - startx);
+      start_viewy = PAGE_HEIGHT-(bordery - starty);
+
+      if (endy-starty == 0) {
+	 end_viewx = PAGE_WIDTH;
+      } else {
+	 end_viewx = start_viewx +
+	   (double)(endx - startx) *
+	     (double)(bordery-starty)/(double)(endy-starty);
+      }
+
+      if (endx-startx == 0) {
+	 end_viewy = PAGE_HEIGHT;
+      } else {
+	 end_viewy = start_viewy +
+	   (double)(endy-starty) *
+	     (double)(borderx-startx)/(double)(endx-startx);
+      }
+
+      startx = end_viewx + borderx - PAGE_WIDTH;
+      starty = end_viewy + bordery - PAGE_HEIGHT;
+
+      onode = 
+	create_object_node(PERT_LINE,
+			   start_viewx,
+			   start_viewy,
+			   end_viewx - start_viewx, 
+			   newdx, newdy,
+			   0, 0, cp, NULL, NULL);
+      
+      add_object_to_page(list, page_across, page_down, onode);
+   }
+}
+
+void write_pert_chart()
+{
+   FILE *fp;
+   int across, down;
+   char tmpname[100];
+   struct object_node *onode;
+
+   fp = fopen(export_filename, "w");
+   if (!fp) { 
+      /* print out error message */ 
+   } else {
+      fprintf(fp, "\\documentstyle{article}\n");
+      fprintf(fp, "\\begin{document}\n\n");
+      for (down = 1; down <= list->pages_down; ++down) {
+	 for (across = 1; across <= list->pages_across; ++across) {
+	    onode = get_page_from_list(list, across, down);
+	    if (onode) {
+	       fprintf(fp, "\\begin{picture}(%d,%d)\n\n",
+		       PAGE_WIDTH, PAGE_HEIGHT);
+	       while (onode) {
+		  switch (onode->object_type) {
+		   case PERT_BOX:
+		     strncpy(tmpname, onode->name, 25);
+		     strfix(tmpname);
+		     fprintf(fp, "\\put(%d,%d){\\framebox(%d,%d){%s}}\n",
+			     onode->x, onode->y, 
+			     LATEX_PERT_BOX_WIDTH, LATEX_PERT_BOX_HEIGHT,
+			     tmpname);
+		     break;
+		   case PERT_LINE:
+		     if (onode->critical) {
+			fprintf(fp, "\\thicklines\n");
+		     }
+		     fprintf(fp, "\\put(%d, %d){\\line(%d,%d){%d}}\n",
+			     onode->x, onode->y, 
+			     onode->dx, onode->dy,
+			     onode->length);
+		     if (onode->critical) {
+			fprintf(fp, "\\thinlines\n");
+		     }
+		     break;
+		  }
+		  onode = onode->next;
+	       }
+	       fprintf(fp, "\n\\end{picture}\n");
+	       fprintf(fp, "\\clearpage\n\n");
+	    }
+	 }
+      }
+      fprintf(fp, "\\end{document}\n");
+      fclose(fp);
+   }
+}
+
+static char bigbuf[512];
+
+/* insert escape characters for LaTeX when special characters are used */
+/* in a string */
+void strfix(char str[])
+{
+   int i, j;
+
+   for (i = 0, j = 0; i < strlen(str); ++i) {
+      switch (str[i]) {
+       case '#':
+       case '$':
+       case '%':
+       case '&':
+       case '~':
+       case '_':
+       case '^':
+       case '{':
+       case '}':
+	 bigbuf[j++] = '\\';
+	 bigbuf[j++] = str[i];
+	 break;
+       case '<':
+       case '>':
+	 bigbuf[j++] = '$';
+	 bigbuf[j++] = str[i];
+	 bigbuf[j++] = '$';
+	 break;
+       case '\\':
+	 strcpy(&bigbuf[j], "$\\backslash$");
+	 j += strlen("$\\backslash$");
+	 break;
+       case '|':
+	 strcpy(&bigbuf[j], "$\\mid$");
+	 j += strlen("$\\mid$");
+	 break;
+       default:
+	 bigbuf[j++] = str[i];
+	 break;
+      }
+   }
+   bigbuf[j]='\0';
+   strcpy(str, bigbuf);
+}
+
+/* scale a difference in x and a difference in y so that it is between */
+/* -6 and 6 for LaTeX's \line function */
+void latex_line_scale(int x, int y, int *newxptr, int *newyptr)
+{
+   int d;
+   int newx, newy;
+
+   newx = x;
+   newy = y;
+   while ((newx < -6) || (newx > 6) || (newy < -6) || (newy > 6)) {
+      if (newx > -6 && newx < 6) {
+	 newy = newy/newx;
+	 newx = 1;
+      } else {
+	 newx /= 6;
+	 newy /= 6;
+      }
+   }
+
+   d = gcd(newx, newy); /* LaTeX makes _weird_ lines if you don't give */
+			/* it the gcd of the two numbers */
+   *newxptr = newx/d;
+   *newyptr = newy/d;
+}
+
+/* from pg. 12 of the introduction to "Algorithms in C" by Robert */
+/* Sedgewick --- fixed so that if either u or v is 0 it returns 1 */
+int gcd(int u, int v) 
+{
+   int t;
+   
+   if ((u == 0) || (v == 0)) return 1;
+   if (u < 0) u = -u;
+   if (v < 0) v = -v;
+   do {
+      if (u < v) { t = u; u = v; v = t; }
+      u = u - v;
+   } while (u != 0);
+
+   return v;
+}
+
+@
+
+
+1.9
+log
+@The file we did our final demo with.
+@
+text
+@d26 4
+d49 1
+d53 14
+d79 1
+d82 1
+d89 1
+d94 1
+d96 1
+d98 1
+d102 14
+d157 14
+d178 10
+a187 25
+     lineacross,
+     linedown,
+     across,
+     down,
+     depacross,
+     depdown,
+     xlen,
+     ylen,
+     gridx,
+     gridy,
+     viewx,
+     viewy,
+     depgridx,
+     depgridy,
+     depviewx,
+     depviewy,
+     startx, 
+     starty,
+     endx,
+     endy,
+     dx,
+     dy,
+     newdx,
+     newdy;
+   double slope;
+d194 2
+a195 6
+      across = (node->data->x_pert-1) / PERT_BOXES_ACROSS + 1;
+      down = (node->data->y_pert) / PERT_BOXES_DOWN + 1;
+
+      gridx = (node->data->x_pert-1) - ((across-1)*PERT_BOXES_ACROSS);
+      viewx = gridx *
+	(LATEX_PERT_BOX_WIDTH+LATEX_PERT_BOX_X_SKIP)+LATEX_PERT_BOX_WIDTH-
+d197 3
+d201 1
+a201 13
+
+      gridy = (node->data->y_pert) - ((down-1)*PERT_BOXES_DOWN);
+      viewy = (PAGE_HEIGHT-LATEX_PERT_BOX_HEIGHT)-
+	gridy *
+	  (LATEX_PERT_BOX_HEIGHT+LATEX_PERT_BOX_Y_SKIP) + 
+	    LATEX_PERT_BOX_HEIGHT/2;
+
+      lineacross = across;
+      linedown = down;
+
+      startx = (across-1)*PAGE_WIDTH+viewx;
+      starty = (down-1)*PAGE_HEIGHT+viewy;
+/*
+a202 1
+   
+d205 1
+a205 6
+	 depacross = (deps->data->x_pert-1)/PERT_BOXES_ACROSS+1;
+	 depdown = (deps->data->y_pert)/PERT_BOXES_DOWN+1;
+
+	 depgridx = (deps->data->x_pert-1) -
+	   ((depacross-1)*PERT_BOXES_ACROSS);
+	 depviewx = depgridx *
+d208 3
+a210 10
+	 
+	 depgridy = (deps->data->y_pert) -
+	   ((depdown-1)*PERT_BOXES_DOWN);
+	 depviewy = (PAGE_HEIGHT-LATEX_PERT_BOX_HEIGHT) -
+	   depgridy *
+	   (LATEX_PERT_BOX_HEIGHT+LATEX_PERT_BOX_Y_SKIP) + 
+	     LATEX_PERT_BOX_HEIGHT/2;
+	 
+	 endx = (depacross-1)*PAGE_WIDTH+depviewx;
+	 endy = (depdown-1)*PAGE_HEIGHT+depviewy;
+d212 3
+a214 6
+	 dx = endx - startx;
+	 dy = endy - starty;   
+	 
+	 slope = (double) dy/ (double) dx;
+	 
+	 latex_line_scale(dx, dy, &newdx, &newdy);
+d216 6
+a221 23
+	 while ((dx > 0) || (dy > 0)) {
+	    if (dx + viewx > PAGE_WIDTH) {
+	       xlen = PAGE_WIDTH - viewx;
+	       if (dx == 0) 
+		 ylen = 0;
+	       else
+		 ylen = (int) (((double) PAGE_WIDTH - (double)
+				viewx)/(double)dx)*(double)dy;
+	    } else if (dy + viewy > PAGE_HEIGHT) {
+	       if (dy == 0)
+		 xlen = 0;
+	       else 
+		 xlen = (int) (((double) PAGE_HEIGHT - (double)
+				viewy)/(double)dy)*(double)dx;
+	       ylen = PAGE_HEIGHT - viewy;
+	    } else {
+	       xlen = dx;
+	       if (dx == 0) 
+		 ylen = 0;
+	       else 
+		 ylen = (int) (((double) PAGE_WIDTH - (double)
+				viewx)/(double)dx)*(double)dy;
+	    }
+d223 1
+a223 12
+	    onode = 
+	      create_object_node(PERT_LINE,
+				 viewx,
+				 viewy,
+				 xlen, 
+				 newdx, newdy,
+				 0, 0, 
+				 node->data->critical_path &&
+				 deps->data->critical_path,
+				 NULL, NULL);
+	    
+	    add_object_to_page(list, lineacross, linedown, onode);
+d225 1
+a225 10
+	    if (dx + viewx > PAGE_WIDTH) {
+	       viewy = ylen;
+	       viewx = 0;
+	       ++lineacross;
+	    }
+	    if (dy + viewy > PAGE_HEIGHT) {
+	       viewx = xlen;
+	       viewy = 0;
+	       ++linedown;
+	    }
+d227 1
+a227 2
+	    dx -= (xlen>0?xlen:-xlen);
+	    dy -= (ylen>0?ylen:-ylen);
+d229 66
+a294 4
+	 }
+	 deps = deps->next;
+      }*/
+      node = node->next;
+d354 2
+a370 2
+/*       case '+':*/
+/*       case '=':*/
+d397 2
+@
+
+
+1.8
+log
+@*** empty log message ***
+@
+text
+@a34 1
+/*extern int x_coord, y_coord;*/
+d176 1
+a176 1
+
+d179 1
+a179 1
+      /* calculate all the lines for the dependencies */
+a208 5
+	       printf("node=%s, dep=%s\n", node->data->name,
+		      deps->data->name);
+	       printf("dx + viewx > PAGE_WIDTH\n");
+	       printf("lineacross=%d, linedown=%d\n",
+		      lineacross, linedown);
+a214 1
+	       printf("xlen=%d, ylen=%d\n", xlen, ylen);
+a215 5
+	       printf("node=%s, dep=%s\n", node->data->name,
+		      deps->data->name);
+	       printf("dy + viewy > PAGE_HEIGHT\n");
+	       printf("lineacross=%d, linedown=%d\n",
+		      lineacross, linedown);
+a221 1
+	       printf("xlen=%d, ylen=%d\n", xlen, ylen);
+a222 5
+	       printf("node=%s, dep=%s\n", node->data->name,
+		      deps->data->name);
+	       printf("same page\n");
+	       printf("lineacross=%d, linedown=%d\n",
+		      lineacross, linedown);
+a228 1
+	       printf("xlen=%d, ylen=%d\n", xlen, ylen);
+a243 3
+	    dx -= (xlen>0?xlen:-xlen);
+	    dy -= (ylen>0?ylen:-ylen);
+
+d255 3
+d260 1
+a260 1
+      }
+@
+
+
+1.7
+log
+@erg!
+@
+text
+@d100 2
+a101 1
+      viewx = gridx * (LATEX_PERT_BOX_WIDTH+LATEX_PERT_BOX_X_SKIP);
+d130 2
+d138 4
+d161 3
+a163 1
+      viewx = gridx * (LATEX_PERT_BOX_WIDTH+LATEX_PERT_BOX_X_SKIP);
+d165 1
+d168 3
+a170 1
+	gridy * (LATEX_PERT_BOX_HEIGHT+LATEX_PERT_BOX_Y_SKIP);
+a171 13
+      deps = node->data->dependents->head;
+   
+      /* find the starting x & y positions for this line */
+      startx =
+	(node->data->x_pert-1)*(LATEX_PERT_BOX_WIDTH+LATEX_PERT_BOX_X_SKIP);
+      starty = (PAGE_HEIGHT-LATEX_PERT_BOX_HEIGHT) -
+	node->data->y_pert*(LATEX_PERT_BOX_HEIGHT+LATEX_PERT_BOX_Y_SKIP)+
+	  LATEX_PERT_BOX_HEIGHT/2;
+      
+      /* starting positions for lines */
+      viewx = viewx + LATEX_PERT_BOX_WIDTH;
+      viewy = viewy + LATEX_PERT_BOX_HEIGHT/2;
+      
+d175 5
+a179 3
+      printf("across=%d, down=%d, startx=%d, starty=%d, "
+	     "viewx=%d, viewy=%d\n",
+	     across, down, startx, starty, viewx, viewy);
+d182 14
+a195 6
+	 /* find the final x & y positions for this line */
+	 endx =
+	   (deps->data->x_pert-1)*(LATEX_PERT_BOX_WIDTH+LATEX_PERT_BOX_X_SKIP)-
+	     LATEX_PERT_BOX_WIDTH;
+	 endy = (PAGE_HEIGHT-LATEX_PERT_BOX_HEIGHT) -
+	   deps->data->y_pert*(LATEX_PERT_BOX_HEIGHT+LATEX_PERT_BOX_Y_SKIP)+
+d198 3
+a206 3
+	 printf("endx=%d, endy=%d, dx=%d, dy=%d, slope=%lf, "
+		"newdx=%d, newdy=%d\n",
+		endx, endy, dx, dy, slope, newdx, newdy);
+d210 5
+d221 1
+d223 5
+d234 1
+d236 5
+d247 1
+d263 3
+d267 1
+a267 1
+	       viewy += ylen;
+d272 1
+a272 1
+	       viewx += xlen;
+d276 1
+a276 7
+	    viewx %= PAGE_WIDTH;
+	    viewy %= PAGE_HEIGHT;
+	    dx -= (xlen>0?xlen:-xlen);
+	    dy -= (ylen>0?ylen:-ylen);
+	    printf("xlen=%d, ylen=%d, viewx=%d, viewy=%d, "
+		   "dx=%d, dy=%d\n",
+		   xlen, ylen, viewx, viewy, dx, dy);
+a277 1
+	 printf("\n");
+a279 1
+      printf("\n");
+@
+
+
+1.6
+log
+@Revision of code prior to fixing strange arrows.
+@
+text
+@d38 2
+a117 2
+/* UPDATE CRITICAL PATH INFORMATION IN MY STRUCTURE!!! */
+
+d125 2
+d129 2
+d144 1
+d173 6
+a180 1
+	 
+d195 60
+a254 14
+	 
+	 onode = 
+	   create_object_node(PERT_LINE,
+			      viewx,
+			      viewy,
+			      dx, 
+			      newdx, newdy,
+			      0, 0, 
+			      node->data->critical_path &&
+			      deps->data->critical_path,
+			      NULL, NULL);
+	 
+	 add_object_to_page(list, across, down, onode);
+	 
+d257 1
+d322 1
+a322 1
+   for (i = 0, j = 0; i < strlen(str); ++i, ++j) {
+d327 1
+d333 5
+a337 3
+       case '+':
+       case '=':
+       case '|':
+d340 3
+a342 3
+	 bigbuf[j] = '\\';
+	 ++j;
+	 bigbuf[j] = str[i];
+d345 2
+a346 1
+	 bigbuf[j] = ':';
+d348 4
+d353 1
+a353 1
+	 bigbuf[j] = str[i];
+d378 21
+a398 2
+   *newxptr = newx;
+   *newyptr = newy;
+@
+
+
+1.5
+log
+@Latest version of latpert --- getting close to doing lines
+across multiple pages correctly.
+@
+text
+@d42 1
+d54 5
+d70 1
+d72 1
+d79 1
+a79 1
+     task_node *node, *deps;
+d88 42
+d138 1
+a138 3
+     newdy,
+     linestartx,
+     linestarty;
+a139 1
+   
+a140 5
+   /* fill in formatting information */
+   traverse_task_list();
+   /* fill in critical path information */
+   calc_critical();
+
+a154 8
+      onode = create_object_node(PERT_BOX, 
+				 viewx,
+				 viewy,
+				 0, 0, 0, 0, 0,
+				 node->data->critical_path,
+				 node->data->name, NULL);
+      add_object_to_page(list, across, down, onode);
+
+d156 1
+a156 1
+
+d163 1
+a163 1
+
+d167 1
+a167 1
+
+d170 1
+a170 1
+
+d178 1
+a178 1
+
+d181 1
+a181 1
+
+d183 1
+a183 1
+
+d185 1
+a185 8
+
+	 linestartx = (node->data->x_pert-1) *
+	   (LATEX_PERT_BOX_WIDTH+LATEX_PERT_BOX_X_SKIP)+
+	     LATEX_PERT_BOX_WIDTH;
+	 linestarty = (node->data->y_pert) *
+	   (LATEX_PERT_BOX_HEIGHT+LATEX_PERT_BOX_Y_SKIP)+
+	     LATEX_PERT_BOX_HEIGHT;
+
+d196 1
+a196 1
+
+d198 1
+a198 1
+
+a202 2
+
+   /* UPDATE CRITICAL PATH INFORMATION IN MY STRUCTURE!!! */
+@
+
+
+1.4
+log
+@Routine for scaling x/y for latex \line command now works!
+@
+text
+@a38 1
+int gcd(int, int);
+a39 1
+int dist(int, int);
+d41 5
+d48 4
+a51 13
+   struct task_node *node, *deps;
+   struct page_list *list;
+   struct object_node *onode;
+   int viewx, viewy;
+   int across, down;
+   int gridx, gridy;
+   FILE *fp;
+   int large_x=0, large_y=0;
+   char tmpname[100];
+   int latx, laty;
+   double slope;
+   int dx, dy, newdx, newdy, startx, starty, endx, endy;
+   int linestartx, linestarty;
+a52 3
+   /* fill in formatting information */
+   traverse_task_list();
+
+d64 35
+d105 8
+d114 4
+a117 4
+				 node->data->x_pert-1,
+				 node->data->y_pert,
+				 node->data->length,
+				 0, 0, 0, 0, 
+d122 2
+d129 6
+d136 2
+d144 1
+d147 1
+d149 1
+d151 1
+a151 6
+	 printf("dx = %d, dy = %d, newdx = %d, newdy = %d\n",
+		dx, dy, newdx, newdy);
+	 printf("dy/dx=%lf, newdy/newdx=%lf\n",
+		(double) dy / (double) dx,
+		(double) newdy / (double) newdx);
+	 
+d158 1
+d161 3
+a163 3
+			      node->data->x_pert-1,
+			      node->data->y_pert,
+			      dist(dx, dy),
+d165 5
+a169 1
+			      0, 0, NULL, NULL);
+d177 10
+d202 1
+a202 8
+		     gridx = onode->x - ((across-1)*PERT_BOXES_ACROSS);
+		     gridy = onode->y - ((down-1)*PERT_BOXES_DOWN);
+		     viewx =
+		       gridx*(LATEX_PERT_BOX_WIDTH+LATEX_PERT_BOX_X_SKIP);
+		     viewy = (PAGE_HEIGHT-LATEX_PERT_BOX_HEIGHT)-
+		       gridy *
+			 (LATEX_PERT_BOX_HEIGHT+LATEX_PERT_BOX_Y_SKIP);
+		     strcpy(tmpname, onode->name);
+d204 2
+a205 2
+		     fprintf(fp, "\\put(%d, %d){\\framebox(%d, %d){%s}}\n",
+			     viewx, viewy, 
+d210 5
+a214 11
+		     gridx = onode->x - ((across-1)*PERT_BOXES_ACROSS);
+		     gridy = onode->y - ((down-1)*PERT_BOXES_DOWN);
+		     viewx =
+		       gridx*(LATEX_PERT_BOX_WIDTH+LATEX_PERT_BOX_X_SKIP)+
+			 LATEX_PERT_BOX_WIDTH;
+		     viewy = (PAGE_HEIGHT-LATEX_PERT_BOX_HEIGHT)-
+		       gridy *
+			 (LATEX_PERT_BOX_HEIGHT+LATEX_PERT_BOX_Y_SKIP)+
+			   LATEX_PERT_BOX_HEIGHT/2;
+		     fprintf(fp, "\\put(%d, %d){\\line(%d, %d){%d}}\n",
+			     viewx, viewy, 
+d217 3
+a270 59
+/* from pg. 12 of the introduction to "Algorithms in C" by Robert */
+/* Sedgewick --- fixed so that if either u or v is 0 it returns 1 */
+int gcd(int u, int v) 
+{
+   int t;
+   
+   if ((u == 0) || (v == 0)) return 1;
+   if (u < 0) u = -u;
+   if (v < 0) v = -v;
+   do {
+      if (u < v) { t = u; u = v; v = t; }
+      u = u - v;
+   } while (u != 0);
+
+   return v;
+}
+
+void lat_line_scale(int x, int y, int *newxptr, int *newyptr)
+{
+   int d, absx, absy;
+   double t;
+
+   while ( (x < -6) || (x > 6) || (y < -6) || (y > 6)) {
+      d = gcd(x, y);
+      absx = (x>0?x:-x);
+      absy = (y>0?y:-y);
+      if ( absx > absy ) {
+	 if ( absx == 5 ) {
+	    x >>= 1;
+	    y >>= 1;
+	 } else {
+	    t = (double) x / 5.0;
+	    if (t != 0) {
+	       y = (double) y / t;
+	       x = 5;
+	    } else {
+	       y = 1;
+	    }
+	 }
+      } else {
+	 if ( absy == 5) {
+	    x >>= 1;
+	    y >>= 1;
+	 } else {
+	    t = (double) y / 5.0;
+	    if (t != 0) {
+	       x = (double) x / t;
+	       y = 5;
+	    } else {
+	       x = 1;
+	    }
+	 }
+      }
+      printf("x = %d, y=%d\n", x, y);
+   }
+   *newxptr = x;
+   *newyptr = y;
+}
+
+a278 6
+/*      d = gcd(newx, newy);*/
+      /* if they are not prime with respect to each other */
+/*      if (d != 1) {
+	 newx = newx/d;
+	 newy = newy/d;
+      } else {*/
+a285 2
+/*   }*/
+      printf("newx = %d, newy = %d\n", newx, newy);
+a291 13
+/* find the distance between x and y */
+int dist(int x, int y)
+{
+   double f;
+
+   f = (double) y / (double) x;
+
+   printf("%d =? %d\n",
+	  (int) (((double) x)*sqrt(f*f+1.0)),
+	  (int) sqrt((double) x*x+y*y));
+
+   return (int) (((double) x)*sqrt(f*f+1.0));
+}
+@
+
+
+1.3
+log
+@Hmmm
+@
+text
+@d41 1
+a78 7
+      gridx = node->data->x_pert->x-1 - ((across-1)*PERT_BOXES_ACROSS);
+      gridy = node->data->y - ((down-1)*PERT_BOXES_DOWN);
+      viewx =
+	gridx*(LATEX_PERT_BOX_WIDTH+LATEX_PERT_BOX_X_SKIP);
+      viewy = (PAGE_HEIGHT-LATEX_PERT_BOX_HEIGHT)-
+	gridy *
+	  (LATEX_PERT_BOX_HEIGHT+LATEX_PERT_BOX_Y_SKIP);
+d87 1
+a87 1
+      deps = node->data->dependencies->head;
+d90 3
+a92 2
+      starty = 
+	node->data->y_pert*(LATEX_PERT_BOX_HEIGHT+LATEX_PERT_BOX_Y_SKIP);
+d95 5
+a99 3
+	   (deps->data->x_pert-1)*(LATEX_PERT_BOX_WIDTH+LATEX_PERT_BOX_X_SKIP);
+	 endy =
+	   deps->data->y_pert*(LATEX_PERT_BOX_HEIGHT+LATEX_PERT_BOX_Y_SKIP);
+d101 1
+a101 1
+	 dy = endy - starty;
+d104 6
+a109 2
+	 if (dx < 0) newdx = -newdx;
+	 if (dy < 0) newdy = -newdy;
+d120 1
+a120 2
+/*			      dist(dx, dy),*/
+			      10,
+d241 42
+d291 1
+a291 1
+      d = gcd(newx, newy);
+d293 1
+a293 1
+      if (d != 1) {
+d296 4
+d301 2
+a302 2
+	 newx /= 2;
+	 newy /= 2;
+d304 2
+d318 4
+@
+
+
+1.2
+log
+@Latest revision --- before trying a major change.
+@
+text
+@d78 7
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d30 1
+d38 4
+d44 1
+a44 1
+   struct task_node *node;
+d52 5
+a71 3
+   printf("pages_across=%d, pages_down=%d\n",
+	  list->pages_across, list->pages_down);
+
+d85 35
+a122 1
+   strcpy(export_filename, "TEST_PERT.tex");
+d128 3
+a130 5
+      fprintf(fp, "\\begin{document}\n");
+      for (across = 1; across <= list->pages_across; ++across) {
+	 for (down = 1; down <= list->pages_down; ++down) {
+	    fprintf(fp, "\\begin{picture}(%d,%d)\n",
+		    PAGE_WIDTH, PAGE_HEIGHT);
+d132 40
+a171 17
+	    fprintf(fp, "%%across=%d, down=%d\n", across, down);
+	    while (onode) {
+	       gridx = onode->x - ((across-1)*PERT_BOXES_ACROSS);
+	       gridy = onode->y - ((down-1)*PERT_BOXES_DOWN);
+	       fprintf(fp, "%%gridx=%d, gridy=%d\n", gridx, gridy);
+	       viewx =
+		 gridx*(LATEX_PERT_BOX_WIDTH+LATEX_PERT_BOX_X_SKIP)+
+		   X_OFFSET;
+	       viewy = (PAGE_HEIGHT-Y_OFFSET-LATEX_PERT_BOX_HEIGHT)-
+		 gridy *
+		   (LATEX_PERT_BOX_HEIGHT+LATEX_PERT_BOX_Y_SKIP) +
+		     Y_OFFSET;
+	       fprintf(fp, "\\put(%d, %d){\\framebox(%d, %d){%s}}\n\n",
+		       viewx, viewy, 
+		       LATEX_PERT_BOX_WIDTH, LATEX_PERT_BOX_HEIGHT,
+		       onode->name);
+	       onode = onode->next;
+a172 2
+	    fprintf(fp, "\\end{picture}\n");
+	    fprintf(fp, "\\clearpage\n");
+d180 86
+@

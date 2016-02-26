@@ -1,0 +1,325 @@
+#! /usr/NeWS/bin/psh
+%
+%	This program illustrates some of the features of dynamic splines.
+%	Dynamic splines with tracking have been presented in a paper
+%	that has been published in the proceeedings of the Eurographics 88
+%	conference published by North-Holland. The reference is:
+%	Xavier Pintado, Eugene Fiume,
+%	Grafields: Field-Directed Dynamic Splines for interactive Motion
+%		Control.
+%	Proceedings of Eurographics 88, Nice France, North-Holland.
+%
+%	Dynamic Splines and tracking are used here to mimic a pencil
+%	with smothness control and inertia. In fact the trajectory is
+%	tracking the position of the locator (mouse). It is not very
+%	fast because everything has been implemented in postscript.
+%
+%	from PINTADO@CGEUGE51
+%	have fun!
+%
+%	TRACKER: version 0.1 Xavier Pintado CUI Universite de Geneve
+%		 Switzerland.
+%
+%	How to run it:
+%		You can run it in two ways:
+%		1-Start the NeWS server; make this program executable
+%		  with "chmod u+x <progname>"; type the program name.
+%		2-Start the NeWS server; type "psh <progname>".
+%
+%	Things to know:
+%		The left mouse button is the pointing device. When you
+%		press it the trajectory will be drawn.
+%		The middle mouse button clears the screen.
+%		The rigth mouse button pops-up the menus.
+%	Frame Menus:
+%		Destroy: Kills the program and the window.
+%		Shrink : Shrinks the window to its minimal size (quite big)
+%			 and moves it to the lower left corner.
+%		Stretch: Stretches the window to occupy the full size of the
+%			 screen. This is the comfortyable way to play with the
+%			 program.
+%	Canvas Menu:
+%		CONTROLS: displays the tracking parameters of the tracking
+%			  mechanism. Modify them interactively with the
+%			  sliders.
+%		Raw Trajectory: Displays the poly-line described by the cursor
+%	These buttons are in toggle mode.
+%
+%
+
+systemdict /Item known not {(NeWS/liteitem.ps) run} if
+
+/DrawWindow DefaultWindow
+dictbegin
+	/P_cursor	[0 0] def
+	/P_begin	[0 0] def
+	/P_end		[0 0] def
+	/P_pres		[0 0] def
+	/D_begin	[0 0] def
+	/D_end		[0 0] def
+	/Tr_error	[0 0] def
+	/Tr_p_error	[0 0] def
+	/Field		[0 0] def
+	/Fi_aff		.7    def
+	/Err_aff	.8    def
+	/Err_resp	.9    def
+	/Friction	.7    def	% 1 - friction
+	/State		false def
+	/Raw_Line?	false def
+	/Controls?	false def
+	/NbIntPts	2 def
+dictend
+classbegin
+	/apoil {aload pop} def
+	/herm_base 5 dict def
+	/herm_table 10 array def
+	/canvas_color	1 .8 .8 rgbcolor def
+
+/notify-friction
+   { /Friction 1 panels /friction-slider get /ItemValue get 10 div sub def}  def
+/notify-field-aff
+   {/Fi_aff panels /field-aff-slider get /ItemValue get 10 div def} def
+/notify-err-aff
+   {/Err_aff panels /error-aff-slider get /ItemValue get 10 div def} def
+/notify-err-resp
+   {/Err_resp panels /error-resp-slider get /ItemValue get 10 div def} def
+/panels 4 dict def
+/make-sliders
+   {
+   	panels begin
+/friction-slider
+	(Friction: ) [0 10 3] /Right {{notify-friction} ThisWindow send}
+	ClientCanvas 100 20 /new SliderItem send
+	ClientCanvas setcanvas 0 0 /move 3 index send
+def
+/field-aff-slider
+	(Field Aff:) [0 10 6] /Right {{notify-field-aff} ThisWindow send}
+	ClientCanvas 100 20 /new SliderItem send
+	ClientCanvas setcanvas 0 20 /move 3 index send
+def
+/error-aff-slider
+	(Error Aff:) [0 10 7] /Right {{notify-err-aff} ThisWindow send}
+	ClientCanvas 100 20 /new SliderItem send
+	ClientCanvas setcanvas 0 40 /move 3 index send
+def
+/error-resp-slider
+	(Error Resp:) [0 10 7] /Right {{notify-err-resp} ThisWindow send}
+	ClientCanvas 100 20 /new SliderItem send
+	ClientCanvas setcanvas 0 60 /move 3 index send
+def
+	end panels forkitems
+   } def
+
+%/new { % parentcanvas => drawindow
+%   {
+%   	/new super send
+%   	init
+%   } def
+
+/PaintClient
+   {
+	gsave ClientCanvas setcanvas
+	ColorDisplay? {canvas_color}{0}ifelse fillcanvas
+%	Controls? {panels paintitems}
+	grestore
+  } def
+
+/reshape { % x y w h => -
+    /reshape super send
+      /PaintClient self send
+  } def
+
+
+
+  /move-dynamics { % -  => -
+    gsave
+	calculate-error
+	calculate-field
+	calculate-segment
+	draw-segment
+    grestore
+  } def
+
+/update-cursor % - => -
+   {
+	gsave
+	   ClientCanvas setcanvas
+	   Raw_Line? {P_cursor apoil moveto} if
+	   /P_cursor [XLocation YLocation] def
+		move-dynamics
+	Raw_Line? {ColorDisplay? {.5 1 .5 setrgbcolor}{1 setgray} ifelse
+		P_cursor apoil lineto stroke} if
+	grestore
+   } def
+
+
+/set-left-button {
+	/State State not def
+  } def
+
+/set-middle-button {
+	gsave ClientCanvas setcanvas
+	ColorDisplay? {canvas_color}{0}ifelse fillcanvas
+	Controls? {panels paintitems} if
+	grestore
+  } def
+
+/enter-window {
+	/State false def
+} def
+
+/exit-window {
+} def
+
+/hermite-base
+   {	% parameter [0.0 .. 1.0] => array [ 4 values ]
+	herm_base begin
+	/p	exch def
+	 [  	p dup dup 2 mul 3 sub mul mul 1 add
+	  	p dup dup 2 neg mul 3 add mul mul
+	  	p dup dup 2 sub mul 1 add mul
+	  	p dup dup 1 sub mul mul
+	 ]
+	  end
+   } def
+
+
+/hermite-table-fill
+   {			% - => -
+	herm_base begin
+	/c 0 def
+	  1 NbIntPts 1 add div dup 1
+		{ hermite-base herm_table exch c exch put /c c 1 add def} for
+	end
+   } def
+
+/calculate-error
+   {
+   	/Tr_p_error Tr_error def
+   	/Tr_error [ P_end apoil P_cursor apoil
+	exch 4 -1 roll sub 3 1 roll exch sub ] def
+   } def
+
+/calculate-field
+   {
+   	/Field [ Tr_error apoil Tr_p_error apoil 2 index
+  	exch sub Err_resp mul exch 3 index exch sub Err_resp mul
+   	4 -1 roll add 3 1 roll add Err_aff mul exch Err_aff mul exch
+  	] def
+   } def
+
+/calculate-segment
+   {
+   	/P_begin P_end def
+   	/D_begin D_end def
+   	/D_end   [ D_end apoil Field apoil
+   	   Fi_aff mul exch Fi_aff mul 4 -1 roll add
+   	   3 1 roll add Friction mul exch Friction mul exch] def
+	/P_end   [ P_begin apoil D_begin apoil D_end apoil
+	   exch 4 1 roll add .5 mul 3 1 roll add .5 mul
+	   4 -1 roll add 3 1 roll add ] def
+   } def
+
+
+/draw-segment
+   {
+   	gsave
+	   3 setlinewidth	% width of trajectory
+   	   ClientCanvas setcanvas
+   	   P_begin apoil moveto
+	   herm_base begin
+	   0 1 NbIntPts %1 sub
+	     {
+	   	herm_table exch get apoil
+		4 -1 roll P_begin apoil 2 index mul /cy exch def mul
+		/cx exch def
+		3 -1 roll P_end apoil 2 index mul /cy exch cy add def
+		mul /cx exch cx add def
+		exch D_begin apoil 2 index mul /cy exch cy add def
+		mul /cx exch cx add def
+		D_end apoil 2 index mul /cy exch cy add def
+		mul /cx exch cx add def
+		cx cy lineto
+	     } for
+	end
+   	P_end apoil lineto
+	State { ColorDisplay? {1 0 0 setrgbcolor}{1 setgray}ifelse stroke} if
+   	grestore
+   } def
+
+
+/tracker {
+	createevent dup begin
+        /Name [
+	  /LeftMouseButton
+	  /MiddleMouseButton
+          /MouseDragged
+	  /EnterEvent
+	  /ExitEvent
+	] def
+	/Priority 10 def
+	/Exclusivity true def
+	/Canvas	ClientCanvas def
+      end expressinterest
+      createevent dup begin
+	/Name /timereq def
+      end expressinterest
+      framebuffer setcanvas
+      { awaitevent dup begin
+        Name {
+		/LeftMouseButton	{set-left-button}
+		/MiddleMouseButton	{set-middle-button}
+		/MouseDragged		{update-cursor}
+		/EnterEvent		{enter-window}
+		/ExitEvent		{exit-window}
+		/timereq		{update-cursor}
+	} case
+	redistributeevent
+        end
+      } loop
+  } def
+
+  /track {
+    /TrackProcess {tracker} fork def
+  } def
+
+  /timeinterrupt {
+	createevent dup begin
+		/Name	/timereq def
+		/TimeStamp currenttime 0.02 add def
+	end sendevent
+   } def
+
+% initialization
+/init {hermite-table-fill  make-sliders track } def
+classend def
+
+/win framebuffer /new DrawWindow send def
+   {
+	/FrameLabel	(Dynamic Splines demo) def
+	/IconLabel	(Dynamic) def
+	/BorderRight	12 def
+	/BorderLeft	12 def
+	/ClientMinWidth	512 def
+	/ClientMinHeight 512 def
+	/ClientMenu	[
+		(Destroy) { /destroy ThisWindow send}
+		(CONTROLS) { {/Controls? Controls? not def}
+				ThisWindow send
+			     {Controls? {panels paintitems}
+			     {}ifelse} ThisWindow send }
+		(Raw Trajectory) {{/Raw_Line? Raw_Line? not def}
+				ThisWindow send}
+			] /new DefaultMenu send def
+   } win send
+/reshapefromuser win send
+/map win send
+	{
+	/FrameMenu	[
+			(Destroy) { /destroy ThisWindow send}
+			(shrink) {0 0 128 128 /reshape ThisWindow send}
+			(stretch) {0 0 1152 900 /reshape ThisWindow send}
+			] /new DefaultMenu send def
+	} win send
+/init win send
+

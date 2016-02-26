@@ -1,0 +1,38 @@
+#!/bin/sh
+# Usage:
+#       $0 <myfont> <MyFont> <size>
+#           <myfont> for <myfont>.list and <myfont>.ps
+#           <MyFont> for everything else (like <MyFont>12.afont,
+#                   <Myfont>12.font, <MyFont>dict, ...)
+#DIR=${NEWSHOME-/usr/NeWS}/fonts
+set -x
+
+# make the ascii font from the list of ascii bitmap files...
+mkiconfont $1.list $2 >${2}${3}.afb
+
+# convert the ascii font into a bitmap font
+dumpfont -d. ${2}${3}.afb
+
+# build the font families for all the fonts in the current directory
+bldfamily -d. 
+
+# build a post script reference file
+egrep "^(STARTCHAR|ENCODING)" ${2}${3}.afb>${1}.ps
+ed - ${1}.ps<<EOF
+g/STARTCHAR/j
+1,\$s'STARTCHAR \\(.*\\)ENCODING \\(.*\\)'/\\1 \\2 def'
+1i
+/${1}dict 300 dict def
+${1}dict begin
+.
+\$a
+end
+% Usage: x y moveto /char show$1
+/show$1 {
+    currentfont ( ) dup 0 ${1}dict 5 index get put
+    $1 setfont show setfont pop } def
+/$1 ($2) findfont ${3} scalefont def
+.
+w
+q
+EOF

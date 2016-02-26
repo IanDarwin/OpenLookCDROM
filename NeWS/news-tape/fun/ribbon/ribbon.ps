@@ -1,0 +1,411 @@
+%!
+
+/wiggler Object
+	dictbegin
+		/yangpos		[0 0 0 0 0 0 0 0]	def
+		/yinpos			yangpos				def
+		/yangdelta		[.002 .004 .004 .008 .006 .012 .008 .016]	def
+		/yindelta		[ yangdelta aload pop ]		def
+
+		/yangcolor		monochromecanvas		% changes by colordelta
+						 { 1 }
+						 { [0 0 1] } ifelse
+						def
+
+		/yincolor		monochromecanvas		% always bg color
+						 { 0 } 
+						 { [0 0 0] } ifelse
+						def
+
+		/colordelta		monochromecanvas
+						 { .07}
+						 { [.27 .07 .17] } ifelse
+						def
+
+		/ribbonmin			[0 0 0 0 0 0 0 0]	def
+		/ribbonmax			[1 1 1 1 1 1 1 1]	def
+		/ribbonwidth		10					def
+	dictend
+	classbegin
+
+% Methods
+
+		/bigger { 	% scale => -
+			0 1 7 { 	% scale idx
+				yangdelta 1 index get % scale idx oldvalue
+				2 index mul			% scale idx newvalue
+				yangdelta exch		% scale idx [yangdelta] newvalue
+				2 index exch put	% scale idx
+
+				yindelta 1 index get % scale idx oldvalue
+				2 index mul			% scale idx newvalue
+				yindelta exch		% scale idx yindelta newvalue
+				2 index exch put pop		% scale
+			} for
+			pop
+		} def
+
+		/setwidth { % newwidth => -
+			/ribbonwidth exch def
+		} def
+
+		/new {	% - => -
+			/new super send begin
+			currentdict localize		% make local copies of instance variables
+			yangpos 0 1 7 {
+				1 index exch random	put	% [] [] i random => []
+			} for
+			[ exch aload pop ]			
+			/yinpos exch store
+			currentdict end
+		} def
+
+		/paint {
+			yangpos yinpos copy pop
+			yangdelta yindelta copy pop
+			ribbonwidth
+			{	yangcolor setupcolor
+				yangpos  paintcurve
+				ribbonmin ribbonmax yangpos yangdelta updatepos 4 {pop} repeat
+				yangcolor colordelta updatecolor pop pop
+			} repeat
+		} def
+
+		/step {
+			yincolor setupcolor
+			yinpos  paintcurve
+			ribbonmin ribbonmax yinpos yindelta updatepos 4 {pop} repeat
+			yangcolor setupcolor
+			yangpos paintcurve
+			ribbonmin ribbonmax yangpos yangdelta updatepos 4 {pop} repeat
+			yangcolor colordelta updatecolor pop pop
+		} def
+
+
+% Utilities for Ribbon objects
+
+	% setup color for whatever display we are on
+	/setupcolor { % "color" => setrgbcolor or setgray
+		monochromecanvas
+			{ setgray }
+			{ aload pop setrgbcolor}
+		ifelse
+	} def
+
+	% make local copy of instance variable data
+	/copyops
+		dictbegin
+
+		/integertype {	%	/name int
+			def
+		} def
+
+		/realtype { 
+			def
+		} def
+
+		/dicttype {pop pop} def			%	Class dictionaries
+
+		/arraytype {	%	/name array
+			dup length array copy def
+		} def
+
+		dictend
+	def
+
+	/localize {		% dict => contents converted to local copies
+		copyops begin
+		dup begin
+		{		% /name value => -
+			dup type exec	% type names defined in copyops
+		} forall
+		end % input dict
+		end % copyops
+	} def
+
+	/paintcurve {	% [pts] => -
+		aload pop	% p0 p1 p2 p3
+		8 -2 roll	% p1 p2 p3 p0
+		moveto curveto
+		stroke
+	} def
+
+	/updatepos {	%	[min] [max]	[p] [v] => [min] [max] [p'] [v']
+		10 dict begin
+		0 1 7 {		%	[min] [max] [p] [v] i
+			/i exch def		% min max p v
+			4 {3 index i get} repeat	% min max p v mini maxi pi vi
+			updatecomponent 			% min max p v mini maxi pi' vi'
+			4 2 roll pop pop			% min max p v pi' vi'
+			2 index exch i exch put		% min max p v' pi'
+			2 index exch i exch put		% min max p' v'
+		} for
+		end
+	} def 
+
+	/updatecolor {		%	[c] [dc] => [c'] [dc'] (implicit bounds: 0 <= c <= 1)
+		10 dict begin
+		monochromecanvas {
+			.3 1 4 -2 roll
+			updatecomponent
+			4 2 roll pop pop
+		} { 
+			0 1 2 {
+				/i exch def
+				1 index i get
+				1 index i get 0 1 4 -2 roll		% [c] [d] 0 1 ci di
+				updatecomponent					% [c] [d] 0 1 ci' di'
+				4 2 roll pop pop				% [c] [d] ci' di'
+				2 index exch i exch put			% [c] [d'] ci'
+				2 index exch i exch put			% [c'] [d']
+			} for
+		} ifelse
+		end
+	} def
+
+	/updatecomponent {	% min max p v => min max p' v'
+		exch 1 index add	% min max v p'
+		dup 3 index			% min max v p' p' max
+		gt {				% min max v p'
+			pop 1 index		% min max v p'=max
+			exch neg		% min max p'=max v'=-v
+		} {					% min max v p'
+			dup 4 index		% min max v p' p' min
+			lt {			% min max v p'
+				pop 2 index % min max v p'=min
+				exch neg	% min max p'=min v'=-v
+			} {				% min max v p'
+				exch		% min max p' v'=v
+			}  ifelse
+		} ifelse
+	} def
+
+	classend def
+
+/shipit {	% /methodname
+	win send
+} def
+
+	/wigmenu [
+		(add)		{/addwiggler shipit}
+		(delete)	{/deletewiggler shipit}
+	] /new DefaultMenu send def
+
+	/motionmenu [
+		(slower)	{ micro_units /adjust_time_delay shipit}
+		(faster)	{ micro_units neg /adjust_time_delay shipit}
+		(stop)		{/stop shipit}
+		(go)		{/start shipit}
+	] /new DefaultMenu send def
+
+	/spreadmenu [
+		(.5 x)		{.5 /bigger shipit}
+		(2/3 x)		{.667 /bigger shipit}
+		(1.5 x)		{1.5 /bigger shipit}
+		(2 x)		{2 /bigger shipit}
+	] /new DefaultMenu send def
+
+	/widthmenu
+		[(6) (8) (10) (15) (20) (50) (75) (100)]
+		[{currentkey cvi /setribbonwidth shipit}]
+	/new DefaultMenu send def
+	{ 	/LayoutStyle	[2 4] def
+		/CellHorizGap	5 def
+	}	widthmenu send
+
+/repair {
+	ClientCanvas setcanvas initmatrix
+	clippath pathbbox scale pop pop
+	ClientFillColor fillcanvas
+} def
+
+/micro_units 		0.0016			def		% tenth-seconds
+/macro_units 		0.016 			def		% seconds
+    
+/wigwindow DefaultWindow
+	dictbegin
+		/time_delay			micro_units		def
+		/FrameLabel			( ribbon )		def
+		/wigarray			null			def
+		/danceprocess		null			def
+	dictend
+	classbegin
+		/PaintClient		{repair} 		def
+
+% wigwindow methods
+
+		/setbgcolor {
+		} def
+
+		/bigger { 	% scalefactor => - (scale yang/yin delta vectors)
+			/speedscale exch def
+			/stop self send
+			wigarray { 	% wig scale /bigger wig send => wig
+				speedscale /bigger 2 index send pop
+			} forall
+			/start self send
+		} def
+
+		/setribbonwidth {	% width => -
+			/newwidth exch def
+			/stop self send
+			wigarray {
+				newwidth /setwidth 2 index send pop
+			} forall
+			/start self send
+		} def
+
+		/addwiggler {
+			/stop self send
+			/wigarray [ wigarray aload pop
+				/new wiggler send ] def
+			/start self send
+		} def
+
+		/deletewiggler {
+			wigarray length 0 gt { 
+				/stop self send
+				/wigarray [ wigarray aload pop pop ] def
+				/start self send
+			} if
+		} def
+
+		/PaintIcon {
+			/PaintIcon super send
+			IconCanvas setcanvas
+			clippath pathbbox scale pop pop
+			wigarray { /paint exch send } forall
+		} def
+
+		/new {
+			/new super send begin
+				/wigarray [ /new wiggler send ] def
+				/ClientFillColor
+					wigarray aload pop	% [wiggler]
+					/yincolor get		% [r g b]
+					monochromecanvas { 
+					} {
+						aload pop rgbcolor
+					} ifelse
+				def
+				currentdict
+			end
+		} def
+
+%		/flipiconic {
+%			Iconic? not {/stop self send} if
+%			/flipiconic super send
+%			Iconic? not	{/start self send} if
+%		} def
+
+		/map {
+			/map super send
+			Iconic? not {/start self send} if
+		} def
+
+		/unmap {
+			Iconic? not {/stop self send} if
+			/unmap super send
+		} def
+
+		/stretchcorner {
+			/stretchcorner super send
+			/stop self send
+			/start self send
+		} def
+
+		/stretchwindowedge {
+			/stretchwindowedge super send
+			/stop self send
+			/start self send
+		} def
+
+		/reshapefromuser {
+			/reshapefromuser super send
+			/stop self send
+			/start self send
+		} def
+
+		/step {
+			wigarray { /step exch send } forall
+		} def
+
+		/start	{
+			ClientCanvas mapped {
+				danceprocess null ne {/stop self send} if
+				/PaintClient self send
+				wigarray { /paint exch send } forall
+				/danceprocess
+					dance		% forks process
+				def
+			} if
+		} def
+
+		/stop	{
+			danceprocess dup null ne
+				{killprocess /danceprocess null store}
+				{pop}
+			ifelse
+		} def
+
+	/ClientMenu { % deferred initialization: need FrameMenu.
+	    /ClientMenu [
+%			(Background)	colormenu
+			(Ribbons)		wigmenu
+			(Spread)		spreadmenu 
+			(Width)			widthmenu
+			(Motion)		motionmenu
+	        /sun30			FrameMenu
+	    ] /new DefaultMenu send store
+	    {   /LayoutStyle	/Horizontal def
+		/PullRightDelta	0 def
+		/Border		2 def
+		/CenterItems?	true def
+		/PullRightDelta	0 def
+	    } ClientMenu send
+	    ClientMenu
+	} def
+
+% Wigwindow utilities
+/dance {
+gsave
+    { % fork
+
+	% Express interest and create a next image event
+	% Note the dup of the interest & COPY its innards into the
+	% event used by sendevent.  This is because the interest
+	% must be a different object but have some of the same filds
+	% as the interest.
+	createevent dup begin
+	    /Name /NextStep def
+	    /Canvas ClientCanvas def
+	end dup expressinterest
+	createevent copy
+%	dup /Process currentprocess put
+	{ % loop
+	    % Send an event to this process
+	    dup /TimeStamp currenttime time_delay add put sendevent
+	    % Wait for any event an leave event on stack for next sendevent
+	    awaitevent
+		/step self send pause
+	} loop
+    } fork
+grestore
+} def
+
+	/adjust_time_delay { % microseconds => -
+		/stop self send
+	    time_delay add /time_delay exch store
+	    time_delay 0 lt { /time_delay 0 store } if
+		/start self send
+	} def
+
+	classend def
+
+/main {
+	/win framebuffer /new wigwindow send def
+	/reshapefromuser win send
+	/map win send
+} def
+
+main

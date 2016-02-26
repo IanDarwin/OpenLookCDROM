@@ -1,0 +1,14 @@
+static void finish_cd_cb P_((DATA, int, CB*));
+static void finish_init P_((struct _output*, int, DATA));
+static void finish_local_dir_cb P_((DATA, int, CB*));
+static void finish_login_failed_cb P_((DATA, int, CB*));
+static void finish_pass P_((struct _output*, int, DATA));
+static void finish_pwd_cb P_((DATA, int, CB*));
+static void finish_remote_dir_cb P_((DATA, int, CB*));
+static void finish_set_type_cb P_((DATA, int, CB*));
+static void finish_syst_cb P_((DATA, int, CB*));
+static void finish_user P_((struct _output*, int, DATA));
+static void login_error P_((int, int, CB*));
+static void start_pass P_((int, CB*));
+static void start_set_type P_((int, CB*));
+static void status P_((char*, int));

@@ -1,0 +1,662 @@
+%#! /usr/NeWS/bin/psh
+%
+%  A Graphics Editor
+%  written by:
+%  Dick Phillips
+%  Los Alamos National Laboratory
+%
+%
+    /errfile (%stdout) (w) file def
+    /errstr 80 string def
+    /eout {errfile exch writestring} def
+    /dictprt {
+     {exch errstr cvs (  ) append exch errstr cvs (\n) append
+      append eout}forall (\n) eout
+     } def
+%
+%
+   /GA_constraint null def % null=none, 0=x, 1=y
+   /GA_value null def      % null=>use mouse, otherwise use value
+%
+   /pnt_size 499 def
+   /pnt_savearray pnt_size 1 add array def
+   /pnt_ptr 0 def
+%
+   /img_savearray 100 array def
+   /img_ptr 0 def
+%
+   /text_savearray 100 array def
+   /text_ptr 0 def
+%
+   /rect_savearray 100 array def
+   /rect_ptr 0 def
+%
+   /poly_savearray 100 array def
+   /poly_ptr 0 def
+%
+   /crv_savearray 100 array def
+   /crv_ptr 0 def
+%
+      /setcanvashue {  % hue or gray => -
+	systemdict /currentcanvashue 3 -1 roll put
+      } def
+%
+      /getcanvashue {  % - => hue or gray
+        systemdict /currentcanvashue get
+      } def
+%
+      /setcurrenthue { % hue or gray => -
+	systemdict /currenthue 3 -1 roll put
+      } def
+%
+      /getcurrenthue { % - => hue or gray
+        systemdict /currenthue get
+      } def
+%
+      /initcanvas ColorDisplay?
+	{1. 1. 1. rgbcolor}
+	{1.} ifelse
+      def
+%
+      /inithue ColorDisplay?
+	{0. 1. 1. hsbcolor}
+	{0.} ifelse
+      def
+%
+      /charproc nullproc def
+      /textproc nullproc def            % special text processing
+      /textdict 10 dict dup
+       begin
+          /txtstr_ptr 0 def
+          /txtstr 80 string def
+       end def
+%
+      /imagedirectory (/smi/) def
+      /fileextension (.im8) def
+      /thepicture (rlp) def
+      /pic {
+         (NEWSHOME) getenv imagedirectory thepicture fileextension
+         append append append readcanvas pause
+      } def
+      /HandleMenuHit {
+         /thepicture /currentkey self send store
+         pic                                  % returns a canvas
+         gsave
+           can createoverlay setcanvas pause 
+           getwholerect waitprocess           % aload pop
+         grestore
+           can setcanvas
+           [ exch aload pop /points2rect cvx /rectpath cvx
+             /pathbbox cvx /pop cvx /pop cvx /translate cvx
+             /pathbbox cvx /scale cvx /pop cvx /pop cvx
+             16 -1 roll /imagecanvas cvx
+             /pause cvx ] cvx dup gsave exec grestore
+           img_savearray img_ptr 3 -1 roll put
+           /img_ptr img_ptr 1 add store
+      } def
+%
+      /FontName (Times-Roman) def
+      /pointsize 24 def
+      initcanvas setcanvashue			% white for B&W or color
+      inithue setcurrenthue			% black for B&W, red for color
+      systemdict /textdamage? false put
+      /LineWidth 1 def
+      1 setlinequality
+      LineWidth setlinewidth
+%
+%
+  /linewidthmenu
+     [ (1) (2) (4) (8) ]
+     [ {/LineWidth currentkey cvi dup 3 1 roll store setlinewidth} ]
+     /new DefaultMenu send def
+%
+  /DrawMenu   [
+    (Rectangle)      { /procbegin /drawrect load store textreset }
+    (Polygon)        { /procbegin /drawpoly load store textreset }
+    (Curve)          { /procbegin /drawcurve load store textreset }
+    (Line Width =>)  linewidthmenu
+    ] /new DefaultMenu send def
+%
+  /PaintMenu  [
+    (Paint)       { /procbegin /paintbegin load store textreset }
+%   (Brush)       { brushselect }
+    ] /new DefaultMenu send def
+%
+    /fontmenu
+        [
+            FontDirectory {
+                % include all fonts except /Cursor
+                pop dup /Cursor ne {
+                    25 string cvs
+                    % remove the leading '/'
+%                    dup length 1 sub 1 exch getinterval % Fixed in 1.1!
+                } {
+                    pop
+                } ifelse
+            } forall
+        ]
+        [{/FontName currentkey store settextfont}]
+        /new DefaultMenu send def
+%
+    /pointsizemenu
+        [(  6  ) (8) (10) (12) (14) (16) (18) (24) (32) (64)]
+        [{/pointsize currentkey cvi store settextfont}]
+        /new DefaultMenu send def
+%
+    /EraseMenu [
+     (All)   {/img_ptr 0 store
+              /pnt_ptr 0 store
+              /rect_ptr 0 store
+              /poly_ptr 0 store
+              /crv_ptr 0 store
+              /text_ptr 0 store
+              can setcanvas erasepage}
+     (paint)      {pnt_ptr 0 gt {/pnt_ptr 0 store /paintclient win send}if}
+     (image)      {img_ptr 0 gt {/img_ptr 0 store /paintclient  win send}if}
+     (rectangle)  {rect_ptr 0 gt {/rect_ptr 0 store /paintclient win send}if}
+     (polygon)    {poly_ptr 0 gt {/poly_ptr 0 store /paintclient win send}if}
+     (curve)      {crv_ptr 0 gt {/crv_ptr 0 store /paintclient win send}if}
+     (text)       {text_ptr 0 gt {/text_ptr 0 store /paintclient win send}if}
+      ] /new DefaultMenu send def
+%
+      /davincipicturemenu [
+        (angel)
+        (ermine)
+        (lady)
+        (man)
+        (mona-face)
+        (mona-hands)
+        (mona-smile)
+        (mona)
+        (stjerome)
+        (virgin)
+        (virginofrocks)
+       ] [{HandleMenuHit}] /new DefaultMenu send def
+%
+       /japanesepicturemenu [
+        (cherries)
+        (fuji)
+        (geese)
+        (puppet)
+        (snow)
+        (stormy)
+        (washing)
+        (writing)
+       ] [{HandleMenuHit}] /new DefaultMenu send def
+%
+       /ImageMenu [
+          (Da Vinci =>)  davincipicturemenu
+          (Japanese =>)  japanesepicturemenu
+       ] /new DefaultMenu send def
+%
+      /win framebuffer /new DefaultWindow send def
+%
+{
+  /FrameLabel (NeWSpaint!) def
+  /IconImage /artist def
+  /PaintClient {
+   gsave
+    1 setlinequality
+    ClientCanvas setcanvas
+    getcanvashue fillcanvas
+%   clippath pathbbox scale pop pop
+    0 1 img_ptr 1 sub {gsave img_savearray exch get exec grestore} for
+    0 1 pnt_ptr 1 sub {gsave pnt_savearray exch get exec grestore} for
+    0 1 rect_ptr 1 sub {gsave rect_savearray exch get exec grestore} for
+    0 1 poly_ptr 1 sub {gsave poly_savearray exch get exec grestore} for
+    0 1 crv_ptr 1 sub {gsave crv_savearray exch get 0 get exec grestore} for
+    0 1 text_ptr 1 sub
+    {gsave text_savearray exch get
+      systemdict /textdamage? true put
+       10 dict begin
+       /ch getcurrenthue def
+       /cf /FontName load def
+       /cp /pointsize load def
+       aload pop			% x0,y0,string,color,size,font
+       /FontName exch store
+       /pointsize exch store
+       setcurrenthue
+       /str exch def
+       textdict begin /y0 exch def /x0 exch def
+                      /xbgn x0 def /ybgn y0 def
+                       x0 y0 end
+       moveto
+       0 1 str length 1 sub
+       { str exch 1 getinterval charshow } for
+       ch setcurrenthue
+       /FontName /cf load store
+       /pointsize /cp load store
+       end
+      systemdict /textdamage? false put
+     grestore} for
+   grestore
+  } def
+%
+% /PaintIcon {
+%   IconCanvas setcanvas
+%   1 fillcanvas 0 strokecanvas 0 setgray
+%   clippath pathbbox scale pop pop
+%   userdict begin pnt_savearray { exec } forall end
+% } def
+%
+  /ClientMenu [
+    (Paint =>)       PaintMenu
+    (Images =>)      ImageMenu
+    (Draw =>)        DrawMenu
+    (Text)          { /procbegin /textbegin load store }
+    (Fonts =>)       fontmenu
+    (Sizes =>)       pointsizemenu
+    (Erase =>)       EraseMenu
+    (Canvas Color)  {getcurrenthue setcanvashue /paintclient win send}
+%   (Print)         {printit}
+    (Quit)          {candict /colcan null put currentprocess killprocessgroup}
+    ] /new DefaultMenu send def
+} win send
+%
+   300 200 500 600 /reshape win send
+   /map win send
+%
+   /can win /ClientCanvas get def
+   /ovl can createoverlay def
+%
+   /textreset {
+    /charproc load nullproc ne
+    {
+     /charproc nullproc store
+     textdict /txtstr_ptr get 0 ne	       % is there live text?
+     {textdict begin
+       text_savearray text_ptr                 % in this array
+        [ x0 y0
+          txtstr 0 txtstr_ptr getinterval
+          txtstr_ptr string copy
+          getcurrenthue
+          /pointsize load
+          /FontName load
+        ] put                                   % put this substring
+        /txtstr_ptr 0 store                     % zero the string pointer
+        /text_ptr text_ptr 1 add store          % and update the array index
+      end }if
+    }if
+   } def
+%
+   /textbegin {
+    textdict begin
+      txtstr_ptr 0 ne
+      { text_savearray text_ptr			% in this array
+        [ x0 y0
+          txtstr 0 txtstr_ptr getinterval
+          txtstr_ptr string copy
+          getcurrenthue
+          /pointsize load
+          /FontName load
+        ] put					% put this substring
+        /txtstr_ptr 0 store			% zero the string pointer
+        /text_ptr text_ptr 1 add store } if     % and update the array index
+      can setcanvas
+      CurrentEventX geteventlocation
+      /y0 exch def  /x0 exch def
+      /xbgn x0 def  /ybgn y0 def
+      x0 y0 moveto
+      /charproc load nullproc eq
+        {/charproc /charshow load store} if
+    end
+   } def
+%
+   /drawrect {
+    LineWidth setlinewidth
+    getcurrenthue ColorDisplay? {setcolor}{setgray}ifelse
+    10 dict begin
+      gsave
+      can createoverlay setcanvas
+      CurrentEventX geteventlocation
+      /y0 exch def /x0 exch def			% get initial point
+         x0 y0
+         {x0 y lineto lineto x y0 lineto closepath} rubberize
+         waitprocess aload pop
+         /y1 exch def /x1 exch def
+      grestore
+      can setcanvas
+      [
+        getcurrenthue ColorDisplay? {/setcolor cvx}{/setgray cvx}ifelse
+        currentlinewidth /setlinewidth cvx
+        x0 y0 x1 y1 /points2rect cvx /rectpath cvx /stroke cvx
+      ]  cvx dup
+      exec
+      rect_savearray rect_ptr 3 -1 roll put
+      /rect_ptr rect_ptr 1 add store
+    end
+   } def
+%
+/rubberize{
+    10 dict begin
+    /proc exch def  /y0 exch def  /x0 exch def
+    currentcursorlocation /y exch def /x exch def
+    GA_constraint null ne GA_value null eq and {
+        /GA_value currentcursorlocation GA_constraint 1 eq {exch} if pop store
+    } if
+    {   createevent dup begin
+          /Name LeftMouseButton def
+          /Action DownTransition def
+          end expressinterest
+        createevent dup /Name /MouseDragged put expressinterest
+        {
+            GA_constraint 0 eq {/x GA_value def} if
+            GA_constraint 1 eq {/y GA_value def} if
+            erasepage x0 y0 moveto x y /proc load exec stroke
+            awaitevent begin
+              Action DownTransition eq { end exit } if
+              /x XLocation store /y YLocation store
+            end
+        } loop
+        erasepage
+        /GA_constraint null store
+        /GA_value null store
+        [x y]
+    } fork
+    end
+} def
+%
+   /drawpoly {
+   LineWidth setlinewidth
+   getcurrenthue ColorDisplay? {setcolor}{setgray}ifelse
+   15 dict begin
+   /move {/moveto cvx} def  /line {/lineto cvx} def	% used for
+   /curve {} def  /close {/closepath cvx} def		% pathforall
+      can setcanvas
+      CurrentEventX geteventlocation
+      /y0 exch def   /x0 exch def			% get initial point
+      /xprev x0 def  /yprev y0 def
+      /proc [ 2 /copy cvx /lineto cvx y0 /sub cvx /abs cvx 5 /le cvx
+              /exch cvx x0 /sub cvx /abs cvx 5 /le cvx /and cvx
+               {/beye /beye_m can setstandardcursor}
+               {/ptr /ptr_m can setstandardcursor}/ifelse cvx
+            ] cvx def
+      newpath
+      x0 y0 moveto
+      x0 y0
+      {				% loop until "close" to first point
+      gsave
+      can createoverlay setcanvas
+         /proc load rubberize	% "rubber-band" the proc
+      waitprocess dup aload pop
+      can setcanvas grestore
+      2 copy y0 sub abs 5 le exch x0 sub abs 5 le and
+          { closepath gsave stroke grestore pop
+            /ptr /ptr_m can setstandardcursor exit } if 
+      2 copy yprev sub abs 2 le exch xprev sub abs 2 le and
+          {pop exit} {2 copy /yprev exch store /xprev exch store}ifelse
+      lineto gsave stroke grestore
+      aload pop
+      } loop
+    [
+      getcurrenthue ColorDisplay? {/setcolor cvx}{/setgray cvx}ifelse
+      currentlinewidth /setlinewidth cvx
+      /move load /line load /curve load /close load
+      pathforall /stroke cvx
+    ] cvx
+    poly_savearray poly_ptr 3 -1 roll put
+    /poly_ptr poly_ptr 1 add store
+   end
+   } def
+%
+   /drawcurve {
+   LineWidth setlinewidth
+   getcurrenthue ColorDisplay? {setcolor}{setgray}ifelse
+   10 dict begin
+      currentlinequality /cq exch def
+      0 setlinequality
+      can setcanvas
+      CurrentEventX geteventlocation
+      /y0 exch def   /x0 exch def               % get initial point
+      /ctlpts [x0 y0] def			% Bezier control points
+      newpath
+      x0 y0
+      gsave
+      can createoverlay setcanvas
+      1 1 3                                       % loop 3 times
+      { /indx exch def
+         [ /lineto cvx
+           ctlpts /dup cvx /dup cvx /length cvx 2 /gt cvx
+           { aload length 2 sub 2 div 3 1 roll moveto {lineto} repeat
+             aload length 8 exch sub 2 div {x y} repeat
+             8 -2 roll moveto curveto}
+           { pop pop } /ifelse cvx
+         ] cvx 
+         rubberize    	          % "rubber-band" the proc
+         waitprocess dup
+         ctlpts exch append /ctlpts exch store
+         aload pop
+      } for
+      can setcanvas
+      grestore
+    cq setlinequality
+    [
+      getcurrenthue ColorDisplay? {/setcolor cvx}{/setgray cvx}ifelse
+      currentlinewidth /setlinewidth cvx
+      ctlpts /aload cvx /pop cvx 8 -2 /roll cvx
+      /moveto cvx /curveto cvx /stroke cvx
+    ] cvx dup
+    exec
+    [ exch ctlpts ]		  % save control points with curve proc
+    crv_savearray crv_ptr 3 -1 roll put
+    /crv_ptr crv_ptr 1 add store
+   end
+   } def
+%
+/paint {
+    10 dict begin
+    /proc exch def		% the painting procedure
+    /y0 exch def  /x0 exch def	% initial position
+    currentcursorlocation	% where to start
+       /y exch def  /x exch def 
+%
+    GA_constraint null ne GA_value null eq and {
+        /GA_value currentcursorlocation GA_constraint 1 eq {exch} if pop store
+    } if
+%
+    {				% fork all this off
+        createevent dup /Name /MouseDragged put expressinterest
+        createevent dup /Action /UpTransition put expressinterest
+        {			% inner paint loop
+            GA_constraint 0 eq {/x GA_value def} if
+            GA_constraint 1 eq {/y GA_value def} if
+
+% SET UP DEFERRED EXECUTION PROCEDURE ...
+
+          [getcurrenthue ColorDisplay? {/setcolor cvx}{/setgray cvx}ifelse
+           x0 y0 /moveto cvx
+           x y /proc load /exec cvx /stroke cvx] cvx dup
+           exec
+           pnt_ptr pnt_size gt
+           {pnt_savearray pnt_ptr null arrayinsert /pnt_savearray exch store
+            /pnt_size pnt_size 1 add store} if
+           pnt_savearray pnt_ptr 3 -1 roll put
+           /pnt_ptr pnt_ptr 1 add store
+
+            awaitevent begin
+              Action UpTransition eq { end exit } if
+              /x XLocation store /y YLocation store
+            end
+        } loop
+        /GA_constraint null store
+        /GA_value null store
+        [x y]
+    } fork
+    end
+} def
+%
+ /paintbegin{
+   can setcanvas
+   gsave
+   newpath
+%  clippath pathbbox scale pop pop
+   CurrentEventX geteventlocation
+%  { 8 0 360 arc random setgray fill } paint
+%  { 8 0 360 arc random 0.6 1.0 sethsbcolor fill } paint
+   getcurrenthue ColorDisplay? {setcolor}{setgray}ifelse
+   {8 0 360 arc fill} paint
+   waitprocess pop
+   grestore
+ } def
+%
+ candict begin
+   /ColorInterpCanvas Canvas
+   dictbegin
+      /LeftHue 0.0 def
+      /RightHue 1.0 def
+   dictend
+%
+   classbegin
+      /paint {  % - => -
+      10 dict begin
+      gsave
+	TheCanvas setcanvas
+        ColorDisplay? not {2 setlinewidth}if
+	Width Height ge
+	{ /dhue RightHue LeftHue sub Width div def
+	0 ColorDisplay? {1}{2} ifelse Width {
+	dup dhue mul LeftHue add ColorDisplay?
+           {1.0 1.0 sethsbcolor}{setgray}ifelse
+	0 moveto 0 Height rlineto stroke }
+	for
+	}
+	{ /dhue RightHue LeftHue sub Height div def
+	0 ColorDisplay? {1}{2} ifelse Height {
+	dup dhue mul LeftHue add ColorDisplay? 
+           {1.0 1.0 sethsbcolor}{setgray}ifelse
+	0 exch moveto Height 0 rlineto stroke }
+	for
+	} ifelse
+      0 strokecanvas
+      grestore
+      end
+      } def
+%
+      /fork {
+	/EventMgr [
+	   PointButton
+	   { candict begin
+	     TheCanvas dup setcanvas canvastotop
+	     Width Height ge
+	     {
+	       begin XLocation end
+               Width div
+	     }
+	     {
+	       begin YLocation end
+	       Height div
+             } ifelse
+	     RightHue LeftHue sub mul
+	     LeftHue add ColorDisplay?
+               {1.0 1.0 hsbcolor}if
+               setcurrenthue
+             /paint currcolcan send
+	     end }
+
+           /DownTransition TheCanvas eventmgrinterest
+
+           AdjustButton {TheCanvas false slidecanvas}
+           /DownTransition TheCanvas eventmgrinterest
+
+           MenuButton {reshapefromuser}
+           /DownTransition TheCanvas eventmgrinterest
+
+           /Damaged {/fix self send}
+           null TheCanvas eventmgrinterest
+        ] forkeventmgr def
+     } def
+%
+   classend def
+%
+   /colcan win /ClientCanvas get /new ColorInterpCanvas send def
+   colcan /TheCanvas get /Transparent false put
+   0 0 win /FrameWidth get 32 sub 20
+      /reshape colcan send
+   /map colcan send
+%
+   /CurrCol Canvas []
+   classbegin
+      /path { starpath } def
+      /paint {
+       gsave
+	TheCanvas setcanvas
+        getcurrenthue fillcanvas
+       grestore
+      } def
+   classend def
+%
+   /currcolcan win /FrameCanvas get /new CurrCol send def
+   currcolcan /TheCanvas get /Transparent false put
+   1 1 20 20 /reshape currcolcan send
+   /map currcolcan send
+%
+  end				% end of candict
+%
+   /RLPhandlers dictbegin	 	% event handlers
+%
+      0 1 127 { dup cvis [ exch /charproc /load cvx /exec cvx ] cvx def } for
+      /LeftMouseButton { /procbegin load exec } def
+      /InsertValue { /inserttext load exec } def
+%
+   dictend def
+%
+      /charshow {
+       textdict begin
+          getcurrenthue ColorDisplay? {setcolor}{setgray}ifelse
+          settextfont
+          dup dup (\r) eq exch (\n) eq or
+             { /xbgn x0 store
+               /ybgn ybgn currentfont fontheight sub store
+               xbgn ybgn moveto } if
+          textproc dup show		% dup the character for saving
+          textdamage? { pop }
+          { txtstr txtstr_ptr 3 -1 roll putinterval
+            /txtstr_ptr txtstr_ptr 1 add store } ifelse
+          currentpoint moveto
+       end
+      } def
+%
+      /inserttext {			% handles InsertValue event
+       10 dict begin
+         CurrentEventX /Action get /instrg exch def
+         0 1 instrg length 1 sub
+         { instrg exch 1 getinterval charshow } for
+       end
+      } def
+%
+      /settextfont {
+          FontName findfont
+          pointsize scalefont
+          setfont
+      } def
+%
+      settextfont
+      /procbegin /paintbegin load def
+%
+%
+  {				% to be forked
+      can setcanvas
+      can addkbdinterests pop
+%
+      createevent dup begin
+         /Name 200 dict dup
+         begin
+	   0 1 127 { dup def } for
+	   /LeftMouseButton dup def
+           /InsertValue dup def
+         end def
+         /Action /DownTransition def
+         /Canvas can def
+      end expressinterest
+%
+      systemdict /RLP currentprocess put
+%
+      {   clear
+          /CurrentEventX awaitevent def
+          CurrentEventX /Name get dup
+          RLPhandlers exch known
+            { RLPhandlers exch get exec } if
+      } loop
+  } fork clear
+%
+%

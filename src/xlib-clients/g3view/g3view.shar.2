@@ -1,0 +1,593 @@
+From sq.com!ian@sq.uucp Fri Feb  3 21:15 EST 1995
+From: fdc@cliwe.ping.de (Frank D. Cringle)
+Subject: g3view - an X11 fax viewer, V1.0, Part02/03
+Date: Tue, 31 Jan 1995 21:36:40 GMT
+Content-Length: 15754
+Content-Type: text
+Status: RO
+X-Lines: 583
+
+Submitted-by: fdc@cliwe.ping.de
+Archive-name: g3view-1.0/part02
+
+---- Cut Here and feed the following to sh ----
+#!/bin/sh
+# This is part 02 of g3view-1.0
+# ============= g3expand.c ==============
+if test -f 'g3expand.c' -a X"$1" != X"-c"; then
+	echo 'x - skipping g3expand.c (File already exists)'
+else
+echo 'x - extracting g3expand.c (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'g3expand.c' &&
+/* Expand one page of G3 fax data
+X   Copyright (C) 1990, 1995  Frank D. Cringle.
+X
+This file is part of g3view - an X11 fax viewer
+X     
+g3view is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation; either version 2 of the License, or (at your
+option) any later version.
+X     
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+General Public License for more details.
+X     
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. */
+X
+#include <stdlib.h>
+#include <stdio.h>
+#include <X11/Xlib.h>
+#include "g3.h"
+X
+#undef BITS_LOW
+/* define REVERSE if the bit-order of the fax data is lsb first */
+#ifndef REVERSE
+/* Here are 2 logically equivalent stategies for cacheing bits in a 32
+X   bit accumulator: left-aligned or right-aligned.  Choose whichever
+X   is faster on your machine.  Weep if your CPU does not have a shift
+X   matrix and does shifts 1 bit at a time (e.g. 68K).
+X   Speed addicts can win by using asm() here (e.g. 88K extu). */
+#ifdef BITS_LOW
+#define NeedBits(n)							\
+X    while (BitsAvail < (n)) {						\
+X	BitAcc = (BitAcc << 8) | *sp++;					\
+X	BitsAvail += 8;							\
+X    }
+#define GetBits(n)	(BitAcc >> (BitsAvail - (n)))
+#define ClrBits(n)							\
+X    do {								\
+X	BitsAvail -= (n);						\
+X	BitAcc &= ((1<<BitsAvail)-1);					\
+X    } while (0)
+#define DEBUG_SHOW putchar(BitAcc & (1 << (BitsAvail-1-t)) ? '1' : '0')
+#else  /* BITS_HIGH */
+#define NeedBits(n)							\
+X    while (BitsAvail < (n)) {						\
+X	BitAcc |= (*sp++ << (24 - BitsAvail));				\
+X	BitsAvail += 8;							\
+X    }
+#define GetBits(n)	(BitAcc >> (32 - (n)))
+#define ClrBits(n)							\
+X    do {								\
+X	BitsAvail -= (n);						\
+X	BitAcc <<= (n);							\
+X    } while (0)
+#define DEBUG_SHOW putchar(BitAcc & (1 << (31-t)) ? '1' : '0')
+#endif
+#else  /* REVERSE */
+#define NeedBits(n)							\
+X    while (BitsAvail < (n)) {						\
+X	BitAcc |= *sp++ << BitsAvail;					\
+X	BitsAvail += 8;							\
+X    }
+#define GetBits(n)	(BitAcc & ((1<<(n))-1))
+#define ClrBits(n)							\
+X    do {								\
+X	BitsAvail -= (n);						\
+X	BitAcc >>= (n);							\
+X    } while (0)
+#define DEBUG_SHOW putchar(BitAcc & (1 << t) ? '1' : '0')
+#endif
+X
+#ifdef DEBUG
+#define LOOKUP(wid,tab)	{						\
+X    int t;								\
+X    NeedBits(wid);							\
+X    TabEnt = tab + GetBits(wid);					\
+X    printf("%08X/%d: %s%5d\t", BitAcc, BitsAvail,			\
+X	   StateNames[TabEnt->State], TabEnt->Param);			\
+X    for (t = 0; t < TabEnt->Width; t++)					\
+X	DEBUG_SHOW;							\
+X    putchar('\n');							\
+X    ClrBits(TabEnt->Width);						\
+}
+X
+#define SETVAL(x,c) {							\
+X    *pa++ = RunLength + (x);						\
+X    printf("SETVAL: %s(%d)\t%d\n",					\
+X	   RunColour ? "black" : "white", RunLength + (x), a0);		\
+X    a0 += x;								\
+X    RunLength = 0;							\
+X    RunColour = c;							\
+}
+X
+char *StateNames[] = {
+X    "Null   ",
+X    "Pass   ",
+X    "Horiz  ",
+X    "V0     ",
+X    "VR     ",
+X    "VL     ",
+X    "Ext    ",
+X    "TermW  ",
+X    "TermB  ",
+X    "MakeUpW",
+X    "MakeUpB",
+X    "MakeUp ",
+X    "EOL    "
+};
+X
+#else
+#define LOOKUP(wid,tab)	{						\
+X    NeedBits(wid);							\
+X    TabEnt = tab + GetBits(wid);					\
+X    ClrBits(TabEnt->Width);						\
+}
+X
+#define SETVAL(x,c) {							\
+X    *pa++ = RunLength + (x);						\
+X    a0 += x;								\
+X    RunLength = 0;							\
+X    RunColour = c;							\
+}
+#endif
+X
+#define BadCode(m) {							\
+X    if (verbose) fputs(m, stderr);					\
+X    goto SKIP_EOL;							\
+}
+X
+static void
+DrawLine(pixnum *run, struct G3desc *dp, XImage *Image,
+X	 int LineNum, int iflag)
+{
+X    BITS32 *p, *p1;		/* p - current line, p1 - low-res duplicate */
+X    pixnum *r;			/* pointer to run-lengths */
+X    BITS32 pix;			/* current pixel value */
+X    BITS32 acc;			/* pixel accumulator */
+X    int nacc;			/* number of valid bits in acc */
+X    int tot;			/* total pixels in line */
+X    int n;
+X
+X    p = (BITS32 *) (Image->data + LineNum*(2-dp->Vres)*Image->bytes_per_line);
+X    p1 = dp->Vres ? NULL : p + Image->bytes_per_line/sizeof(*p);
+X    r = run;
+X    acc = 0;
+X    nacc = 0;
+X    pix = iflag ? ~0 : 0;
+X    tot = 0;
+X    while (tot < dp->xpix) {
+X	n = *r++;
+X	tot += n;
+X	if (pix)
+X	    acc |= (~(BITS32)0 >> nacc);
+X	else if (nacc)
+X	    acc &= (~0 << (32 - nacc));
+X	else
+X	    acc = 0;
+X	if (nacc + n < 32) {
+X	    nacc += n;
+X	    pix = ~pix;
+X	    continue;
+X	}
+X	*p++ = acc;
+X	if (p1)
+X	    *p1++ = acc;
+X	n -= 32 - nacc;
+X	while (n >= 32) {
+X	    n -= 32;
+X	    *p++ = pix;
+X	    if (p1)
+X		*p1++ = pix;
+X	}
+X	acc = pix;
+X	nacc = n;
+X	pix = ~pix;
+X    }
+X    if (nacc) {
+X	*p++ = acc;
+X	if (p1)
+X	    *p1++ = acc;
+X    }
+}
+X
+X
+int
+G3expand(struct G3desc *dp, XImage *Image, int iflag)
+{
+X    int EOLcnt, LineNum;
+X    pixnum *Line;
+X    int RunColour;		/* 0 = white, 1 = black */
+X    int RunLength;		/* Length of current run */
+X    pixnum *pa;			/* pointer into new line */
+X    BYTE *sp;			/* pointer into compressed data */
+X    BITS32 BitAcc;
+X    int BitsAvail;
+X    int a0;			/* reference element */
+X    int lastx = dp->xpix;	/* copy line width to register */
+X    struct tabent *TabEnt;
+X
+X    sp = dp->Data;
+X    BitAcc = 0;
+X    BitsAvail = 0;
+X    lastx = dp->xpix;
+X    Line = (pixnum *) xmalloc(lastx);
+X    for (LineNum = 0; LineNum < dp->ypix; ) {
+#ifdef DEBUG
+X	printf("\nBitAcc=%08X, BitsAvail = %d\n", BitAcc, BitsAvail);
+X	printf("-------------------- %d\n", LineNum);
+#endif
+X	RunColour = 0;
+X	RunLength = 0;
+X	pa = Line;
+X	a0 = 0;
+X	while (a0 < lastx) {
+X	    if (RunColour) {
+X		while (RunColour) { /* black first */
+X		    LOOKUP(13, BlackTable);
+X		    switch (TabEnt->State) {
+X		    case S_EOL:
+X			goto EOL;
+X		    case S_TermB:
+X			SETVAL(TabEnt->Param, 0);
+X			break;
+X		    case S_MakeUpB:
+X		    case S_MakeUp:
+X			a0 += TabEnt->Param;
+X			RunLength += TabEnt->Param;
+X			break;
+X		    default:
+X			BadCode("Unexpected state in TableB\n");
+X			break;
+X		    }
+X		}
+X		while (!RunColour) { /* then white */
+X		    LOOKUP(12, WhiteTable);
+X		    switch (TabEnt->State) {
+X		    case S_EOL:
+X			goto EOL;
+X		    case S_TermW:
+X			SETVAL(TabEnt->Param, 1);
+X			break;
+X		    case S_MakeUpW:
+X		    case S_MakeUp:
+X			a0 += TabEnt->Param;
+X			RunLength += TabEnt->Param;
+X			break;
+X		    default:
+X			BadCode("Unexpected state in TableW\n");
+X			break;
+X		    }
+X
+X		}
+X	    }
+X	    else {
+X		while (!RunColour) { /* white first */
+X		    LOOKUP(12, WhiteTable);
+X		    switch (TabEnt->State) {
+X		    case S_EOL:
+X			goto EOL;
+X		    case S_TermW:
+X			SETVAL(TabEnt->Param, 1);
+X			break;
+X		    case S_MakeUpW:
+X		    case S_MakeUp:
+X			a0 += TabEnt->Param;
+X			RunLength += TabEnt->Param;
+X			break;
+X		    default:
+X			BadCode("Unexpected state in TableW\n");
+X			break;
+X		    }
+X
+X		}
+X		while (RunColour) { /* then black */
+X		    LOOKUP(13, BlackTable);
+X		    switch (TabEnt->State) {
+X		    case S_EOL:
+X			goto EOL;
+X		    case S_TermB:
+X			SETVAL(TabEnt->Param, 0);
+X			break;
+X		    case S_MakeUpB:
+X		    case S_MakeUp:
+X			a0 += TabEnt->Param;
+X			RunLength += TabEnt->Param;
+X			break;
+X		    default:
+X			BadCode("Unexpected state in TableB\n");
+X			break;
+X		    }
+X		}
+X	    }
+X	}
+X    Loop:
+X	if (a0) {
+X	    if (RunLength)
+X		SETVAL(0, 0);
+X	    DrawLine(Line, dp, Image, LineNum++, iflag);
+X	}
+X    }
+X    goto Done;
+X SKIP_EOL:
+X    /* skip to end of line following an expansion error */
+X    while (1) {
+X	NeedBits(11);
+X	if (GetBits(11) == 0)
+X	    break;
+X	ClrBits(11);
+X    }
+X EOL:
+X    for (EOLcnt = 1; sp < dp->Data + dp->Size; EOLcnt++) {
+X	/* we have seen 11 zeros, which implies EOL,
+X	   skip possible fill bits too */
+X	while (1) {
+X	    NeedBits(8);
+X	    if (GetBits(8))
+X		break;
+X	    ClrBits(8);
+X	}
+X	while (GetBits(1) == 0)
+X	    ClrBits(1);
+X	ClrBits(1);		/* the eol flag */
+X	NeedBits(11);
+X	if (GetBits(11))
+X	    break;
+X	ClrBits(11);
+X    }
+X    if (EOLcnt > 1) {
+X	if (EOLcnt != 6) {
+X	    if (verbose) fprintf(stderr, "Line %d: bad RTC (%d EOLs)\n", LineNum, EOLcnt);
+X	    free(Line);
+X	    return 0;
+X	}
+X    Done:
+X	free(Line);
+X	return 1;
+X    }
+X    if (a0 && (a0 < lastx)) {
+X	if (RunColour)
+X	    SETVAL(0, 0);
+X	SETVAL(lastx - a0, 0);
+X    }
+X    goto Loop;
+}
+X
+static BYTE zerotab[256] = {
+X	0x88, 0x07, 0x16, 0x06, 0x25, 0x05, 0x15, 0x05,
+X	0x34, 0x04, 0x14, 0x04, 0x24, 0x04, 0x14, 0x04,
+X	0x43, 0x03, 0x13, 0x03, 0x23, 0x03, 0x13, 0x03,
+X	0x33, 0x03, 0x13, 0x03, 0x23, 0x03, 0x13, 0x03,
+X	0x52, 0x02, 0x12, 0x02, 0x22, 0x02, 0x12, 0x02,
+X	0x32, 0x02, 0x12, 0x02, 0x22, 0x02, 0x12, 0x02,
+X	0x42, 0x02, 0x12, 0x02, 0x22, 0x02, 0x12, 0x02,
+X	0x32, 0x02, 0x12, 0x02, 0x22, 0x02, 0x12, 0x02,
+X	0x61, 0x01, 0x11, 0x01, 0x21, 0x01, 0x11, 0x01,
+X	0x31, 0x01, 0x11, 0x01, 0x21, 0x01, 0x11, 0x01,
+X	0x41, 0x01, 0x11, 0x01, 0x21, 0x01, 0x11, 0x01,
+X	0x31, 0x01, 0x11, 0x01, 0x21, 0x01, 0x11, 0x01,
+X	0x51, 0x01, 0x11, 0x01, 0x21, 0x01, 0x11, 0x01,
+X	0x31, 0x01, 0x11, 0x01, 0x21, 0x01, 0x11, 0x01,
+X	0x41, 0x01, 0x11, 0x01, 0x21, 0x01, 0x11, 0x01,
+X	0x31, 0x01, 0x11, 0x01, 0x21, 0x01, 0x11, 0x01,
+X	0x70, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00,
+X	0x30, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00,
+X	0x40, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00,
+X	0x30, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00,
+X	0x50, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00,
+X	0x30, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00,
+X	0x40, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00,
+X	0x30, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00,
+X	0x60, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00,
+X	0x30, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00,
+X	0x40, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00,
+X	0x30, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00,
+X	0x50, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00,
+X	0x30, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00,
+X	0x40, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00,
+X	0x30, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x00
+};
+X
+/* count non-empty fax lines */
+int
+G3count(struct G3desc *dp)
+{
+X    BYTE *p = dp->Data;
+X    int len = dp->Size;
+X    int lines = 0;		/* lines seen so far */
+X    int empty = 1;		/* boolean: empty line? */
+X    int zeros = 0;		/* number of consecutive zero bits seen */
+X
+X    while (len--) {
+X	int prezeros = zerotab[*p++];
+X	int postzeros = prezeros >> 4;
+X	prezeros &= 0x0f;
+X	if (prezeros == 8) {
+X	    zeros += 8;
+X	}
+X	else if (zeros + prezeros >= 11) { /* EOL */
+X	    if (lines > 0 && empty)
+X		break;
+X	    lines++;
+X	    empty = 1;
+X	    zeros = postzeros;
+X	}
+X	else {
+X	    empty = 0;
+X	    zeros = postzeros;
+X	}
+X    }
+X    return lines;
+}
+SHAR_EOF
+chmod 0660 g3expand.c ||
+echo 'restore of g3expand.c failed'
+Wc_c="`wc -c < 'g3expand.c'`"
+test 10401 -eq "$Wc_c" ||
+	echo 'g3expand.c: original size 10401, current size' "$Wc_c"
+fi
+# ============= g3view.1 ==============
+if test -f 'g3view.1' -a X"$1" != X"-c"; then
+	echo 'x - skipping g3view.1 (File already exists)'
+else
+echo 'x - extracting g3view.1 (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'g3view.1' &&
+.TH g3view 1 "30 January 1995" "Frank\'s Hacks" "Local commands"
+.UC 4
+.SH NAME
+g3view \- display a g3 fax file in an X11 window
+.SH SYNOPSIS
+.PU
+.ll +8
+.B g3view
+.RB [ -fniluv ]
+.RB [ -h\fIheight ]
+.RB [ -w\fIwidth ]
+.RB [ -z\fIzoom ]
+.I filename
+.ll -8
+.br
+.SH DESCRIPTION
+.B g3view
+displays a group 3 fax file in an X11 window.  The input file must be
+a raw, single-page fax received by a fax modem with a program such as
+.B mgetty(1).
+The first (or only) page of "PC-Research"-style files produced by the
+.B ghostscript(1)
+dfaxhigh or dfaxlow drivers can also be displayed.
+X
+The fax image is rendered at full resolution and then successively
+scaled down by a linear factor of 2 prior to display until it fits on
+the screen.  The display can be controlled interactively using mouse
+and keyboard commands.  The left mouse button expands the image by a
+factor of two and the right button reduces it by the same factor.  If
+the image is bigger than the available window size, the middle mouse
+button can be used to reposition it within the window.  To see the
+right bottom corner of the image, click near in the right bottom
+corner of the window, etc.
+X
+Further interaction is controlled by single-key commands:
+.TP
+.B u
+turns the image upside down, which is useful if the fax was originally
+fed the wrong way into the machine.
+.TP
+.B l
+turns the image through 90 degrees, to view landscape text.
+.TP
+.B cursor arrows
+reposition the displayed image if it exceeds the window size.
+.TP
+.B HOME
+repositions so that the top left corner is visible.
+.TP
+.B END
+makes the bottom right corner visible.
+.TP
+.B q
+terminates the program.
+.SH OPTIONS
+.B g3view
+is designed to "do the right thing" when given just a filename.
+Special cases can be handled with the following options.
+.TP
+.B -f
+indicates a fine resolution (7.7 lines/mm) fax.  This is the default
+unless the filename begins with "fn" or a "PC-Research"-header is
+found.
+.TP
+.B -n
+indicates a normal resolution (3.85 lines/mm) fax.  Each fax line is
+duplicated in the displayed image to give approximately equal vertical
+and horizontal scales.
+.TP
+.B -h\fIheight
+specifies the number of fax lines.  If this option is missing,
+.B g3view
+counts the number of lines in the input file.
+.TP
+.B -w\fIwidth
+specifies the width of each scan-line.  The default value is 1728.
+.TP
+.B -l
+display in landscape mode.
+.TP
+.B -u
+turn the image upside down.
+.TP
+.B -i
+invert pixels (black/white).
+.TP
+.B -v
+produce some informative messages (verbose mode).
+.TP
+.B -z\fIzoom
+specifies an initial zoom factor.  A full-scale fax will usually not
+fit on the screen.  If the
+.B -z
+option is not specified,
+.B g3view
+scales the image by a power of 2 such that it is fully visible at a
+reduced size.  The user can then use the mouse buttons (see above) to
+view expanded portions of the image.
+.SH SEE ALSO
+.B g3topbm(1)
+and
+.B xv(1)
+can be used in a pipeline to view faxes.  This will usually be slower
+than using
+.B g3view,
+but
+.B xv
+has many capabilities for manipulating the image and saving it
+in other formats.
+X
+.B xli(1)
+can display a wide variety of image formats, including g3 faxes.
+Version 1.15 has difficulty recognising damaged fax files.
+X
+.B faxview.tcl,
+a simple dialog for viewing FAX messages by Ralph Schleicher
+(rs@purple.in-ulm.de).  This is a useful tool which provides a file
+menu from which incoming faxes can be selected for display with
+.B g3view.
+.SH BUGS
+.B g3view
+only processes the 1-D modified Huffman compression format.  I believe
+the class2.0 standard used by fax modems makes it difficult for a
+receiving modem to advertise 2-D capability but drop down to 1-D if
+required by the sender, although I may be mistaken here.  In any case,
+all the faxes I have received with mgetty have been 1-D.
+X
+The user interface does not comply with any known style guide.
+.SH AUTHOR
+Frank D. Cringle (fdc@cliwe.ping.de).
+SHAR_EOF
+chmod 0640 g3view.1 ||
+echo 'restore of g3view.1 failed'
+Wc_c="`wc -c < 'g3view.1'`"
+test 3864 -eq "$Wc_c" ||
+	echo 'g3view.1: original size 3864, current size' "$Wc_c"
+fi
+true || echo 'restore of g3view.c failed'
+echo End of part 2, continue with part 3
+exit 0
+-- 
+Frank Cringle			| fdc@cliwe.ping.de
+Phone +49 2304 45565		|
+
+

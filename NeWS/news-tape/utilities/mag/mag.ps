@@ -1,0 +1,104 @@
+%!
+%
+% Date: Tue, 26 Jul 88 21:28:05 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: NeWS magnifying glass
+% From: eagle!icdoc!Ist!jh@ucbvax.Berkeley.EDU  (Jeremy Huxtable)
+
+% NeWS magnifying glass
+%
+% Jeremy Huxtable
+%
+% Mon Jul 25 17:36:06 BST 1988
+
+% Class "Magnifier" implements a NeWS magnifying glass. It consists of a
+% window, which displays the area around the cursor as you move it. Pressing
+% the left mouse button stops the magnifier, while selecting "Restart" from
+% the window menu starts it off again. "Zoom in/out" from the menu do what you
+% might expect.
+%
+% This file is just under 100 lines long (including comments). The SunView
+% glass program is an object file over 3/4 Mb in size, so there are no apologies
+% for lacking features.
+%
+% No doubt hundreds of wonderful features may be added, but here is a start...
+
+/Magnifier DefaultWindow [
+    /EventMgr
+    /Factor
+]
+classbegin
+    /FrameLabel (Magnifying Glass) def
+
+    /new {
+	/new super send begin
+	    /Factor 1 def
+	    currentdict
+	end
+    } def
+
+    /map {
+	/map super send
+	magnify
+    } def
+
+    /PaintClient { magnify_it } def
+
+    /zoom { % increment => -
+	/Factor Factor 3 2 roll add store
+	Factor 0 eq { /Factor 1 store } if
+    } def
+
+    /magnify_it {
+	framebuffer newcanvas       % create source canvas
+	framebuffer setcanvas       % shape it to the same size as ClientCanvas
+	currentcursorlocation
+	exch ClientWidth 2 div sub
+	exch ClientHeight 2 div sub
+	ClientWidth Factor div ClientHeight Factor div rectpath
+	dup reshapecanvas
+	dup /Transparent true put   % make it transparent
+	dup /Mapped true put        % and map it
+
+	ClientCanvas setcanvas
+	ClientWidth ClientHeight scale
+	dup imagecanvas
+
+	/Mapped false put           % unmap the source canvas
+    } def
+
+    /magnify {
+	EventMgr null eq {
+	    /EventMgr [
+		/MouseDragged { magnify_it redistributeevent }
+		null null eventmgrinterest
+		PointButton { pop stop_it }
+		null null eventmgrinterest
+	    ] forkeventmgr def
+	} if
+    } def
+
+    /stop_it {
+	EventMgr null ne { EventMgr killprocess /EventMgr null def } if
+    } def
+
+    /DestroyClient {
+	stop_it
+	/DestroyClient super send
+    } def
+
+classend def
+
+
+/window framebuffer /new Magnifier send def
+{
+    /ClientMenu [
+	(Zoom in)   { 1 /zoom ThisWindow send }
+	(Zoom out)  { -1 /zoom ThisWindow send }
+	(Restart)   { /magnify ThisWindow send }
+	(Quit)      { currentprocess killprocessgroup }
+    ] /new DefaultMenu send def
+} window send
+
+/reshapefromuser window send
+/map window send

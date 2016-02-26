@@ -1,0 +1,10 @@
+static void finish_remote_dir P_((struct _output*, int, DATA));
+static void init_output P_((struct _output*));
+static char * next_output P_((struct _output*, int));
+static void parse_other P_((struct _output*));
+static void parse_unix P_((struct _output*));
+static void percent P_((caddr_t, XtIntervalId*));
+static int scan_other P_((struct _output*, struct _dirs*));
+static int scan_unix P_((struct _output*, struct _dirs*));
+static void status P_((char*, int));
+static int verify_mode P_((char*));

@@ -1,0 +1,315 @@
+%!
+%
+% MouSee.ps
+% By Don Hopkins, University of Maryland Human Computer Interaction Lab.
+%
+% MouSee run.
+% MouSee Spot make, You Button press when. 
+% MouSee Trail leave, You Mouse move when.
+% MouSee Trail thick leave, You Button press Mouse move and when.
+% Fun have!
+%
+% Copyright (C) 1988 by Don Hopkins. All rights reserved.
+% This program is provided for unrestricted use, provided that this 
+% copyright message is preserved. There is no warranty, and no author 
+% or distributer accepts responsibility for any damage caused by this 
+% program. 
+%
+
+{
+  /log-menu { % name => -
+    createevent begin
+      /Name /MenuLog def
+      /Action exch def
+      /ClientData self def
+      currentdict sendevent
+    end
+  } def
+
+  /activate dup load
+  dup 0 get /Activate eq { pop pop } {
+    {/Activate log-menu} exch append cvx def
+  } ifelse
+} LiteMenu send
+
+
+/MouSeeWindow DefaultWindow
+dictbegin
+  /MouseX 0 def
+  /MouseY 0 def
+  /OldMouseX 0 def
+  /OldMouseY 0 def
+  /HScale null def
+  /VScale null def
+  /LeftButtonState false def
+  /MiddleButtonState false def
+  /RightButtonState false def
+  /MouseCanvas null def
+dictend
+classbegin
+  /MouseWidth 76 def
+  /MouseHeight 100 def
+  /CornerRadius 4 def
+  /ButtonRadius 3 def
+  /ButtonWidth .1 def
+%  /ButtonHeight .4 def
+%  /ButtonY .5 def
+  /ButtonHeight .2 def
+  /ButtonY .75 def
+  /LeftColor .2 .2 .2 rgbcolor def
+  /MiddleColor .8 .8 .8 rgbcolor def
+  /RightColor .5 .5 .5 rgbcolor def
+
+  /PaintClient {
+    gsave
+      1 fillcanvas
+      draw-mouse
+    grestore
+  } def
+
+  /reshape { % x y w h => -
+    /reshape super send
+    gsave
+      framebuffer setcanvas
+      clippath pathbbox 4 -2 roll pop pop % fbw fbh
+      ClientCanvas setcanvas
+      clippath pathbbox 4 -2 roll pop pop % fbw fbh ccw cch
+      MouseHeight sub 1 max exch
+      MouseWidth sub 1 max exch
+      3 -1 roll div /VScale exch def
+      exch div /HScale exch def
+    grestore
+  } def
+
+  /mouse-path {
+    CornerRadius 0 0 MouseWidth MouseHeight rrectpath
+    .15 MouseWidth mul .1 MouseHeight mul
+    .7 MouseWidth mul .6 MouseHeight mul rectpath
+  } def
+
+  /mouse-trail {
+    DX DY rlineto
+  } def
+
+  /move-mouse { % x y => -
+    gsave
+      /OldMouseX MouseX store  /OldMouseY MouseY store
+      /MouseY exch store  /MouseX exch store
+      /DX MouseX OldMouseX sub HScale mul store
+      /DY MouseY OldMouseY sub VScale mul store
+      ClientCanvas setcanvas
+      ((%, %)   ) [MouseX MouseY] sprintf
+      dup stringbbox 8 add rectpath 1 setgray fill
+      ClientCanvas setcanvas
+      0 0 moveto
+      0 setgray show
+      OldMouseX HScale mul
+      OldMouseY VScale mul translate
+%      mouse-path
+%      gsave 1 setgray fill grestore
+%      1 setgray fill
+      MouseWidth 2 div MouseHeight 2 div moveto mouse-trail
+%      MouseWidth 0 moveto mouse-trail
+%      MouseWidth MouseHeight moveto mouse-trail
+%      0 MouseHeight moveto mouse-trail
+      0 setlinecap
+      LeftButtonState MiddleButtonState RightButtonState
+      or or 4 1 ifelse
+      gsave dup 2 add setlinewidth 1 setgray stroke grestore
+      setlinewidth 0 setgray stroke
+      MouseCanvas setcanvas
+      MouseX HScale mul MouseY 3 sub VScale mul 
+      movecanvas
+    grestore
+  } def
+
+  /draw-mouse {
+    gsave
+      MouseCanvas setcanvas
+      mouse-path
+      gsave .5 setgray eofill grestore
+      0 setgray 3 setlinewidth stroke
+      draw-buttons
+    grestore
+  } def
+
+  /draw-buttons {
+    LeftButtonState draw-left-button
+    MiddleButtonState draw-middle-button
+    RightButtonState draw-right-button
+  } def
+
+  /draw-left-button {
+    MouseWidth .2 mul draw-button
+  } def
+
+  /draw-middle-button {
+    MouseWidth .5 mul draw-button
+  } def
+
+  /draw-right-button {
+    MouseWidth .8 mul draw-button
+  } def
+
+  /mark-button { % down? color => -
+    gsave
+      framebuffer setcanvas
+      XLocation HScale mul MouseWidth 2 div add % action color x
+      YLocation VScale mul MouseHeight 2 div add % action color x y
+      ClientCanvas setcanvas
+      translate % action color
+      exch { 180 rotate } if % color
+      0 0 10 0 180 arc 1 setgray fill
+      0 0 8 0 180 arc setcolor fill %
+      0 0 8 0 180 arc 0 setgray closepath stroke
+    grestore
+  } def
+
+  /set-left-button {
+    /DownTransition eq
+    dup LeftColor mark-button
+    dup /LeftButtonState exch store
+    draw-left-button
+  } def
+
+  /set-middle-button {
+    /DownTransition eq
+    dup MiddleColor mark-button
+    dup /MiddleButtonState exch store
+    draw-middle-button
+  } def
+
+  /set-right-button {
+    /DownTransition eq
+    dup RightColor mark-button
+    dup /RightButtonState exch store
+    draw-right-button
+  } def
+
+  /draw-button { % bool x => -
+    gsave
+    MouseCanvas setcanvas
+    ButtonRadius exch
+    MouseWidth ButtonWidth mul sub  MouseHeight ButtonY mul round
+    MouseWidth ButtonWidth mul dup add  MouseHeight ButtonHeight mul round
+    rrectpath
+    gsave .25 .75 ifelse setgray fill grestore
+    1 setlinewidth 1 setgray stroke
+    grestore
+  } def
+
+  /update-mouse {
+    XLocation YLocation move-mouse
+  } def
+
+  /do-log-menu { % menu action => -
+    gsave
+      ClientCanvas setcanvas
+      MouseWidth 2 div MouseHeight 2 div translate
+      HScale VScale scale
+      0 setgray
+      { /Activate {
+	  { MenuX MenuY translate
+	    self /PieRadius known {
+	      PieRadius dup translate
+	      0 0 PieRadius 0 360 arc
+	      %gsave .5 setgray fill grestore
+	      0 setgray stroke
+	      MenuItems {
+		begin
+		  gsave
+		    0 setgray
+		    ang PieSliceWidth 2 div sub rotate
+		    0 0 moveto
+		    PieRadius 0 lineto stroke
+		  grestore
+		  X Y w h rectpath 
+		  gsave .5 setgray fill grestore
+		  stroke
+		end
+	      } forall
+	    } {
+	      0 0 MenuWidth MenuHeight rectpath
+	      %gsave .5 setgray fill grestore
+	      0 setgray stroke
+	      MenuItems {
+		begin
+		  X Y w h rectpath
+		  gsave .5 setgray fill grestore
+		  stroke
+		end
+	      } forall
+	    } ifelse
+	  } exch send
+	}
+	/PopDown {
+	  { 
+
+	  } exch send
+	}
+	/Default {
+	  pop
+	} def
+      } case
+    grestore
+  } def
+
+  /make-mouse {
+    gsave
+      ClientCanvas /Retained true put
+      /MouseCanvas ClientCanvas newcanvas def
+      MouseCanvas /Transparent false put
+      MouseCanvas /Retained true put
+      ClientCanvas setcanvas
+      mouse-path MouseCanvas
+      eoreshapecanvas
+      framebuffer setcanvas
+      currentcursorlocation
+      /MouseY exch def
+      /MouseX exch def
+      MouseCanvas setcanvas
+      MouseX HScale mul MouseY VScale mul movecanvas
+      MouseCanvas /Mapped true put
+    grestore
+  } def
+
+
+  /tracker {
+      createevent dup begin
+        /Name [
+	  /LeftMouseButton /MiddleMouseButton /RightMouseButton
+          /MouseDragged
+	  /MenuLog
+        ] def
+	/Priority 10 def
+	/Exclusivity true def
+      end expressinterest
+      createevent dup begin
+        /Name /Damaged def
+	/Canvas MouseCanvas def
+      end expressinterest
+      framebuffer setcanvas
+      { awaitevent dup begin
+        Name {
+	  /LeftMouseButton { Action set-left-button }
+	  /MiddleMouseButton { Action set-middle-button }
+	  /RightMouseButton { Action set-right-button }
+	  /MouseDragged { update-mouse }
+	  /MenuLog { ClientData Action do-log-menu }
+	  /Damaged { draw-mouse }
+	} case
+	redistributeevent
+        end
+      } loop
+  } def
+
+  /track {
+    make-mouse
+    /TrackProcess {tracker} fork def
+  } def
+classend def
+
+/win framebuffer /new MouSeeWindow send def
+/reshapefromuser win send
+/map win send
+/track win send

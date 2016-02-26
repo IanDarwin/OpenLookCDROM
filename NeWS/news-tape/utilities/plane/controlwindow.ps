@@ -1,0 +1,346 @@
+%!
+% Date: Thu, 30 Mar 89 11:44:54 EST
+% To: NeWS-makers@brillig.umd.edu
+% Subject: controlwindow without circularities
+% From: dennis!dennis@boulder.colorado.edu
+% 
+% This is newer version of the ControlWindow that I posted
+% some months ago.  The main difference is that it
+% has all of the circular references removed (I hope).
+% It requires the PlaneWindow that I also (re-)posted
+% very recently (i.e., today).
+% ==================================================
+
+systemdict /PlaneWindow known not { (planewindow.ps) run } if
+systemdict /Item known not { (NeWS/liteitem.ps) run } if
+
+%--------------------------------------------------
+
+% Create a version of the PlaneWindow which has two panels at the bottom.
+% One is for displaying messages, and the other is for accepting
+% a line of text input by the user.
+% Several methods in the msgwindow class
+% are provided to write to the display area:
+% 	1. "string DisplayString"
+% 		The DisplayString method clears the display panel
+% 		and prints the string in the panel.
+% 	2. "format argarray DisplayFormat"
+% 		The DisplayFormat method clears the display panel,
+% 		formats the argarray using format string
+% 		and prints the result in the panel.
+% 
+% Access to the reader panel is a bit more complicated: 
+% 	1. "string SetPrompt"
+% 		The SetPrompt method sets the prompt to be displayed
+% 		on the reader panel.
+% 	2. "string SetInput"
+% 		The SetInput method sets the initial value of text
+% 		on the reader panel.
+% 	3. "GetInput => string"
+% 		The GetInput method gets the current string contents
+% 		on the reader panel.
+% 	
+% Notification is handled in the following fashion.
+% The user invokes the following method to specify how he is to be notified
+% when the user hits <return> in the reader panel.
+% 	4. "[arg1 arg2 ... /operator client] SetReaderNotifier"
+% When return is hit in the reader panel, effectively the following occurs
+% 		arg0 arg1 ... /operator client send.
+% Note that this may occur asynchronously, which means that
+% the user might edit the reader panel, do a bunch of other stuff
+% and then later hit return.
+
+systemdict begin
+
+/ControlWindow	PlaneWindow
+    dictbegin
+	/Display null def	% Will be a msgitem
+	/Reader null def	% Will be a textitem
+	/MsgWinEventMgr null def
+	/ReaderAction null def
+    dictend
+classbegin
+
+    % Class Constants
+
+    % Approximate constant for figuring out the placement of 
+    % the control elements (reader,display,scrollbar)
+
+    /VerticalMeasure currentfont fontheight def	% needs to be constant
+
+    % Number of Vertical Measures used by the panels in Bottom Border
+    % See /MoveFrameControls below.
+    /VerticalCount 8 def
+
+    % Fudge factor for sizing the borderbottom (if needed)
+    /BBFudge 0 def
+
+    /BorderLeft {/BorderRight super send} def
+    /BorderBottom {
+			VerticalMeasure
+			VerticalCount
+			mul
+			/BorderBottom super send
+			add
+			BBFudge
+			add
+			round
+			} def 
+
+    /DefaultPrompt (Input:  ) def
+
+    /destroy { % - => - (destroy frame control canvases/items)
+	% break all outstanding cycles
+	{removefocus /ReaderClient null store} Reader send
+	/ReaderAction null store
+	/Display null store
+	/Reader null store
+	MsgWinEventMgr dup null ne {killprocess} if
+	/MsgWinEventMgr null store
+        /destroy super send
+    } def
+
+    /CreateFrameControls { % - => - (Create frame control canvases/items)
+        /CreateFrameControls super send
+	() (Messages) /Right nullproc FrameCanvas
+	/new MessageItem send /Display exch store
+	{/EraseToUpdate true store} Display send
+	{/ItemFrame 1 store} Display send
+	(Input: ) () /Right {} FrameCanvas	
+	/new LineTextItem send /Reader exch store
+	self {
+	    /ReaderClient exch def	% (connect to parent window)
+	    /NotifyUser {/ReaderHandler ReaderClient send} store
+	    /ItemFrame 1 store	% (to pretty up reader panel)
+	} Reader send
+    } def
+
+    /CreateFrameInterests { % - => - (Create frame control interests)
+        /CreateFrameInterests super send
+	/MsgWinEventMgr [Reader] forkitems store
+    } def
+
+    /MoveFrameControls { % - => - ([Re]set frame control shapes)
+	/MoveFrameControls super send
+	10 dict begin
+	    % track height used by each control as it is placed
+	    % order (and size) from bottom to top is :
+	    %	margin		1/2 * VerticalMeasure
+	    %	reader		3 * VerticalMeasure
+	    %	margin		1/2 * VerticalMeasure
+	    %	display		3 * VerticalMeasure
+	    %   margin		1 * VerticalMeasure
+	    %	hscrollbar	18
+	    % Total should be less than the Border bottom defined at
+	    % beginning of this class
+	    /CurrentBottom VerticalMeasure 2 div  def
+	    /Width ClientWidth 2 add def	% same for everybody
+	    /X BorderLeft 1 sub def		% same for everybody
+	    % Adjust label and object position
+	    Reader InitItemPosition
+	    % form x y w h for reader
+	    X
+	    CurrentBottom
+	    Width
+	    VerticalMeasure 3 mul
+	    /reshape Reader send
+	    /OldDisplayY /LabelY Reader send store
+	    /CurrentBottom
+		CurrentBottom /ItemHeight Reader send add
+		VerticalMeasure 2 div add	% inter control spacing
+	    store
+	    % Adjust label and object position
+	    Display InitItemPosition
+	    % form x y w h for Display
+	    X
+	    CurrentBottom
+	    Width
+	    VerticalMeasure 3 mul
+	    /reshape Display send
+	    /OldDisplayY /LabelY Reader send store
+	    /CurrentBottom
+		CurrentBottom /ItemHeight Reader send add
+		VerticalMeasure add	% inter control spacing
+	    store
+	    % now move the horizontal bar to correct location
+	    BorderLeft 1 sub
+	    CurrentBottom
+	    FrameWidth BorderRight sub BorderLeft sub 2 add
+	    /BorderBottom super send
+	    /reshape HScrollbar send
+	    /CurrentBottom
+		CurrentBottom /ItemHeight Reader send add
+		VerticalMeasure 2 div add	% inter control spacing
+	    store
+	end
+    } def
+
+    /PaintFrameControls { % - => - (Paint frame control areas)
+    gsave
+	/PaintFrameControls super send
+	[Display Reader] {
+	    dup InitItemPosition
+	    {location ItemWidth ItemHeight reshape paint} exch send pause
+	} forall
+    grestore
+    } def
+
+    /InitItemPosition { % Display/Reader => -
+	{/LabelY 0 store /ObjectY 0 store /ObjectX 0 store /LabelX 0 store}
+	exch send	
+    } def
+
+    /SetPrompt { % readerprompt => -
+	Reader InitItemPosition
+	{
+	    /ItemLabel exch store paint
+	    location ItemWidth ItemHeight reshape paint
+	} Reader send
+    } def
+
+    /SetInput { % string => -
+	Reader InitItemPosition
+	{
+	    dup /ItemObject exch store
+	    dup /ItemValue exch store
+	    21 inserttext	% send ^U to clear line
+	    inserttext		% insert string
+	} Reader send
+    } def
+
+    /GetInput { % - => string
+	/ItemValue Reader send	% (reader contents)
+	dup length string copy % return a copy of the string
+	} def
+
+    /DisplayString { % string => - (displays string in the display panel)
+	/printstring Display send
+	} def
+
+    /DisplayFormat { % format argarray => - (formats args and displays in the display panel)
+	/printf Display send
+	} def
+    
+
+    /SetReaderNotifier { % [ ar0...argn /operator target] SetReaderNotifier => -
+	/ReaderAction exch store
+	} def
+
+    /ReaderHandler{ % - => -
+	ReaderAction null ne {
+	    ReaderAction		% [args operator target]
+	    /ReaderAction null store	% clear ReaderAction data
+	    aload pop send
+	    % reset reader's prompt and input after the action is performed
+	    DefaultPrompt SetPrompt () SetInput	% [action]
+	} if
+    } def
+
+classend def % ControlWindow
+pause
+
+% --------------------------------------------------
+% The above code needs some utilities to repair deficiencies
+% in other NeWS classes
+
+% define a subclass of LiteText that has a some deficiencies removed
+
+/MyLiteText LiteText
+[]
+classbegin
+    % Original LINEKILL is will not work unless textstr and
+    % textbuf are in synchronization.
+
+    /LINEKILL {
+	0 0 moveto
+	TextBuf false charpath
+	TextFill setcolor fill TextColor setcolor
+	/Left 0 def /Right 0 def
+    } def
+
+
+    /reshape { % x0 y0 reshape => -
+	/TextY exch store /TextX exch store
+	gsave TextCanvas setcanvas TextX TextY translate % TextFont setfont
+	BeginTextEvent
+	EndTextEvent
+	grestore
+    } def
+
+classend def % MyLiteText
+
+
+% Define a textitem that only notifies at the end of a line
+
+% LiteItems and Litetext are very poorly designed, so
+% some bugfixes:
+% 1. the current version of textitem (re)creates its
+% Litetext object on every reshape.  This is wrong, it should
+% only do it once: corrected here.
+
+% 2. if the prompt is changed, the lite text item
+% does not properly reshape, and caret does not move
+% to correct position.
+
+/LineTextItem TextItem
+    []
+classbegin
+
+    % define the characters that signal end of line
+
+    /IsEOL { % char => boolean
+	[10 13 27]	% \n \r \e
+	{ % char char
+	    1 index eq {pop true exit} if
+	} forall
+	dup true ne {pop false} if
+    } def
+
+    /inserttext { % str/char -> -
+    TextBegin
+	dup type /stringtype eq {
+	    {/inserttext self send} forall
+	} { % char
+	    dup
+	    /inserttext ItemText send
+	    IsEOL {SetTextValue NotifyUser} if
+	} ifelse
+    TextEnd
+    } def
+
+    /reshape { % x y w h
+	/ItemHeight exch def /ItemWidth exch def
+
+        LabelSize /LabelHeight exch def /LabelWidth exch def
+        ItemValue ItemFont ThingSize
+            /ObjectHeight exch def /ObjectWidth exch def
+        
+        AdjustItemSize
+	/ObjectWidth ItemWidth 2 ItemBorder mul sub def
+	ObjectLoc /Right eq ObjectLoc /Left eq or {
+	    /ObjectWidth ObjectWidth LabelWidth sub ItemGap sub def
+	} if
+	
+	CalcObj&LabelXY
+	/ItemBaseline ObjectY ItemFont fontdescent add def
+	
+	% need to skip over the /reshape code of normal TextItem
+	ItemWidth ItemHeight /reshape LabeledItem supersend
+
+	ItemFont setfont % this is so the text caret will be right!
+	ItemText null eq {
+	TextBegin
+	    /ItemText
+	        ItemCanvas ObjectX ItemBaseline ItemValue
+	        /new MyLiteText send store
+	TextEnd
+	}
+	{
+	    ObjectX ItemBaseline /reshape ItemText send
+	} ifelse
+    } def
+
+classend def % LineTextItem
+pause
+
+end % systemdict

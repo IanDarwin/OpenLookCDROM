@@ -1,0 +1,294 @@
+%!
+%
+% Date: Fri, 6 May 88 09:17:06 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Pop-up message subclass for LiteWindow
+% From: voder!wlbr!mh@ucbvax.Berkeley.EDU  (Mike Hoegeman)
+% 
+% Here's a little doo-dad that subclasses LiteWindow and provides
+% a simple pop-up message (for lack of a better name) capability.
+% This is useful for things like "please wait" or "you blew it"
+% feedback information.
+% 
+% You can try it out by just cutting at the mark below and
+% running the whole thing through psh
+% 
+
+/MWindow LiteWindow
+
+dictbegin
+    /MsgBuf 		null def 	%% holds message text
+    /MsgDisplayed? 	false def 	%% is CloseControl in msg mode?
+    /MsgTimeOut		5 def
+    /LastMsgEvent	null def	%% last msg timer event sent out
+dictend
+
+classbegin
+
+%+
+% message:	(fmt_string) [args...] seconds => -
+%
+% seconds demotes the amount of time the message will stay up.
+%
+% If seconds is 0, the default value defined in MsgTimeOut will be applied.
+%
+% If seconds is less then zero , the message stays on the screen till
+% the user clicks on it. The negative value -1 is special in that it will
+% append the  advisory message "Click on Message to Erase" automatically to
+% the end of the supplied message data.
+%
+% No seconds parameter makes /message use the default timeout value.
+%-
+/message {
+4 dict begin
+gsave
+
+    %% stop any outstanding killmessage timer event we may have
+    %% so that a new message is not killed by an old one.
+    LastMsgEvent null ne {
+		LastMsgEvent recallevent
+		/LastMsgEvent null store
+    } if
+
+    dup /tmp exch def
+
+    tmp type /integertype ne tmp type /realtype ne and {
+	/seconds MsgTimeOut def
+    } {
+	/seconds exch dup 0 eq { pop MsgTimeOut } if def
+    } ifelse
+
+    FrameFont setfont
+
+    sprintf seconds -1 eq { (\n*Click On Message to Erase*) append } if
+    /MsgBuf exch store
+
+    /MsgDisplayed? true store
+
+    /mh 0 def
+    /mw 0 def
+
+    %% figure the w & h  for the message
+    MsgBuf
+    {
+	(\n)  search {
+	    stringwidth pop mw max /mw exch def
+	    pop
+	    /mh mh 1 add def
+	} {
+	    stringwidth pop mw max /mw exch def
+	    /mh mh 1 add def
+	    exit
+	} ifelse
+    } loop
+
+    /mh mh currentfont fontheight mul def
+
+    %CloseControl /Mapped false put
+
+    %% blow the canvas up to hold the message
+    FrameCanvas setcanvas
+    0 0 mw 5 add mh 4 add  rectpath CloseControl reshapecanvas
+    MoveMsgControl
+
+    seconds 0 gt {
+	%% set the killmessage timer
+	createevent dup begin
+	    /Name /KillMessage def
+	    /Action null def
+	    /Canvas FrameCanvas def
+	    /TimeStamp currenttime seconds 60 div add def
+	end
+	dup /LastMsgEvent exch store
+	sendevent
+    } if
+
+    %CloseControl /Mapped true put
+
+grestore
+end
+} def
+
+
+%+
+% killmessage:	- => -
+% zoom the message back to the normal close control
+%
+%-
+/killmessage {
+    %% kill message
+    MsgDisplayed? {
+	/MsgDisplayed? false store
+	/MsgBuf null store
+
+	%% shrink the canvas back down to a Close Control
+	gsave
+	    CloseControl setcanvas
+	    FrameFillColor fillcanvas
+	    FrameCanvas setcanvas
+	    0 0 BorderTop 1.5 sub dup rectpath CloseControl reshapecanvas
+	    CloseControl setcanvas
+	    MoveCloseControl
+	grestore
+	paintframe
+    } if
+} def
+
+/MoveCloseControl {
+    gsave
+    CloseControl setcanvas
+    BorderLeft BorderTop eq {1} {BorderLeft 1 sub} ifelse
+    FrameHeight BorderTop sub movecanvas
+    grestore
+} def
+
+/MoveMsgControl {
+    gsave
+    CloseControl setcanvas
+    clippath pathbbox /mh exch def
+    pop pop pop
+    0 FrameHeight mh sub movecanvas
+    grestore
+} def
+
+/MoveFrameControls { % - => - ([Re]set frame control shapes)
+1 dict begin
+    gsave
+    MsgDisplayed? { MoveMsgControl } { MoveCloseControl } ifelse
+	StretchControl setcanvas
+	FrameWidth BorderRight sub 0 movecanvas
+    grestore
+end
+} def
+
+%+
+% MsgPaint:	 - => -
+% Function:	Repaint the message/close control when we are in message mode
+%-
+/MsgPaint {
+5 dict begin
+gsave
+    CloseControl setcanvas
+    clippath pathbbox
+    /mh exch def /mw exch def /my exch def /mx exch def
+
+    /fh FrameFont fontheight neg def
+
+    FrameFont setfont
+    FrameTextColor fillcanvas
+    FrameFillColor setcolor
+
+    1.5 mx my mw mh insetrect rectpath stroke
+
+
+    3 mh fh add moveto
+    MsgBuf
+    {
+	currentpoint 3 -1 roll
+	(\n) search {
+	    show pop
+	    3 1 roll
+	    moveto
+	    currentpoint fh add moveto
+	} {
+	    show pop pop exit
+	} ifelse
+    } loop
+grestore
+end
+} def
+
+%%
+%% ==== overrides of our superclass needed for the pop-up message stuff ====
+%%
+
+/PaintFrameControls {
+    MsgDisplayed? not {
+	gsave CloseControl setcanvas  FrameFillColor fillcanvas grestore
+    } if
+    /PaintFrameControls super send
+    MsgDisplayed? { MsgPaint } if
+} def
+
+/CreateFrameControls {
+    /CreateFrameControls super send
+    gsave
+	FrameCanvas setcanvas
+	CloseControl /Transparent false put
+	0 0 BorderTop 1.5 sub dup rectpath CloseControl reshapecanvas
+    grestore
+} def
+
+/CreateFrameInterests {
+    %% do our superclass stuff
+    /CreateFrameInterests super send
+
+    %% Then add our message stuff...
+    %% We have the CloseControl do double-duty, close control & message
+    %% display canvas
+
+    FrameInterests begin
+	/FrameCloseEvent
+	    PointButton
+	    { MsgDisplayed? { killmessage } { flipiconic } ifelse }
+	    DownTransition
+	    CloseControl
+	    eventmgrinterest
+	def
+	/KillMessageEvent
+	    /KillMessage
+	    { MsgDisplayed? { killmessage } if }
+	    null
+	    FrameCanvas
+	    eventmgrinterest
+	def
+    end
+} def
+
+classend def
+
+
+%================= some test code ==================
+
+/mypaint {
+    1 1 1 hsbcolor fillcanvas
+} def
+
+/mm framebuffer /new MWindow send def
+
+{
+    /PaintClient { mypaint } def
+} mm send
+
+/reshapefromuser mm send
+
+/map mm send
+
+%% display a pop-up message
+
+(%%%%%%%%%)
+[
+    (0th\n)
+    (this is the message string\nthis is the second line)
+    (third line\n)
+    (fourth line\n)
+    (fifth line\n)
+    (sixth line\n)
+    (7th line\n)
+    (8th line\n)
+    (9th line\n)
+]
+8 /message mm send
+
+%% wait a little bit...
+2000 { pause pause } repeat
+
+%% write a new one over the top of it
+
+(%%%)
+[
+    (this is the second message...\n)
+    (will it get killed from the first's timeout?...\n)
+    (let's hope not!)
+]
+-1 /message mm send

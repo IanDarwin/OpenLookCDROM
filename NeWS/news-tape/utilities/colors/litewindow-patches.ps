@@ -1,0 +1,160 @@
+%!
+%
+% Date: Sun, 23 Oct 88 00:32:47 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: LiteWindow patches to allow pretty colors.
+% From: jcricket!sjs@bellcore.com  (Stan Switzer)
+% 
+% The following patches can be placed in your user.ps to fix a few
+% problems in LiteWindow.  This is pretty much a must if you want to
+% take full advantage of "setcolor" posted previously.
+% 
+% Problems addressed:
+%    1) Handles ClientFillColor properly
+%    2) Clips painting of frame fill so that it doesn't flash the client
+%       canvas first
+%    3) Cures anemia of the focus bar, giving several options.  The
+% 	default is a bar rather than a line.  On monochroms displays
+% 	this has the advantage of allowing frame and focus colors in
+% 	other than just black and white.
+%    4) On monochrome systems, makes sure there is white under frame label.
+%    5) For good measure, I've thrown in my caps-lock disable feature
+% 	since I surely can't be the only one with a clumsy left hand.
+%    6) And to make this all work for you, I've provided an "aesthetics"
+% 	sub-menu that you can hook in to your rootmenu if you wish.
+% 
+% Again, as always, enjoy!
+% 
+% Stan Switzer sjs@ctt.bellcore.com
+% 
+% P.S.:  Ignore article's reply address as my poster mungs it; use
+% signature address instead.
+% -------------------------------------------------------------
+
+%
+% modify LiteWindow
+%
+LiteWindow begin
+    % so that repaint does not flash client canvas:
+    /PaintFrameBorder { % - => - (Paint frame border areas)
+	ClientCanvas dup null eq { pop } {
+	  gsave setcanvas ClientFillColor fillcanvas grestore } ifelse
+	clippath pathbbox rectpath
+	BorderLeft .5 sub BorderBottom .5 sub
+	FrameWidth BorderLeft BorderRight add sub 1 add
+	FrameHeight BorderBottom BorderTop add sub 1 add
+	FramePath gsave FrameFillColor setshade eofill grestore
+	FrameBorderColor setshade stroke FrameBorderColor strokecanvas
+    } def
+
+    % to cure anemia of the focus bar:
+    /PaintFocus {
+	gsave
+	FrameCanvas setcanvas
+	KeyFocus? {KeyFocusColor} {FrameFillColor} ifelse setcolor
+	FocusStyle {
+	  /Lines {
+	    FocusLines aload pop {
+	        BorderTop FocusLines aload pop exch pop add
+		    div mul FrameHeight exch sub ControlSize exch moveto
+	        FrameFont setfont FrameLabel stringwidth pop
+	    	    (    ) stringwidth pop add
+	        dup FrameWidth exch sub 2 div ControlSize sub dup
+	        0 rlineto exch 0 rmoveto 0 rlineto stroke
+	    } for
+	  }
+	  /Bar {
+	    BorderTop FocusWidth mul
+	    dup BorderTop exch sub 2 div FrameHeight exch sub
+		ControlSize exch moveto
+	    FrameFont setfont FrameLabel stringwidth pop
+                    (    ) stringwidth pop add
+	    FrameWidth exch sub 2 div ControlSize sub % Focus-width x-size
+	    dup 0 rlineto exch dup neg 0 exch rlineto exch dup neg 0 rlineto
+	 	currentpoint closepath moveto
+	    0 2 index rmoveto dup FrameWidth BorderRight sub ControlSize sub
+		exch sub 0 rmoveto
+	    dup 0 rlineto exch dup neg 0 exch rlineto exch dup neg 0 rlineto
+	 	closepath
+	    fill
+	  }
+	} case
+	grestore
+    } def
+
+    % so you can read the frame label:
+    /PaintFrameLabel { % - => - (Paint frame text label)
+	FrameWidth 2 div
+	FrameHeight BorderTop sub
+            BorderTop currentfont fontascent sub 2 div
+            currentfont fontdescent
+            max 1 add add moveto
+	FrameLabel ( ) append ( ) exch append
+	dup stringwidth exch 2 div neg exch rmoveto
+	ColorDisplay? not {
+	  dup gsave false charpath LabelFillColor setcolor fill grestore
+	} if
+	show
+    } def
+
+    % focus style control variables
+    /FocusStyle /Bar def
+    /FocusWidth .4 def
+    /FocusLines [ 3 1 5 ] def	% 3 lines
+
+    % set style for a window (send to LiteWindow to change for all!)
+    /setfocusstyle { /FocusStyle exch def } def
+    /setfocuslines { /FocusLines exch def } def
+    /setfocuswidth { /FocusWidth exch def } def
+
+    /FrameFillColor 1 1 1 rgbcolor store
+    /KeyFocusColor .25 .25 .25 rgbcolor store
+    /LabelFillColor ClientFillColor def
+end
+
+%
+% Disable Caps-Lock Key
+%
+
+/CapsEnable { UI_private begin
+    /compute_shift_states exch { { 	% enabled version (original)
+	/letter_shift_state control_keys_down 0 gt 0 {
+	    caps_keys_down 0 gt shift_keys_down 0 gt or
+	    1 2 ifelse
+	} ifelse store
+	/other_shift_state control_keys_down 0 gt 0 {
+	    shift_keys_down 0 gt 1 2 ifelse
+	} ifelse store
+    } }  { { 			% disabled version
+	/other_shift_state control_keys_down 0 gt 0 {
+	    shift_keys_down 0 gt 1 2 ifelse
+	} ifelse store
+	/letter_shift_state other_shift_state store
+    } } ifelse store
+    reset_shift_state
+end } def
+
+false CapsEnable	% change "false" to "true" to enable by default
+
+% controls above customizations, include in your root menu if you wish
+/AestheticsMenu [
+    (Focus Style =>) [
+      (Bar Focus)	  {/Bar /setfocusstyle LiteWindow send }
+      (Light Line Focus)  { {[ 1 1 1 ]setfocuslines /Lines setfocusstyle}
+                            LiteWindow send }
+      (Bold Line Focus)	  { {[ 3 1 5 ]setfocuslines /Lines setfocusstyle}
+                            LiteWindow send }
+      (Bolder Line Focus) { {[ 2 1 6 ]setfocuslines /Lines setfocusstyle}
+                            LiteWindow send }
+    ] /new DefaultMenu send
+    (Shift Keys =>) [
+      (Caps Lock Enable)  { true CapsEnable }
+      (Caps Lock Disable) { false CapsEnable }
+    ] /new DefaultMenu send
+] /new DefaultMenu send def
+
+% see if user has saved favorite color scheme
+ColorDisplay? (color.ps) (mono.ps) ifelse LoadFile pop
+PaintRoot
+
+% ---------- end ----------

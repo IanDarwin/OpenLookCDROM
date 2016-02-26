@@ -1,0 +1,1 @@
+#define SERVER_VERSION "0.11"

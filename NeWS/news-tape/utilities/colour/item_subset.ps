@@ -1,0 +1,329 @@
+%			item_subset.ps			%
+%			30/6/89				%
+%			ORKB				%
+%		Copyright STC Technology Limited	%
+
+systemdict /Item known not {(NeWS/liteitem.ps) run} if
+
+systemdict begin
+	Item /destroy {/NotifyUser null store} put
+
+% ============================= ORKItem =============================
+	% I use this as my base item. It has a different font to Item
+	% and has several more access procedures (to stop me directly
+	% accessing object variables from outside the object).
+/ORKItem Item []
+classbegin
+% class variables
+	/ItemFont	/Helvetica findfont 14 scalefont def
+	/ItemFrame	1 def
+% private methods
+% public methods
+	/set_fill_color { % color | gray_level => -
+		/ItemFillColor exch def
+	} def
+	/set_border_color { % color | gray_level => -
+		/ItemBorderColor exch def
+	} def
+	/set_text_color { % color | gray_level => -
+		/ItemTextColor exch def
+	} def
+	/set_border_width { % int => -
+		/ItemFrame exch def
+	} def
+	/width { % - => int
+		ItemWidth
+	} def
+	/height { % - => int
+		ItemHeight
+	} def
+	/set_value { % true | false => -
+		/ItemValue exch store
+	} def
+	/get_value { % - => true | false
+		ItemValue
+	} def
+	/destroy { % - => -
+	} def
+classend def
+
+% ============================= Form =============================
+	% This is a compound item. It manages other items (so you
+	% don't have to keep building dictionaries and doing
+	% forkitems etc. on them). It also does some geometry
+	% management by fitting the items to a grid for which you
+	% specify the number of rows OR columns.
+/Form ORKItem
+dictbegin
+	/ItemList	null def	% [ item ... ] | dict
+	/ItemListMgr	null def
+	/NumRows	1 def		% default = 1 row,
+	/NumColumns	0 def		% n columns
+	/LayoutGrid	[ [] [] ] def	% [ [ col_width ... ] [ row_height ... ] ]
+	/Layout?	true def
+dictend
+classbegin
+% class variables
+	/XGap	10 def
+	/YGap	4 def
+% private methods
+	/PaintItem { % - => -
+		/PaintBackground self send
+		/PaintChildren self send
+	} def
+	/PaintBackground { % - => -
+	} def
+	/PaintChildren { % - => - (paint the items being managed)
+		ItemList null ne {
+			ItemList type /arraytype eq {
+				ItemList {/paint exch send pause} forall
+			} {
+				ItemList {exch pop /paint exch send pause} forall
+			} ifelse
+		} if
+	} def
+	/UnManageItems { % - => -
+		ItemListMgr null ne {ItemListMgr killprocess} if
+		/ItemListMgr null store
+	} def
+	/ManageItems { % - => -
+		/UnManageItems self send
+		ItemList length 0 gt {/ItemListMgr ItemList forkitems store} if
+	} def
+	/SetGrid { % num_rows num_columns => - (build a grid for the managed items)
+		5 dict begin
+		/num_columns exch def
+		/num_rows exch def
+		/LayoutGrid [ [] [] ] store
+		ItemList type /dicttype eq {ItemList {exch pop} forall} {ItemList} ifelse
+		/items exch def
+		0 1 num_columns 1 sub {
+			/col exch def
+			0 0 1 num_rows 1 sub {
+				num_columns mul col add dup items length lt {
+					items exch get /width exch send max
+				} {pop exit} ifelse
+			} for
+			LayoutGrid 0 get [3 -1 roll] append LayoutGrid 0 3 -1 roll put
+		} for
+		0 1 num_rows 1 sub {
+			/row exch num_columns mul def
+			0 0 1 num_columns 1 sub {
+				row add dup items length lt {
+					items exch get /height exch send max
+				} {pop exit} ifelse
+			} for
+			LayoutGrid 1 get [3 -1 roll] append LayoutGrid 1 3 -1 roll put
+		} for
+		end
+	} def
+	/FixItemsToGrid { % - => - (arrange managed items in the grid)
+		6 dict begin
+		ItemList type /dicttype eq {ItemList {exch pop} forall} {ItemList} ifelse
+		/items exch def
+		/num_rows LayoutGrid 1 get length def
+		/num_columns LayoutGrid 0 get length def
+		/xpos XGap def
+		/ypos 0 def
+		0 1 num_columns 1 sub {
+			/col exch def
+			/ypos ItemHeight store
+			0 1 num_rows 1 sub {
+				/ypos ypos LayoutGrid 1 get 3 index get sub YGap sub store
+				num_columns mul col add dup items length lt {
+					items exch get
+					xpos ypos /move 4 -1 roll send
+				} {pop exit} ifelse
+			} for
+			/xpos xpos LayoutGrid 0 get col get add XGap add store
+		} for
+		end
+	} def
+	/makestartinterests { % - => interests (returns the start interests)
+		[
+			/Damaged {/paint /Self GetFromCurrentEvent send}
+			null ItemCanvas eventmgrinterest
+			dup /Self self PutInEventMgrInterest
+		]
+	} def
+% public methods
+	/set_items { % [ item ... ] | dict => -
+		/clear_items self send
+		dup type /arraytype eq {
+			/ItemList [] store
+		} {
+			/ItemList nulldict store
+		} ifelse
+		/add_items self send
+	} def
+	/add_items { % [ item ... ] | dict => -
+		/UnManageItems self send
+		ItemList type /arraytype eq {
+			1 dict begin
+			{
+				/tmp exch cvx exec def
+				[ItemList aload pop tmp] /ItemList exch store
+			} forall
+			end
+		} {
+			/ItemList ItemList 3 -1 roll append store
+		} ifelse
+		/ManageItems self send
+		Layout? {/grid_items self send} if
+	} def
+	/remove_item { % int | name | item => -
+		/UnManageItems self send
+		2 dict begin
+		/item exch def
+		/nl [] def
+		dup type /integertype eq {
+			0 1 ItemList length 1 sub {
+				dup item ne 
+				{/nl nl [ItemList 5 -1 roll get] append store}
+				{ItemList exch get /destroy exch send} ifelse
+			} forall
+		} {
+			dup type /nametype eq {
+				/destroy ItemList 2 index get send
+				ItemList exch undef
+			} {
+				ItemList {
+					dup item ne {/nl nl [4 -1 roll] append store}
+					{/destroy exch send} ifelse
+				} forall
+			} ifelse
+		} ifelse
+		/ItemList nl store
+		/ManageItems self send
+		end
+	} def
+	/clear_items { % - => - (destroy all managed items)
+		/UnManageItems self send
+		ItemList null ne {
+			ItemList type /arraytype eq {
+				ItemList {/destroy exch send pause} forall
+			} {
+				ItemList {exch pop /destroy exch send pause} forall
+			} ifelse
+			/ItemList null store
+		} if
+	} def
+	/grid_items { % - => - (build a grid for the managed items and fix them to it)
+		NumRows 0 gt {
+			NumRows ItemList length NumRows div ceiling
+		} {
+			ItemList length NumColumns div ceiling NumColumns
+		} ifelse
+		/SetGrid self send
+		pause
+		/FixItemsToGrid self send
+	} def
+	/get_canvas { % - => item_canvas
+		ItemCanvas
+	} def
+	/get_item { % int | name => item
+		ItemList exch get
+	} def
+	/get_all { % - => [ item ... ] | dict (returns [] if no items have been added yet)
+		ItemList null ne {ItemList} {[]} ifelse
+	} def
+	/layout { % true | false => - (true = automatically grid items)
+		/Layout? exch store
+	} def
+	/set_rows { % int => - (fix the number of rows in the grid)
+		/NumRows exch store
+		/NumColumns 0 store
+		ItemList null ne {/grid_items self send} if
+	} def
+	/set_columns { % int => - (fix the number of columns in the grid)
+		/NumColumns exch store
+		/NumRows 0 store
+		ItemList null ne {/grid_items self send} if
+	} def
+	/map { % - => - (map all managed items as well as self)
+		/map super send
+		ItemList null ne {
+			ItemList type /arraytype eq {
+				ItemList {/map exch send pause} forall
+			} {
+				ItemList {exch pop /map exch send pause} forall
+			} ifelse
+		} if
+	} def
+	/unmap { % - => - (unmap all managed items as well as self)
+		ItemList null ne {
+			ItemList type /arraytype eq {
+				ItemList {/unmap exch send pause} forall
+			} {
+				ItemList {exch pop /unmap exch send pause} forall
+			} ifelse
+		} if
+		/unmap super send
+	} def
+	/destroy { % - => -
+		/clear_items self send
+	} def
+classend def
+
+% ============================= Pane =============================
+	% Same as a Form but without the geometry management.
+/Pane Form []
+classbegin
+% class variables
+% private methods
+% public methods
+	/grid_items {} def
+classend def
+
+% ============================= StaticText =============================
+	% Displays a string. NO interactive behaviour.
+/StaticText ORKItem
+dictbegin
+	/Label		nullstring def
+	/ItemFillColor	.9 def
+dictend
+classbegin
+% class variables
+% private methods
+	/PaintItem { % - => -
+		ItemFillColor fillcanvas
+		ItemFont setfont
+		ItemTextColor setshade
+		2
+		ItemHeight ItemFont fontheight sub 2 idiv ItemFont fontdescent add
+		moveto Label show
+	} def
+	/makestartinterests { % - => interests (returns the start interests)
+		[
+			/Damaged {/paint /Self GetFromCurrentEvent send}
+			null ItemCanvas eventmgrinterest
+			dup /Self self PutInEventMgrInterest
+		]
+	} def
+% public methods
+	/new { % label parentcanvas => instance
+		/new super send begin
+			/Label exch store
+			/ItemFont /Helvetica findfont 14 scalefont store
+			Label length 0 gt {/auto_shape self send} if
+			currentdict
+		end
+	} def
+	/reshape { % x y w h => -
+		ItemFont fontheight max /reshape super send
+	} def
+	/auto_shape { % - => -
+		0 0
+		gsave ItemFont setfont Label stringwidth pop 4 add grestore
+		ItemFont fontheight
+		/reshape self send
+	} def
+	/set_text { % string | int | float => -
+		256 string cvs /Label exch store
+	} def
+	/set_font { % font => -
+		/ItemFont exch store
+	} def
+classend def
+
+end % systemdict

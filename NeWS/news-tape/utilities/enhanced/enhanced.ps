@@ -1,0 +1,133 @@
+%!
+% Date: Sat, 3 Oct 87 18:18:52 EST
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Enhancements to LiteWindow
+% From: mcvax!diku!daimi!jlk@uunet.uu.net  (J|rgen Lindskov Knudsen)
+% 
+% I would like to share with you two exercises in utilizing the object oriented
+% part of NeWS to extend existing applications.  The first exercise was to
+% implement a zap-control in the upper right corner of the frame.  The second
+% exercise was to make it possible to specify the windows should be fixed-sized
+% even when they were created hidden, like as a consequence of forkunix (psterm,
+% clocks, etc.).  Following the "--- cut here ---" line is the NeWS-code, with
+% examples of its usage.
+% 
+% Happy NeWS'ing.
+% 
+% 	Jorgen Lindskov Knudsen
+% 	Computer Science Department
+% 	Aarhus University, Denmark
+% 	(e-mail: jlk@daimi.dk  -or-  jlk@daimi.uucp)
+% 
+
+systemdict begin
+
+/EnhancedWindow LiteWindow []
+
+% This window class implements fixed-sized windows, even when the window
+% is created from forkunix.
+% Furthermore, a zap-box is added to the frame controls.
+%
+% Copyright:  Jorgen Lindskov Knudsen, Comp. Sci. Dept., Aarhus Univ., Denmark
+% All non-profit utilizations of this code is allowed.
+
+classbegin
+
+% Class Variables
+
+% dictionary to contain fixed-window constraints, if any.
+	/FixedWindow nulldict def
+
+% Methods
+
+% The following methods illustrates the addition of a Zap-box in the upper
+% right corner of the window.  The ease of adding the zap-box to the existing
+% window-system, illustrates the strengths of Object oriented design.
+
+    /CreateFrameControls { % - => - (Create zap control canvas/item, too)
+   	 /CreateFrameControls super send
+  	  gsave
+		FrameCanvas setcanvas
+		/ZapControl FrameCanvas newcanvas dup begin
+		    /Mapped true def
+		    /EventsConsumed /AllEvents def
+		end def
+		0 0 BorderTop BorderRight rectpath ZapControl reshapecanvas
+  	  grestore
+    } def % CreateFrameControls
+
+    /CreateFrameInterests { % - => - (Create zap control interest, too)
+   	 /CreateFrameInterests super send
+		FrameInterests begin
+		    /FrameZapEvent
+			PointButton /destroy
+			DownTransition ZapControl eventmgrinterest def
+		end
+    } def % CreateFrameInterests
+
+    /MoveFrameControls { % - => - ([Re]set zap control shape, too)
+   	 /MoveFrameControls super send
+  	  gsave
+		ZapControl setcanvas
+		FrameWidth BorderRight sub
+		    FrameHeight BorderTop sub movecanvas
+   	 grestore
+    } def % MoveFrameControls
+
+    /PaintFrameControls { % - => - (Paint zap control area, too)
+   	 /PaintFrameControls super send
+   	 gsave
+		ZapControl setcanvas 2 4 moveto /panel_check_off showicon
+   	 grestore
+    } def % PaintFrameControls
+
+% The following two methods implements fixed-sized windows, irrespectively
+% of whether the window is created through forkunix or other means.
+
+    /reshapefromuser {	% - => -
+			% create a fixed-sized window if /FixedWindow
+			% is not the nulldict.
+			% Otherwise, let the user outline the window.
+			% If fixed-sized, the x y w h of the window is
+			% defined in the dict /FixedWindow, named
+			% /FixedX, /FixedY, /FixedW, and FixedH.
+	FixedWindow nulldict ne
+	  {FixedWindow begin FixedX FixedY FixedW FixedH end /reshape self send
+	   /FixedWindow nulldict store % remove fixed-sized window constraint
+	  }{/reshapefromuser super send } ifelse
+    } def % reshapefromuser
+
+   /fixedwindowsize { % X Y W H proc => -
+		      % Initializes FixedWindow with the extent given by
+		      % X Y W H, and then executes proc.
+		      % If another fixed-sized constraint is currently
+		      % active, this process will wait for the previous
+		      % to be utilized.
+	{ {FixedWindow nulldict ne {pause}{exit} ifelse} loop % waiting loop
+	  /FixedWindow dictbegin
+		/FixedX 7 -1 roll def /FixedY 6 -1 roll def
+		/FixedW 5 -1 roll def /FixedH 4 -1 roll def
+	  dictend store
+	  end%defines the entries to signal fixed-sized windows and their size.
+	  exec%execute proc-parameter that may instantiate fixed-sized windows.
+	} fork % spin-off instantiating process.
+    } def % fixedwindowsize
+classend def % EnhancedWindow
+
+%
+%	install EnhancedWindow as the default windows:
+%
+
+/DefaultWindow EnhancedWindow store
+
+% Fixed-sized windows are then created in the following way:
+%	1092 840 56 56
+%        	{(/usr/lib/NeWS/demo/roundclock) forkunix}
+%	/fixedwindowsize DefaultWindow send
+%
+%	0 610 528 290
+%	        {(psterm -t sun -C) forkunix}
+%	/fixedwindowsize DefaultWindow send
+
+end %  systemdict
+

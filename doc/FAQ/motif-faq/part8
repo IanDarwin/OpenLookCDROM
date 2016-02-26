@@ -1,0 +1,668 @@
+From: ksall@cen.com (Ken Sall)
+Newsgroups: comp.windows.x.motif,comp.answers,news.answers
+Subject: Motif FAQ (Part 8 of 9)
+Date: 7 May 1995 12:28:51 GMT
+Organization: none
+Approved: news-answers-request@MIT.EDU
+Expires: 20 Jun 1995 12:27:35 GMT
+Message-ID: <motif-faq/part8_799849655@rtfm.mit.edu>
+Reply-To: ksall@cen.com (Ken Sall)
+Keywords: FAQ question answer
+
+Archive-name: motif-faq/part8
+Last-modified: MAY 05, 1995
+Posting-Frequency: monthly
+Organization: Century Computing, Inc. <URL:http://www.cen.com/>
+Version: 4.4
+
+
+
+
+-----------------------------------------------------------------------------
+Subject: 192)  TOPIC: ICONIFICATION and DE-ICONIFICATION
+
+Iconification/de-iconification is a co-operative process between a client and
+a window manager.  The relevant standards are set by ICCCM.  Mwm is ICCCM
+compliant.  The toplevel (non-override-redirect) windows of an application may
+be in three states: WithdrawnState (neither the window nor icon visible),
+NormalState (the window visible) or IconicState (the icon window or pixmap
+visible).  This information is contained in the WM_STATE property but ordinary
+clients are not supposed to look at that (its values have not yet been
+standardised).  Movement between the three states is standardised by ICCCM.
+
+-----------------------------------------------------------------------------
+Subject: 193)  How can I keep track of changes to iconic/normal window state?
+
+Answer: You can look at the WM_STATE property, but this breaks ICCCM
+guidelines.  ICCCM compliant window managers will map windows in changing them
+to normal state and unmap them in changing them to iconic state. Look for
+StructureNotify events and check the event type:
+
+        XtAddEventHandler (toplevel_widget,
+                        StructureNotifyMask,
+                        False,
+                        StateWatcher,
+                        (Opaque) NULL);
+        ....
+        void StateWatcher (w, unused, event)
+        Widget w;
+        caddr_t unused;
+        XEvent *event;
+        {
+                if (event->type == MapNotify)
+                        printf ("normal\n");
+                else if (event->type == UnmapNotify)
+                        printf ("iconified\n");
+                else    printf ("other event\n");
+        }
+
+
+If you insist on looking at WM_STATE, here is some code (from Ken Sall) to do
+it:
+
+        /*
+        ------------------------------------------------------------------
+        Try a function such as CheckWinMgrState below which returns one of
+        IconicState | NormalState | WithdrawnState | NULL :
+        ------------------------------------------------------------------
+        */
+        #define WM_STATE_ELEMENTS 1
+
+        unsigned long *CheckWinMgrState (dpy, window)
+        Display *dpy;
+        Window window;
+        {
+          unsigned long *property = NULL;
+          unsigned long nitems;
+          unsigned long leftover;
+          Atom xa_WM_STATE, actual_type;
+          int actual_format;
+          int status;
+
+            xa_WM_STATE = XInternAtom (dpy, "WM_STATE", False);
+
+            status = XGetWindowProperty (dpy, window,
+                          xa_WM_STATE, 0L, WM_STATE_ELEMENTS,
+                          False, xa_WM_STATE, &actual_type, &actual_format,
+                          &nitems, &leftover, (unsigned char **)&property);
+
+            if ( ! ((status == Success) &&
+                        (actual_type == xa_WM_STATE) &&
+                        (nitems == WM_STATE_ELEMENTS)))
+                {
+                if (property)
+                    {
+                    XFree ((char *)property);
+                    property = NULL;
+                    }
+                }
+            return (property);
+        } /* end CheckWinMgrState */
+
+
+One problem with testing WM_STATE is that a race condition is possible;
+immediately after testing it, it could change, and the logic proceeds to
+behave as if it were in the old state.
+
+-----------------------------------------------------------------------------
+Subject: 194)  How can I check if my application has come up iconic?  I want
+to delay initialization code and other processing.
+
+Answer: Use XtGetValues and check for the XmNinitialState value of the
+toplevel shell just before XtMainLoop. -- IconicState is iconic, NormalState
+is not iconic.
+
+
+-----------------------------------------------------------------------------
+Subject: 195)  How can I start my application in iconic state?
+
+Answer: Try this from the command line:
+
+        application -iconic
+
+Using the resource mechanism, set the resource XmNinitialState to IconicState
+of the toplevel shell widget (the one returned from XtInitialise).
+
+-----------------------------------------------------------------------------
+Subject: 196)  How can an application iconify itself?
+
+Answer: In R4 and later, use the call XIconifyWindow.
+
+For R3, send an event to the root window with a type of WM_CHANGE_STATE and
+data IconicState.
+
+        void
+        IconifyMe (dpy, win)
+        Display *dpy;
+        Window win;     /* toplevel window to iconify */
+        {
+                Atom xa_WM_CHANGE_STATE;
+                XClientMessageEvent ev;
+
+                xa_WM_CHANGE_STATE = XInternAtom (dpy,
+                                        "WM_CHANGE_STATE", False);
+
+                ev.type = ClientMessage;
+                ev.display = dpy;
+                ev.message_type = xa_WM_CHANGE_STATE;
+                ev.format = 32;
+                ev.data.l[0] = IconicState;
+                ev.window = win;
+
+                XSendEvent (dpy,
+                        RootWindow (dpy, DefaultScreen(dpy)),
+                        True,
+                        (SubstructureRedirectMask | SubstructureNotifyMask),
+                        &ev);
+                XFlush (dpy);
+        }
+
+
+-----------------------------------------------------------------------------
+Subject: 197)  How can an application de-iconify itself?
+
+Answer: XMapWindow (XtDisplay (toplevel_widget), XtWindow (toplevel_widget)).
+
+-----------------------------------------------------------------------------
+Subject: 198)+ Why doesn't MWM display an iconify button on my dialog windows?
+
+[Last modified: May 95]
+
+Answer: MWM (and some other window managers) does not allow transient windows
+to be iconified.  Transients are automatically unmapped when the main shell is
+iconified and they are re-mapped when the main shell is restored.  If you do
+not want this transient behavior, you should use top a TopLevelShell widget
+instead of a XmDialogShell widget for your windows.
+
+Thanks to Ken Lee, kenton@rahul.net
+
+-----------------------------------------------------------------------------
+Subject: 199)  TOPIC: SPECIALIZED WIDGETS
+
+[Last modified: Jan 95]
+
+This section describes a few specialized widgets people have asked about.  A
+_far_ more comprehensive illustrated list is maintained by John L. Cwikla
+(cwikla@wri.com).  His list covers these widget categories:
+
+        Complete Listing
+        Composite Widgets
+        Non-Composite Widgets
+        Motif 1.1 Compatible
+        Motif 1.2 Compatible
+        Athena Compatible
+        FWF Widget Set
+        By Author
+        Shareware Widgets
+        Commercial Widgets
+
+For John L. Cwikla's Widget FAQ Home Page, WWW users should see:
+
+        http://www.wri.com/~cwikla/widget.html
+
+The Widget FAQ is also available in ASCII as:
+
+        ftp://ftp.x.org/contrib/faqs/Widget.FAQ.Z
+
+The Widget FAQ contains a listing of widgets:
+
+        http://www.wri.com/~cwikla/cats/listing.html
+
+If you don't have access to the World Wide Web, Cwikla's Widget FAQ (sans
+pictures) can be obtained from ftp.x.org:
+
+        /contrib/faqs/Widget.FAQ.Z
+
+
+-----------------------------------------------------------------------------
+Subject: 200)  Where can I get a Table widget? Matrix widget? Spreadsheet
+widget?
+
+[Last modified: Mar 95]
+
+Answer: Kee Hinckley (now: nazgul@utopia.com) recently informed this FAQ
+maintainer that he will put the Table widget on ftp at ftp.utopia.com
+_approximately_ at the end of September or early October, 1994. He is in the
+process of addressing some issues concerning Motif 1.2 and higher with respect
+to the Table widget.  The Widget Creation Library (Wcl) also has a version of
+the Table widget.
+
+In the Xbae README, Andrew Wason (aw@bae.bellcore.com) writes: XbaeMatrix is a
+Motif widget which presents an editable array of string data to the user in a
+scrollable table similar to a spreadsheet. The rows and columns of the Matrix
+may optionally be labeled. Also, a number of "fixed" leading rows or columns
+may be specified - these behave similarly to the labels. While XbaeMatrix
+looks and acts like a grid of XmTextField widgets, it actually contains only
+one XmTextField.  This means that XbaeMatrix widgets with hundreds or
+thousands of rows have much less overhead than they would if they used an
+XmTextField for each cell. XbaeMatrix has callbacks for doing field validation
+and customizing traversal. It allows cells to be assigned independent colors.
+It allows rows, columns and regions of cells to be selected (highlighted).
+The matrix can be dynamically grown or shrunk by adding and deleting rows and
+columns at any position.
+
+For Xbae code and documentation via ftp, see the various files
+ftp.x.org:/contrib/widgets/motif/Xbae-*.  Or from the URL:
+ftp://ftp.x.org/contrib/widgets/motif/ , get xbae.tgz and Xbae-3.8-*.
+
+Expert Database Systems, Inc., 377 Rector Place, Suite 3L New York, NY 10280.
+Phone: (212) 783-6981
+
+has a very comprehensive table widget that uses both Motif scrollbars or a
+"virtual" scrollbar showing a miniature version of the entire spreadsheet.
+Allows for different width columns, changing colors in each cell.  Only one
+X-Window is used so as to reduce the amount of system resources used.  Contact
+Ken Jones email: ken@mr_magoo.sbi.com)
+
+-----------------------------------------------------------------------------
+Subject: 201)* Where can I get a bar graph widget?
+
+[Last modified: May 95]
+
+Answer: You can fake one by using for each bar a scroll bar or even a label
+which changes in size, put inside a container of some kind.
+
+Try the StripChart widget in the Athena widget set. Set the XtNupdate resource
+to 0 to keep it from automatically updating.
+
+The comp.windows.x FAQ mentions a bar graph widget.
+
+Expert Database Systems, Inc.  sells a bar graph widget as well as a multi-
+line graph with automatic scaling, a 3-D surface graph, and a high/Low graph
+with two lines for moving averages.  Contact Ken Jones Expert Database
+Systems, Inc., 377 Rector Place, Suite 3L New York, NY 10280.  Phone: (212)
+783-6981
+
+
+The Xtra XWidget library contains a set of widgets that are subclassed from
+and compatible with either OSF/Motif or OLIT widgets.  The library includes
+widgets that implement the following:
+
+   Spreadsheet
+   Bar Graph
+   Stacked Bar Graph
+   Line Graph
+   Pie Chart
+   XY Plot
+   Hypertext
+   Hypertext based Help System
+   Entry Form with type checking
+
+Contact Graphical Software Technology at 310-328-9338  (info@gst.com) for
+information. [NOTE: It has been reported that this company has not responded
+to phone or email for several months. If anyone knows the status of the Xtra
+widgets or of GST, please send email to ksall@cen.com.]
+
+
+The XRT/graph widget, available for Motif, XView and OLIT, displays X-Y plots,
+bar and pie charts, and supports user-feedback, fast updates and PostScript
+output. Contact KL Group Inc. at 416-594-1026 (xrt_info%klg@uunet.ca)
+
+The product Xmath, made by Integrated Systems Inc. is a product which has
+interactive 2d and 3d graphics for bar,strip,line,symbol,
+surface,contour,etc... that costs $2500.00 for commercial use and a mere
+$250.00 for university use that also has complete numerics capabilities, an
+easy to use debugger, a complete high level language, a spreadsheet, a motif
+gui access capability, and much more all created on top of motif.
+
+You can either email to xmath-info@isi.com or call (408)980-1500.
+
+Digital Equipment Corporation (DEC) provides the following product NetEd: "The
+network editor widget is a Motif toolkit conforming widget that applications
+can use to express complex interrelationships graphically in the form of
+networks or graphs. The network editor supports interactive or application-
+controlled creation and editing of directed graphs or networks."
+
+
+ACE/gr is an X based XY plotting tool implemented with a point 'n click
+paradigm.  A few of its features are:
+
+   * Plots up to 10 graphs with 30 data sets per graph.
+   * Data read from files and/or pipes.
+   * Graph types XY, log-linear, linear-log, log-log, bar,
+        stacked bar charts.
+
+it is available from
+
+        ftp.ccalmr.ogi.edu (presently amb4.ccalmr.ogi.edu)
+
+with IP address 129.95.72.34. The XView version (xvgr) will be found in
+/CCALMR/pub/acegr/xvgr-2.09.tar.Z and the Motif version (xmgr) in
+/CCALMR/pub/acegr/xmgr-2.09.tar.Z.  Comments, suggestions, bug reports to
+pturner@amb4.ccalmr.ogi.edu (if mail fails, try pturner@ese.ogi.edu). Due to
+time constraints, replies will be few and far between.
+
+Caterpillar, Inc. sells the ENGOTS (Engineering Graphic Object Tool Set)
+widget set for Motif.  The library includes interactive plotting, built in
+units conversion, copy-cut-past, postscript output, ... :
+
+
+    XY/contour Plot (configurable to Bar plots)
+    XY/contour Strip Charts
+    Polar Plot
+    Custom Interactive Drawing (using provided Drawing Package)
+    float/int data entry (Motif Text "Look and Feel") with range checking
+
+
+Contact Paul Mauschbaugh, Caterpillar, Inc. at 309-578-4084 (mush@cat.com) for
+more information.
+
+-----------------------------------------------------------------------------
+Subject: 202)  Is there a graph widget in which you can add vertices and edges
+and get automatic updating?
+
+[Last modified: March 93]
+
+Answer: The XUG FAQ in comp.windows.x includes information on graph display
+widgets.  There is also an implementation in the Asente/Swick book.
+
+  From Martin Janzen: "You could have a look at DataViews, from V.I.
+   Corporation.  This package is used mainly to display a variety of graph
+   drawings (eg. bar, line, pie, high/low, and other charts), and to update
+   the graphs as information is received from "data sources" such as files,
+   processes (through pipes), or devices.
+
+   However, it also provides "node" and "edge" objects which can be used
+   when working with network graphs.  The DV-Tools function library
+   provides routines which traverse a graph, count visits to each node or
+   edge, mark nodes or edges of interest, and so on.  A node or edge object
+   can have an associated "geometry object" (such as a symbol or a line),
+   which represents that node or edge.
+
+   Drawbacks: There's no automatic positioning algorithm; when you add a
+   node or edge, you have to create and position its geometry object
+   yourself.  Also, this isn't a set of add-on widgets; you can either have
+   DataViews create an X window (ie. a separate shell), or you can create
+   your own XmDrawingArea and use DataViews to update its window when
+   expose events are received.  Finally, the package is quite expensive,
+   and there is a run-time charge.
+
+   The vendor's address is:
+     V.I. Corporation,
+     47 Pleasant Street,
+     Northampton, MA  01060,
+            Email: vi@vicorp.com, Phone: (413) 586-4144, Fax:   (413) 584-2649
+
+   or
+
+     V.I. Corporation (Europe) Ltd.,
+     First Base, Beacontree Plaza,
+     Gillette Way,                      Email: viesales@eurovi.uucp
+     Reading, Berkshire  RG2 0BP"
+   Phone: +44 734 756010,      Fax:   +44 734 756104
+
+Craig Timmerman wrote: Just wanted others to know that there is a third
+competitor in what may be come a big market for generic APIs.  The product is
+called Open Interface and Neuron Data is the vendor.  Neuron has added some
+extra, more complex widgets to their set.  The two most notable are a table
+and network widget.  [...] I believe that the network widget got its name from
+its ability to display expert system networks that Neuron's AI tools needed.
+It would be more aptly named the graph widget.  It can display and manipulate
+graphs of various types (trees, directed graphs, etc).  Contact is
+
+        Neuron Data
+        156 University Avenue
+        Palo Alto,  CA  94301
+        (415) 321-4488
+
+
+prism!gt3273b@gatech.edu  (RENALDS,ANDREW THEODORE) posted a set of public
+domain routines for graph drawing.  Contact him for a later set.
+
+Ramon Santiago (santiago@fgssu1.fgs.slb.com) wrote: HP has released source
+code for XmGraph and XmArc, part of the InterWorks library, which does exactly
+this. The sources can be obtained by contacting Dave Shaw,
+librarian@iworks.ecn.uiowa.edu. A few trivial source code changes need to be
+made to get these widgets to compile under Motif 1.2.
+
+Free DAG - directed acyclic graph drawing software in motif environment is
+available. Please send a note to address below if you want it:
+
+Budak Arpinar, TUBITAK Software Research & Development Center, Ankara,
+TURKIYE, E-mail : C51881@TRMETU.BITNET
+
+
+-----------------------------------------------------------------------------
+Subject: 203)* Is there a help system available, such as in Windows 3?  Is
+there a Motif based hypertext system?
+
+[Last modified: May 95]
+
+Answer: There are many hypertext-like help systems.
+
+HTML Widget from NCSA:
+
+The NCSA Mosaic for X package contains an HTML widget which is freely
+available and is the main vehicle for viewing HTML documents in the Mosaic
+program. It has callbacks for anchor hits, selections, etc and many many
+resources for customizing the viewing area of your hypertext documents.  See
+"Where can I get the HTML widget" above.
+
+GWHIS:
+
+There is a product from Quadralay Corporation, called the Global-Wide Help &
+Information Systems (GWHIS).
+
+from a press release: AUSTIN, TX (March 3, 1994) Quadralay Corporation today
+announced its newest software development tool, Global Wide Help & Information
+System (GWHIS).  GWHIS allows third party application developers to add online
+documentation and context sensitive help to their applications like never
+before.  This documentation may consist of plain text, rich format text,
+hypertext, images, audio, and/or video animation and may easily be distributed
+either locally or over a wide area network such as the Internet.
+
+GWHIS consists of two primary components.  An application programming
+interface (API), and a hypermedia viewer (based on technology licensed from
+the NCSA Mosaic project).  Several ancillary conversion programs are also
+available allowing end users to easily convert existing documentation into
+GWHIS' native HTML format.
+
+GWHIS is available on the following platforms: SPARC SunOS 4.1.x, SPARC
+Solaris 2.x, INTEL SCO Open Desktop, INTEL Solaris 2.x, HP 9000/700, and the
+RS/6000. Support for additional platforms (including MS Windows and Macintosh)
+is under consideration.  Fully functional evaluation copies of this software
+are available upon request or via anonymous ftp from ftp.quadralay.com.
+
+Brian Combs Quadralay Corporation combs@quadralay.com
+
+
+Bristol Technology have a hypertext system HyperHelp with the look-and-feel of
+Motif.  HyperHelp 4.0 is available now and includes support for MIF, RTF (Word
+6.0) and SGML.  (The OpenLook look-and-feel is no longer supported).
+
+        Bristol Technology, Inc.
+        241 Ethan Allen Highway
+        Ridgefield, CT  06877
+        (203) 438-6969 (phone)
+        (203) 438-5013 (fax)
+        info@bristol.com
+
+Demos are available by anonymous ftp from ftp.bristol.com (192.246.192.2) in
+/pub/Demos/HyperHelp.
+
+There was a posting of a motif hypertext-widget to comp.sources.x (Author:
+B.Raoult ( mab@ecmwf.co.uk ) ).  It had the facility to read in helptext from
+a file.
+
+Francois Felix Ingrand (felix@idefix.laas.fr) wrote: I have translated the
+Info AW (originally written by Jordan Hubbard) to Motif. It is a Widget to
+browse Info files (format used by GNU for their various documentations). I use
+it as the help system of various tool I wrote.  The ftp site is now:
+ftp.laas.fr (140.93.0.15) and the file is: /pub/ria/prs/xinfo-motif.tar.gz or
+use the URL:
+
+        ftp://ftp.laas.fr/pub/ria/prs/xinfo-motif.tar.gz
+
+
+Form Scott Raney (raney@metacard.com) MetaCard is a commercial package that
+can be used to implement hypertext help.  The text fields support multiple
+typefaces, sizes, styles, colors, subscript/superscript, and hypertext links.
+It has a Motif interface, and a template for calling it from an Xt/Motif
+application is included.  You can FTP a save-disabled distribution from
+ftp.metacard.com or from world.std.com.  For more info, email to
+info@metacard.com.
+
+
+The Motifation GbR also provides a hypertext-helpsystem named 'XpgHelp'.
+(Motif look-and-feel / features like those known from MS Windows Help )
+Information about XpgHelp and a free demo version can be obtained via:
+http://www.uni-paderborn.de/fachbereich/AG/szwillus/xpghelp/index.html
+
+
+XpgHelp is distributed by:
+
+           Motifation GbR
+           Geroldstrasse 38
+           33098 Paderborn
+           Germany
+           +49 (0) 5251 25633 (phone)
+           email: griebel@uni-paderborn.de
+
+
+XpgHelp has nearly the same features like HyperHelp: (multiple fonts, graphics
+in b&w and color, different styles, tabs, links, short links, notepad, ...)
+
+The Interface Builder MOTIFATION uses XpgHelp as its hypertext helpsystem.
+
+-----------------------------------------------------------------------------
+Subject: 204)  Is there a canvas widget or drawing widget for graphical
+display?
+
+[Last modified: Oct 94]
+
+Answer: Groupe Bull - Koala Project has a Motif Canvas Widget.  This widget is
+intended to provide graphical display (lines, rectangles, icons,...) and
+direct manipulation services (select, move, resize,...) for Xt based
+applications. This widget is intended to be include in a MOTIF application,
+but you can generate an Athena widget (though demos are only using MOTIF). The
+widget is shipped with an objects library based on a C object oriented model
+called KLONE (use of the Xt object model would dramaticaly increase
+application load time and KLONE provides garbage collection).  Features:
+
+- uses an improved C small object-oriented model (garbage col. + polymorphism)
+- multi-view: an object may be shared between two views (canvases)
+- Multi-display: two views may be on different displays / screens
+- double buffering for smooth animations
+- easy to use "just know how to use widgets"
+- small objects
+- garbage collection
+- Tag object to define graphical object appearance
+- define tag's attributes with Xt resources
+- dispatch mechanism uses Xt -> you can set Xt translations on a graphic obj
+- Interactor objects to define a complete behavior
+- unlimited Zoom / Unzoom
+- classes: Line, Rect, Filled rect, Xpm Icon, Group, Ellipse, Anchor, Link
+- mouse interactors: move, resize
+
+Requirements: MOTIF, XPM
+
+See http://zenon.inria.fr:8003/koala/koala.html and
+ftp://avahi.inria.fr/pub/widgets/canvas-widget-1.7.tar.gz
+
+Thanks to Jean-Michel.Leon@sophia.inria.fr.
+
+-----------------------------------------------------------------------------
+Subject: 205)+ How can I create a transparent widget?
+
+[Last modified: May 95]
+
+Answer: The simplest way is probably to use the SHAPE protocol extension.  The
+xeyes, xlogo, and oclock demo programs in X11R5 (and later) are good examples
+of using SHAPE with widgets.
+
+Thanks to Ken Lee, kenton@rahul.net
+
+-----------------------------------------------------------------------------
+Subject: 206)  TOPIC: CREATING WIDGETS
+
+[Looking for submissions: questions asked and answered here, folks!]
+
+-----------------------------------------------------------------------------
+Subject: 207)  What are some good references for creating widgets (subclassing
+widgets)?
+
+[Last modified: Feb 95]
+
+Answer: Ken Sall (ksall@cen.com) writes:
+
+If you have Motif 2.0, see the new document provided by OSF called "OSF/Motif
+Widget Writer's Guide" in the directory: doc/widgetGuide/Output/draft/ps.
+
+If you have Motif 1.*, try these references (details in the BOOKS topic):
+
+    Asente, Paul J., and Swick, Ralph R.,
+    X Window System Toolkit, The Complete Programmer's Guide and Specification.
+
+    Nye, Adrian & O'Reilly, Tim,
+    X Toolkit Intrinsics Programming Manual.Motif Edition, Volume 4M
+
+    Flanagan, David, Editor,
+    X Toolkit Intrinsics Reference Manual, Volume 5
+
+
+Alex Fridman (alex@genlogic.com) writes:
+
+For graphical widgets, you may try the Generic Logic Toolkit (GLG Widgets). It
+allows custom graphical widgets (such as Graphs and Controls) to be created
+interactively from the supplied templates using the GLG 3D Graphical Editor. A
+Demo is available by ftp from:
+
+   ftp://ftp.netcom.com/pub/glg/
+
+David Suller of Generic Logic, Inc. adds:
+
+When used in an application, a GLG Widget may be animated with real-time data
+via the resource mechanism or used as a graphical server receiving and
+displaying data from several local or remote processes using the built-in
+Inter-Client Communication Server.
+
+David Suller                  phone:  (617)254-4153
+Generic Logic, Inc.           FAX:    (617) 254-2746
+P.O. Box 35606                email:  glg@genlogic.com
+Brighton, MA 02135-0006       ftp:    ftp.netcom.com:/pub/glg/
+
+
+joe shelby (jshelby@autometric.com) writes:
+
+Alastair Gourlay (alastair.gourlay@eng.sun.com), a member of the technical
+staff at Sun Microsystems and a former member of the Motif Development group
+at OSF, has written 2 articles for _The X Resource_, published by O'Reilly and
+Associates.
+
+The first, "Writing Motif Widgets : A Pragmatic Approach" can be found in
+Issue 6.  It covers writing a XmPrimitive-derived widget, deriving from that
+widget, and writing a XmManager-derived widget.  Also included are brief
+summaries of several _Xm private functions for widget writers, how to use the
+Motif 1.2 Representation Type functions, and adding the widgets to Mrm/Uil.
+
+The second, "The One-Minute Manager : Custom Motif Layout Widgets Made Easy"
+can be found in Issue 10.  It expands and greatly simplifies creating
+composite widgets for Motif.  Gourlay has created and released a new widget,
+the XmpGeometry widget that handles all of the geometry management issues for
+you and provides convenience functions for determiningparent and child
+widgets' perfered sizes.  All the programmer has to do to derive from this
+widget is create the new resources and constraints and implement 2 new class
+methods to override the XmpGeometry's methods.  Included with the XmpGeometry
+class are 3 example derived widgets.
+
+The code for these widgets is available at
+
+ftp://ftp.uu.net/published/oreilly/xresource/issue6/Subclassing.tar.Z
+ftp://ftp.uu.net/published/oreilly/xresource/issue10/OneMinuteManagers.tar.Z
+
+Donald L. McMinds and Joseph P. Whitty have written a book, _Writing Your Own
+OSF/Motif Widgets_, published by Prentice Hall for Hewlett-Packard
+Professional Books.  Both authors work at HP's Workstation Systems Division,
+and have been involved with Motif developement since its beginnings.  The book
+(which is mostly code with explanations) gives details on writing
+XmPrimitive-derived, XmManager-derived, and XmGadget-derived widgets, with one
+example widget for each.  In addition, the book provides "man-pages" for
+several _Xm private functions for programmer convenience.
+
+The code for these widgets is available at
+
+        ftp://hpcvaal.cv.hp.com/readonly/book_files/wr_widgets.tar.Z
+
+
+-----------------------------------------------------------------------------
+END OF PART EIGHT

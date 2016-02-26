@@ -1,0 +1,189 @@
+#!/bin/sh
+#
+# Date: 7 Aug 89 17:04:49 GMT
+# From: spectral!sjs@bellcore.com  (Stan Switzer)
+# Subject: UUNET face-file display program
+# To: news-makers@brillig.umd.edu
+# 
+# This program displays UUNET face files in NeWS windows.
+# 
+# Enjoy,
+# 
+# Stan Switzer  sjs@ctt.bellcore.com
+# 
+# showface: Display UUNET face files
+#
+# Copyright (C) 1989 by Stan Switzer. All rights reserved.
+# This program is provided for unrestricted use, provided that this 
+# copyright message is preserved. There is no warranty, and no author 
+# or distributer accepts responsibility for any damage caused by this 
+# program.
+#
+# Stan Switzer  sjs@ctt.bellcore.com
+#
+
+FILE= FRAME=true
+RETAIN=false
+
+while test -n "$1"; do case $1 in
+	-f	) FRAME=false;;
+	-r	) RETAIN=true;;
+	*	) FILE=$1;;
+esac; shift; done
+
+FACEDIRS="$FACEDIRS `pwd` $HOME/faces"
+
+FACEFILE=
+case "$FILE" in
+/*|./*	)	FACEFILE=$FILE;;
+*	)	for DIR in $FACEDIRS
+		do
+		    if test -r "$DIR/$FILE"
+		    then FACEFILE="$DIR/$FILE"
+		    fi
+		done;;
+esac
+
+if test -n "$FACEFILE"; then FILE="$FACEFILE"; fi
+
+if test -n "$FILE" -a "X$FILE" != "X-"; then exec <$FILE; fi
+
+{
+    cat <<-!EOF!
+/FirstName () def
+/LastName () def    
+/E-mail () def
+/Buffer 256 string def
+/frameflag $FRAME def
+/Retain? $RETAIN def
+/AspectRatio null def    
+{
+    {
+	/Line currentfile Buffer readline not { FOO } if def
+	Line () eq { exit } if
+	Line token not { FOO } if { % stoken from Don Hopkins
+	    /PicData: {
+		cvx exec /Depth exch def /Height exch def /Width exch def
+	    }
+	    /Image: {
+		cvx exec pop div /AspectRatio exch def
+	    }
+	    /FirstName: { /FirstName exch dup length string copy def }
+	    /LastName: { /LastName exch dup length string copy def }
+	    /E-mail:   { /E-mail exch dup length string copy def }
+	    /Default   { pop }
+	} case
+    } loop
+    /FullName FirstName ( ) append LastName append def
+    /ImageBuffer Width string def
+    /ImageCanvas Width Height Depth [ Width 0 0 Height neg 0 Height ] {
+	currentfile ImageBuffer readhexstring not { FOO } if
+    } buildimage def
+} exec
+!EOF!
+    cat
+    cat <<-!EOF!
+/FaceWindow DefaultWindow [ /Image ] classbegin
+    % general-purpose constrained reshape methods (feel free...)
+    
+    % reshape constraints
+    /ClientMinWidth 1 def
+    /ClientMinHeight 1 def
+    /ClientAspect null def	% null -or- w/h
+    /ClientAspectPlusW 0 def	% additional X over aspect reqmts
+    /ClientAspectPlusH 0 def	% additional Y over aspect reqmts
+    /FrameMinWidth { ClientMinWidth BorderLeft add BorderRight add } def
+    /FrameMinHeight { ClientMinHeight BorderBottom add BorderTop add } def
+    /GetClick { % - => x y
+	0 0 {moveto 40 dup neg rect} getanimated waitprocess aload pop
+    } def
+    /GetRect { % x y => x y
+	{   
+	    FrameMinWidth dup x x0 sub abs le { pop } {
+		/x exch x0 exch x x0 lt { sub } { add } ifelse store
+	    } ifelse
+	    FrameMinHeight dup y y0 sub abs le { pop } {
+		/y exch y0 exch y y0 le { sub } { add } ifelse store
+	    } ifelse
+	    ClientAspect null ne {
+		x x0 sub abs BorderLeft sub BorderRight sub
+		    ClientAspectPlusW sub 1 max
+		y y0 sub abs BorderBottom sub BorderTop sub
+		    ClientAspectPlusH sub 1 max
+		2 copy div ClientAspect lt {  % W/H < aspect?
+		    exch pop ClientAspect mul cvi
+		    /x exch BorderLeft add BorderRight add ClientAspectPlusW
+			add x0 exch x x0 lt { sub } { add } ifelse store
+		} {
+		    pop ClientAspect div cvi
+		    /y exch BorderBottom add BorderTop add ClientAspectPlusH
+			add y0 exch y y0 lt { sub } { add } ifelse store
+		} ifelse
+	    } if
+	    x y
+	    x0 y lineto lineto x y0 lineto closepath
+	    1 index x eq 1 index y eq or
+		{ pop pop }
+		{ moveto x y lineto } % to show modifications!
+		ifelse
+	} getanimated
+	waitprocess aload pop
+    } def
+    /BBoxFromUser { % null -or- x0 y0 => x y w h (Interactively get bbox)
+	gsave fboverlay setcanvas %% Use ParentCanvas!
+	dup null eq { pop GetClick } if
+	2 copy GetRect
+	points2rect
+	grestore
+    } def
+
+    % Paint methods
+    /PaintClient {
+	frameflag { ClientCanvas } { FrameCanvas } ifelse
+	setcanvas clippath pathbbox
+	dup 0 exch translate
+	neg scale pop pop
+	ClientFillColor fillcanvas
+	Image imagecanvas pause
+    } def
+    /PaintIcon {
+	IconCanvas setcanvas
+	currentcanvas mapped currentcanvas retained or {
+	    clippath pathbbox
+	    dup 0 exch translate
+	    neg scale pop pop
+	    0 0 moveto Image imagecanvas IconCanvas setcanvas
+	    0 strokecanvas
+	} if
+    } def
+    /IconHeight {
+	ClientAspect null eq {
+	    /IconHeight super send
+	} {
+	    IconWidth ClientAspect div cvi
+	} ifelse
+    } def
+classend def
+/win framebuffer /new FaceWindow send def
+{
+    /Image ImageCanvas def
+    /ClientAspect AspectRatio def
+    /FrameLabel FullName 
+        E-mail () ne {
+	    ( \320 ) append E-mail append
+	} if def
+    frameflag not {
+	/ShapeClientCanvas { } def
+	/CreateClientCanvas { /ClientCanvas FrameCanvas newcanvas def } def
+	/PaintFrame { } def
+	/PaintFocus { } def
+	{ /BorderLeft /BorderRight /BorderTop /BorderBottom } { 0 def } forall
+    } if
+} win send
+/reshapefromuser win send
+Retain? {
+    /FrameCanvas win send /Retained true put
+} if
+/map win send
+!EOF!
+} | psh

@@ -1,0 +1,411 @@
+%
+%  Feel free to use this code as you like. Any questions, bugs, ideas,
+%  problems, whatever would be greatly appreciated.
+%
+%  Bret K. Thaeler
+%  Los Alamos National Labs (MEE-10)
+%  thaeler@hc.dspo.gov
+%
+
+% If you are like me you are probably at little bit worried about
+% strange people and programs connecting into your NeWS server.
+% So you probably run with NetSecurityWanted set to true so that
+% only machines in the RemoteHostRegistry dict (this is what the
+% 'newshost' commands adds and remove things from) can connect
+% to your machine. Unfortunitly sometimes you forget to add
+% a host before you try sending something from that host. Well,
+% this program solves all of that.
+%
+% This program will replace the connection server for your NeWS
+% server. This program will work exactly like its predicessor
+% execpt that if a machine is not registered it will popup a
+% little window asking you if you want to accept this connection
+% refuse this connections or accept and register this host for
+% all future connection attemps. The window appears such that
+% the YES or accept button is dirrectly under the mouse. You
+% can press the left mouse button or hit a return on the keyboard
+% so simple accept the connection. To refuse the connection or
+% register the new host you will have to move the mouse to the
+% appropriate button and press the left mouse key. This window
+% will also wake up and raise itself to the top of all the other
+% windows every couple of seconds just to make sure you didn't
+% forget a connection request.
+%
+% Note: all the options to 'newshost' still work exactly as
+% before.
+%
+% This file contains two parts:
+%    The first part contains the new server code itself. This
+% code can be inserted directly into the 'init.ps' file in place
+% of the existing server or added to a 'user.ps' to superceed
+% the default server.
+%
+%    The second part of this file contains code which can be used
+% to kill the running connection server thus allowing you to
+% start the new server up. This allows you to add this new
+% server without having to modify any files or having to reboot
+% your news server.
+%
+% WARNING!!!!
+%     1) The code which kills the running server relies on the
+%       fact that the definition for the server '/server' has
+%       not yet changed. Therefor you will need to kill the
+%       running server BEFORE you define the code for the new
+%       server. SEE THE COMMENTS FOR '/start_new_server'.
+%
+%    2) When modifing this code you should use great care. If
+%       you happen to crash your connections server you will
+%       not be able to start up any more jobs or connections.
+%       Your only option will be to reboot your NeWS server.
+%
+
+% Date: Thu, 23 Feb 89 10:29:16 MST
+% From: "Stephen C. Pope" <scp@sfi.santafe.edu>
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Some fixes to the Interactive connection server
+% 
+% 
+% 	After finding a few problems with Bret's Interactive Connection
+% Server, I thought I'd make the fixes available.  One bug was
+% was the server not recognizing connections from the local host
+% on machines which return an unqualified host name from localhostname,
+% but a fully qualified hostname from getsocketpeername.  The
+% fix is copied directly from the original server in init.ps.
+% 
+% 	The Times-Roman font scaled up to 20 looked a little
+% funny to me (no flames please, to each his own...), so the
+% fonts were altered, and the canvas made a little longer so
+% it doesn't chop off any but the longest host names.  Also,
+% "reg" was changed to "always". Finally, since failing to respond
+% locks up the server to other connection requests, the connection
+% request will time out, returning a "no", after 30 seconds.
+% 
+% 	As the original init.ps loads user.ps before starting
+% up the server, the following code can be placed entirely
+% within user.ps, and the server rebooted (exit and restart)
+% without having to shut down the old server.  I've not checked
+% to see if "/new start_new_server" is compatible with these mods.
+% 
+% Stephen C. Pope
+% Santa Fe Institute
+% scp@santafe.edu
+% 
+
+% This is the code to define the new connection server into
+% the systemdict.
+%
+%    New variables added into system dict:
+%        /SecurityCanvas        --- dict containing all the information about the
+%                                  popup window.
+%        /SecurityPopup        --- The routine which popus up the window and waits
+%                                  for a responce.
+%        /LastConnectingHost    --- The name of the last host to have connected
+%                                  into the server.
+%        
+/define_new_server {
+    systemdict 
+    begin
+        gsave
+            /SecurityCans 7 dict dup 
+            begin
+                /Times-Bold findfont 16 scalefont setfont
+                /root framebuffer 230 75 createcanvas def
+                /ptr /ptr_m root setstandardcursor
+                root
+                begin
+                    /Transparent false def
+                    /EventsConsumed /AllEvents def
+                    /Retained true def
+                end
+                root setcanvas
+                1 1 1 rgbcolor fillcanvas 0 0 0 rgbcolor strokecanvas
+                /no root 66 37 createcanvas dup 
+                begin
+                    /Transparent false def
+                    /EventsConsumed /AllEvents def
+                    /Mapped true def
+                    /Retained true def
+                end 
+                def
+                no setcanvas
+                0 0 0 rgbcolor dup setcolor strokecanvas
+                20 14 moveto (NO) show
+
+                /yes root 66 35 createcanvas dup 
+                begin
+                    /Transparent false def
+                    /EventsConsumed /AllEvents def
+                    /Mapped true def
+                    /Retained true def
+                end 
+                def
+                yes setcanvas 65 0 movecanvas
+                0 0 0 rgbcolor dup setcolor strokecanvas
+                18 12 moveto (YES) show
+
+                /always root 96 35 createcanvas dup 
+                begin
+                    /Transparent false def
+                    /EventsConsumed /AllEvents def
+                    /Mapped true def
+                    /Retained true def
+                end 
+                def
+                always setcanvas 132 0 movecanvas
+                0 0 0 rgbcolor dup setcolor strokecanvas
+                13 12 moveto (ALWAYS) show
+
+                /SecBoldFont /Times-Bold findfont 14 scalefont def
+                /SecFont /Times-Roman findfont 12 scalefont def
+
+                /SecurityAddInterests {
+                    createevent dup 
+                    begin
+                        /Name LeftMouseButton def
+                        /Action UpTransition def
+                        /Canvas yes def
+                    end 
+                    expressinterest
+                    createevent dup 
+                    begin
+                        /Name ascii_keymap def
+                        /Action DownTransition def
+                        /Canvas yes def
+                    end 
+                    expressinterest
+                    createevent dup 
+                    begin
+                        /Name /AddFocusClient def
+                        /Action [ currentprocess yes] def
+                    end 
+                    sendevent
+
+                    createevent dup 
+                    begin
+                        /Name LeftMouseButton def
+                        /Action UpTransition def
+                        /Canvas no def
+                    end 
+                    expressinterest
+
+                    createevent dup 
+                    begin
+                        /Name LeftMouseButton def
+                        /Action UpTransition def
+                        /Canvas always def
+                    end 
+                    expressinterest
+
+                    createevent dup
+                    begin
+                        /Name /SecurityLift def
+                    end
+                    expressinterest
+
+		    createevent dup
+		    begin
+			/Name /Timeout def
+			/Canvas no def
+		    end
+		    expressinterest
+		    
+                } def
+            end 
+            def
+        grestore
+
+        /SecurityPopup { % (host hame) => true/false(should we allow connection)
+            SecurityCans 
+            begin
+                gsave
+                    currentcursorlocation 18 sub exch 99 sub exch
+                    root setcanvas
+                    movecanvas
+                    1 1 1 rgbcolor fillcanvas
+                    0 0 0 rgbcolor dup setcolor
+                    strokecanvas
+                    10 46 moveto
+                    SecBoldFont setfont
+                    (Connecting Host:  ) show
+                    SecFont setfont
+                    dup show
+                    root /Mapped true put
+                    createevent dup 
+                    begin
+                        /Name /SecurityLift def
+                        /TimeStamp currenttime .03 add def
+                    end 
+                    sendevent
+		    createevent dup
+		    begin
+			/Name /Timeout def
+			/TimeStamp currenttime .5 add def
+			/Canvas no def
+		    end
+		    sendevent
+                    {
+                        root canvastotop
+                        awaitevent /Canvas get
+                        [
+                            yes {
+                                pop true exit
+                            }
+                            no {
+                                pop false exit
+                            }
+                            always {
+                                % always canvas
+                                systemdict /RemoteHostRegistry get
+                                exch cvn 1 put
+                                % systemdict /NetSecurityWanted false put
+                                true
+                                exit
+                            }
+                            /Default {
+                                createevent dup 
+                                begin
+                                    /Name /SecurityLift def
+                                    /TimeStamp currenttime .03 add def
+                                end 
+                                sendevent
+                            }
+                        ] case
+                    } loop
+                    root /Mapped false put
+                grestore
+            end
+        } def
+        /NetSecurityWanted true def
+
+        /server {
+            { 
+                {
+                    currentdict systemdict eq {
+                        exit
+                    } {
+                        end
+                    } ifelse
+                } loop
+
+                clear
+
+                newprocessgroup
+
+                SecurityCans 
+                begin
+                    SecurityAddInterests
+                end
+
+                { 
+                    NeWS_socket (r) file 
+                } stopped
+                { 
+                    clear (%socketl2000) (r) file 
+                } if
+                dup getsocketlocaladdress (NEWSSERVER) exch putenv
+                (TERM) (PostScript) putenv
+                { 
+                    dup mark exch acceptconnection
+                    dup getsocketpeername /LastConnectingHost exch def
+                    RemoteHostRegistry LastConnectingHost known
+		    LastConnectingHost localhostname anchorsearch
+		    {
+			pop (.) anchorsearch
+			{
+			    pop pop RemoteHostRegistry localhostname known
+			} {
+			    pop false
+			} ifelse
+		    } {
+			pop false
+		    } ifelse or
+                    NetSecurityWanted not or {
+                        true
+                    } {
+                        LastConnectingHost SecurityPopup
+                    } ifelse
+                    {
+                        LastConnectingHost { 
+                            200 dict 
+                            begin 
+                                initmatrix newprocessgroup
+                                /OriginatingHost exch def
+                                exch pop exch pop cvx exec
+                                currentprocess killprocessgroup
+                        } fork
+                    } {
+                        closefile
+                    } ifelse
+                    cleartomark
+                } loop
+            } fork pop 
+        } def
+    end
+} def
+%
+% End of new server code...
+%
+
+define_new_server
+
+
+% This routine can be called to kill a running connection server and
+% start up the new server.
+%
+% The {/old,/new} option to this function specifies weather you
+% are tring to kill and old style or a new style server. This
+% code is VERY specific. If you have changed your server code
+% from the default released by Sun this code will PROBABLY NOT
+% work.
+%
+% NOTE:
+%    This code relies on the definition for '/server' in systemdict
+% being the actual code that the running connections server is
+% executing. Therefor the loading of the new server code MUST
+% take place in the routine AFTER the running server has been killed.
+%
+/start_new_server { % /old,/new => -
+
+    % this is the code we will insert into the runnign server.
+    {
+        closefile pop closefile currentprocess killprocessgroup
+    }
+    % depending weather we are old or new insert the above code
+    % into different places. (we are inserting this code after
+    % the 'acceptconnections' instructions).
+    exch /old eq {
+        /server load
+        0 get 13 get dup 3 2 roll 4 exch put
+        5 /exec cvx put
+    } {
+        /server load
+        0 get 20 get dup 3 2 roll 4 exch put
+        5 /exec cvx put
+    } ifelse
+
+    % Now that the server has been booby traped to die when it
+    % recieves a new connection request, try to connect into it.
+    (NEWSSERVER) getenv (.) search pop pop pop
+    (;) search pop exch pop exch pop
+    (%socketcXXXX) dup 3 -1 roll 8 exch putinterval
+    (r) file pause pause pause pause pause closefile
+
+    % This is UGLY UGLY UGLY. But we must wait for the socket to
+    % clear its self up before we try to reuse it.
+    % We have a NASTY NASTY race condition sometimes......
+    1 1 1000 {
+        pause
+    } for
+
+    % This following two line can be removed from here and called
+    % anytime after this command. But until these are called
+    % no connections to the NeWS server will succeed.
+    define_new_server
+
+    server
+} def
+
+% go ahead and start the new server.
+
+%/old start_new_server
+

@@ -1,0 +1,388 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%                       litedialog.ps
+%                       -------------
+%
+%                        Version 1.0
+%
+%               A dialog box class implementation
+%
+%	Date: Sept. 5 1989
+%	Author:
+%		David G. Zawada
+%		EAIS-VIS
+%		Argonne National Laboratory
+%		zawada@athens.ees.anl.gov
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%	This file contains the class definition for a DialogBox
+%	and a subclass of it, called ModeLess, that allows the
+%	use of buttons within a DialogBox.  Icons, similar to
+%	those used on the M*cintosh, also are supported,
+%	provided the flag Icon? is set to true and the
+%	PaintIcon procedure is not null.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%	Examples:
+%
+%
+%/inch {72 mul} def
+%/Quit? false def
+%/quit_notify { Quit? {/destroy qdia send} if} def
+%/no_notify {/Quit? false store /unmap qdia send quit_notify} def
+%/yes_notify {/Quit? true store /unmap qdia send quit_notify} def
+%/mesg (Do you really want to Quit?) def
+%
+%/qdia [( YES ) ( NO )] [/yes_notify /no_notify] mesg framebuffer
+%  /new ModeLess send def
+%{
+%        /Icon? true def
+%        /PaintIcon { Asterisk } def
+%        10 4 inch 6 inch 3.5 inch 1.5 inch sizeit 
+%	map
+%} qdia send
+%
+%/quit_popdia { /unmap popdia send } def
+%/popdia [( OK )] [/quit_popdia] (Click on Ok!) framebuffer /new ModeLess send def
+%{
+%        /Icon? true def
+%        /PaintIcon { Man } def
+%        10 6 inch 7.5 inch 3.7 inch 1.5 inch sizeit
+%	map
+%} popdia send
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%Load liteitems for subclasses
+systemdict /Item known not {($NEWSHOME/lib/NeWS/liteitem.ps) run} if
+systemdict begin
+/Dialog Object
+dictbegin		%Instance vars
+	/ParentCanvas		null def
+	/DialogCanvas		null def
+	/DialogX		0 def
+	/DialogY		0 def
+	/DialogHeight		0 def
+	/DialogWidth		0 def
+	/DialogRadius		10 def      % Corner radius for DialogBox frame
+	/DialogInterests	null def    % Event interests for the DialogBox
+	/DialogEventMgr		null def
+	/DialogBorderWidth	6 def
+	/DialogCanvasColor	1 .7 .7 rgbcolor def
+	/DialogBorderColor	0 0 0 rgbcolor def
+	/DialogFontColor	DialogBorderColor def
+	/DialogFontSize		14 def
+	/DialogFont 		/Helvetica-Bold findfont DialogFontSize scalefont def
+	/PaintProcs		null def    % Damage repair procedure
+	/PaintIcon		nullproc def
+	/Icon?			false def   % Does the DialogBox display an icon in it?
+	/IconSize		45 def
+	/IconBorderWidth	3 def
+	/IconBoxColor		1 1 1 rgbcolor def
+
+	% The following variables govern the positioning
+	% and wrapping of text within the DialogBox
+	/DialogTextX		0 def
+	/DialogTextY		{DialogHeight TopMargin 2 mul sub} def
+	/WordBreak		( ) def    % Break the DialogBox text word breaks (ie. spaces)
+	/BreakWidth		null def
+	/CurWidth		0 def
+	/LastBreak		0 def
+	/FirstChar		0 def
+	/LastChar		0 def
+	/DialogText		() def
+	/RestText		() def
+	/NextWord		() def
+	/WordWidth		0 def
+	/LineSpacing		2 def
+	/TopMargin		DialogFontSize def	% Margins defining the region within
+	/BottomMargin		DialogFontSize def	% which text may be displayed
+	/LeftMargin		DialogFontSize def
+	/RightMargin		DialogFontSize def
+	/SentenceLength		0 def
+dictend
+classbegin
+	/DialogPath		{rrectpath} def				% Shape of the DialogBox
+	/IconBox		{0 0 IconSize IconSize rectpath} def	% Border for the Icon
+	/EOLproc		{DialogTextX DialogTextY moveto show 	% End of Line procedure executed after each
+			 	/DialogTextY DialogTextY DialogFontSize	% word break (See breakline routine below)
+				LineSpacing add sub store} def
+
+
+% PROCEDURES
+
+/DrawDialog	% - => -  Paint the DialogBox
+{
+	gsave
+		DialogCanvas setcanvas
+		DialogCanvasColor fillcanvas
+		/DialogTextX 0 def
+		/DialogTextY { DialogHeight TopMargin 2 mul sub } def
+
+		Icon? 	% Calculate the margins for the text display region
+		{
+			/SentenceLength DialogWidth IconSize LeftMargin RightMargin add add sub store
+			/DialogTextX IconSize LeftMargin add store
+			gsave
+				LeftMargin 2 div DialogHeight TopMargin IconSize add sub translate
+				IconBox
+				gsave
+					IconBoxColor setcolor fill
+				grestore 
+				DialogBorderColor setcolor IconBorderWidth setlinewidth stroke 1 setlinewidth
+				gsave
+					IconBox clip PaintIcon
+				grestore
+			grestore
+		} 
+		{
+			/SentenceLength DialogWidth LeftMargin RightMargin add sub store
+			/DialogTextX LeftMargin store
+		}
+		ifelse
+
+		DialogBorderColor setcolor DialogBorderWidth setlinewidth
+		DialogRadius 0 0 DialogWidth DialogHeight DialogPath stroke
+		DialogFont setfont
+		DialogFontColor setcolor
+		breakline	% Position the text and wrap it if necessary
+	grestore
+} def
+
+
+% Possible PaintIcon Routines (Asterisk and Man)
+
+/wedge {0 0 moveto -10 40 rlineto 20 0 rlineto -10 -40 rlineto} def
+/angle 45 def
+
+/Asterisk % Need to notify user of something urgent
+{
+gsave
+   gsave
+      0 0 0 setrgbcolor IconBox fill
+   grestore
+         IconSize 2 div dup translate .45 .45 scale
+         360 angle div round { wedge angle rotate} repeat 
+         gsave 1 0 0 setrgbcolor fill grestore stroke
+grestore
+} def
+
+/space {7 0 rmoveto} def
+/speech {5 0 rlineto space 6 0 rlineto space 3 0 rlineto} def
+
+/Man % Give user some general type of information
+{
+gsave
+   IconBox gsave 0 setgray fill grestore stroke
+	.45 .45 scale
+	0 0 moveto 30 0 rlineto 0 40 rlineto 10 0 rlineto
+	0 60 rlineto -40 0 rlineto 0 -100 rlineto 
+	1 setgray gsave fill grestore
+	55 80 rmoveto 35 0 rlineto 0 -40 rlineto 
+	-45 -20 rlineto 10 20 rlineto 0 40 rlineto
+	gsave fill grestore 
+	0 setgray 
+	4 -5 rmoveto speech 5 {-28 -5 rmoveto speech} repeat
+	-58 -30 rmoveto -20 0 rlineto 10 20 rmoveto 10 0 rlineto
+	stroke
+	newpath 20 80 5 0 360 arc fill
+grestore
+} def
+
+
+% METHODS
+/new	 % statictext parentcanvas => dialogcanvas
+{   
+	/new super send begin
+		/ParentCanvas exch store
+		/DialogText exch ( ) append store
+		/DialogCanvas ParentCanvas newcanvas store
+		DialogCanvas /Transparent false put
+		DialogCanvas /SaveBehind true put
+		DialogCanvas /EventsConsumed /AllEvents put
+		% Specify DialogBox event interests
+		/DialogInterests 5 dict dup begin
+			/DialogToTopEvent
+				PointButton { DialogCanvas canvastotop }
+				DownTransition DialogCanvas eventmgrinterest def
+			/DialogDamageEvent
+				/Damaged /RepairDialog
+				null DialogCanvas eventmgrinterest def
+		end store
+		/DialogEventMgr DialogInterests forkeventmgr store
+		currentdict
+	end
+} def
+
+/destroy { DialogCanvas /Mapped false put currentprocess killprocessgroup } def
+
+/sizeit  % r x y w h => -	Size the DialogBox
+{  	
+	/DialogHeight exch store
+	/DialogWidth exch store
+	/DialogY exch store
+	/DialogX exch store
+	/DialogRadius exch store
+
+	gsave
+		ParentCanvas setcanvas
+		DialogX DialogY translate DialogRadius 0 0 DialogWidth DialogHeight DialogPath
+		DialogCanvas reshapecanvas
+	grestore
+} def
+
+/RepairDialog 	% - => - 	 Fork off process to repair any damage
+{
+	PaintProcs null ne 
+	{
+		gsave
+			PaintProcs killprocessgroup
+			DialogCanvas setcanvas newpath clipcanvas damagepath
+		grestore
+	} if
+	/PaintProcs { newprocessgroup CallPaintProcs } fork def
+} def
+
+/CallPaintProcs 
+{
+	gsave
+		DialogCanvas setcanvas
+		damagepath clipcanvas
+		DrawDialog
+		newpath clipcanvas
+		/PaintProcs null store
+	grestore
+} def
+
+/map		% Map the DialogBox and bring it to the top of its siblings
+{
+	DialogCanvas /Mapped true put
+	DialogCanvas canvastotop
+} def
+
+/unmap { DialogCanvas /Mapped false put } def	% Hide the DialogBox
+
+/move  % x y => -	Move the DialogBox to the specified coordinates
+{ 	gsave
+		DialogCanvas setcanvas /DialogY exch store /DialogX exch store
+		DialogX DialogY movecanvas
+	grestore
+} def
+
+/printtext % string => -	Change the DialogBox' current message to the specified string
+{
+	/DialogText exch ( ) append store
+	DrawDialog
+} def
+
+/breakline  % - => -		Adapted from the BREAKLINES program in Adobe's (Blue) PostScript CookBook
+{  
+
+	/BreakWidth WordBreak stringwidth pop store
+	/RestText DialogText store
+	/CurWidth 0 store
+	/FirstChar 0 store
+	/LastBreak 0 store
+	/NextWord 0 store
+
+	{
+		RestText WordBreak search
+		{
+			/NextWord exch store pop
+		 	/RestText exch store
+		 	/WordWidth NextWord stringwidth pop store
+
+		 	CurWidth WordWidth add SentenceLength gt
+		  	{ 
+				DialogText FirstChar LastBreak FirstChar sub getinterval EOLproc
+		  	 	/FirstChar LastBreak store /CurWidth WordWidth BreakWidth add store
+			}
+		 	{
+				/CurWidth CurWidth WordWidth add BreakWidth add store
+			} 
+		  	ifelse
+
+			/LastBreak LastBreak NextWord length add 1 add store
+		}
+		{
+			pop exit
+		}
+		ifelse
+	} loop
+
+	/LastChar DialogText length store
+	DialogText FirstChar LastChar FirstChar sub getinterval EOLproc
+} def
+		  
+classend def
+/DefaultDialog Dialog def
+
+%_______________________________________________________________________________
+% ModeLess is a subclass of Dialog which facilitates the incorporation of any
+% number of ButtonItems into a DialogBox
+
+/ModeLess Dialog
+dictbegin
+	/ButtonLabels [] def		% Labels for the buttons
+	/ButtonNotifies [] def		% Notify procedures for the buttons
+	/DialogItems null def		% Array of ButtonItems
+dictend
+classbegin
+
+% PROCEDURES
+/CreateButton	% - => -	Create a button for each entry in ButtonLabels and store it in DialogItems
+{
+	/DialogItems
+	[
+		0 1 ButtonLabels length 1 sub
+		{
+			ButtonLabels 1 index get ButtonNotifies 3 -1 roll get
+			DialogCanvas 60 0 /new ButtonItem send
+			dup /ItemFrame 3 put
+		} for
+	] def
+
+	DialogItems forkitems pop	% Activate the buttons
+} def
+
+/MoveButtons	% - => -	Evenly distribute the buttons along the bottom of the DialogBox
+{
+	0 1 DialogItems length 1 sub
+	{
+		DialogWidth DialogItems length 1 add div
+		1 index 1 add mul DialogItems 2 index get /ItemWidth get 2 div sub
+		BottomMargin 2 div /move
+		DialogItems 5 -1 roll get send
+	} for
+} def
+
+/DrawDialog	% - => -	Paint the DialogBox and its buttons
+{
+	/DrawDialog super send
+	DialogItems paintitems
+} def
+
+
+% METHODS
+/new 	% labels notifyprocs statictext parentcanvas => dialog_instance
+{
+	/new super send
+	begin
+		/ButtonNotifies exch def
+		/ButtonLabels exch def
+		CreateButton
+
+		currentdict
+	end
+} def
+
+/sizeit 	% r x y w h	Size the DialogBox and position its buttons
+{
+	/sizeit super send
+	MoveButtons
+} def
+
+classend def
+end

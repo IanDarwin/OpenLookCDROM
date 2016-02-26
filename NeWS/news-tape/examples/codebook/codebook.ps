@@ -1,0 +1,854 @@
+#! /usr/NeWS/bin/psh
+% codebook
+% This is the public domain program used twice yearly at the Usenix
+% NeWS tutorial.  It may be distributed freely.  If difficulties
+% are incountered with this, check the news-archive@sun server for
+% a newer version.
+%
+% Notes:
+%	-Should clear prompts!
+%	-Make target retained so pointer works better?
+%	-runprogram: has brobs with new executive! ( <cr> ) causes error!
+
+% ===============================================================
+%                        Tty "pipe" code:
+% ===============================================================
+/settarget { % - => - (set tty target = current selection holder)
+    systemdict /TtyTarget createevent dup begin
+	/Name /InsertValue def
+	/Process /PrimarySelection getselection /SelectionHolder get def
+	/Canvas /PrimarySelection getselection /Canvas get def
+	Canvas /Retained true put
+    end put
+} def
+/sendtarget { % string/char => - (send string/char to current tty target)
+    systemdict /TtyTarget known {
+	dup type /stringtype ne {cvis} if
+	TtyTarget /Action 3 -1 roll put
+	TtyTarget createevent copy sendevent
+    } {pop} ifelse
+} def
+
+/FakeTypingMistakes { % - => - (fake typing errors!)
+    random .1 le { % 10 percent error rate.
+	(XhV\177\177\177) {sendtarget 30 20 TtyPause} forall
+    } if
+} def
+/TtyPause { % rate delta => - (pause between chars)
+    1 60 div % minutes per second
+    3 1 roll random 2 mul 1 sub mul add % ch per sec
+    div sleep
+} def
+/TypingStyle /Medium def
+/TtySynch {} def
+/SendTtyString { % string [name] => - (send string to current tty target)
+    dup type /stringtype eq {TypingStyle} if
+    {
+	/Fast	{sendtarget}
+	/Medium	{TtySynch {sendtarget pause} forall}
+	/Slow	{TtySynch {sendtarget 30 20 TtyPause} forall}
+	/Sloppy	{TtySynch {sendtarget 30 20 TtyPause FakeTypingMistakes} forall}
+    } case
+} def
+% ===============================================================
+%                        Main & Menus:
+% ===============================================================
+/TypingMenu [
+    (Type Fast)		{/TypingStyle /Fast store}
+    (Type Medium)	{/TypingStyle /Medium store}
+    (Type Slow)		{/TypingStyle /Slow store}
+    (Type Sloppy)	{/TypingStyle /Sloppy store}
+] /new DefaultMenu send def
+/ControlConstructsMenu [
+    (If-Else)		{IfElseDemo}
+    (Loop)		{LoopDemo}
+    (Repeat)		{RepeatDemo}
+    (For)		{ForDemo}
+    (Forall)		{ForallDemo}
+] /new DefaultMenu send def
+/PostScriptMenu [
+    (Data Types Demo)		{DataTypesDemo}
+    (Stacks Demo)		{StacksDemo}
+    (Stack Min Demo)		{StackMinDemo}
+    (Control Structs =>)	ControlConstructsMenu
+    (Dict Min Demo)		{DictMinDemo}
+    (Stencil Fill Demo)		{StencilFillDemo}
+    (Transform Demo)		{XfmFillDemo}
+    (T Transform Demo)		{XfmTeeDemo}
+    (Line Styles Demo)		{LineStylesDemo}
+    (Spiral Demo)		{SpiralFillDemo}
+    (Fancy Spiral Demo)		{FancySpiralDemo}
+    (Text Demo)			{TextDemo}
+] /new DefaultMenu send def
+/NeWSProgrammingMenu [
+    (Begin/End Demo)		{BeginEndDemo}
+    (Process Dict Demo)		{ProcessDictDemo}
+    (Canvas Demo)		{CanvasDemo}
+    (Erase Canvas!)		{EraseCanvas}
+    (Fork Demo)			{ForkDemo}
+    (Pause Demo)		{PauseDemo}
+    (Multi-Ret Demo)		{MultiRetDemo}
+    (Snoop Demo)		{SnoopDemo}
+    (Install RunProgram)	{InstallRunProgram}
+    (Hello World Demo)		{HelloWorldDemo}
+] /new DefaultMenu send def
+/SimpleProgrammingMenu [
+    (Min Star)			{MinStarProg}
+    (Star)			{StarProg}
+    (Max Star)			{MaxStarProg}
+] /new DefaultMenu send def
+%/RunMyDemo {(psh /usr/owen/ps/client/mine/%) sprintf forkunix} def
+/RunMyDemo {forkunix} def
+/SomeDemosMenu [
+    (MacDemo)			{(macdemo) RunMyDemo}
+    (Magnify)			{(mag) RunMyDemo}
+    (RootColor)			{(rootcolor) RunMyDemo}
+] /new DefaultMenu send def
+/FatStuffMenu [
+    (Fat Menus)			{true MakeFatMenus}
+    (Standard Menus)		{false MakeFatMenus}
+    (Make Fat Term)		{MakeFatTerm}
+] /new DefaultMenu send def
+/MainMenu [
+    (PostScript =>)		PostScriptMenu
+    (News Basicss =>)		NeWSProgrammingMenu
+    (Simple Programs =>)	SimpleProgrammingMenu
+    (Clear PSH Screen)		{ClearScreen}
+    (Typing Styles =>)		TypingMenu
+    (Fat Stuff =>)		FatStuffMenu
+    (Set Target)		{settarget}
+    (Start PSH)			{StartPSH}
+    (Make Pointer)		{MakePointer}
+    (Some Demos =>)		SomeDemosMenu
+] /new DefaultMenu send def
+
+/main {
+    /CodeBookPaint {} def
+
+    /win framebuffer /new DefaultWindow send def
+    {	/FrameLabel (Code Book) def
+	/PaintIcon {PaintClient 0 strokecanvas} def
+	/PaintClient {
+	    1 fillcanvas 0 setgray
+	    CodeBookPaint
+	} def
+	/ClientMenu MainMenu def
+    } win send
+    /reshapefromuser win send
+    /map win send
+    systemdict /Can win /ClientCanvas get put
+} def
+% ===============================================================
+%                        PostScript Demos:
+% ===============================================================
+/DataTypesDemo {(
+
+    57 type =
+    11.56 type =
+    true type =
+    (Foo) type =
+    /Foo type =
+    [1 2 3] type =
+    {3 4 add} type =
+    {3 4 add} xcheck =
+    10 dict type =
+) SendTtyString} def
+% ------------------------------------------------
+/StacksDemo {(
+
+    clear pstack
+    64 (Hi) /Name pstack
+    exch pstack
+    dup pstack
+    2 index pstack
+    pop pop pstack
+    3 1 roll pstack
+    3 copy pstack
+    clear
+) SendTtyString} def
+% ------------------------------------------------
+/StackMinDemo {(
+
+    /min {
+        dup 2 index lt        pstack
+            {exch pop         (1st) ==}
+            {pop              (2nd) ==}
+        ifelse
+    } def
+    
+    76 -6 min ==
+    -6 76 min ==
+) SendTtyString} def
+% ------------------------------------------------
+/IfElseDemo {(
+
+    /min {
+        dup 2 index lt
+            {exch pop}
+            {pop}
+        
+        (If: ) print pstack
+        
+        ifelse
+    } def
+    
+    76 -6 min ==
+    -6 76 min ==
+) SendTtyString} def
+% ------------------------------------------------
+/ForDemo {(
+
+    0
+    1 1 10 { add pstack } for
+    pop
+) SendTtyString} def
+% ------------------------------------------------
+/ForallDemo {(
+
+    (Hello!) { = } forall
+    [(Hello!) { } forall] ==
+) SendTtyString} def
+% ------------------------------------------------
+/LoopDemo {(
+
+    currenttime 1 10 div add
+    {   dup currenttime le
+            {(Done!\\n) print exit} if
+    } loop
+    pop
+) SendTtyString} def
+% ------------------------------------------------
+/RepeatDemo {(
+
+    1
+    10 { dup 2 mul pstack } repeat
+    clear
+) SendTtyString} def
+% ------------------------------------------------
+/DictMinDemo {(
+
+    /min {
+        10 dict begin
+            /x2 exch def
+            /x1 exch def
+            x1 x2 lt {x1} {x2} ifelse
+            
+	    (Min's dictionary:) print
+	    [currentdict {} forall] ==
+        end
+    } def
+    
+    76 -6 min ==
+    -6 76 min ==
+) SendTtyString} def
+% ------------------------------------------------
+/StencilFillString (
+
+/StencilFill {
+    gsave
+	clippath pathbbox scale pop pop
+	.3 .3 moveto
+	.8 .8 lineto
+	.3 .7 lineto
+	.8 .2 lineto
+	closepath
+	
+	.5 setgray fill
+    grestore
+} def
+) def
+/StencilFillDemo { {StencilFill} StencilFillString RunPSGraphicsDemo } def
+% ------------------------------------------------
+/XfmFillString (
+
+/DrawUnitRect {
+    0 0 moveto 1 0 lineto
+    1 1 lineto 0 1 lineto
+    closepath fill
+} def
+
+/TransformFill {
+    gsave
+	clippath pathbbox
+	    2 div exch 2 div exch scale
+	    pop pop
+	
+	.5 setgray
+	.75 .5 translate DrawUnitRect
+	
+	0 setgray
+	45 rotate DrawUnitRect
+    grestore
+} def
+) def
+/XfmFillDemo { {TransformFill} XfmFillString RunPSGraphicsDemo } def
+% ------------------------------------------------
+%   gsave initmatrix stroke grestore
+%   newpath
+/XfmTeeString (
+
+/XfmTeeGrid { % - => -
+    0 1 10 {
+	/V exch def
+	0 V moveto 10 V lineto
+	V 0 moveto V 10 lineto
+    } for stroke
+} def
+/TransformTee {
+    gsave
+    clippath pathbbox
+	10 div exch 10 div exch
+	scale pop pop
+    0 setgray XfmTeeGrid
+    5 1 translate 40 rotate .6 .6 scale
+    .5 setgray XfmTeeGrid 0 setgray
+    /Times-Bold findfont 10 scalefont
+	setfont 1 1 moveto (T) show
+    grestore
+} def
+) def
+/XfmTeeDemo { {TransformTee} XfmTeeString RunPSGraphicsDemo } def
+% ------------------------------------------------
+/! {50 y 20 add 5 0 360 arc fill} def
+/LineStylesString (
+
+/SetLine { % width cap join dash-pair
+    setdash setlinejoin setlinecap setlinewidth
+} def
+/Elbow { % y
+    /y exch def
+    25 y moveto 50 y 20 add lineto
+    75 y lineto 0 setgray stroke
+} def
+/LineStyles {
+    gsave   clippath pathbbox
+	    100 div exch 100 div exch
+	    scale pop pop
+	 1 0 0 [] 0 SetLine 80 Elbow
+	10 0 0 [] 0 SetLine 60 Elbow
+	10 1 0 [] 0 SetLine 40 Elbow
+	10 0 1 [] 0 SetLine 20 Elbow
+	10 0 1 [20 2] 0 SetLine 0 Elbow !
+    grestore
+} def
+) def
+/LineStylesDemo { {LineStyles} LineStylesString RunPSGraphicsDemo } def
+% ------------------------------------------------
+/SpirWinXfm {
+    clippath pathbbox pop pop translate
+    clippath pathbbox 2 div exch 2 div exch
+	    1 index 1 index translate
+	    min dup scale pop pop
+    -.5 -.5 translate
+} def
+%/SpirWinXfm1 {
+%    clippath pathbbox scale pop pop
+%} def
+% ------------------------------------------------
+/SpiralFillString (
+/SpiralFill { % - => - (black spiral)
+    gsave
+	SpirWinXfm
+	.5 .5 translate
+	90 rotate
+	newpath
+	25 {
+	    0 .9 moveto
+	    0 0 1 90 -90 arc
+	    0 0 .9 -90 90 arcn
+	    fill
+	    .88 .88 scale
+	    22.5 rotate
+	} repeat
+    grestore
+} def
+) def
+/SpiralFillDemo { {SpiralFill} SpiralFillString RunPSGraphicsDemo } def
+% ------------------------------------------------
+/FancySpiralString (
+
+/BuildFountain { % size => string
+    dup string exch 1 sub
+    0 1 3 -1 roll { 1 index exch dup put } for
+} def
+/FountainSpiral { % - => - (fountain spiral)
+    gsave   matrix currentmatrix SpirWinXfm
+	.5 .5 translate 90 rotate newpath
+	25 {
+	    0 .9 moveto
+	    0 0 1 90 -90 arc
+	    0 0 .9 -90 90 arcn
+	    .88 .88 scale 22.5 rotate
+	} repeat
+	clip setmatrix
+	clippath pathbbox scale pop pop
+	256 1 8 [256 0 0 1 0 0]
+	    {256 BuildFountain} image
+    grestore
+} def
+) def
+/FancySpiralDemo { {FountainSpiral} FancySpiralString RunPSGraphicsDemo } def
+% ------------------------------------------------
+/TextString (
+
+/hello {
+    gsave
+	/Times-BoldItalic findfont
+	    50 scalefont
+	    setfont
+	
+	40 ClientHeight moveto
+	-90 rotate
+	(Hello) show
+    grestore
+} def
+) def
+/TextDemo { {hello} TextString RunPSGraphicsDemo } def
+% ===============================================================
+%                        NeWS Programming Demos:
+% ===============================================================
+/BeginEndDemo {(
+
+
+    createevent dup begin
+    	/Name   /DoItEvent def
+    	/Action /Window def
+    end
+    ==
+) SendTtyString} def
+% ------------------------------------------------
+/ProcessDictDemo {(
+
+
+    currentprocess {pop =} forall
+) SendTtyString} def
+% ------------------------------------------------
+/CanvasDemo {(
+
+
+    gsave
+    framebuffer setcanvas
+    100 100 translate
+    0 0 300 300 ovalpath
+    
+    /can framebuffer newcanvas def
+    can reshapecanvas 
+    can /Mapped true put
+    
+    can setcanvas .5 fillcanvas
+    grestore
+) SendTtyString} def
+% ------------------------------------------------
+/EraseCanvas {(
+
+    framebuffer setcanvas /can null def
+) SendTtyString} def
+% ------------------------------------------------
+/ForkDemo {(
+
+    /p {2 2 add} def   p =
+    /pp {p} fork def   pp =
+    pp waitprocess     =
+) SendTtyString} def
+% ------------------------------------------------
+/PauseDemo {(
+    /p {2 2 add} fork def   p =
+    pause                   p =
+    p waitprocess           =
+) SendTtyString} def
+% ------------------------------------------------
+/MultiRetDemo {(
+    /p {1 2 3} fork def
+    p waitprocess =
+    /p {[1 2 3]} fork def
+    p waitprocess dup ==
+    aload pop pstack clear
+) SendTtyString} def
+% ------------------------------------------------
+/SnoopDemo {(
+
+
+    /snoop {
+	/snoopprocess {
+	    createevent expressinterest
+	    {awaitevent ==} loop
+	} fork def
+    } def
+    /killsnoop
+        {snoopprocess killprocess} def
+    snoop
+) SendTtyString} def
+% ------------------------------------------------
+/InstallRunProgram {(
+
+
+/runprogram { % str => - (exec str as a psh prog)
+    (/tmp/pshscript) (w) file     % str file
+    dup 3 -1 roll		  % file file str
+    writestring closefile	  % -
+    (psh /tmp/pshscript) forkunix
+} def
+
+) SendTtyString} def
+% ------------------------------------------------
+/HelloWorldDemo {(
+
+
+( #! /usr/NeWS/bin/psh
+% A hello_world with windows & menus.
+
+/TextColor 0 def
+/FillColor 1 def
+/PaintText {
+    FillColor setgray clippath fill
+    TextColor setgray 10 10 moveto
+    /Times-Bold findfont 24 scalefont setfont
+    (Hello World) show
+} def
+/SetColors { % txtcolor fillcolor => -
+    /FillColor exch store
+    /TextColor exch store
+    /paintclient win send
+} def
+
+/win framebuffer /new DefaultWindow send def
+{   /FrameLabel (LiteWindow!) def
+    /PaintClient {PaintText} def
+    /ClientMenu [
+        (Black on White) {0 1 SetColors}
+        (White on Black) {1 0 SetColors}
+        (Gray on White)  {.5 1 SetColors}
+        (White on Gray)  {1 .5 SetColors}
+    ] /new DefaultMenu send def
+} win send
+/reshapefromuser win send
+/map win send
+) runprogram
+) SendTtyString} def
+% ===============================================================
+%                        Progs:
+% ===============================================================
+/MinStarProg {(
+
+(#! /usr/NeWS/bin/psh
+/FillCanvasWithStar { % stargray fillgray => -
+    gsave
+    fillcanvas setshade
+    clippath pathbbox scale pop pop
+    .2 0 moveto .5 1 lineto .8 0 lineto
+    0 .65 lineto 1 .65 lineto closepath fill
+    grestore
+} def
+/win framebuffer /new DefaultWindow send def
+{   /FrameLabel (USENIX  is  a  Star!) def
+    /IconImage /hello_world def
+    /PaintClient {1 .5 FillCanvasWithStar} def
+} win send
+/reshapefromuser win send
+/map win send
+) runprogram
+) SendTtyString} def
+% ------------------------------------------------
+/StarProg {(
+
+(#! /usr/NeWS/bin/psh
+/StarGray 1 def
+/FillGray .5 def
+/FillCanvasWithStar { % stargray fillgray => -
+    gsave
+    fillcanvas setshade
+    clippath pathbbox scale pop pop
+    .2 0 moveto .5 1 lineto .8 0 lineto
+    0 .65 lineto 1 .65 lineto closepath fill
+    grestore
+} def
+/SetStarGrays { % stargray fillgray => -
+    /FillGray exch store /StarGray exch store
+    /paintclient win send
+} def
+
+/win framebuffer /new DefaultWindow send def
+{   /FrameLabel (USENIX  is  a  Star!) def
+    /PaintIcon {.25 .75 FillCanvasWithStar 0 strokecanvas} def
+    /PaintClient {StarGray FillGray FillCanvasWithStar} def
+    /ClientMenu [
+	(White Star) {  1  FillGray SetStarGrays}
+	(Lite Star)  {.75  FillGray SetStarGrays}
+	(Gray Star)  {.50  FillGray SetStarGrays}
+	(Dark Star)  {.25  FillGray SetStarGrays}
+	(Black Star) {  0  FillGray SetStarGrays}
+	(White Fill) {StarGray   1 SetStarGrays}
+	(Gray Fill)  {StarGray .50 SetStarGrays}
+	(Black Fill) {StarGray   0 SetStarGrays}
+    ] /new DefaultMenu send def
+} win send
+/reshapefromuser win send
+/map win send
+) runprogram
+) SendTtyString} def
+% ------------------------------------------------
+/MaxStarProg {(
+
+(#! /usr/NeWS/bin/psh
+/StarGray 1 def
+/FillGray .5 def
+/FillCanvasWithStar { % stargray fillgray => -
+    fillcanvas setshade
+    clippath pathbbox starpath fill
+} def
+/SetStarGrays { % stargray fillgray => -
+    /FillGray exch store /StarGray exch store
+    /paintclient win send
+} def
+
+/GetMenuNumber {/currentkey self send cvr} def % - => num
+/StarGraysMenu
+    [(.1) (.2) (.25) (.3) (.4) (.5) (.6) (.7) (.75) (.8) (.9) (1.0)]
+    [{GetMenuNumber FillGray SetStarGrays}]
+    /new DefaultMenu send
+    dup /LayoutStyle /Horizontal put def
+/FillGraysMenu
+    [(.1) (.2) (.25) (.3) (.4) (.5) (.6) (.7) (.75) (.8) (.9) (1.0)]
+    [{StarGray GetMenuNumber SetStarGrays}]
+    /new DefaultMenu send
+    dup /LayoutStyle /Horizontal put def
+
+/win framebuffer /new DefaultWindow send def
+{   /FrameLabel (USENIX  is  a  Star!) def
+    /PaintIcon {.5 fillcanvas} def
+    /PaintClient {StarGray FillGray FillCanvasWithStar} def
+    /IconPath {starpath} def
+    /ClientMenu [
+	(Star Grays =>) StarGraysMenu
+	(Fill Grays =>) FillGraysMenu
+    ] /new DefaultMenu send def
+} win send
+/reshapefromuser win send
+/map win send
+) runprogram
+) SendTtyString} def
+% ===============================================================
+%                        Misc:
+% ===============================================================
+/Sec { 60 div } def % n => n/60
+% ------------------------------------------------
+/StartPSH {(
+psh
+false setautobind
+executive
+) /Medium SendTtyString
+} def
+/SendBlankLines { {(\n) /Fast SendTtyString} repeat } def
+/ClearScreen { 20 SendBlankLines } def
+% ------------------------------------------------
+/MakeFatMenus { % bool => - (setup large/std menus)
+{
+% Fix menus to be large & Pretty!
+    LiteMenu begin
+	/MenuFont		/Helvetica-Bold findfont 24 scalefont def
+	/MenuTextColor		ColorDict /Yellow get def
+	/MenuFillColor		ColorDict /Black get def
+	/MenuBorderColor	MenuTextColor def
+    end
+    LitePullRightMenu begin
+	/StrokeSelection?	true def
+    end
+} {
+% Fix menus to be std
+    LiteMenu begin
+	/MenuFont		/Times-Bold findfont 14 scalefont def
+	/MenuTextColor		0 0 0 rgbcolor def
+	/MenuFillColor		1 1 1 rgbcolor def
+	/MenuBorderColor	MenuTextColor def
+    end
+    LitePullRightMenu begin
+	/StrokeSelection?	false def
+    end
+} ifelse
+    
+    LiteMenu begin
+	/invalidate { % - => -
+	    MenuItems {begin /w null def /h null def end} forall
+	    /MenuWidth null store /MenuHeight null store
+	    /MenuCanvas null store
+	} def
+	/invalidateall { % - => -
+	    /invalidate self send
+	    MenuItems {
+		/Menu get dup null eq {pop} {/invalidateall exch send} ifelse
+	    } forall
+	} def
+    end
+    /invalidateall rootmenu send
+    {	/invalidateall FrameMenu send
+	/invalidateall IconMenu send
+	ClientMenu null ne {/invalidateall ClientMenu send} if
+    } systemdict /AllWin known {AllWin} {RootUserDict /AllWin get exec} ifelse
+} def
+% ------------------------------------------------
+/MakeFatTerm { % - => - (setup term and menus)
+% Fix terminals to use bold courier.
+% Start a terminal
+    FontDirectory /CourierTemp known not {
+	FontDirectory begin
+	    /CourierTemp	Courier def
+	    /Courier		Courier-Bold def
+	end
+    } if
+    (psterm -t h19 -li 20 -co 50) forkunix
+} def
+% ------------------------------------------------
+/RunPSGraphicsDemo { % proc str
+    dup SendTtyString
+    systemdict begin cvx exec end
+    /CodeBookPaint exch store
+    /paintclient win send
+} def
+% ------------------------------------------------
+/MakePointer {
+(
+    /UpTriangle		{0 0 moveto 1 0 lineto .5 1 lineto closepath} def
+    /DownTriangle	{0 1 moveto 1 1 lineto .5 0 lineto closepath} def
+    /RightTriangle	{0 0 moveto 0 1 lineto 1 .5 lineto closepath} def
+    /LeftTriangle	{1 0 moveto 1 1 lineto 0 .5 lineto closepath} def
+    /FlipTriangle { % proc
+        {   /UnitTriangle 1 index cvx store
+            dup /UpTriangle eq exch /DownTriangle eq or {/gt} {/lt} ifelse
+		FrameX FrameY FrameWidth FrameHeight 2 copy
+		7 -1 roll cvx exec  {exch} if reshape
+%            unmap reshapefromuser map
+        } win send
+    } def
+
+    /TriangleWindow LiteWindow []
+    classbegin
+        /UnitTriangle {LeftTriangle} def
+	/FramePath {
+	    matrix currentmatrix 5 1 roll		% xfm x y w h
+	    4 2 roll translate scale			% xfm
+	    UnitTriangle				% xfm
+	    setmatrix					% -
+	} def
+	/PaintIcon {ColorDict /Red get fillcanvas} def
+	/PaintFrame {ColorDict /Yellow get fillcanvas} def
+	/PaintFocus {} def
+	/PaintClient {ColorDict /Red get fillcanvas} def
+	/ClientMenu [
+	    (   >   ) { /RightTriangle FlipTriangle }
+	    (   V   ) { /DownTriangle FlipTriangle }
+	    (   <   ) { /LeftTriangle FlipTriangle }
+	    (   ^   ) { /UpTriangle FlipTriangle }
+	    (Reshape) { /reshapefromuser win send }
+	    (Flip Drag) { {/dragframe? dragframe? not store} win send }
+	] /new DefaultMenu send def
+	/dragframe? false def
+    classend def
+
+    /win framebuffer /new TriangleWindow send def
+    /reshapefromuser win send
+    win /FrameCanvas get /Retained true put
+    /map win send
+) runprogram
+} def
+% ===============================================================
+%                        Utilities used by demos:
+% ===============================================================
+systemdict begin
+% ------------------------------------------------
+/ps { count countdictstack exch ([%/%]:) printf pstack} def
+/ex {executive} def
+/cds {countdictstack =} def
+/pvm { % print vm status
+    (VMStatus: Used=%, Avail=%, Break=%.\n)
+    [[vmstatus] {round} forall 3 1 roll exch 3 -1 roll] printf
+} def
+/pd { {exch (/%:\t) printf =} forall } def		% print dict
+/clear+ {clear countdictstack 2 sub {end} repeat} def	% clear both stacks.
+%
+% timeit
+%
+/Dict 10 dict def
+Dict /timeitms {
+    T2 T1 sub 1000 mul Count div 60 mul 1000 mul round 1000 div
+} put
+/timeit { % count test => -
+//Dict begin
+    /timeitms {
+	T2 T1 sub 1000 mul Count div 60 mul 1000 mul round 1000 div
+    } def
+    /Proc 1 index def
+    /Count 2 index def
+    /T1 currenttime def
+end
+    repeat currenttime
+//Dict begin
+    /T2 exch def
+    (Time: % ms, Loops: %, Test: ) [timeitms Count] printf /Proc load ==
+end
+} def
+currentdict /Dict undef
+% ------------------------------------------------
+/pathcanvas { % x y w h parent path => canvas (make "path" shaped canvas)
+10 dict begin
+    gsave
+    cvx [/path /parent /h /w /y /x] {exch def} forall
+    /can parent newcanvas def
+
+    parent setcanvas
+    x y translate 0 0 w h path
+    
+    can reshapecanvas
+    can /Mapped true put
+    can
+    grestore
+end
+} def
+/rectcanvas { {rectpath} pathcanvas } def % x y w h parent => canvas
+/ovalcanvas { {ovalpath} pathcanvas } def % x y w h parent => canvas
+/starcanvas { {starpath} pathcanvas } def % x y w h parent => canvas
+% ------------------------------------------------
+/runprogram { % string => - (exececute the string as a psh program)
+    (/tmp/pshscript) (w) file		% str file
+    dup 3 -1 roll			% file file str
+    writestring closefile		% -
+    (psh /tmp/pshscript) forkunix
+} def
+% ------------------------------------------------
+/setshade { % GrayOrColor => - (set gray or color)
+    dup type /colortype eq {setcolor} {setgray} ifelse
+} def
+% ------------------------------------------------
+/fillcanvas { % GrayOrColor => - (Fills current canvas w/ GrayOrColor)
+    setshade clippath fill
+} def
+% ------------------------------------------------
+/insetrect { % delta x y w h => x' y' w' h' (return new rect inset by delta)
+10 dict begin
+    [/h /w /y /x /delta] {exch def} forall
+    x delta add y delta add w delta dup add sub h delta dup add sub
+end
+} def
+% ------------------------------------------------
+/rectpath { % x y w h => - (make a rect path)
+    4 2 roll moveto
+    dup 0 exch rlineto exch 0 rlineto neg 0 exch rlineto closepath
+} def
+% ------------------------------------------------
+/ovalpath { % x y w h => - (make a oval path)
+    matrix currentmatrix 5 1 roll                % xfm x y w h
+    4 2 roll translate scale                     % xfm
+    .5 .5 translate 0 0 .5 0 360 arc closepath   % xfm
+    setmatrix                                    % -
+} def
+% ------------------------------------------------
+/starpath { % x y w h  =>  -  (make a star path)
+    matrix currentmatrix 5 1 roll                % xfm x y w h
+    4 2 roll translate scale                     % xfm
+    .2 0 moveto .5 1 lineto .8 0 lineto          % xfm
+    0 .65 lineto 1 .65 lineto closepath          % xfm
+    setmatrix                                    % -
+} def
+end	% systemdict begin
+% ===============================================================
+
+main

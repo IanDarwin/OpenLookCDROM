@@ -1,0 +1,57 @@
+%!
+
+% deadwin.ps
+%
+% by: Jeremy Huxtable jh@uk.co.ist
+%
+
+% This program will remove all those irritating 'dead' windows and canvases
+% from your screen. When run, it will let you choose a point on the screen
+% and will then walk the canvas tree, zapping all (mapped) canvases which enclose that
+% point. The canvases will be unmapped, made non-retained, and all their
+% interests revoked. This will at least hide them from your gaze, and may
+% even make them go away altogether, though I wouldn't count on it. What is
+% really needed is to trawl through the whole NeWS data structures trying to
+% find the reference which is keeping the canvases there.
+
+% Before running:
+%       Make sure that your windows are out of the way as there is no unzapping
+% a window.
+
+% The canvas tree walking routine is useful for all sorts of things such as
+% popping up an object browser on a window and for investigating all those
+% unmapped canvases which lurk behind your screen.
+
+/zapcanvas { % x y canvas =>
+    dup /Mapped get {
+	dup getcanvaslocation
+	2 index setcanvas
+	clippath pathbbox 4 2 roll pop pop
+	framebuffer setcanvas
+	% If the point is in this canvas, and the canvas is a) not the
+	% framebuffer, and b) mapped, zap it.  The most we can do is
+	% to unmap the canvas, stop it being retained, and remove its
+	% interests.
+	rectpath 3 copy pop pointinpath {
+	    dup framebuffer ne 1 index /Mapped get and {
+		dup /Mapped false put
+		dup /Retained false put
+		dup /Interests get {
+		    revokeinterest
+		} forall
+	    } if
+	} if
+	/TopChild get                           % get first child
+	{
+		dup null eq { exit } if         % exit loop if no more
+		3 copy zapcanvas                % recurse for this child
+		/CanvasBelow get                % get next child
+	} loop
+    } if
+    pop pop pop
+} def
+
+fboverlay setcanvas
+getclick
+framebuffer setcanvas
+framebuffer zapcanvas

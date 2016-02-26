@@ -1,0 +1,227 @@
+diff -c -r perf.org/README.linux perf/README.linux
+*** perf.org/README.linux	Wed Sep 15 16:53:48 1993
+--- perf/README.linux	Thu Sep 16 21:36:26 1993
+***************
+*** 13,16 ****
+       cd linux-pl12; make lilo; reboot
+       (you should now have a /proc/stat)
+  3) build & start perf
+!    cd perf; xmkmf; make; perf&
+--- 13,20 ----
+       cd linux-pl12; make lilo; reboot
+       (you should now have a /proc/stat)
+  3) build & start perf
+!    cd perf
+!    export IMAKEINCLUDE="-I/usr/openwin/lib/config"
+!    xmkmf
+!    make
+!    perf &
+diff -c -r perf.org/perf/perf.c perf/perf/perf.c
+*** perf.org/perf/perf.c	Wed Sep 15 22:31:30 1993
+--- perf/perf/perf.c	Mon Sep 20 19:59:01 1993
+***************
+*** 154,161 ****
+  {
+    struct itimerval timer;
+  
+!   timer.it_value.tv_sec = timer.it_interval.tv_sec = min_spp;
+!   timer.it_value.tv_usec = timer.it_interval.tv_usec = 0;
+    notify_enable_rpc_svc(1);
+    notify_set_itimer_func(fr, update, ITIMER_REAL, &timer, NULL);
+  }
+--- 154,161 ----
+  {
+    struct itimerval timer;
+  
+!   timer.it_value.tv_sec = timer.it_interval.tv_sec = t;
+!   timer.it_value.tv_usec = timer.it_interval.tv_usec = 50000;
+    notify_enable_rpc_svc(1);
+    notify_set_itimer_func(fr, update, ITIMER_REAL, &timer, NULL);
+  }
+***************
+*** 429,434 ****
+--- 429,436 ----
+  	  case CPU:
+  	    for(j = sum = 0; j < 4; j++)
+  	      sum += sx.cp_time[j] - v->last[j];
++             if (sum == 0)
++               sum = 1; /* Prevent floating point exception*/
+  	    for(j = 0; j < 3; j++)
+  	      {
+  		d = 100.0 * (sx.cp_time[j] - v->last[j])/(double)sum;
+***************
+*** 1611,1616 ****
+--- 1613,1621 ----
+      FRAME_SHOW_RESIZE_CORNER, TRUE,
+      FRAME_SHOW_HEADER, FALSE,
+      NULL);
++ 
++   do_alarm(min_spp);
++ 
+    ca = xv_create(fr, CANVAS,
+      XV_X, 0, XV_Y, 0,
+      CANVAS_RETAINED,       FALSE,
+***************
+*** 1684,1691 ****
+  
+    if(!draw_line && depth == 1)
+      draw_one = 1;
+- 
+-   do_alarm(min_spp);
+  
+    xv_main_loop(fr);
+  }
+--- 1689,1694 ----
+Only in perf/perf: rstattest.c
+diff -c -r perf.org/rstatd/Makefile perf/rstatd/Makefile
+*** perf.org/rstatd/Makefile	Wed Sep 15 16:26:15 1993
+--- perf/rstatd/Makefile	Thu Sep 16 21:47:43 1993
+***************
+*** 1,15 ****
+  OBJS = rstat_svc.o rstat_xdr.o rstat_prog.o
+  CFLAGS = -O
+  
+  all:rstatd librpcsvc.a
+  
+! intall:all
+  	cp librpcsvc.a /usr/lib
+  	cp rstat.h /usr/include
+  	cp rstatd /usr/etc/rpc.rstatd
+  
+  rstatd:$(OBJS)
+! 	$(CC) -o $@ $(OBJS) -lrpclib
+  
+  librpcsvc.a:rstat.o rstat_xdr.o
+  	ar crv librpcsvc.a rstat.o rstat_xdr.o
+--- 1,18 ----
+  OBJS = rstat_svc.o rstat_xdr.o rstat_prog.o
+  CFLAGS = -O
+  
++ # Uncomment this unless RPC functions are in libc
++ #RPCLIB = -lrpclib
++ 
+  all:rstatd librpcsvc.a
+  
+! install:all
+  	cp librpcsvc.a /usr/lib
+  	cp rstat.h /usr/include
+  	cp rstatd /usr/etc/rpc.rstatd
+  
+  rstatd:$(OBJS)
+! 	$(CC) -o $@ $(OBJS) $(RPCLIB)
+  
+  librpcsvc.a:rstat.o rstat_xdr.o
+  	ar crv librpcsvc.a rstat.o rstat_xdr.o
+diff -c -r perf.org/rstatd/rstat_prog.c perf/rstatd/rstat_prog.c
+*** perf.org/rstatd/rstat_prog.c	Wed Sep 15 16:50:36 1993
+--- perf/rstatd/rstat_prog.c	Sat Sep 18 17:11:40 1993
+***************
+*** 29,35 ****
+  static void fill_s_t();
+  
+  struct statstime *
+! rstatproc_stats_3_svc(v, cl)
+    void *v;
+    struct svc_req *cl;
+  {
+--- 29,35 ----
+  static void fill_s_t();
+  
+  struct statstime *
+! rstatproc_stats_3(v, cl)
+    void *v;
+    struct svc_req *cl;
+  {
+***************
+*** 38,44 ****
+  }
+  
+  struct statsswtch *
+! rstatproc_stats_2_svc(v, cl)
+    void *v;
+    struct svc_req *cl;
+  {
+--- 38,44 ----
+  }
+  
+  struct statsswtch *
+! rstatproc_stats_2(v, cl)
+    void *v;
+    struct svc_req *cl;
+  {
+***************
+*** 48,54 ****
+  }
+  
+  struct stats *
+! rstatproc_stats_1_svc(v, cl)
+    void *v;
+    struct svc_req *cl;
+  {
+--- 48,54 ----
+  }
+  
+  struct stats *
+! rstatproc_stats_1(v, cl)
+    void *v;
+    struct svc_req *cl;
+  {
+***************
+*** 58,64 ****
+  }
+  
+  unsigned int *
+! rstatproc_havedisk_3_svc(v, cl)
+    void *v;
+    struct svc_req *cl;
+  {
+--- 58,64 ----
+  }
+  
+  unsigned int *
+! rstatproc_havedisk_3(v, cl)
+    void *v;
+    struct svc_req *cl;
+  {
+***************
+*** 67,85 ****
+  }
+  
+  unsigned int *
+! rstatproc_havedisk_2_svc(v, cl)
+    void *v;
+    struct svc_req *cl;
+  {
+!   return rstatproc_havedisk_3_svc(v, cl);
+  }
+  
+  unsigned int *
+! rstatproc_havedisk_1_svc(v, cl)
+    void *v;
+    struct svc_req *cl;
+  {
+!   return rstatproc_havedisk_3_svc(v, cl);
+  }
+  
+  /* FIXME: unsigned/signed overflow (But: It should seldom occur :-) */
+--- 67,85 ----
+  }
+  
+  unsigned int *
+! rstatproc_havedisk_2(v, cl)
+    void *v;
+    struct svc_req *cl;
+  {
+!   return rstatproc_havedisk_3(v, cl);
+  }
+  
+  unsigned int *
+! rstatproc_havedisk_1(v, cl)
+    void *v;
+    struct svc_req *cl;
+  {
+!   return rstatproc_havedisk_3(v, cl);
+  }
+  
+  /* FIXME: unsigned/signed overflow (But: It should seldom occur :-) */
+Only in perf.org/rstatd: rstattest.c

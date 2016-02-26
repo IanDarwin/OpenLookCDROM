@@ -1,0 +1,3500 @@
+# ACE/gr parameter file
+#
+@with g0
+@g0 on
+@g0 label off
+@g0 hidden false
+@g0 type xy
+@g0 autoscale type AUTO
+@g0 fixedpoint off
+@g0 fixedpoint type 0
+@g0 fixedpoint xy 0.000000, 0.000000
+@g0 fixedpoint format degreesmmsslon degreesmmsslat
+@g0 fixedpoint prec 0, 0
+@    default linestyle 1
+@    default linewidth 1
+@    default color 1
+@    default char size 1.000000
+@    default font 2
+@    default font source 0
+@    default symbol size 1.000000
+@    world xmin 110
+@    world xmax 180
+@    world ymin -55
+@    world ymax -10
+@    view xmin 0.150000
+@    view xmax 0.850000
+@    view ymin 0.150000
+@    view ymax 0.850000
+@    title ""
+@    title font 4
+@    title size 1.500000
+@    title color 1
+@    title linewidth 1
+@    subtitle ""
+@    subtitle font 4
+@    subtitle size 1.000000
+@    subtitle color 1
+@    subtitle linewidth 1
+@    s0 type xy
+@    s0 symbol 0
+@    s0 symbol size 1.000000
+@    s0 symbol fill 0
+@    s0 symbol center false
+@    s0 skip 0
+@    s0 linestyle 1
+@    s0 linewidth 3
+@    s0 color 2
+@    s0 fill 1
+@    s0 fill with color
+@    s0 fill color 8
+@    s0 fill pattern 0
+@    s0 errorbar type BOTH
+@    s0 errorbar length 1.000000
+@    s0 errorbar linewidth 1
+@    s0 errorbar linestyle 1
+@    s0 errorbar riser on
+@    s0 errorbar riser linewidth 1
+@    s0 errorbar riser linestyle 1
+@    s0 comment "examples/au.d"
+@    s1 type xy
+@    s1 symbol 0
+@    s1 symbol size 1.000000
+@    s1 symbol fill 0
+@    s1 symbol center false
+@    s1 skip 0
+@    s1 linestyle 1
+@    s1 linewidth 3
+@    s1 color 2
+@    s1 fill 1
+@    s1 fill with color
+@    s1 fill color 8
+@    s1 fill pattern 0
+@    s1 errorbar type BOTH
+@    s1 errorbar length 1.000000
+@    s1 errorbar linewidth 1
+@    s1 errorbar linestyle 1
+@    s1 errorbar riser on
+@    s1 errorbar riser linewidth 1
+@    s1 errorbar riser linestyle 1
+@    s1 comment "examples/au.d"
+@    s2 type xy
+@    s2 symbol 0
+@    s2 symbol size 1.000000
+@    s2 symbol fill 0
+@    s2 symbol center false
+@    s2 skip 0
+@    s2 linestyle 1
+@    s2 linewidth 3
+@    s2 color 2
+@    s2 fill 1
+@    s2 fill with color
+@    s2 fill color 8
+@    s2 fill pattern 0
+@    s2 errorbar type BOTH
+@    s2 errorbar length 1.000000
+@    s2 errorbar linewidth 1
+@    s2 errorbar linestyle 1
+@    s2 errorbar riser on
+@    s2 errorbar riser linewidth 1
+@    s2 errorbar riser linestyle 1
+@    s2 comment "examples/au.d"
+@    s3 type xy
+@    s3 symbol 0
+@    s3 symbol size 1.000000
+@    s3 symbol fill 0
+@    s3 symbol center false
+@    s3 skip 0
+@    s3 linestyle 1
+@    s3 linewidth 3
+@    s3 color 2
+@    s3 fill 1
+@    s3 fill with color
+@    s3 fill color 8
+@    s3 fill pattern 0
+@    s3 errorbar type BOTH
+@    s3 errorbar length 1.000000
+@    s3 errorbar linewidth 1
+@    s3 errorbar linestyle 1
+@    s3 errorbar riser on
+@    s3 errorbar riser linewidth 1
+@    s3 errorbar riser linestyle 1
+@    s3 comment "examples/au.d"
+@    s4 type xy
+@    s4 symbol 0
+@    s4 symbol size 1.000000
+@    s4 symbol fill 0
+@    s4 symbol center false
+@    s4 skip 0
+@    s4 linestyle 1
+@    s4 linewidth 3
+@    s4 color 2
+@    s4 fill 1
+@    s4 fill with color
+@    s4 fill color 8
+@    s4 fill pattern 0
+@    s4 errorbar type BOTH
+@    s4 errorbar length 1.000000
+@    s4 errorbar linewidth 1
+@    s4 errorbar linestyle 1
+@    s4 errorbar riser on
+@    s4 errorbar riser linewidth 1
+@    s4 errorbar riser linestyle 1
+@    s4 comment "examples/au.d"
+@    s5 type xy
+@    s5 symbol 0
+@    s5 symbol size 1.000000
+@    s5 symbol fill 0
+@    s5 symbol center false
+@    s5 skip 0
+@    s5 linestyle 1
+@    s5 linewidth 3
+@    s5 color 2
+@    s5 fill 1
+@    s5 fill with color
+@    s5 fill color 8
+@    s5 fill pattern 0
+@    s5 errorbar type BOTH
+@    s5 errorbar length 1.000000
+@    s5 errorbar linewidth 1
+@    s5 errorbar linestyle 1
+@    s5 errorbar riser on
+@    s5 errorbar riser linewidth 1
+@    s5 errorbar riser linestyle 1
+@    s5 comment "examples/au.d"
+@    s6 type xy
+@    s6 symbol 0
+@    s6 symbol size 1.000000
+@    s6 symbol fill 0
+@    s6 symbol center false
+@    s6 skip 0
+@    s6 linestyle 1
+@    s6 linewidth 3
+@    s6 color 2
+@    s6 fill 1
+@    s6 fill with color
+@    s6 fill color 8
+@    s6 fill pattern 0
+@    s6 errorbar type BOTH
+@    s6 errorbar length 1.000000
+@    s6 errorbar linewidth 1
+@    s6 errorbar linestyle 1
+@    s6 errorbar riser on
+@    s6 errorbar riser linewidth 1
+@    s6 errorbar riser linestyle 1
+@    s6 comment "examples/au.d"
+@    s7 type xy
+@    s7 symbol 0
+@    s7 symbol size 1.000000
+@    s7 symbol fill 0
+@    s7 symbol center false
+@    s7 skip 0
+@    s7 linestyle 1
+@    s7 linewidth 3
+@    s7 color 2
+@    s7 fill 1
+@    s7 fill with color
+@    s7 fill color 8
+@    s7 fill pattern 0
+@    s7 errorbar type BOTH
+@    s7 errorbar length 1.000000
+@    s7 errorbar linewidth 1
+@    s7 errorbar linestyle 1
+@    s7 errorbar riser on
+@    s7 errorbar riser linewidth 1
+@    s7 errorbar riser linestyle 1
+@    s7 comment "examples/au.d"
+@    s8 type xy
+@    s8 symbol 0
+@    s8 symbol size 1.000000
+@    s8 symbol fill 0
+@    s8 symbol center false
+@    s8 skip 0
+@    s8 linestyle 1
+@    s8 linewidth 3
+@    s8 color 2
+@    s8 fill 1
+@    s8 fill with color
+@    s8 fill color 8
+@    s8 fill pattern 0
+@    s8 errorbar type BOTH
+@    s8 errorbar length 1.000000
+@    s8 errorbar linewidth 1
+@    s8 errorbar linestyle 1
+@    s8 errorbar riser on
+@    s8 errorbar riser linewidth 1
+@    s8 errorbar riser linestyle 1
+@    s8 comment "examples/au.d"
+@    s9 type xy
+@    s9 symbol 0
+@    s9 symbol size 1.000000
+@    s9 symbol fill 0
+@    s9 symbol center false
+@    s9 skip 0
+@    s9 linestyle 1
+@    s9 linewidth 3
+@    s9 color 2
+@    s9 fill 1
+@    s9 fill with color
+@    s9 fill color 8
+@    s9 fill pattern 0
+@    s9 errorbar type BOTH
+@    s9 errorbar length 1.000000
+@    s9 errorbar linewidth 1
+@    s9 errorbar linestyle 1
+@    s9 errorbar riser on
+@    s9 errorbar riser linewidth 1
+@    s9 errorbar riser linestyle 1
+@    s9 comment "examples/au.d"
+@    xaxis  tick on
+@    xaxis  tick major 10.000000
+@    xaxis  tick minor 10.000000
+@    xaxis  tick offsetx 0.000000
+@    xaxis  tick offsety 0.000000
+@    xaxis  tick alt off
+@    xaxis  tick min 0.000000
+@    xaxis  tick max 1.000000
+@    xaxis  label ""
+@    xaxis  label layout para
+@    xaxis  label char size 1.000000
+@    xaxis  label font 4
+@    xaxis  label color 1
+@    xaxis  label linewidth 1
+@    xaxis  ticklabel on
+@    xaxis  ticklabel type auto
+@    xaxis  ticklabel prec 0
+@    xaxis  ticklabel format degreeslon
+@    xaxis  ticklabel layout horizontal
+@    xaxis  ticklabel skip 0
+@    xaxis  ticklabel stagger 0
+@    xaxis  ticklabel op bottom
+@    xaxis  ticklabel sign normal
+@    xaxis  ticklabel start type auto
+@    xaxis  ticklabel start 50.000000
+@    xaxis  ticklabel stop type auto
+@    xaxis  ticklabel stop 0.000000
+@    xaxis  ticklabel char size 1.000000
+@    xaxis  ticklabel font 4
+@    xaxis  ticklabel color 1
+@    xaxis  ticklabel linewidth 1
+@    xaxis  tick major on
+@    xaxis  tick minor on
+@    xaxis  tick default 6
+@    xaxis  tick in
+@    xaxis  tick major color 1
+@    xaxis  tick major linewidth 1
+@    xaxis  tick major linestyle 1
+@    xaxis  tick minor color 1
+@    xaxis  tick minor linewidth 1
+@    xaxis  tick minor linestyle 1
+@    xaxis  tick log off
+@    xaxis  tick size 1.000000
+@    xaxis  tick minor size 0.500000
+@    xaxis  bar off
+@    xaxis  bar color 1
+@    xaxis  bar linestyle 1
+@    xaxis  bar linewidth 1
+@    xaxis  tick major grid off
+@    xaxis  tick minor grid off
+@    xaxis  tick op both
+@    xaxis  tick type auto
+@    xaxis  tick spec 0
+@    yaxis  tick on
+@    yaxis  tick major 10.000000
+@    yaxis  tick minor 5.000000
+@    yaxis  tick offsetx 0.000000
+@    yaxis  tick offsety 0.000000
+@    yaxis  tick alt off
+@    yaxis  tick min 0.000000
+@    yaxis  tick max 1.000000
+@    yaxis  label ""
+@    yaxis  label layout para
+@    yaxis  label char size 1.000000
+@    yaxis  label font 4
+@    yaxis  label color 1
+@    yaxis  label linewidth 1
+@    yaxis  ticklabel on
+@    yaxis  ticklabel type auto
+@    yaxis  ticklabel prec 0
+@    yaxis  ticklabel format degreeslat
+@    yaxis  ticklabel layout horizontal
+@    yaxis  ticklabel skip 0
+@    yaxis  ticklabel stagger 0
+@    yaxis  ticklabel op left
+@    yaxis  ticklabel sign normal
+@    yaxis  ticklabel start type spec
+@    yaxis  ticklabel start -50.000000
+@    yaxis  ticklabel stop type auto
+@    yaxis  ticklabel stop 0.000000
+@    yaxis  ticklabel char size 1.000000
+@    yaxis  ticklabel font 4
+@    yaxis  ticklabel color 1
+@    yaxis  ticklabel linewidth 1
+@    yaxis  tick major on
+@    yaxis  tick minor on
+@    yaxis  tick default 6
+@    yaxis  tick in
+@    yaxis  tick major color 1
+@    yaxis  tick major linewidth 1
+@    yaxis  tick major linestyle 1
+@    yaxis  tick minor color 1
+@    yaxis  tick minor linewidth 1
+@    yaxis  tick minor linestyle 1
+@    yaxis  tick log off
+@    yaxis  tick size 1.000000
+@    yaxis  tick minor size 0.500000
+@    yaxis  bar off
+@    yaxis  bar color 1
+@    yaxis  bar linestyle 1
+@    yaxis  bar linewidth 1
+@    yaxis  tick major grid off
+@    yaxis  tick minor grid off
+@    yaxis  tick op both
+@    yaxis  tick type auto
+@    yaxis  tick spec 0
+@    altxaxis  tick on
+@    altxaxis  tick major 0.500000
+@    altxaxis  tick minor 0.250000
+@    altxaxis  tick offsetx 0.000000
+@    altxaxis  tick offsety 0.000000
+@    altxaxis  tick alt off
+@    altxaxis  tick min 0.000000
+@    altxaxis  tick max 1.000000
+@    altxaxis  label ""
+@    altxaxis  label layout para
+@    altxaxis  label char size 1.000000
+@    altxaxis  label font 4
+@    altxaxis  label color 1
+@    altxaxis  label linewidth 1
+@    altxaxis  ticklabel off
+@    altxaxis  ticklabel type auto
+@    altxaxis  ticklabel prec 1
+@    altxaxis  ticklabel format decimal
+@    altxaxis  ticklabel layout horizontal
+@    altxaxis  ticklabel skip 0
+@    altxaxis  ticklabel stagger 0
+@    altxaxis  ticklabel op bottom
+@    altxaxis  ticklabel sign normal
+@    altxaxis  ticklabel start type auto
+@    altxaxis  ticklabel start 0.000000
+@    altxaxis  ticklabel stop type auto
+@    altxaxis  ticklabel stop 0.000000
+@    altxaxis  ticklabel char size 1.000000
+@    altxaxis  ticklabel font 4
+@    altxaxis  ticklabel color 1
+@    altxaxis  ticklabel linewidth 1
+@    altxaxis  tick major off
+@    altxaxis  tick minor on
+@    altxaxis  tick default 6
+@    altxaxis  tick in
+@    altxaxis  tick major color 1
+@    altxaxis  tick major linewidth 1
+@    altxaxis  tick major linestyle 1
+@    altxaxis  tick minor color 1
+@    altxaxis  tick minor linewidth 1
+@    altxaxis  tick minor linestyle 1
+@    altxaxis  tick log off
+@    altxaxis  tick size 1.000000
+@    altxaxis  tick minor size 0.500000
+@    altxaxis  bar off
+@    altxaxis  bar color 1
+@    altxaxis  bar linestyle 1
+@    altxaxis  bar linewidth 1
+@    altxaxis  tick major grid off
+@    altxaxis  tick minor grid off
+@    altxaxis  tick op both
+@    altxaxis  tick type auto
+@    altxaxis  tick spec 0
+@    altyaxis  tick on
+@    altyaxis  tick major 0.500000
+@    altyaxis  tick minor 0.250000
+@    altyaxis  tick offsetx 0.000000
+@    altyaxis  tick offsety 0.000000
+@    altyaxis  tick alt off
+@    altyaxis  tick min 0.000000
+@    altyaxis  tick max 1.000000
+@    altyaxis  label ""
+@    altyaxis  label layout para
+@    altyaxis  label char size 1.000000
+@    altyaxis  label font 4
+@    altyaxis  label color 1
+@    altyaxis  label linewidth 1
+@    altyaxis  ticklabel off
+@    altyaxis  ticklabel type auto
+@    altyaxis  ticklabel prec 1
+@    altyaxis  ticklabel format decimal
+@    altyaxis  ticklabel layout horizontal
+@    altyaxis  ticklabel skip 0
+@    altyaxis  ticklabel stagger 0
+@    altyaxis  ticklabel op left
+@    altyaxis  ticklabel sign normal
+@    altyaxis  ticklabel start type auto
+@    altyaxis  ticklabel start 0.000000
+@    altyaxis  ticklabel stop type auto
+@    altyaxis  ticklabel stop 0.000000
+@    altyaxis  ticklabel char size 1.000000
+@    altyaxis  ticklabel font 4
+@    altyaxis  ticklabel color 1
+@    altyaxis  ticklabel linewidth 1
+@    altyaxis  tick major off
+@    altyaxis  tick minor on
+@    altyaxis  tick default 6
+@    altyaxis  tick in
+@    altyaxis  tick major color 1
+@    altyaxis  tick major linewidth 1
+@    altyaxis  tick major linestyle 1
+@    altyaxis  tick minor color 1
+@    altyaxis  tick minor linewidth 1
+@    altyaxis  tick minor linestyle 1
+@    altyaxis  tick log off
+@    altyaxis  tick size 1.000000
+@    altyaxis  tick minor size 0.500000
+@    altyaxis  bar off
+@    altyaxis  bar color 1
+@    altyaxis  bar linestyle 1
+@    altyaxis  bar linewidth 1
+@    altyaxis  tick major grid off
+@    altyaxis  tick minor grid off
+@    altyaxis  tick op both
+@    altyaxis  tick type auto
+@    altyaxis  tick spec 0
+@    zeroxaxis  tick on
+@    zeroxaxis  tick major 20.000000
+@    zeroxaxis  tick minor 10.000000
+@    zeroxaxis  tick offsetx 0.000000
+@    zeroxaxis  tick offsety 0.000000
+@    zeroxaxis  tick alt off
+@    zeroxaxis  tick min 0.000000
+@    zeroxaxis  tick max 1.000000
+@    zeroxaxis  label ""
+@    zeroxaxis  label layout para
+@    zeroxaxis  label char size 1.000000
+@    zeroxaxis  label font 4
+@    zeroxaxis  label color 1
+@    zeroxaxis  label linewidth 1
+@    zeroxaxis  ticklabel off
+@    zeroxaxis  ticklabel type auto
+@    zeroxaxis  ticklabel prec 1
+@    zeroxaxis  ticklabel format decimal
+@    zeroxaxis  ticklabel layout horizontal
+@    zeroxaxis  ticklabel skip 0
+@    zeroxaxis  ticklabel stagger 0
+@    zeroxaxis  ticklabel op bottom
+@    zeroxaxis  ticklabel sign normal
+@    zeroxaxis  ticklabel start type auto
+@    zeroxaxis  ticklabel start 0.000000
+@    zeroxaxis  ticklabel stop type auto
+@    zeroxaxis  ticklabel stop 0.000000
+@    zeroxaxis  ticklabel char size 1.000000
+@    zeroxaxis  ticklabel font 4
+@    zeroxaxis  ticklabel color 1
+@    zeroxaxis  ticklabel linewidth 1
+@    zeroxaxis  tick major off
+@    zeroxaxis  tick minor on
+@    zeroxaxis  tick default 6
+@    zeroxaxis  tick in
+@    zeroxaxis  tick major color 1
+@    zeroxaxis  tick major linewidth 1
+@    zeroxaxis  tick major linestyle 1
+@    zeroxaxis  tick minor color 1
+@    zeroxaxis  tick minor linewidth 1
+@    zeroxaxis  tick minor linestyle 1
+@    zeroxaxis  tick log off
+@    zeroxaxis  tick size 1.000000
+@    zeroxaxis  tick minor size 0.500000
+@    zeroxaxis  bar off
+@    zeroxaxis  bar color 1
+@    zeroxaxis  bar linestyle 1
+@    zeroxaxis  bar linewidth 1
+@    zeroxaxis  tick major grid off
+@    zeroxaxis  tick minor grid off
+@    zeroxaxis  tick op both
+@    zeroxaxis  tick type auto
+@    zeroxaxis  tick spec 0
+@    zeroyaxis  tick on
+@    zeroyaxis  tick major 10.000000
+@    zeroyaxis  tick minor 5.000000
+@    zeroyaxis  tick offsetx 0.000000
+@    zeroyaxis  tick offsety 0.000000
+@    zeroyaxis  tick alt off
+@    zeroyaxis  tick min 0.000000
+@    zeroyaxis  tick max 1.000000
+@    zeroyaxis  label ""
+@    zeroyaxis  label layout para
+@    zeroyaxis  label char size 1.000000
+@    zeroyaxis  label font 4
+@    zeroyaxis  label color 1
+@    zeroyaxis  label linewidth 1
+@    zeroyaxis  ticklabel off
+@    zeroyaxis  ticklabel type auto
+@    zeroyaxis  ticklabel prec 1
+@    zeroyaxis  ticklabel format decimal
+@    zeroyaxis  ticklabel layout horizontal
+@    zeroyaxis  ticklabel skip 0
+@    zeroyaxis  ticklabel stagger 0
+@    zeroyaxis  ticklabel op left
+@    zeroyaxis  ticklabel sign normal
+@    zeroyaxis  ticklabel start type auto
+@    zeroyaxis  ticklabel start 0.000000
+@    zeroyaxis  ticklabel stop type auto
+@    zeroyaxis  ticklabel stop 0.000000
+@    zeroyaxis  ticklabel char size 1.000000
+@    zeroyaxis  ticklabel font 4
+@    zeroyaxis  ticklabel color 1
+@    zeroyaxis  ticklabel linewidth 1
+@    zeroyaxis  tick major off
+@    zeroyaxis  tick minor on
+@    zeroyaxis  tick default 6
+@    zeroyaxis  tick in
+@    zeroyaxis  tick major color 1
+@    zeroyaxis  tick major linewidth 1
+@    zeroyaxis  tick major linestyle 1
+@    zeroyaxis  tick minor color 1
+@    zeroyaxis  tick minor linewidth 1
+@    zeroyaxis  tick minor linestyle 1
+@    zeroyaxis  tick log off
+@    zeroyaxis  tick size 1.000000
+@    zeroyaxis  tick minor size 0.500000
+@    zeroyaxis  bar off
+@    zeroyaxis  bar color 1
+@    zeroyaxis  bar linestyle 1
+@    zeroyaxis  bar linewidth 1
+@    zeroyaxis  tick major grid off
+@    zeroyaxis  tick minor grid off
+@    zeroyaxis  tick op both
+@    zeroyaxis  tick type auto
+@    zeroyaxis  tick spec 0
+@    legend off
+@    legend loctype view
+@    legend layout 0
+@    legend vgap 2
+@    legend hgap 1
+@    legend length 4
+@    legend box off
+@    legend x1 0.800000
+@    legend y1 0.800000
+@    legend font 4
+@    legend char size 1.000000
+@    legend linestyle 1
+@    legend linewidth 1
+@    legend color 1
+@    frame on
+@    frame type 0
+@    frame linestyle 1
+@    frame linewidth 1
+@    frame color 1
+@    frame fill off
+@    frame background color 0
+@TYPE xy
+144.912000 -40.723000
+144.891000 -40.781000
+144.896000 -40.801000
+144.891000 -40.835000
+144.896000 -40.888000
+144.902000 -40.909000
+144.902000 -40.959000
+144.912000 -41.041000
+144.950000 -41.231000
+145.030000 -41.403000
+145.036000 -41.432000
+145.100000 -41.551000
+145.159000 -41.625000
+145.175000 -41.657000
+145.202000 -41.670000
+145.235000 -41.698000
+145.256000 -41.731000
+145.278000 -41.784000
+145.315000 -41.813000
+145.347000 -41.853000
+145.364000 -41.894000
+145.535000 -42.032000
+145.611000 -42.114000
+145.627000 -42.158000
+145.648000 -42.183000
+145.648000 -42.199000
+145.664000 -42.219000
+145.670000 -42.252000
+145.648000 -42.300000
+145.632000 -42.333000
+145.616000 -42.417000
+145.675000 -42.611000
+145.740000 -42.708000
+145.938000 -42.989000
+146.019000 -43.081000
+146.062000 -43.120000
+146.132000 -43.168000
+146.320000 -43.304000
+146.357000 -43.316000
+146.411000 -43.352000
+146.460000 -43.376000
+146.476000 -43.395000
+146.513000 -43.403000
+146.540000 -43.423000
+146.594000 -43.431000
+146.669000 -43.479000
+146.771000 -43.507000
+146.819000 -43.499000
+146.857000 -43.471000
+146.884000 -43.439000
+146.922000 -43.344000
+147.029000 -43.240000
+147.067000 -43.232000
+147.083000 -43.220000
+147.115000 -43.212000
+147.212000 -43.184000
+147.239000 -43.156000
+147.410000 -43.089000
+147.437000 -42.993000
+147.480000 -42.993000
+147.496000 -43.005000
+147.545000 -43.013000
+147.604000 -43.021000
+147.663000 -42.997000
+147.754000 -42.916000
+147.819000 -42.932000
+147.840000 -42.948000
+147.905000 -42.952000
+147.980000 -42.940000
+147.980000 -42.852000
+147.969000 -42.828000
+147.996000 -42.716000
+148.007000 -42.680000
+148.023000 -42.647000
+148.007000 -42.587000
+147.996000 -42.526000
+147.975000 -42.454000
+147.991000 -42.369000
+148.012000 -42.324000
+148.050000 -42.304000
+148.093000 -42.276000
+148.130000 -42.260000
+148.141000 -42.235000
+148.173000 -42.207000
+148.222000 -42.065000
+148.254000 -42.032000
+148.302000 -41.963000
+148.351000 -41.902000
+148.388000 -41.796000
+148.394000 -41.715000
+148.420000 -41.584000
+148.415000 -41.498000
+148.410000 -41.444000
+148.394000 -41.412000
+148.340000 -41.132000
+148.351000 -41.115000
+148.335000 -41.087000
+148.335000 -41.058000
+148.313000 -41.025000
+148.270000 -40.959000
+148.227000 -40.917000
+148.189000 -40.901000
+148.163000 -40.868000
+148.146000 -40.876000
+148.114000 -40.863000
+148.018000 -40.880000
+147.937000 -40.901000
+147.926000 -40.926000
+147.840000 -40.971000
+147.663000 -40.971000
+147.513000 -41.016000
+147.330000 -41.078000
+147.281000 -41.066000
+147.239000 -41.066000
+147.222000 -41.078000
+147.126000 -41.091000
+147.099000 -41.103000
+147.056000 -41.099000
+147.050000 -41.153000
+147.050000 -41.177000
+147.045000 -41.194000
+147.072000 -41.247000
+147.040000 -41.256000
+147.002000 -41.247000
+146.970000 -41.218000
+146.911000 -41.186000
+146.814000 -41.165000
+146.540000 -41.218000
+146.486000 -41.202000
+146.438000 -41.190000
+146.234000 -41.148000
+145.971000 -41.132000
+145.917000 -41.107000
+145.745000 -41.054000
+145.713000 -41.025000
+145.648000 -41.000000
+145.600000 -40.975000
+145.519000 -40.901000
+145.460000 -40.847000
+145.423000 -40.785000
+145.380000 -40.768000
+145.358000 -40.793000
+145.294000 -40.801000
+145.261000 -40.835000
+145.224000 -40.843000
+145.186000 -40.835000
+145.095000 -40.789000
+145.052000 -40.764000
+145.030000 -40.752000
+144.993000 -40.768000
+144.977000 -40.760000
+144.955000 -40.756000
+&
+@TYPE xy
+173.043000 -34.382000
+173.026000 -34.382000
+173.000000 -34.387000
+172.973000 -34.401000
+172.935000 -34.405000
+172.930000 -34.419000
+172.892000 -34.423000
+172.838000 -34.477000
+172.812000 -34.531000
+172.865000 -34.603000
+173.000000 -34.698000
+173.059000 -34.779000
+173.069000 -34.797000
+173.096000 -34.806000
+173.123000 -34.837000
+173.139000 -34.891000
+173.193000 -35.012000
+173.198000 -35.241000
+173.215000 -35.272000
+173.236000 -35.285000
+173.252000 -35.325000
+173.376000 -35.419000
+173.472000 -35.491000
+173.483000 -35.504000
+173.510000 -35.513000
+173.521000 -35.553000
+173.542000 -35.620000
+173.548000 -35.651000
+173.682000 -35.859000
+173.703000 -35.877000
+173.779000 -35.953000
+173.795000 -35.970000
+173.897000 -36.037000
+174.004000 -36.059000
+174.122000 -36.081000
+174.235000 -36.116000
+174.251000 -36.165000
+174.235000 -36.183000
+174.192000 -36.231000
+174.203000 -36.275000
+174.278000 -36.328000
+174.300000 -36.408000
+174.311000 -36.443000
+174.375000 -36.592000
+174.402000 -36.636000
+174.418000 -36.693000
+174.407000 -36.711000
+174.423000 -36.742000
+174.461000 -36.794000
+174.402000 -36.930000
+174.434000 -36.939000
+174.482000 -36.939000
+174.482000 -36.956000
+174.531000 -37.004000
+174.585000 -37.113000
+174.633000 -37.144000
+174.670000 -37.170000
+174.713000 -37.188000
+174.756000 -37.340000
+174.842000 -37.457000
+174.859000 -37.518000
+174.885000 -37.700000
+174.869000 -37.813000
+174.891000 -37.890000
+174.848000 -38.175000
+174.638000 -38.630000
+174.579000 -38.788000
+174.493000 -38.945000
+174.396000 -39.013000
+174.359000 -39.035000
+174.273000 -39.077000
+174.225000 -39.103000
+174.192000 -39.149000
+174.187000 -39.179000
+174.165000 -39.247000
+174.149000 -39.264000
+174.149000 -39.289000
+174.085000 -39.310000
+173.972000 -39.374000
+173.994000 -39.458000
+174.047000 -39.555000
+174.058000 -39.581000
+174.090000 -39.619000
+174.096000 -39.665000
+174.192000 -39.703000
+174.429000 -39.787000
+174.450000 -39.808000
+174.493000 -39.804000
+174.525000 -39.825000
+174.703000 -39.863000
+174.816000 -39.884000
+174.923000 -39.905000
+174.966000 -39.922000
+175.009000 -39.926000
+175.041000 -39.943000
+175.127000 -39.980000
+175.256000 -40.102000
+175.310000 -40.198000
+175.310000 -40.282000
+175.299000 -40.348000
+175.278000 -40.403000
+175.095000 -40.669000
+175.025000 -40.756000
+174.998000 -40.772000
+174.961000 -40.781000
+174.896000 -40.822000
+174.762000 -40.913000
+175.084000 -40.843000
+175.084000 -40.876000
+175.068000 -40.905000
+175.073000 -40.926000
+175.057000 -40.954000
+175.047000 -40.988000
+175.025000 -41.132000
+175.041000 -41.173000
+175.090000 -41.181000
+175.138000 -41.202000
+175.175000 -41.190000
+175.272000 -41.198000
+175.326000 -41.190000
+175.347000 -41.214000
+175.369000 -41.350000
+175.380000 -41.461000
+175.380000 -41.477000
+175.412000 -41.510000
+175.444000 -41.547000
+175.471000 -41.567000
+175.632000 -41.559000
+175.632000 -41.543000
+175.675000 -41.543000
+175.718000 -41.522000
+175.761000 -41.494000
+175.804000 -41.457000
+175.906000 -41.371000
+176.035000 -41.256000
+176.057000 -41.186000
+176.116000 -41.173000
+176.153000 -41.144000
+176.191000 -41.099000
+176.288000 -41.016000
+176.288000 -40.996000
+176.331000 -40.963000
+176.384000 -40.901000
+176.395000 -40.843000
+176.411000 -40.818000
+176.470000 -40.652000
+176.492000 -40.644000
+176.492000 -40.615000
+176.674000 -40.394000
+176.755000 -40.340000
+176.771000 -40.344000
+176.889000 -40.244000
+176.905000 -40.223000
+176.938000 -40.194000
+176.954000 -40.181000
+177.029000 -40.081000
+177.061000 -39.997000
+177.077000 -39.980000
+177.094000 -39.909000
+177.099000 -39.863000
+177.147000 -39.833000
+177.185000 -39.817000
+177.222000 -39.766000
+177.206000 -39.745000
+177.185000 -39.699000
+177.104000 -39.695000
+177.040000 -39.623000
+177.040000 -39.564000
+177.083000 -39.454000
+177.190000 -39.285000
+177.255000 -39.217000
+177.561000 -39.086000
+177.781000 -39.090000
+177.824000 -39.107000
+177.905000 -39.153000
+177.921000 -39.192000
+177.899000 -39.230000
+177.905000 -39.247000
+177.883000 -39.272000
+177.872000 -39.323000
+178.050000 -39.281000
+178.216000 -39.149000
+178.243000 -39.103000
+178.179000 -39.073000
+178.044000 -38.941000
+178.039000 -38.920000
+178.061000 -38.860000
+178.114000 -38.809000
+178.146000 -38.788000
+178.168000 -38.745000
+178.232000 -38.724000
+178.249000 -38.706000
+178.313000 -38.600000
+178.335000 -38.467000
+178.345000 -38.446000
+178.345000 -38.407000
+178.372000 -38.360000
+178.372000 -38.321000
+178.480000 -38.076000
+178.490000 -38.054000
+178.480000 -38.020000
+178.501000 -38.011000
+178.512000 -37.968000
+178.673000 -37.826000
+178.721000 -37.800000
+178.727000 -37.765000
+178.641000 -37.765000
+178.657000 -37.713000
+178.582000 -37.609000
+178.566000 -37.601000
+178.544000 -37.562000
+178.463000 -37.522000
+178.426000 -37.522000
+178.329000 -37.501000
+178.104000 -37.470000
+177.985000 -37.496000
+177.942000 -37.522000
+177.760000 -37.635000
+177.706000 -37.692000
+177.625000 -37.696000
+177.179000 -37.852000
+176.986000 -37.882000
+176.723000 -37.834000
+176.691000 -37.817000
+176.578000 -37.791000
+176.465000 -37.761000
+176.384000 -37.752000
+176.314000 -37.726000
+176.282000 -37.726000
+176.126000 -37.670000
+176.094000 -37.670000
+176.040000 -37.644000
+176.008000 -37.618000
+175.955000 -37.536000
+175.960000 -37.505000
+175.933000 -37.418000
+175.955000 -37.109000
+175.949000 -37.070000
+175.981000 -36.965000
+175.976000 -36.895000
+175.938000 -36.812000
+175.895000 -36.742000
+175.858000 -36.680000
+175.831000 -36.663000
+175.815000 -36.605000
+175.777000 -36.553000
+175.734000 -36.535000
+175.675000 -36.513000
+175.654000 -36.487000
+175.616000 -36.478000
+175.509000 -36.465000
+175.449000 -36.460000
+175.417000 -36.478000
+175.390000 -36.540000
+175.449000 -36.680000
+175.455000 -36.715000
+175.503000 -36.746000
+175.514000 -36.785000
+175.503000 -36.912000
+175.433000 -36.904000
+175.326000 -36.816000
+175.224000 -36.698000
+175.186000 -36.676000
+175.127000 -36.645000
+175.090000 -36.636000
+175.047000 -36.623000
+175.004000 -36.601000
+174.955000 -36.579000
+174.901000 -36.570000
+174.864000 -36.548000
+174.842000 -36.522000
+174.708000 -36.416000
+174.676000 -36.386000
+174.654000 -36.324000
+174.617000 -36.275000
+174.585000 -36.214000
+174.525000 -36.059000
+174.488000 -35.939000
+174.488000 -35.922000
+174.482000 -35.846000
+174.354000 -35.811000
+174.321000 -35.762000
+174.284000 -35.717000
+174.268000 -35.700000
+174.262000 -35.677000
+174.230000 -35.669000
+174.208000 -35.642000
+174.241000 -35.642000
+174.396000 -35.660000
+174.499000 -35.669000
+174.525000 -35.499000
+174.525000 -35.477000
+174.515000 -35.450000
+174.386000 -35.357000
+174.364000 -35.303000
+174.289000 -35.241000
+174.133000 -35.120000
+173.999000 -35.021000
+173.908000 -34.837000
+173.881000 -34.828000
+173.832000 -34.792000
+173.779000 -34.779000
+173.763000 -34.761000
+173.736000 -34.752000
+173.703000 -34.743000
+173.687000 -34.729000
+173.628000 -34.711000
+173.601000 -34.720000
+173.580000 -34.716000
+173.553000 -34.774000
+173.542000 -34.824000
+173.526000 -34.860000
+173.510000 -34.900000
+173.489000 -34.972000
+173.343000 -34.734000
+173.317000 -34.720000
+173.306000 -34.689000
+173.284000 -34.693000
+173.080000 -34.594000
+173.043000 -34.536000
+173.037000 -34.495000
+173.043000 -34.468000
+173.053000 -34.423000
+173.048000 -34.387000
+173.043000 -34.364000
+&
+@TYPE xy
+173.069000 -40.627000
+173.037000 -40.586000
+172.924000 -40.557000
+172.908000 -40.573000
+172.618000 -40.573000
+172.597000 -40.573000
+172.500000 -40.594000
+172.457000 -40.631000
+172.409000 -40.681000
+172.387000 -40.731000
+172.366000 -40.752000
+172.355000 -40.789000
+172.328000 -40.859000
+172.296000 -40.983000
+172.269000 -41.041000
+172.269000 -41.082000
+172.253000 -41.115000
+172.156000 -41.309000
+172.145000 -41.375000
+172.119000 -41.465000
+172.124000 -41.518000
+172.097000 -41.531000
+172.092000 -41.547000
+172.049000 -41.572000
+171.963000 -41.617000
+171.866000 -41.662000
+171.828000 -41.694000
+171.796000 -41.715000
+171.775000 -41.723000
+171.726000 -41.747000
+171.710000 -41.776000
+171.678000 -41.825000
+171.565000 -41.935000
+171.468000 -42.081000
+171.350000 -42.284000
+171.280000 -42.389000
+171.227000 -42.518000
+171.194000 -42.547000
+171.092000 -42.684000
+171.017000 -42.764000
+170.980000 -42.808000
+170.969000 -42.840000
+170.920000 -42.860000
+170.920000 -42.876000
+170.861000 -42.924000
+170.840000 -42.965000
+170.749000 -43.045000
+170.695000 -43.073000
+170.652000 -43.152000
+170.561000 -43.168000
+170.475000 -43.220000
+170.276000 -43.340000
+170.163000 -43.380000
+170.104000 -43.427000
+170.056000 -43.451000
+169.991000 -43.495000
+169.932000 -43.546000
+169.905000 -43.554000
+169.862000 -43.586000
+169.717000 -43.653000
+169.674000 -43.657000
+169.454000 -43.729000
+169.164000 -43.871000
+169.110000 -43.910000
+169.078000 -43.946000
+169.035000 -43.961000
+169.008000 -43.981000
+168.519000 -44.103000
+168.481000 -44.127000
+168.471000 -44.115000
+168.471000 -44.135000
+168.417000 -44.142000
+168.234000 -44.240000
+168.207000 -44.272000
+168.073000 -44.370000
+168.078000 -44.397000
+168.009000 -44.428000
+167.998000 -44.452000
+167.933000 -44.499000
+167.702000 -44.732000
+167.504000 -44.884000
+167.482000 -44.903000
+167.407000 -45.043000
+167.380000 -45.116000
+167.359000 -45.131000
+167.342000 -45.170000
+167.348000 -45.232000
+167.326000 -45.289000
+167.348000 -45.316000
+167.412000 -45.343000
+167.514000 -45.378000
+167.504000 -45.439000
+167.348000 -45.424000
+167.267000 -45.447000
+167.165000 -45.585000
+167.149000 -45.631000
+167.063000 -45.742000
+166.966000 -45.875000
+166.950000 -45.944000
+166.934000 -45.997000
+166.923000 -46.092000
+166.913000 -46.111000
+166.939000 -46.187000
+167.015000 -46.225000
+167.042000 -46.229000
+167.063000 -46.221000
+167.122000 -46.217000
+167.154000 -46.206000
+167.504000 -46.145000
+167.595000 -46.130000
+167.686000 -46.138000
+167.745000 -46.142000
+167.950000 -46.130000
+168.030000 -46.134000
+168.095000 -46.164000
+168.159000 -46.187000
+168.186000 -46.202000
+168.213000 -46.232000
+168.234000 -46.251000
+168.261000 -46.282000
+168.320000 -46.335000
+168.293000 -46.410000
+168.245000 -46.433000
+168.245000 -46.455000
+168.406000 -46.489000
+168.514000 -46.463000
+168.605000 -46.455000
+168.707000 -46.470000
+168.723000 -46.482000
+168.809000 -46.501000
+168.933000 -46.493000
+169.046000 -46.516000
+169.169000 -46.572000
+169.212000 -46.576000
+169.255000 -46.580000
+169.427000 -46.625000
+169.561000 -46.647000
+169.690000 -46.640000
+169.749000 -46.602000
+169.884000 -46.486000
+169.905000 -46.452000
+170.018000 -46.327000
+170.045000 -46.263000
+170.125000 -46.263000
+170.195000 -46.267000
+170.238000 -46.278000
+170.324000 -46.259000
+170.351000 -46.198000
+170.378000 -46.153000
+170.448000 -46.104000
+170.480000 -46.088000
+170.512000 -46.085000
+170.544000 -46.062000
+170.620000 -46.024000
+170.657000 -45.993000
+170.695000 -45.978000
+170.716000 -45.959000
+170.781000 -45.917000
+170.797000 -45.887000
+170.872000 -45.853000
+170.996000 -45.753000
+171.033000 -45.677000
+171.071000 -45.646000
+171.071000 -45.608000
+170.894000 -45.631000
+170.818000 -45.681000
+170.732000 -45.731000
+170.700000 -45.765000
+170.953000 -45.424000
+170.958000 -45.397000
+170.990000 -45.351000
+171.114000 -45.070000
+171.141000 -44.961000
+171.173000 -44.965000
+171.221000 -44.868000
+171.533000 -44.428000
+171.565000 -44.397000
+171.587000 -44.362000
+171.624000 -44.338000
+171.828000 -44.158000
+172.070000 -44.028000
+172.242000 -43.859000
+172.280000 -43.835000
+172.285000 -43.819000
+172.317000 -43.800000
+172.366000 -43.796000
+172.419000 -43.835000
+172.436000 -43.831000
+172.704000 -43.922000
+172.785000 -43.922000
+172.908000 -43.883000
+172.957000 -43.827000
+173.053000 -43.701000
+173.155000 -43.586000
+173.134000 -43.562000
+173.102000 -43.542000
+173.064000 -43.534000
+173.005000 -43.523000
+172.946000 -43.491000
+172.924000 -43.447000
+172.935000 -43.368000
+172.941000 -43.344000
+173.102000 -43.168000
+173.252000 -43.061000
+173.284000 -43.021000
+173.317000 -43.009000
+173.403000 -42.944000
+173.472000 -42.868000
+173.553000 -42.744000
+173.574000 -42.704000
+173.574000 -42.663000
+173.650000 -42.526000
+173.671000 -42.510000
+173.827000 -42.341000
+173.870000 -42.280000
+173.881000 -42.235000
+173.994000 -42.175000
+174.198000 -41.996000
+174.230000 -41.951000
+174.289000 -41.800000
+174.305000 -41.719000
+174.327000 -41.621000
+174.300000 -41.547000
+174.273000 -41.506000
+174.262000 -41.444000
+174.165000 -41.284000
+174.133000 -41.202000
+174.079000 -41.136000
+174.106000 -41.054000
+174.079000 -40.996000
+174.063000 -40.979000
+174.037000 -40.967000
+173.999000 -40.946000
+173.961000 -40.938000
+173.945000 -40.930000
+173.822000 -40.959000
+173.773000 -41.000000
+173.768000 -41.016000
+173.752000 -41.029000
+173.736000 -41.029000
+173.660000 -41.078000
+173.677000 -41.078000
+173.650000 -41.095000
+173.451000 -41.124000
+173.408000 -41.148000
+173.376000 -41.161000
+173.279000 -41.181000
+173.258000 -41.165000
+173.247000 -41.144000
+173.204000 -41.124000
+173.198000 -41.099000
+173.188000 -41.058000
+173.198000 -41.021000
+173.177000 -40.979000
+173.172000 -40.942000
+173.150000 -40.917000
+173.129000 -40.884000
+173.123000 -40.868000
+173.139000 -40.835000
+173.064000 -40.843000
+172.978000 -40.822000
+172.881000 -40.739000
+172.865000 -40.718000
+172.908000 -40.710000
+172.962000 -40.689000
+172.989000 -40.681000
+173.043000 -40.665000
+173.053000 -40.640000
+173.048000 -40.623000
+173.026000 -40.602000
+&
+@TYPE xy
+166.316000 -50.564000
+166.300000 -50.570000
+166.279000 -50.574000
+166.241000 -50.602000
+166.230000 -50.640000
+166.214000 -50.647000
+166.203000 -50.682000
+166.177000 -50.706000
+166.139000 -50.713000
+166.128000 -50.737000
+166.117000 -50.761000
+166.128000 -50.782000
+166.155000 -50.820000
+166.203000 -50.824000
+166.268000 -50.796000
+166.295000 -50.747000
+166.300000 -50.709000
+166.327000 -50.636000
+166.343000 -50.609000
+166.359000 -50.570000
+166.348000 -50.557000
+166.332000 -50.543000
+&
+@TYPE xy
+166.300000 -50.920000
+166.257000 -50.948000
+166.230000 -50.986000
+166.241000 -50.999000
+166.263000 -50.996000
+166.300000 -50.986000
+166.322000 -50.996000
+166.348000 -50.979000
+166.338000 -50.958000
+166.311000 -50.934000
+&
+@TYPE xy
+167.966000 -46.726000
+167.923000 -46.775000
+167.901000 -46.801000
+167.869000 -46.816000
+167.799000 -46.872000
+167.724000 -47.007000
+167.600000 -47.193000
+167.654000 -47.226000
+167.676000 -47.212000
+167.718000 -47.208000
+167.810000 -47.197000
+167.858000 -47.215000
+167.998000 -47.212000
+168.035000 -47.197000
+168.089000 -47.189000
+168.100000 -47.163000
+168.121000 -47.145000
+168.116000 -47.078000
+168.132000 -47.037000
+168.111000 -47.029000
+168.138000 -46.988000
+168.143000 -46.954000
+168.159000 -46.936000
+168.181000 -46.805000
+168.132000 -46.779000
+168.095000 -46.760000
+168.035000 -46.741000
+168.003000 -46.741000
+167.992000 -46.726000
+167.960000 -46.722000
+&
+@TYPE xy
+184.019000 -43.657000
+184.040000 -43.669000
+184.056000 -43.677000
+184.105000 -43.752000
+184.131000 -43.831000
+184.121000 -43.851000
+184.158000 -43.969000
+184.191000 -44.005000
+184.228000 -44.017000
+184.266000 -44.040000
+184.357000 -44.032000
+184.389000 -44.028000
+184.416000 -44.020000
+184.448000 -43.997000
+184.529000 -43.760000
+184.497000 -43.657000
+184.454000 -43.649000
+184.362000 -43.590000
+184.309000 -43.562000
+184.293000 -43.566000
+184.191000 -43.515000
+184.131000 -43.550000
+184.142000 -43.566000
+184.094000 -43.598000
+184.067000 -43.622000
+184.051000 -43.630000
+184.040000 -43.677000
+&
+@TYPE xy
+142.742839 -10.828687
+142.677000 -10.846000
+142.511000 -10.873000
+142.495000 -10.894000
+142.457000 -10.927000
+142.425000 -10.991000
+142.360000 -11.045000
+142.344000 -11.061000
+142.258000 -11.437000
+142.264000 -11.522000
+142.269000 -11.544000
+142.274000 -11.597000
+142.264000 -11.619000
+142.253000 -11.705000
+142.221000 -11.801000
+142.188000 -11.855000
+142.188000 -11.876000
+142.162000 -11.897000
+142.065000 -12.074000
+141.904000 -12.363000
+141.877000 -12.507000
+141.893000 -12.555000
+141.925000 -12.593000
+141.936000 -12.806000
+141.952000 -12.828000
+141.963000 -12.854000
+141.990000 -12.886000
+141.974000 -12.897000
+141.920000 -12.956000
+141.855000 -13.009000
+141.861000 -13.041000
+141.834000 -13.105000
+141.823000 -13.148000
+141.823000 -13.195000
+141.807000 -13.243000
+141.818000 -13.361000
+141.807000 -13.653000
+141.737000 -13.882000
+141.705000 -14.195000
+141.710000 -14.285000
+141.705000 -14.471000
+141.710000 -14.492000
+141.753000 -14.593000
+141.742000 -14.799000
+141.742000 -14.836000
+141.748000 -14.889000
+141.678000 -15.259000
+141.689000 -15.391000
+141.678000 -15.412000
+141.646000 -15.575000
+141.635000 -15.639000
+141.624000 -15.702000
+141.608000 -15.702000
+141.576000 -15.834000
+141.587000 -15.870000
+141.533000 -16.023000
+141.506000 -16.186000
+141.495000 -16.265000
+141.474000 -16.286000
+141.442000 -16.354000
+141.420000 -16.375000
+141.404000 -16.428000
+141.372000 -16.464000
+141.366000 -16.491000
+141.340000 -16.533000
+141.329000 -16.574000
+141.221000 -16.763000
+141.157000 -16.847000
+141.141000 -16.868000
+141.114000 -16.957000
+141.082000 -17.046000
+141.055000 -17.083000
+141.060000 -17.098000
+141.023000 -17.166000
+141.012000 -17.224000
+140.937000 -17.401000
+140.910000 -17.443000
+140.872000 -17.469000
+140.813000 -17.537000
+140.754000 -17.558000
+140.620000 -17.579000
+140.587000 -17.563000
+140.399000 -17.600000
+140.372000 -17.626000
+140.303000 -17.647000
+140.292000 -17.662000
+140.179000 -17.668000
+139.991000 -17.537000
+139.830000 -17.532000
+139.739000 -17.521000
+139.615000 -17.474000
+139.481000 -17.349000
+139.432000 -17.229000
+139.416000 -17.208000
+139.325000 -17.072000
+139.309000 -17.035000
+139.266000 -16.999000
+139.260000 -16.983000
+139.217000 -16.931000
+139.212000 -16.894000
+139.191000 -16.863000
+139.137000 -16.774000
+139.078000 -16.716000
+139.019000 -16.690000
+139.008000 -16.674000
+138.836000 -16.601000
+138.750000 -16.580000
+138.643000 -16.548000
+138.616000 -16.543000
+138.524000 -16.548000
+138.497000 -16.548000
+138.395000 -16.548000
+138.326000 -16.548000
+138.283000 -16.538000
+138.240000 -16.554000
+138.181000 -16.538000
+138.116000 -16.512000
+138.100000 -16.480000
+138.041000 -16.459000
+137.992000 -16.428000
+137.907000 -16.365000
+137.847000 -16.296000
+137.810000 -16.286000
+137.783000 -16.254000
+137.783000 -16.270000
+137.595000 -16.076000
+137.530000 -16.002000
+137.520000 -15.986000
+137.477000 -15.944000
+137.461000 -15.939000
+137.359000 -15.897000
+137.305000 -15.902000
+137.294000 -15.881000
+136.875000 -15.844000
+136.848000 -15.844000
+136.741000 -15.828000
+136.655000 -15.802000
+136.633000 -15.807000
+136.563000 -15.739000
+136.547000 -15.676000
+136.483000 -15.544000
+136.434000 -15.475000
+136.391000 -15.449000
+136.386000 -15.428000
+136.096000 -15.275000
+136.058000 -15.264000
+136.005000 -15.211000
+135.935000 -15.201000
+135.870000 -15.174000
+135.806000 -15.137000
+135.774000 -15.122000
+135.698000 -15.011000
+135.645000 -14.968000
+135.602000 -14.873000
+135.559000 -14.804000
+135.548000 -14.773000
+135.586000 -14.503000
+135.607000 -14.450000
+135.655000 -14.391000
+135.693000 -14.344000
+135.731000 -14.317000
+135.731000 -14.301000
+135.774000 -14.253000
+135.870000 -14.169000
+135.913000 -14.105000
+135.940000 -13.999000
+135.929000 -13.951000
+135.929000 -13.903000
+135.940000 -13.823000
+135.951000 -13.781000
+135.946000 -13.733000
+135.956000 -13.712000
+135.946000 -13.616000
+135.983000 -13.361000
+135.999000 -13.307000
+136.010000 -13.281000
+136.042000 -13.222000
+136.101000 -13.185000
+136.193000 -13.105000
+136.236000 -13.105000
+136.257000 -13.073000
+136.397000 -13.009000
+136.397000 -12.993000
+136.467000 -12.945000
+136.488000 -12.918000
+136.563000 -12.870000
+136.563000 -12.854000
+136.590000 -12.812000
+136.606000 -12.817000
+136.649000 -12.726000
+136.671000 -12.651000
+136.687000 -12.646000
+136.703000 -12.598000
+136.751000 -12.545000
+136.832000 -12.507000
+136.891000 -12.497000
+136.913000 -12.475000
+136.972000 -12.454000
+137.004000 -12.411000
+137.025000 -12.374000
+137.009000 -12.368000
+137.009000 -12.347000
+136.972000 -12.315000
+136.945000 -12.320000
+136.918000 -12.304000
+136.907000 -12.283000
+136.886000 -12.293000
+136.843000 -12.315000
+136.811000 -12.320000
+136.789000 -12.309000
+136.773000 -12.320000
+136.751000 -12.315000
+136.703000 -12.326000
+136.687000 -12.315000
+136.644000 -12.309000
+136.622000 -12.256000
+136.622000 -12.229000
+136.655000 -12.170000
+136.644000 -12.138000
+136.676000 -12.042000
+136.746000 -11.924000
+136.682000 -11.983000
+136.606000 -12.005000
+136.526000 -11.994000
+136.510000 -12.010000
+136.477000 -12.031000
+136.472000 -12.074000
+136.429000 -12.186000
+136.408000 -12.224000
+136.408000 -12.208000
+136.365000 -12.267000
+136.316000 -12.336000
+136.263000 -12.358000
+136.225000 -12.395000
+136.177000 -12.395000
+136.171000 -12.416000
+136.155000 -12.395000
+136.117000 -12.422000
+136.080000 -12.368000
+136.058000 -12.288000
+136.058000 -12.261000
+136.048000 -12.160000
+136.048000 -12.096000
+136.048000 -12.069000
+136.048000 -12.005000
+136.042000 -11.881000
+136.026000 -11.812000
+136.015000 -11.833000
+135.983000 -11.833000
+135.983000 -11.849000
+135.935000 -11.876000
+135.817000 -11.978000
+135.768000 -12.047000
+135.666000 -12.106000
+135.612000 -12.122000
+135.355000 -12.224000
+135.269000 -12.251000
+135.226000 -12.235000
+135.145000 -12.219000
+135.102000 -12.219000
+135.059000 -12.203000
+134.930000 -12.197000
+134.769000 -12.160000
+134.678000 -12.165000
+134.468000 -12.079000
+134.366000 -12.042000
+134.242000 -12.010000
+134.103000 -11.940000
+134.054000 -11.914000
+133.990000 -11.865000
+133.952000 -11.855000
+133.931000 -11.839000
+133.877000 -11.823000
+133.775000 -11.833000
+133.721000 -11.844000
+133.652000 -11.865000
+133.592000 -11.828000
+133.469000 -11.812000
+133.313000 -11.683000
+133.281000 -11.667000
+133.249000 -11.555000
+133.189000 -11.506000
+133.168000 -11.479000
+133.125000 -11.469000
+133.082000 -11.479000
+133.034000 -11.474000
+132.937000 -11.512000
+132.905000 -11.506000
+132.867000 -11.522000
+132.803000 -11.533000
+132.760000 -11.555000
+132.760000 -11.533000
+132.711000 -11.538000
+132.695000 -11.517000
+132.572000 -11.442000
+132.539000 -11.404000
+132.480000 -11.388000
+132.475000 -11.367000
+132.427000 -11.324000
+132.416000 -11.308000
+132.335000 -11.254000
+132.276000 -11.238000
+132.142000 -11.168000
+132.126000 -11.222000
+132.115000 -11.206000
+132.077000 -11.184000
+132.002000 -11.158000
+131.943000 -11.190000
+131.895000 -11.211000
+131.868000 -11.286000
+131.868000 -11.319000
+132.830000 -11.989000
+132.819000 -12.010000
+132.824000 -12.037000
+132.813000 -12.063000
+132.652000 -12.277000
+131.965000 -12.411000
+131.787000 -12.406000
+131.701000 -12.406000
+131.653000 -12.395000
+131.605000 -12.400000
+131.524000 -12.347000
+131.422000 -12.331000
+131.390000 -12.352000
+131.368000 -12.363000
+131.379000 -12.240000
+131.368000 -12.251000
+131.352000 -12.224000
+131.336000 -12.213000
+131.255000 -12.245000
+131.046000 -12.245000
+131.035000 -12.320000
+131.019000 -12.395000
+131.024000 -12.502000
+131.003000 -12.502000
+130.852000 -12.507000
+130.788000 -12.523000
+130.777000 -12.502000
+130.750000 -12.523000
+130.718000 -12.523000
+130.638000 -12.523000
+130.632000 -12.614000
+130.600000 -12.726000
+130.573000 -12.854000
+130.557000 -12.860000
+130.401000 -12.972000
+130.353000 -12.982000
+130.326000 -13.014000
+130.294000 -13.052000
+130.272000 -13.148000
+130.261000 -13.281000
+130.251000 -13.483000
+130.202000 -13.515000
+130.154000 -13.573000
+130.057000 -13.680000
+129.998000 -13.706000
+129.923000 -13.744000
+129.799000 -13.866000
+129.670000 -14.025000
+129.649000 -14.062000
+129.638000 -14.105000
+129.563000 -14.232000
+129.536000 -14.312000
+129.504000 -14.370000
+129.488000 -14.418000
+129.488000 -14.471000
+129.504000 -14.503000
+129.536000 -14.518000
+129.670000 -14.582000
+129.713000 -14.624000
+129.730000 -14.640000
+129.756000 -14.720000
+129.756000 -14.794000
+129.746000 -14.905000
+129.756000 -14.968000
+129.789000 -15.011000
+129.783000 -15.032000
+129.789000 -15.111000
+129.773000 -15.180000
+129.735000 -15.248000
+129.713000 -15.248000
+129.697000 -15.301000
+129.687000 -15.317000
+129.638000 -15.333000
+129.628000 -15.306000
+129.509000 -15.222000
+129.477000 -15.164000
+129.423000 -15.137000
+129.396000 -15.069000
+129.359000 -15.021000
+129.337000 -14.905000
+129.241000 -14.773000
+129.203000 -14.683000
+129.155000 -14.640000
+129.096000 -14.667000
+129.053000 -14.661000
+128.983000 -14.672000
+128.934000 -14.693000
+128.875000 -14.698000
+128.736000 -14.640000
+128.709000 -14.619000
+128.655000 -14.598000
+128.628000 -14.587000
+128.456000 -14.577000
+128.451000 -14.619000
+128.451000 -14.656000
+128.456000 -14.672000
+128.489000 -14.757000
+128.462000 -14.751000
+128.392000 -14.736000
+128.365000 -14.720000
+128.338000 -14.714000
+128.295000 -14.746000
+128.258000 -14.778000
+128.252000 -14.857000
+128.301000 -14.884000
+128.306000 -14.958000
+128.322000 -14.974000
+128.333000 -15.016000
+128.322000 -15.074000
+128.338000 -15.090000
+128.354000 -15.143000
+128.354000 -15.122000
+128.360000 -15.222000
+128.349000 -15.238000
+128.236000 -15.164000
+128.193000 -15.164000
+128.161000 -15.264000
+128.155000 -15.296000
+128.123000 -15.412000
+128.123000 -15.428000
+128.059000 -15.602000
+128.032000 -15.676000
+128.016000 -15.676000
+127.919000 -15.654000
+127.919000 -15.549000
+127.935000 -15.512000
+127.967000 -15.312000
+127.962000 -14.968000
+127.984000 -14.921000
+127.994000 -14.873000
+127.989000 -14.635000
+127.962000 -14.587000
+127.946000 -14.508000
+127.914000 -14.487000
+127.860000 -14.418000
+127.661000 -14.232000
+127.613000 -14.084000
+127.564000 -14.025000
+127.532000 -14.004000
+127.360000 -13.946000
+127.328000 -13.914000
+127.264000 -13.882000
+127.097000 -13.882000
+126.936000 -13.930000
+126.909000 -13.946000
+126.818000 -13.999000
+126.640000 -14.062000
+126.608000 -14.084000
+126.452000 -14.100000
+126.377000 -14.137000
+126.264000 -14.174000
+126.184000 -14.153000
+126.049000 -14.094000
+126.044000 -14.184000
+126.049000 -14.216000
+126.039000 -14.269000
+125.985000 -14.460000
+125.920000 -14.593000
+125.883000 -14.635000
+125.851000 -14.640000
+125.775000 -14.614000
+125.571000 -14.624000
+125.448000 -14.661000
+125.405000 -14.688000
+125.367000 -14.714000
+125.378000 -14.736000
+125.367000 -14.757000
+125.399000 -14.794000
+125.415000 -14.836000
+125.442000 -14.915000
+125.448000 -14.974000
+125.480000 -15.021000
+125.480000 -15.127000
+125.464000 -15.148000
+125.448000 -15.143000
+125.410000 -15.169000
+125.383000 -15.190000
+125.383000 -15.206000
+125.238000 -15.206000
+125.158000 -15.159000
+125.136000 -15.137000
+125.125000 -15.079000
+125.115000 -15.058000
+125.125000 -14.974000
+125.093000 -14.942000
+125.077000 -14.958000
+125.007000 -15.026000
+124.986000 -15.032000
+124.953000 -15.042000
+124.937000 -15.069000
+124.948000 -15.095000
+124.964000 -15.111000
+124.980000 -15.132000
+125.007000 -15.164000
+125.045000 -15.201000
+125.077000 -15.211000
+125.115000 -15.243000
+125.109000 -15.259000
+125.104000 -15.312000
+125.120000 -15.333000
+125.109000 -15.428000
+125.093000 -15.444000
+125.082000 -15.486000
+125.056000 -15.475000
+125.045000 -15.486000
+124.798000 -15.438000
+124.749000 -15.438000
+124.717000 -15.417000
+124.690000 -15.407000
+124.669000 -15.407000
+124.647000 -15.523000
+124.636000 -15.586000
+124.588000 -15.765000
+124.556000 -15.823000
+124.534000 -15.876000
+124.497000 -15.907000
+124.465000 -15.986000
+124.400000 -16.070000
+124.330000 -16.112000
+124.319000 -16.133000
+124.271000 -16.154000
+124.244000 -16.191000
+124.185000 -16.223000
+124.153000 -16.223000
+124.072000 -16.191000
+124.035000 -16.160000
+124.013000 -16.091000
+123.970000 -16.091000
+123.954000 -16.065000
+123.917000 -16.060000
+123.836000 -16.002000
+123.782000 -15.970000
+123.777000 -15.986000
+123.729000 -16.033000
+123.691000 -16.055000
+123.675000 -16.049000
+123.610000 -16.091000
+123.524000 -16.133000
+123.497000 -16.165000
+123.395000 -16.223000
+123.336000 -16.275000
+123.336000 -16.296000
+123.309000 -16.333000
+123.320000 -16.349000
+123.342000 -16.380000
+123.369000 -16.380000
+123.379000 -16.396000
+123.406000 -16.396000
+123.438000 -16.428000
+123.540000 -16.501000
+123.578000 -16.512000
+123.653000 -16.590000
+123.675000 -16.606000
+123.718000 -16.622000
+123.836000 -16.789000
+123.863000 -16.905000
+123.814000 -17.051000
+123.804000 -17.004000
+123.771000 -16.978000
+123.669000 -16.915000
+123.621000 -16.863000
+123.589000 -16.842000
+123.487000 -16.753000
+123.487000 -16.826000
+123.514000 -16.920000
+123.530000 -16.967000
+123.508000 -17.015000
+123.497000 -17.067000
+123.412000 -17.067000
+123.363000 -17.046000
+123.261000 -16.967000
+123.229000 -16.915000
+123.181000 -16.805000
+123.143000 -16.732000
+123.089000 -16.606000
+123.073000 -16.590000
+123.089000 -16.569000
+123.068000 -16.517000
+123.052000 -16.359000
+123.062000 -16.286000
+123.073000 -16.238000
+123.068000 -16.260000
+123.073000 -16.244000
+122.901000 -16.328000
+122.606000 -16.333000
+122.665000 -16.375000
+122.654000 -16.391000
+122.670000 -16.401000
+122.654000 -16.512000
+122.520000 -16.601000
+122.466000 -16.664000
+122.412000 -16.737000
+122.348000 -16.831000
+122.305000 -16.878000
+122.305000 -16.926000
+122.230000 -16.962000
+122.192000 -17.025000
+122.122000 -17.313000
+122.111000 -17.428000
+122.095000 -17.511000
+122.090000 -17.626000
+122.106000 -17.641000
+122.122000 -17.673000
+122.149000 -17.699000
+122.149000 -17.720000
+122.176000 -17.746000
+122.203000 -17.845000
+122.230000 -17.866000
+122.224000 -17.933000
+122.240000 -17.954000
+122.203000 -18.063000
+122.047000 -18.271000
+121.988000 -18.344000
+121.961000 -18.344000
+121.811000 -18.526000
+121.725000 -18.593000
+121.655000 -18.733000
+121.601000 -18.790000
+121.488000 -18.946000
+121.273000 -19.137000
+121.257000 -19.158000
+121.193000 -19.220000
+121.160000 -19.225000
+121.112000 -19.256000
+121.101000 -19.287000
+121.080000 -19.292000
+121.015000 -19.421000
+120.956000 -19.406000
+120.929000 -19.478000
+120.860000 -19.555000
+120.774000 -19.648000
+120.720000 -19.648000
+120.709000 -19.669000
+120.586000 -19.663000
+120.441000 -19.710000
+120.344000 -19.725000
+120.220000 -19.782000
+120.150000 -19.787000
+120.097000 -19.808000
+119.860000 -19.869000
+119.662000 -19.926000
+119.559000 -19.926000
+119.549000 -19.911000
+119.441000 -19.921000
+119.388000 -19.942000
+119.328000 -19.983000
+119.285000 -20.039000
+119.242000 -20.034000
+119.060000 -19.952000
+119.011000 -19.952000
+118.995000 -19.972000
+118.963000 -19.978000
+118.899000 -20.075000
+118.797000 -20.111000
+118.571000 -20.183000
+118.453000 -20.219000
+118.265000 -20.229000
+118.120000 -20.219000
+117.996000 -20.219000
+117.985000 -20.240000
+117.964000 -20.281000
+117.932000 -20.296000
+117.932000 -20.311000
+117.899000 -20.353000
+117.760000 -20.476000
+117.706000 -20.496000
+117.588000 -20.517000
+117.513000 -20.558000
+117.367000 -20.619000
+117.276000 -20.645000
+117.222000 -20.629000
+117.153000 -20.634000
+117.115000 -20.614000
+117.040000 -20.588000
+116.986000 -20.563000
+116.975000 -20.547000
+116.954000 -20.476000
+116.948000 -20.460000
+116.809000 -20.517000
+116.760000 -20.558000
+116.674000 -20.527000
+116.588000 -20.435000
+116.529000 -20.465000
+116.519000 -20.563000
+116.492000 -20.670000
+116.460000 -20.701000
+116.454000 -20.721000
+116.363000 -20.742000
+116.255000 -20.849000
+116.223000 -20.895000
+116.094000 -21.033000
+116.008000 -21.084000
+115.944000 -21.105000
+115.793000 -21.253000
+115.750000 -21.289000
+115.691000 -21.324000
+115.675000 -21.345000
+115.654000 -21.350000
+115.632000 -21.411000
+115.552000 -21.482000
+115.471000 -21.538000
+115.331000 -21.584000
+115.283000 -21.620000
+115.229000 -21.625000
+115.208000 -21.650000
+115.175000 -21.655000
+115.165000 -21.676000
+115.095000 -21.711000
+115.068000 -21.742000
+115.004000 -21.767000
+114.955000 -21.803000
+114.885000 -21.859000
+114.885000 -21.874000
+114.837000 -21.909000
+114.821000 -21.940000
+114.703000 -22.046000
+114.595000 -22.219000
+114.509000 -22.325000
+114.439000 -22.366000
+114.418000 -22.411000
+114.359000 -22.436000
+114.311000 -22.446000
+114.273000 -22.431000
+114.273000 -22.411000
+114.235000 -22.239000
+114.235000 -22.188000
+114.219000 -22.138000
+114.214000 -21.899000
+114.198000 -21.848000
+114.106000 -22.051000
+114.090000 -22.203000
+114.069000 -22.203000
+114.063000 -22.239000
+114.047000 -22.269000
+113.977000 -22.335000
+113.843000 -22.588000
+113.816000 -22.659000
+113.800000 -22.750000
+113.795000 -22.881000
+113.789000 -22.971000
+113.789000 -23.007000
+113.789000 -23.143000
+113.768000 -23.163000
+113.806000 -23.273000
+113.832000 -23.299000
+113.838000 -23.319000
+113.865000 -23.344000
+113.924000 -23.439000
+113.918000 -23.494000
+113.929000 -23.515000
+113.897000 -23.670000
+113.859000 -23.740000
+113.848000 -23.770000
+113.768000 -23.855000
+113.709000 -23.990000
+113.709000 -24.045000
+113.682000 -24.165000
+113.687000 -24.200000
+113.677000 -24.260000
+113.660000 -24.340000
+113.671000 -24.539000
+113.703000 -24.619000
+113.703000 -24.678000
+113.763000 -24.778000
+113.859000 -24.947000
+113.988000 -25.130000
+114.096000 -25.244000
+114.182000 -25.437000
+114.198000 -25.486000
+114.219000 -25.496000
+114.294000 -25.664000
+114.364000 -25.777000
+114.354000 -26.122000
+114.332000 -26.171000
+114.343000 -26.225000
+114.327000 -26.259000
+114.321000 -26.279000
+114.305000 -26.313000
+114.300000 -26.343000
+114.300000 -26.377000
+114.273000 -26.426000
+114.214000 -26.431000
+114.144000 -26.387000
+114.085000 -26.308000
+114.053000 -26.294000
+114.042000 -26.274000
+113.967000 -26.196000
+113.940000 -26.176000
+113.929000 -26.156000
+113.886000 -26.132000
+113.891000 -26.146000
+113.891000 -26.186000
+113.891000 -26.220000
+113.945000 -26.367000
+113.945000 -26.490000
+113.929000 -26.514000
+113.908000 -26.544000
+113.789000 -26.500000
+113.736000 -26.402000
+113.736000 -26.382000
+113.720000 -26.367000
+113.682000 -26.304000
+113.634000 -26.259000
+113.628000 -26.225000
+113.575000 -26.161000
+113.548000 -26.132000
+113.494000 -26.161000
+113.515000 -26.259000
+113.532000 -26.294000
+113.537000 -26.333000
+113.612000 -26.465000
+113.720000 -26.637000
+113.768000 -26.681000
+113.789000 -26.720000
+113.816000 -26.769000
+113.838000 -26.783000
+113.918000 -26.901000
+114.004000 -26.949000
+114.112000 -27.052000
+114.203000 -27.193000
+114.214000 -27.247000
+114.241000 -27.324000
+114.246000 -27.353000
+114.294000 -27.451000
+114.354000 -27.640000
+114.348000 -27.717000
+114.359000 -27.756000
+114.391000 -27.829000
+114.391000 -27.843000
+114.413000 -27.877000
+114.402000 -27.964000
+114.488000 -28.051000
+114.568000 -28.191000
+114.644000 -28.350000
+114.708000 -28.499000
+114.762000 -28.547000
+114.832000 -28.788000
+115.090000 -29.147000
+115.106000 -29.295000
+115.127000 -29.366000
+115.116000 -29.395000
+115.106000 -29.619000
+115.111000 -29.662000
+115.100000 -29.890000
+115.095000 -29.951000
+115.116000 -30.013000
+115.143000 -30.202000
+115.224000 -30.335000
+115.272000 -30.806000
+115.304000 -30.923000
+115.337000 -30.956000
+115.364000 -31.064000
+115.358000 -31.162000
+115.374000 -31.176000
+115.401000 -31.335000
+115.428000 -31.382000
+115.541000 -31.611000
+115.557000 -31.634000
+115.621000 -31.681000
+115.664000 -31.746000
+115.707000 -31.764000
+115.766000 -31.843000
+115.788000 -31.890000
+115.804000 -31.904000
+115.809000 -31.969000
+115.842000 -32.006000
+115.852000 -32.025000
+115.879000 -32.043000
+115.885000 -32.066000
+115.901000 -32.085000
+115.922000 -32.127000
+115.949000 -32.266000
+115.960000 -32.478000
+115.965000 -32.510000
+115.955000 -32.529000
+115.965000 -32.570000
+115.938000 -32.695000
+115.869000 -32.667000
+115.842000 -32.640000
+115.820000 -32.672000
+115.809000 -32.939000
+115.766000 -33.250000
+115.729000 -33.342000
+115.729000 -33.365000
+115.707000 -33.415000
+115.670000 -33.470000
+115.664000 -33.497000
+115.605000 -33.556000
+115.541000 -33.566000
+115.466000 -33.552000
+115.380000 -33.511000
+115.304000 -33.511000
+115.235000 -33.529000
+115.229000 -33.529000
+115.240000 -33.547000
+115.235000 -33.584000
+115.245000 -33.616000
+115.390000 -34.224000
+115.412000 -34.224000
+115.455000 -34.242000
+115.514000 -34.220000
+115.519000 -34.206000
+115.611000 -34.161000
+115.654000 -34.165000
+115.756000 -34.188000
+115.783000 -34.202000
+115.906000 -34.238000
+115.987000 -34.283000
+116.030000 -34.337000
+116.148000 -34.405000
+116.207000 -34.459000
+116.271000 -34.486000
+116.390000 -34.581000
+116.460000 -34.617000
+116.766000 -34.626000
+117.174000 -34.720000
+117.448000 -34.747000
+117.561000 -34.756000
+117.631000 -34.747000
+117.776000 -34.752000
+117.862000 -34.743000
+117.932000 -34.725000
+117.948000 -34.716000
+118.007000 -34.720000
+118.044000 -34.711000
+118.130000 -34.720000
+118.168000 -34.707000
+118.206000 -34.675000
+118.227000 -34.635000
+118.329000 -34.585000
+118.388000 -34.531000
+118.437000 -34.495000
+118.485000 -34.495000
+118.496000 -34.468000
+118.641000 -34.396000
+118.684000 -34.369000
+118.721000 -34.378000
+118.813000 -34.355000
+118.995000 -34.310000
+119.038000 -34.274000
+119.065000 -34.224000
+119.097000 -34.238000
+119.097000 -34.220000
+119.264000 -34.256000
+119.307000 -34.251000
+119.312000 -34.265000
+119.339000 -34.269000
+119.377000 -34.310000
+119.490000 -34.319000
+119.576000 -34.279000
+119.602000 -34.251000
+119.624000 -34.179000
+119.656000 -34.134000
+119.662000 -34.106000
+119.790000 -33.848000
+119.817000 -33.789000
+119.839000 -33.748000
+119.893000 -33.698000
+120.048000 -33.666000
+120.107000 -33.634000
+120.161000 -33.634000
+120.328000 -33.648000
+120.462000 -33.661000
+120.532000 -33.661000
+120.580000 -33.661000
+120.688000 -33.675000
+120.741000 -33.684000
+120.940000 -33.693000
+120.972000 -33.702000
+121.042000 -33.693000
+121.375000 -33.684000
+121.418000 -33.689000
+121.622000 -33.730000
+121.692000 -33.743000
+121.794000 -33.743000
+121.870000 -33.757000
+121.902000 -33.748000
+121.945000 -33.716000
+121.972000 -33.693000
+122.025000 -33.698000
+122.101000 -33.752000
+122.128000 -33.780000
+122.160000 -33.780000
+122.197000 -33.789000
+122.278000 -33.784000
+122.391000 -33.748000
+122.418000 -33.748000
+122.450000 -33.730000
+122.686000 -33.698000
+122.826000 -33.743000
+122.874000 -33.752000
+122.896000 -33.761000
+122.976000 -33.771000
+123.041000 -33.793000
+123.116000 -33.789000
+123.186000 -33.807000
+123.272000 -33.780000
+123.320000 -33.730000
+123.487000 -33.698000
+123.562000 -33.711000
+123.616000 -33.684000
+123.659000 -33.638000
+123.675000 -33.607000
+123.718000 -33.552000
+123.734000 -33.456000
+123.771000 -33.392000
+123.814000 -33.360000
+123.917000 -33.250000
+123.954000 -33.195000
+124.008000 -33.145000
+124.035000 -33.095000
+124.153000 -33.003000
+124.244000 -32.860000
+124.293000 -32.815000
+124.389000 -32.750000
+124.454000 -32.745000
+124.733000 -32.686000
+124.814000 -32.649000
+125.013000 -32.570000
+125.093000 -32.520000
+125.201000 -32.478000
+125.351000 -32.446000
+125.582000 -32.330000
+125.759000 -32.261000
+125.835000 -32.242000
+126.033000 -32.238000
+126.109000 -32.215000
+126.184000 -32.219000
+126.237000 -32.205000
+126.270000 -32.210000
+126.426000 -32.191000
+126.775000 -32.164000
+126.845000 -32.168000
+126.952000 -32.196000
+127.070000 -32.233000
+127.108000 -32.233000
+127.135000 -32.219000
+127.188000 -32.224000
+127.237000 -32.215000
+127.280000 -32.196000
+127.366000 -32.178000
+127.376000 -32.159000
+127.441000 -32.131000
+127.575000 -32.090000
+127.597000 -32.071000
+127.699000 -32.062000
+127.967000 -31.974000
+128.053000 -31.936000
+128.204000 -31.904000
+128.349000 -31.862000
+128.660000 -31.806000
+128.746000 -31.783000
+128.827000 -31.741000
+129.321000 -31.634000
+129.504000 -31.615000
+129.670000 -31.569000
+130.025000 -31.564000
+130.111000 -31.555000
+130.278000 -31.559000
+130.331000 -31.550000
+130.417000 -31.550000
+130.498000 -31.536000
+130.740000 -31.536000
+130.831000 -31.517000
+130.863000 -31.522000
+130.922000 -31.503000
+131.073000 -31.522000
+131.223000 -31.513000
+131.277000 -31.489000
+131.379000 -31.499000
+131.524000 -31.517000
+131.631000 -31.555000
+131.728000 -31.592000
+131.814000 -31.657000
+131.948000 -31.760000
+132.153000 -31.909000
+132.179000 -31.918000
+132.217000 -31.946000
+132.239000 -31.946000
+132.249000 -31.932000
+132.324000 -31.964000
+132.362000 -31.983000
+132.378000 -31.974000
+132.394000 -31.983000
+132.566000 -31.936000
+132.582000 -31.918000
+132.647000 -31.899000
+132.727000 -31.904000
+132.813000 -31.946000
+132.905000 -32.011000
+132.964000 -32.034000
+133.018000 -32.043000
+133.114000 -32.076000
+133.184000 -32.094000
+133.329000 -32.090000
+133.463000 -32.071000
+133.539000 -32.076000
+133.614000 -32.094000
+133.705000 -32.141000
+133.737000 -32.187000
+133.775000 -32.205000
+133.866000 -32.279000
+133.995000 -32.363000
+134.071000 -32.460000
+134.108000 -32.510000
+134.253000 -32.630000
+134.339000 -32.713000
+134.361000 -32.736000
+134.361000 -32.759000
+134.377000 -32.856000
+134.377000 -32.906000
+134.323000 -32.939000
+134.328000 -32.985000
+134.382000 -33.017000
+134.447000 -33.053000
+134.473000 -33.072000
+134.511000 -33.099000
+134.570000 -33.159000
+134.624000 -33.209000
+134.667000 -33.292000
+134.715000 -33.369000
+134.737000 -33.406000
+134.769000 -33.420000
+134.807000 -33.438000
+134.876000 -33.461000
+134.973000 -33.511000
+135.091000 -33.588000
+135.102000 -33.611000
+135.124000 -33.625000
+135.199000 -33.693000
+135.279000 -33.811000
+135.290000 -33.852000
+135.312000 -33.889000
+135.322000 -33.930000
+135.338000 -33.966000
+135.376000 -34.129000
+135.333000 -34.306000
+135.328000 -34.486000
+135.349000 -34.504000
+135.355000 -34.540000
+135.500000 -34.617000
+135.612000 -34.635000
+135.806000 -34.617000
+135.854000 -34.621000
+135.956000 -34.648000
+136.037000 -34.653000
+136.128000 -34.608000
+136.171000 -34.536000
+136.214000 -34.450000
+136.230000 -34.441000
+136.246000 -34.414000
+136.214000 -34.360000
+136.160000 -34.310000
+136.150000 -34.265000
+136.160000 -34.206000
+136.203000 -34.061000
+136.241000 -34.020000
+136.268000 -34.007000
+136.370000 -33.921000
+136.413000 -33.898000
+136.499000 -33.830000
+136.703000 -33.702000
+136.725000 -33.670000
+136.794000 -33.657000
+136.891000 -33.625000
+136.977000 -33.556000
+137.074000 -33.520000
+137.160000 -33.465000
+137.208000 -33.438000
+137.235000 -33.406000
+137.267000 -33.346000
+137.369000 -33.250000
+137.402000 -33.205000
+137.471000 -33.154000
+137.487000 -33.118000
+137.557000 -33.072000
+137.595000 -33.017000
+137.616000 -32.962000
+137.638000 -32.939000
+137.638000 -32.902000
+137.783000 -32.699000
+137.804000 -32.686000
+137.810000 -32.663000
+137.837000 -32.635000
+137.864000 -32.612000
+137.944000 -32.506000
+137.982000 -32.506000
+137.992000 -32.534000
+138.025000 -32.570000
+138.025000 -32.603000
+138.041000 -32.630000
+138.041000 -32.778000
+138.057000 -32.847000
+138.046000 -32.883000
+138.057000 -32.920000
+138.041000 -33.081000
+138.019000 -33.145000
+138.030000 -33.191000
+138.025000 -33.223000
+138.052000 -33.369000
+138.046000 -33.433000
+138.062000 -33.511000
+138.046000 -33.570000
+137.971000 -33.702000
+137.912000 -33.720000
+137.772000 -33.871000
+137.735000 -33.880000
+137.729000 -33.907000
+137.697000 -33.948000
+137.675000 -34.002000
+137.665000 -34.061000
+137.611000 -34.233000
+137.616000 -34.269000
+137.606000 -34.364000
+137.568000 -34.441000
+137.579000 -34.455000
+137.590000 -34.563000
+137.584000 -34.594000
+137.557000 -34.635000
+137.552000 -34.693000
+137.498000 -34.716000
+137.455000 -34.720000
+137.423000 -34.734000
+137.240000 -34.743000
+137.170000 -34.756000
+137.101000 -34.761000
+137.079000 -34.765000
+137.052000 -34.774000
+137.036000 -34.842000
+137.042000 -34.878000
+137.031000 -35.062000
+137.042000 -35.088000
+137.907000 -34.810000
+137.917000 -34.734000
+137.944000 -34.702000
+137.960000 -34.540000
+138.052000 -34.215000
+138.073000 -34.165000
+138.116000 -34.143000
+138.127000 -34.097000
+138.159000 -34.084000
+138.175000 -34.088000
+138.207000 -34.079000
+138.234000 -34.088000
+138.283000 -34.134000
+138.422000 -34.292000
+138.449000 -34.310000
+138.481000 -34.355000
+138.524000 -34.382000
+138.600000 -34.455000
+138.669000 -34.486000
+138.686000 -34.491000
+138.723000 -34.500000
+138.745000 -34.513000
+138.745000 -34.531000
+138.761000 -34.527000
+138.777000 -34.536000
+138.771000 -34.554000
+138.820000 -34.594000
+138.831000 -34.608000
+138.814000 -34.707000
+138.836000 -34.842000
+138.804000 -35.039000
+138.788000 -35.048000
+138.793000 -35.066000
+138.734000 -35.097000
+138.664000 -35.142000
+138.659000 -35.160000
+138.573000 -35.196000
+138.465000 -35.250000
+138.374000 -35.308000
+138.309000 -35.388000
+138.309000 -35.406000
+138.336000 -35.428000
+138.401000 -35.482000
+138.438000 -35.486000
+138.481000 -35.499000
+138.551000 -35.482000
+138.605000 -35.477000
+138.626000 -35.464000
+138.675000 -35.455000
+138.702000 -35.433000
+138.739000 -35.428000
+138.777000 -35.406000
+138.825000 -35.397000
+138.874000 -35.366000
+138.938000 -35.352000
+138.992000 -35.348000
+139.083000 -35.303000
+139.126000 -35.276000
+139.234000 -35.272000
+139.309000 -35.272000
+139.319000 -35.285000
+139.384000 -35.294000
+139.411000 -35.330000
+139.438000 -35.433000
+139.534000 -35.588000
+139.545000 -35.646000
+139.556000 -35.802000
+139.647000 -35.984000
+139.636000 -36.046000
+139.696000 -36.068000
+139.776000 -36.112000
+139.787000 -36.143000
+139.867000 -36.258000
+139.894000 -36.302000
+139.910000 -36.333000
+139.948000 -36.372000
+139.948000 -36.412000
+139.964000 -36.460000
+139.996000 -36.491000
+139.991000 -36.513000
+140.023000 -36.610000
+140.029000 -36.632000
+140.013000 -36.698000
+140.018000 -36.742000
+139.991000 -36.794000
+139.916000 -36.873000
+139.927000 -36.921000
+139.943000 -36.956000
+139.964000 -36.974000
+139.964000 -36.991000
+140.066000 -37.105000
+140.136000 -37.179000
+140.168000 -37.231000
+140.227000 -37.279000
+140.276000 -37.366000
+140.313000 -37.405000
+140.464000 -37.644000
+140.485000 -37.657000
+140.507000 -37.683000
+140.614000 -37.705000
+140.620000 -37.726000
+140.689000 -37.752000
+140.749000 -37.782000
+140.792000 -37.800000
+140.856000 -37.852000
+140.910000 -37.873000
+141.023000 -37.925000
+141.060000 -37.925000
+141.092000 -37.938000
+141.141000 -37.968000
+141.152000 -37.990000
+141.232000 -38.033000
+141.243000 -38.050000
+141.318000 -38.089000
+141.345000 -38.119000
+141.442000 -38.179000
+141.544000 -38.196000
+141.603000 -38.196000
+141.635000 -38.209000
+141.651000 -38.201000
+141.667000 -38.214000
+141.694000 -38.205000
+141.764000 -38.201000
+141.812000 -38.218000
+141.904000 -38.227000
+141.979000 -38.248000
+142.366000 -38.347000
+142.409000 -38.373000
+142.489000 -38.394000
+142.521000 -38.411000
+142.607000 -38.433000
+142.634000 -38.424000
+142.645000 -38.437000
+142.758000 -38.433000
+142.871000 -38.471000
+142.914000 -38.484000
+142.951000 -38.514000
+142.973000 -38.514000
+143.032000 -38.608000
+143.064000 -38.655000
+143.064000 -38.681000
+143.129000 -38.715000
+143.166000 -38.706000
+143.360000 -38.698000
+143.424000 -38.677000
+143.489000 -38.638000
+143.537000 -38.634000
+143.558000 -38.612000
+143.655000 -38.587000
+143.720000 -38.544000
+143.806000 -38.510000
+143.865000 -38.501000
+144.020000 -38.420000
+144.063000 -38.420000
+144.123000 -38.398000
+144.192000 -38.390000
+144.268000 -38.364000
+144.396000 -38.347000
+144.445000 -38.317000
+144.461000 -38.295000
+144.536000 -38.257000
+144.520000 -38.205000
+144.445000 -38.072000
+144.402000 -38.054000
+144.364000 -38.003000
+144.386000 -38.011000
+144.375000 -37.981000
+144.391000 -37.947000
+144.429000 -37.908000
+144.493000 -37.899000
+144.509000 -37.873000
+144.531000 -37.882000
+144.552000 -37.869000
+144.585000 -37.865000
+144.649000 -37.839000
+144.687000 -37.839000
+144.708000 -37.826000
+144.826000 -37.817000
+144.902000 -37.817000
+144.928000 -37.817000
+144.987000 -37.826000
+144.987000 -37.843000
+145.014000 -37.843000
+145.041000 -37.860000
+145.116000 -37.921000
+145.143000 -37.973000
+145.116000 -38.054000
+145.100000 -38.054000
+145.057000 -38.085000
+144.982000 -38.128000
+144.966000 -38.141000
+144.918000 -38.158000
+144.810000 -38.175000
+144.767000 -38.205000
+144.805000 -38.227000
+144.864000 -38.265000
+144.891000 -38.295000
+144.934000 -38.308000
+144.928000 -38.330000
+144.950000 -38.325000
+144.950000 -38.343000
+144.977000 -38.351000
+145.025000 -38.347000
+145.041000 -38.304000
+145.127000 -38.278000
+145.154000 -38.287000
+145.192000 -38.278000
+145.208000 -38.291000
+145.272000 -38.304000
+145.347000 -38.304000
+145.385000 -38.308000
+145.444000 -38.343000
+145.433000 -38.373000
+145.433000 -38.411000
+145.449000 -38.424000
+145.471000 -38.458000
+145.492000 -38.463000
+145.514000 -38.480000
+145.552000 -38.493000
+145.573000 -38.510000
+145.605000 -38.523000
+145.691000 -38.578000
+145.713000 -38.595000
+145.745000 -38.608000
+145.799000 -38.612000
+145.874000 -38.655000
+145.906000 -38.668000
+145.922000 -38.685000
+145.997000 -38.711000
+146.110000 -38.732000
+146.191000 -38.779000
+146.239000 -38.826000
+146.352000 -38.873000
+146.368000 -38.834000
+146.384000 -38.817000
+146.443000 -38.698000
+146.422000 -38.587000
+146.427000 -38.548000
+146.519000 -38.583000
+146.535000 -38.595000
+146.599000 -38.574000
+146.685000 -38.531000
+146.782000 -38.480000
+146.825000 -38.450000
+146.889000 -38.424000
+147.013000 -38.360000
+147.072000 -38.321000
+147.126000 -38.295000
+147.217000 -38.222000
+147.265000 -38.175000
+147.271000 -38.153000
+147.292000 -38.145000
+147.303000 -38.119000
+147.341000 -38.067000
+147.405000 -37.951000
+147.464000 -37.886000
+147.486000 -37.865000
+147.491000 -37.830000
+147.513000 -37.800000
+147.518000 -37.765000
+147.534000 -37.744000
+147.550000 -37.748000
+147.555000 -37.731000
+147.733000 -37.687000
+147.803000 -37.700000
+147.905000 -37.718000
+147.953000 -37.713000
+147.985000 -37.722000
+148.216000 -37.731000
+148.243000 -37.731000
+148.275000 -37.739000
+148.426000 -37.752000
+148.480000 -37.735000
+148.506000 -37.713000
+148.603000 -37.679000
+148.780000 -37.670000
+148.807000 -37.657000
+148.861000 -37.657000
+148.904000 -37.648000
+148.952000 -37.666000
+149.001000 -37.657000
+149.189000 -37.674000
+149.205000 -37.666000
+149.237000 -37.674000
+149.221000 -37.674000
+149.269000 -37.683000
+149.296000 -37.687000
+149.334000 -37.705000
+149.377000 -37.705000
+149.441000 -37.692000
+149.527000 -37.627000
+149.613000 -37.527000
+149.645000 -37.518000
+149.705000 -37.475000
+149.871000 -37.410000
+149.952000 -37.344000
+150.005000 -37.253000
+150.038000 -37.249000
+150.043000 -37.222000
+150.064000 -37.205000
+150.097000 -37.192000
+150.102000 -37.174000
+150.118000 -37.166000
+150.134000 -37.100000
+150.113000 -37.065000
+150.086000 -37.048000
+150.070000 -37.026000
+150.043000 -37.017000
+149.898000 -36.838000
+149.860000 -36.759000
+149.839000 -36.706000
+149.850000 -36.685000
+149.887000 -36.592000
+149.941000 -36.522000
+149.957000 -36.491000
+150.000000 -36.452000
+150.118000 -36.306000
+150.145000 -36.240000
+150.193000 -36.090000
+150.199000 -35.992000
+150.177000 -35.970000
+150.091000 -35.704000
+150.081000 -35.664000
+150.075000 -35.642000
+150.075000 -35.535000
+150.086000 -35.517000
+150.097000 -35.477000
+150.118000 -35.446000
+150.150000 -35.366000
+150.183000 -35.334000
+150.312000 -35.272000
+150.338000 -35.258000
+150.355000 -35.223000
+150.435000 -35.138000
+150.467000 -35.071000
+150.494000 -35.053000
+150.516000 -35.026000
+150.569000 -34.990000
+150.602000 -34.927000
+150.618000 -34.923000
+150.655000 -34.842000
+150.639000 -34.788000
+150.645000 -34.725000
+150.677000 -34.675000
+150.725000 -34.513000
+150.752000 -34.455000
+150.784000 -34.419000
+150.876000 -34.283000
+151.010000 -34.147000
+151.032000 -34.125000
+151.037000 -34.070000
+151.048000 -33.857000
+151.075000 -33.816000
+151.107000 -33.798000
+151.144000 -33.766000
+151.225000 -33.748000
+151.246000 -33.757000
+151.273000 -33.730000
+151.386000 -33.648000
+151.418000 -33.579000
+151.429000 -33.461000
+151.451000 -33.433000
+151.488000 -33.241000
+151.542000 -33.223000
+151.574000 -33.191000
+151.585000 -33.150000
+151.580000 -33.063000
+151.537000 -32.994000
+151.499000 -32.916000
+151.526000 -32.805000
+151.644000 -32.778000
+151.746000 -32.745000
+151.886000 -32.676000
+151.939000 -32.658000
+152.036000 -32.598000
+152.009000 -32.580000
+151.977000 -32.561000
+151.896000 -32.483000
+151.875000 -32.432000
+151.918000 -32.404000
+151.956000 -32.367000
+151.999000 -32.367000
+152.020000 -32.381000
+152.085000 -32.400000
+152.154000 -32.418000
+152.181000 -32.404000
+152.278000 -32.363000
+152.364000 -32.261000
+152.418000 -32.141000
+152.633000 -31.811000
+152.718000 -31.587000
+152.740000 -31.480000
+152.939000 -31.092000
+152.944000 -31.064000
+152.987000 -31.017000
+153.046000 -30.923000
+153.073000 -30.853000
+153.073000 -30.707000
+153.062000 -30.674000
+153.035000 -30.632000
+153.035000 -30.561000
+153.019000 -30.438000
+153.046000 -30.405000
+153.078000 -30.311000
+153.121000 -30.221000
+153.202000 -30.093000
+153.229000 -30.041000
+153.277000 -29.823000
+153.304000 -29.761000
+153.347000 -29.547000
+153.342000 -29.528000
+153.358000 -29.419000
+153.395000 -29.199000
+153.406000 -29.128000
+153.438000 -29.027000
+153.460000 -29.013000
+153.476000 -28.965000
+153.578000 -28.740000
+153.594000 -28.692000
+153.589000 -28.600000
+153.573000 -28.523000
+153.583000 -28.461000
+153.562000 -28.389000
+153.562000 -28.341000
+153.514000 -28.230000
+153.519000 -28.215000
+153.487000 -28.191000
+153.460000 -28.066000
+153.428000 -27.998000
+153.406000 -27.935000
+153.374000 -27.911000
+153.358000 -27.863000
+153.326000 -27.824000
+153.320000 -27.776000
+153.277000 -27.717000
+153.250000 -27.688000
+153.213000 -27.630000
+153.213000 -27.616000
+153.181000 -27.582000
+153.186000 -27.557000
+153.154000 -27.509000
+153.111000 -27.494000
+153.105000 -27.480000
+153.084000 -27.402000
+153.078000 -27.363000
+153.009000 -27.251000
+153.003000 -27.212000
+152.982000 -27.159000
+153.052000 -27.125000
+153.084000 -27.135000
+153.121000 -27.173000
+153.186000 -27.247000
+153.240000 -27.193000
+153.261000 -27.115000
+153.256000 -27.066000
+153.240000 -27.032000
+153.250000 -26.881000
+153.304000 -26.505000
+153.390000 -26.161000
+153.395000 -25.965000
+153.412000 -25.925000
+153.390000 -25.856000
+153.358000 -25.782000
+153.336000 -25.773000
+153.315000 -25.699000
+153.288000 -25.536000
+153.283000 -25.462000
+153.299000 -25.462000
+153.293000 -25.407000
+153.320000 -25.348000
+153.326000 -25.328000
+153.336000 -25.303000
+153.347000 -25.279000
+153.374000 -25.239000
+153.406000 -25.234000
+153.401000 -25.214000
+153.438000 -25.155000
+153.438000 -25.051000
+153.412000 -25.021000
+153.374000 -24.942000
+153.358000 -24.917000
+153.352000 -24.892000
+153.331000 -24.882000
+153.336000 -24.867000
+153.272000 -24.748000
+153.234000 -24.753000
+153.245000 -24.768000
+153.224000 -24.783000
+153.207000 -24.838000
+153.154000 -24.947000
+153.105000 -24.981000
+153.073000 -25.006000
+153.068000 -25.026000
+153.019000 -25.051000
+153.041000 -25.185000
+153.062000 -25.214000
+153.057000 -25.234000
+153.089000 -25.348000
+153.095000 -25.496000
+153.062000 -25.610000
+153.052000 -25.625000
+152.966000 -25.630000
+152.950000 -25.605000
+152.928000 -25.541000
+152.928000 -25.521000
+152.912000 -25.496000
+152.917000 -25.457000
+152.896000 -25.392000
+152.880000 -25.373000
+152.826000 -25.353000
+152.772000 -25.343000
+152.751000 -25.328000
+152.735000 -25.294000
+152.718000 -25.294000
+152.708000 -25.279000
+152.627000 -25.219000
+152.611000 -25.200000
+152.568000 -25.041000
+152.450000 -24.942000
+152.428000 -24.922000
+152.407000 -24.842000
+152.391000 -24.828000
+152.359000 -24.773000
+152.337000 -24.748000
+152.321000 -24.748000
+152.246000 -24.644000
+152.203000 -24.534000
+152.181000 -24.445000
+152.101000 -24.325000
+152.068000 -24.300000
+151.966000 -24.130000
+151.961000 -24.105000
+151.891000 -24.050000
+151.735000 -23.970000
+151.687000 -23.925000
+151.639000 -23.895000
+151.515000 -23.835000
+151.391000 -23.780000
+151.268000 -23.655000
+151.257000 -23.620000
+151.160000 -23.510000
+151.144000 -23.474000
+151.048000 -23.384000
+150.849000 -23.273000
+150.811000 -23.258000
+150.784000 -23.193000
+150.779000 -23.027000
+150.768000 -22.901000
+150.774000 -22.876000
+150.720000 -22.492000
+150.720000 -22.477000
+150.693000 -22.396000
+150.682000 -22.285000
+150.693000 -22.259000
+150.650000 -22.259000
+150.666000 -22.269000
+150.655000 -22.310000
+150.650000 -22.345000
+150.672000 -22.371000
+150.661000 -22.426000
+150.666000 -22.477000
+150.645000 -22.492000
+150.629000 -22.522000
+150.451000 -22.457000
+150.435000 -22.436000
+150.306000 -22.355000
+150.215000 -22.269000
+150.177000 -22.239000
+150.150000 -22.239000
+150.140000 -22.224000
+150.113000 -22.178000
+150.097000 -22.249000
+150.075000 -22.274000
+150.081000 -22.290000
+150.070000 -22.325000
+150.005000 -22.426000
+149.973000 -22.416000
+149.903000 -22.376000
+149.844000 -22.295000
+149.780000 -22.209000
+149.576000 -21.935000
+149.559000 -21.899000
+149.463000 -21.757000
+149.441000 -21.670000
+149.398000 -21.564000
+149.371000 -21.416000
+149.361000 -21.299000
+149.339000 -21.253000
+149.285000 -21.222000
+149.285000 -21.161000
+149.296000 -21.125000
+149.296000 -21.146000
+149.312000 -21.110000
+149.318000 -21.049000
+149.307000 -21.008000
+149.275000 -21.079000
+149.248000 -21.064000
+149.205000 -21.074000
+149.178000 -21.054000
+149.178000 -21.033000
+149.060000 -20.906000
+149.033000 -20.880000
+148.920000 -20.814000
+148.893000 -20.747000
+148.893000 -20.732000
+148.877000 -20.716000
+148.877000 -20.701000
+148.823000 -20.614000
+148.829000 -20.583000
+148.829000 -20.537000
+148.974000 -20.486000
+148.952000 -20.394000
+148.657000 -20.204000
+148.630000 -20.168000
+148.549000 -20.096000
+148.463000 -20.050000
+148.463000 -20.070000
+148.415000 -20.055000
+148.361000 -20.075000
+148.281000 -20.091000
+148.130000 -20.034000
+148.050000 -19.998000
+147.985000 -19.926000
+147.942000 -19.911000
+147.926000 -19.880000
+147.862000 -19.792000
+147.846000 -19.663000
+147.851000 -19.627000
+147.829000 -19.602000
+147.819000 -19.524000
+147.803000 -19.498000
+147.792000 -19.540000
+147.760000 -19.550000
+147.690000 -19.545000
+147.668000 -19.514000
+147.641000 -19.498000
+147.609000 -19.447000
+147.566000 -19.447000
+147.507000 -19.462000
+147.378000 -19.457000
+147.319000 -19.416000
+147.319000 -19.395000
+147.303000 -19.359000
+147.292000 -19.246000
+147.222000 -19.277000
+147.201000 -19.277000
+147.120000 -19.235000
+147.099000 -19.225000
+146.986000 -19.225000
+146.819000 -19.189000
+146.691000 -19.147000
+146.653000 -19.116000
+146.583000 -19.090000
+146.502000 -19.039000
+146.486000 -18.987000
+146.454000 -18.977000
+146.374000 -18.909000
+146.309000 -18.806000
+146.266000 -18.697000
+146.250000 -18.702000
+146.212000 -18.614000
+146.121000 -18.474000
+146.094000 -18.417000
+146.100000 -18.349000
+146.089000 -18.329000
+146.094000 -18.277000
+146.078000 -18.219000
+146.078000 -18.167000
+146.067000 -18.011000
+146.046000 -17.923000
+146.040000 -17.860000
+145.987000 -17.730000
+145.971000 -17.605000
+145.971000 -17.511000
+145.933000 -17.412000
+145.933000 -17.307000
+145.917000 -17.281000
+145.928000 -17.145000
+145.955000 -16.936000
+145.960000 -16.857000
+145.938000 -16.805000
+145.906000 -16.800000
+145.885000 -16.816000
+145.852000 -16.842000
+145.809000 -16.878000
+145.707000 -16.831000
+145.638000 -16.826000
+145.627000 -16.789000
+145.595000 -16.763000
+145.573000 -16.700000
+145.492000 -16.585000
+145.487000 -16.533000
+145.460000 -16.485000
+145.455000 -16.428000
+145.433000 -16.370000
+145.412000 -16.286000
+145.417000 -16.254000
+145.412000 -16.202000
+145.423000 -16.091000
+145.423000 -15.849000
+145.407000 -15.765000
+145.380000 -15.718000
+145.347000 -15.654000
+145.337000 -15.486000
+145.283000 -15.122000
+145.261000 -15.048000
+145.229000 -14.889000
+145.149000 -14.767000
+145.068000 -14.656000
+145.030000 -14.619000
+145.020000 -14.571000
+145.004000 -14.518000
+144.859000 -14.386000
+144.794000 -14.338000
+144.644000 -14.312000
+144.633000 -14.328000
+144.493000 -14.322000
+144.359000 -14.291000
+144.284000 -14.338000
+144.246000 -14.365000
+144.203000 -14.397000
+144.080000 -14.386000
+143.822000 -14.243000
+143.768000 -14.174000
+143.720000 -14.073000
+143.693000 -13.972000
+143.682000 -13.861000
+143.666000 -13.829000
+143.666000 -13.802000
+143.655000 -13.728000
+143.601000 -13.643000
+143.612000 -13.504000
+143.601000 -13.323000
+143.591000 -13.148000
+143.612000 -12.934000
+143.612000 -12.913000
+143.628000 -12.854000
+143.618000 -12.838000
+143.618000 -12.758000
+143.634000 -12.753000
+143.607000 -12.732000
+143.553000 -12.721000
+143.472000 -12.593000
+143.413000 -12.539000
+143.392000 -12.529000
+143.327000 -12.240000
+143.338000 -12.224000
+143.344000 -12.128000
+143.349000 -12.053000
+143.344000 -12.026000
+143.354000 -12.005000
+143.306000 -11.951000
+143.263000 -11.946000
+143.193000 -11.908000
+143.188000 -11.881000
+143.129000 -11.849000
+143.112000 -11.806000
+143.059000 -11.726000
+143.037000 -11.721000
+143.016000 -11.667000
+143.000000 -11.651000
+143.000000 -11.555000
+142.967000 -11.538000
+142.973000 -11.474000
+142.967000 -11.399000
+142.989000 -11.383000
+143.016000 -11.179000
+143.016000 -11.136000
+143.021000 -11.115000
+142.935000 -11.104000
+142.871000 -11.013000
+142.871000 -11.029000
+142.838000 -10.862000
+142.822000 -10.846000
+142.817000 -10.819000
+142.761636 -10.828687
+&
+@TYPE xy
+147.792000 -39.804000
+147.797000 -39.821000
+147.813000 -39.846000
+147.824000 -39.871000
+147.840000 -39.884000
+147.899000 -39.896000
+147.910000 -39.913000
+147.921000 -40.018000
+147.937000 -40.047000
+147.969000 -40.119000
+148.050000 -40.173000
+148.082000 -40.177000
+148.141000 -40.181000
+148.184000 -40.169000
+148.222000 -40.119000
+148.184000 -40.018000
+148.200000 -39.984000
+148.222000 -39.896000
+148.200000 -39.829000
+148.168000 -39.817000
+148.028000 -39.787000
+147.991000 -39.766000
+147.889000 -39.770000
+147.862000 -39.758000
+147.835000 -39.745000
+147.792000 -39.758000
+147.787000 -39.787000
+&
+@TYPE xy
+148.093000 -40.398000
+148.200000 -40.411000
+148.394000 -40.398000
+148.415000 -40.361000
+148.404000 -40.348000
+148.367000 -40.323000
+148.318000 -40.340000
+148.254000 -40.332000
+148.238000 -40.323000
+148.173000 -40.336000
+148.120000 -40.369000
+&

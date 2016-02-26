@@ -1,0 +1,171 @@
+#!/bin/sh
+#
+# Date: Tue, 4 Oct 88 23:19:58 EDT
+# To: NeWS-makers@brillig.umd.edu
+# Subject: RunIt: Run an icon sequence along bottom of your screen
+# From: jcricket!sjs@bellcore.com  (Stan Switzer)
+#
+# The following is a little ditty I threw together when I was learning
+# NeWS.  I'm particularly fond of "RunIt eye", but most people prefer
+# "RunIt race".  Please exercise discression with the "@" and "@@" options.
+#
+# Stan Switzer  sjs@ctt.bellcore.com
+# ----------------------------------------------
+#
+# runit:  animate an icon sequence across the bottom of the screen
+#
+# Copyright (C) 1988 by Stan Switzer. All rights reserved.
+# This program is provided for unrestricted use, provided that this
+# copyright message is preserved. There is no warranty, and no author
+# or distributer accepts responsibility for any damage caused by this
+# program.
+#
+# Stan Switzer  sjs@ctt.bellcore.com
+#
+# This program is an elaboration on a theme by Randy Jackson.
+# It was one of my first NeWS programs, so don't look for any elegant
+# hacks in here.
+#
+# usage:
+#	runit [options] [thing]
+# options:
+#	+<n>, -<n>	a bit faster or slower
+#	-y<n>		how high up the screen
+#	@<system>  	run it on someone else's system
+#	@@<system>	a sneakier way to do the same
+# things:
+#	horse (default), race, man, boy, eye, trek, and
+#		other more boring things that you can find at
+#		the end of the file
+
+THING=horse SPEED=0 SYS= Y= CMD=psh N=/usr/NeWS/bin
+for ARG
+do
+	case "$ARG" in
+	[+\-][0123456789]*	) SPEED="$ARG";;
+	-y*			) Y="{ `expr "$ARG" : '-y\(.*\)'` } setY";;
+	@@*			) SYS=`expr "$ARG" : '..\(.*\)'`
+	  CMD="rsh $SYS sh -c 'NEWSSERVER=\"`setnewshost $SYS`\" $N/psh'";;
+	@*			) SYS=`expr "$ARG" : '.\(.*\)'`;;
+	*			) THING="$ARG";;
+	esac
+done
+
+if test "X$THING" = Xrace
+then
+	for THING in "horse -y'1.5 in'" "horse -y'1 in' -2" \
+		"horse -y'2 in' +3" "horse -y'0 in' +7" \
+		"horse -y'.5 in' +3" "boy +10"
+	do
+		eval $0 $THING;
+		sleep 1
+	done
+	exit
+fi
+
+if test -z "$NEWSHOME"; then NEWSHOME=/usr/NeWS; fi
+
+case $PATH in
+*/NeWS/bin	)	;;
+*		)	PATH=$PATH:$NEWSHOME/bin; export PATH;;
+esac
+
+if test -n "$SYS"
+then
+	if NEWSSERVER=`setnewshost $SYS`
+	then	export NEWSSERVER
+	else	exit 1
+	fi
+fi
+
+{ cat <<-! ; echo "$Y $SPEED /$THING runit"; } | $CMD
+	/fillbox {DefaultRootGrayOrColor setshade fill} def
+	/runnergray
+	  DefaultRootGrayOrColor setshade currenthsbcolor
+	    exch pop exch pop .5 lt 1 0 ifelse def
+	/setY { stopped { (bad Y spec) == exit } if /Y exch def } def
+	/in { 72 mul } def /inch { 72 mul } def /cm { in 2.54 div } def
+	/Y 4 def
+	/X 0 def
+	/intrst null def
+	/delay {
+	    intrst null eq {
+		/intrst createevent def
+		intrst begin
+		   /Name /DelayOver def
+		currentdict end dup expressinterest
+		createevent copy begin
+		   /TimeStamp currenttime delayamt add def
+		currentdict end sendevent
+	    } if
+	    awaitevent begin
+%		/TimeStamp TimeStamp delayamt add def  % Makes up for lost time
+		/TimeStamp currenttime delayamt add def  % Accepts its loss
+	    currentdict end sendevent
+	} def
+
+	/tostring { 1 string dup 0 icondict 5 -1 roll get put } def
+	/onestep {	% icon-string -> -
+		dup
+		/X X Xinc add def X Y moveto runnergray setgray show
+		delay
+		X Y moveto
+		stringbbox 4 -2 roll rmoveto rect fillbox
+	} def
+
+	/steps {	% [icon-strings] ->
+		{ onestep } forall
+	} def
+
+	/tostrings { [ exch //tostring forall ] } def
+
+	/iconfont (Icon) findfont 12 scalefont def
+
+	/runthing {	% Iter [ iconnames ] delay Incr ->
+	    /Xinc exch def
+	    6000 div /delayamt exch def
+	    gsave
+		iconfont setfont
+		tostrings
+		exch { dup steps } repeat
+	    grestore
+	} def
+
+	/runit {	% speedinc thing -> -
+	    dup runners exch known not { (unknown runner: ) print  == pop }
+		{ runners exch get /icondesc exch def
+		  neg			% negate speec inc
+		  icondesc 1 get add	% add default speed
+		  /speed exch def
+		  getcanvasshape setpath pathbbox
+		  pop exch pop exch sub	% frame width
+		  icondesc 0 get length
+		  icondesc 2 get mul
+		  div 1 add % repeat count
+		  icondesc 0 get
+	          speed
+		  icondesc 2 get
+		  { runthing } fork pop
+		} ifelse
+	} def
+
+    /runners 100 dict def runners begin
+	/horse	[ [ /horse1 /horse2 /horse3 /horse4 /horse5 ] 10 8 ] def
+	/man	[ [ /man1 /man2 /man3 /man4 /man5 ] 10 3.5 ] def
+	/boy	[ [ /boy1 /boy2 /boy3 /boy4 ] 20 7 ] def
+	/eye	[ [ /eye1 /eye1 /eye2 /eye3 /eye4
+		    /eye_bld3 /eye_bld2 /eye_bld1
+		    /eye_bld2 /eye_bld3 /eye4
+		    /eye3 /eye2 /eye1 ] 10 3 ] def
+	/bulb	[ [ /bulb ] 5 4 ] def
+	/sun	[ [ /client ] 10 3 ] def
+	/rip	[ [ /dead ] 10 3 ] def
+	/trek	[ [ /trek ] 6 4 ] def
+	/logo	[ [ /sun30 ] 10 3 ] def
+	/biglogo [ [ /sun ] 10 3 ] def
+	/bozo	[ [ /no_bozos ] 10 3 ] def
+	/nuke	[ [ /nuke ] 10 3 ] def
+    end
+
+!
+# --- if anything follows this line, it is not part of the program ---

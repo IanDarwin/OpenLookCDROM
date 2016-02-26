@@ -1,0 +1,451 @@
+%!
+% Date: Fri, 5 Feb 88 01:54:32 EST
+% To: NeWS-makers@brillig.umd.edu
+% Subject: NeWS Spirograph
+% From: ptero!zwicky@ohio-state.arpa  (Elizabeth D. Zwicky)
+% Sender: NeWS-makers-request@brillig.umd.edu (Don Hopkins)
+% 
+% 
+% The program included here is a real spirograph program. I make
+% no claims about its clarity, and I know that at least two
+% changes are necessary to run it under NeWS 1.0 (they appear
+% at the beginning and are marked). I had been intending to clean
+% it up and comment it, and make some changes to the way that it
+% handles setting the vectors, but since I'm paid to manage and
+% write English, it looked like the year 2000 might come around
+% before I got that far.
+% 
+% A short note on the principles involved; a spirograph is basically
+% a rotating vector with a rotating vector on the end. In a spirograph
+% set, you can adjust three parameters; the length of the vectors, the
+% ratio of the speeds of the vectors, and whether they rotate in the
+% same direction or opposite directions. Since this virtual spirograph
+% does not have the limitations of plastic, you can change more parameters.
+% Notably, you can make the length of the vector proportional to the
+% angle that it is at, thus changing the shape of the "wheel". You can
+% also change the speed of rotation according to the angle (this is
+% "hyperweird mode"). Sorry there isn't more documentation.
+% 
+% 	Elizabeth Zwicky (zwicky@ohio-state.arpa
+% 		          ...!cbosgd!osu-cis!tut!zwicky)
+% 
+% ======================================================================
+
+% Menus with items that flip
+/FlipMenu LitePullRightMenu dictbegin
+	/AltMenuKeys null def
+	/TempMenuKeys null def
+	dictend
+	classbegin
+    /domenu { % menu => - (execute menu's action and flip executed item)
+	 currentdict begin
+	MenuValue getmenuaction dup type /dicttype eq {pop} {cvx exec} ifelse
+	/newkey AltMenuKeys MenuValue get def
+	AltMenuKeys MenuValue MenuKeys MenuValue get put
+	MenuItems  MenuValue get /Key newkey put
+	% for NeWS 1.0 MenuKeys MenuValue newkey put
+	 end
+    } def
+    /show { % Dunno why but placeholder seems to be needed
+	/show super send
+    } def
+    /new { % 1 array of arrays and actions -> 3 arrays, 2 go up to super
+	   dup 0 2 pickarray exch 1 2 pickarray
+	    /LocalMenuActions exch def
+	    /TempMenuKeys exch def
+	   /StrippedKeys [ TempMenuKeys { {} forall} forall ] def
+	    StrippedKeys 0 2 pickarray /LocalMenuKeys exch def
+	    LocalMenuKeys LocalMenuActions /new super send begin
+	    StrippedKeys 1 2 pickarray /AltMenuKeys exch store
+	    currentdict end
+    } def
+	classend def
+
+% Menus with item last chosen starred
+% Not tested under 1.0; if it fails, change CheckMenus to DefaultMenus
+
+/CheckMenu LitePullRightMenu dictbegin dictend classbegin
+	/domenu{
+	0 1 MenuItems length 1 sub {MenuItems exch get /Key get dup 0 get  42 eq {0 32 put} if} for
+	MenuValue getmenuaction dup type /dicttype eq {pop} {cvx exec} ifelse
+	MenuItems MenuValue get /Key get dup 0 get dup 32 eq exch 42 eq or
+	{0 42 put}
+	{ dup /newkey  exch length 1 add string def newkey 0 42 put newkey
+	 1 2 index putinterval MenuItems MenuValue get /Key newkey put} ifelse
+	} store
+	classend def
+
+
+
+% Initialization
+
+/step 0 def % Counter for inner cycle
+
+/dot{0 0 rlineto}def
+
+/around 360 def % number of degrees in a full cycle; some functions require
+% more than 360 degrees to repeat
+
+/stepfix{/hold step midstep mul def /fracpart hold hold
+truncate sub def hold cvi around mod fracpart add} def % Converts step counter
+% to the angle the inner vector is at
+
+/outstepfix{/hold step angle mul def /fracpart hold hold truncate sub
+def hold cvi around mod fracpart add} def % Converts step counter to the
+% angle the inner vector is at
+
+% Original Settings
+
+/midstep .5 def % The number of degrees the innermost vector rotates
+% by per dot
+
+/12ratio .4 def % The ratio between the speeds of the first two vectors
+
+/len 150 def % The length of the inner vector
+
+/len2 90 def % The length of the middle vector
+
+/rev{true}def % vectors rotate same (false) or different (true) directions
+
+/innerfun{sin}def
+/outerfun{cos}def
+/len1fun{/side1 stepfix 45 60 polygon def} def
+/len2fun{/side2 len2 def}def
+/weird false def
+/flip false def
+/weird2  false def
+/double false def
+/tracein false def
+/outweird false def
+/outflip false def
+/side1 150 def
+/indouble false def
+
+% Calculations before spiro
+/calc{/angle 12ratio midstep mul store
+	/timesaround 12ratio def
+	12ratio truncate 12ratio sub 0 ne
+	{/fracangle 12ratio 12ratio truncate sub def
+	/try1 1 fracangle div def
+	/timesaround 10 def
+	try1 truncate try1 sub 0 eq {/timesaround try1 def} if
+	fracangle 10 mul round 2 mod 0 eq {/timesaround 5 def}if} if
+	/useta timesaround around mul midstep div store}def
+/angle{} def
+
+/polygon {/center exch def /mnum exch def /thisstep exch def /foo thisstep
+	 mnum div def /test foo pause
+	truncate def /frac foo test sub def /side  mnum tan center mul def
+	test 2 mod 0 eq {/place frac def}{/place 1 frac sub def} ifelse
+	center 2 exp place side mul 2 exp add sqrt pause} def
+/omega 3 def
+/outomega 3 def
+/squarewave{/thisstep exch def /mult exch def 0 1 2 25 {/n exch def n mult mul thisstep
+	 mul sin n div add pause } for} def
+/sawtooth{/thisstep exch def /mult exch def 0 1 2 25 {/n exch def n mult mul thisstep
+	 mul cos n div add n 1 add mult mul thisstep mul sin n 1 add div sub pause}
+	for} def
+/edz{/thisstep exch def /mult exch def 0 1 4 29 {/n exch def n mult mul thisstep mul
+	cos n cos div add pause} for} def
+
+% Draw a spirograph
+ /spiro{/step 1 def /rotation 1 def
+	{/midvary step 360 mod  cos 1 add midstep mul def pause
+	len2fun pause
+         len1fun pause
+	 weird {side1 0 eq {flip {/flip false store}{/flip true store} ifelse} if}if
+	outweird {side2 0 eq {outflip {/outflip false store}{/outflip true store}ifelse}if}if
+	 flip {/side1 side1 neg store} if
+	outflip {/side2 side2 neg store} if
+	gsave
+	side1 0 rmoveto tracein {dot} if pause
+	rev {angle step mul neg rotate}
+             {angle step mul rotate} ifelse
+         side2 0 rmoveto
+         tracein not {dot} if pause
+	double {side2 neg 2 mul 0 rmoveto tracein not {dot}if } if
+        stroke grestore
+	indouble {gsave side1 neg 0 rmoveto tracein {dot} if
+		rev {angle step mul neg rotate}
+			{angle step mul rotate} ifelse
+		side2 0 rmoveto tracein not {dot} if
+		double {side2 neg 2 mul 0 rmoveto tracein not {dot}if } if
+		stroke pause grestore } if
+	 weird2 {midvary rotate}{midstep rotate} ifelse
+
+         /step step 1 add def pause
+	/rotation rotation  midvary add def
+        stroke  0 0 moveto
+        useta step  eq {exit} if
+        }loop
+      stroke}def
+
+/len1 150 def /len2 150 def
+
+/fun1mulvalue 2 def
+/outfun1mulvalue 4 def
+/fun1value{(sin)}def
+/outfun1value{(sin)}def
+/fun2mulvalue 2 def
+/outfun2mulvalue 2 def
+/fun2value (sin) def
+/outfun2value(sin)def
+/relationvalue (add) def
+/outrelationvalue (add) def
+/div*{dup 0 eq {0}{div }ifelse}def
+/tan*{dup 90 eq {0}{tan} ifelse}def
+/lenfun{/side1 stepfix fun1mulvalue
+	mul fun1value cvx exec  len1 mul def}def
+/outlenfun{/side2 outstepfix  outfun1mulvalue mul outfun1value cvx exec
+	len2 mul def}def
+
+
+/main{/win framebuffer /new DefaultWindow send def
+/reshapefromuser win send
+
+4 (Zap!) {win /PaintProcess get null ne{win /PaintProcess  get killprocessgroup} if win /FrameEventMgr get null ne
+{win /FrameEventMgr get killprocessgroup} if} /changeitem win /FrameMenu get send
+
+/set12ratiofrommenu {/12ratio currentkey cvr store} def
+
+/12RatioMenu [(.1)(.2)(.3)(.4)(.5)(.6)(.7)(.8)(.9)(1)(1.1)(1.2)(1.3)(1.4)(1.5)(1.6)(1.7)(1.8)(1.9)(2)][{set12ratiofrommenu}]
+/new CheckMenu send def
+
+
+/MidstepMenu[(.25)(.5)(.75)(1)(1.25)]
+	 [{/midstep currentkey cvr store}] /new DefaultMenu send def
+
+/sillyarray
+	{(Inner Flip On)(Inner Flip Off)}{weird {/weird false store}{/weird
+		true store} ifelse}
+	{(Outer Flip On)(Outer Flip Off)}{outweird {/outweird false store}
+		{/outweird true store}ifelse}
+	{(Inner Double On)(Inner Double Off)}{indouble {/indouble false store}
+		{/indouble true store} ifelse}
+	{(Outer Double On)(Outer Double Off)}{double {/double false store}{/double true
+		store}ifelse}
+	{(Trace Inner Vector)(Show Whole Design)}{tracein {/tracein false
+		store }	{/tracein true store} ifelse}
+	{(HyperWeird Mode On)(HyperWeird Mode Off)} {weird2 {/weird2 false
+		store} {/weird2 true store} ifelse}
+12 array astore def /WeirdMenu
+sillyarray /new FlipMenu send
+def
+
+/InSerMulMenu  [(2)(3)(4)(5)(6)(7)(8)(9)] [{/omega currentkey cvr store}] /new DefaultMenu send def
+
+/OutSerMulMenu  [(2)(3)(4)(5)(6)(7)(8)(9)] [{/outomega currentkey cvr store}]  /new DefaultMenu send def
+
+/InSeriesMenu [(Multiplier =>) InSerMulMenu (Square Wave) {/len1fun {/side1
+	omega  stepfix squarewave 150
+	mul def} store}	 (Sawtooth) {/len1fun {/side1 omega stepfix sawtooth
+	150 mul def} store} (Today's Special) {/len1fun {/side1
+	omega stepfix edz 150 mul def} store}] /new DefaultMenu send def
+
+/OutSeriesMenu [(Multiplier =>) OutSerMulMenu (Square Wave) {/len2fun {/side2
+	outomega outstepfix squarewave
+	150 mul def} store} (Sawtooth) {/len2fun {/side2 outomega outstepfix
+	sawtooth 150 mul def} store} (Today's Special) {/len2fun
+	{/side2 outomega outstepfix edz 50 mul def} store}] /new DefaultMenu send def
+
+/InPolyMenu [(3)(4)(5)(6)(7)(8)(9)(10)] [{/insides 90 180 360 currentkey cvi div sub
+	2 div sub store /len1fun
+	{/side1 stepfix insides 60 polygon def} store}] /new DefaultMenu send def
+
+/OutPolyMenu [(3)(4)(5)(6)(7)(8)(9)(10)] [{/outsides 90 180 360 currentkey cvi div sub
+	2 div sub store /len2fun
+	 {/side2 outstepfix outsides 60 polygon def} store}]/new DefaultMenu send def
+
+/outsides{}def /insides{}def
+/InFunMenu [(Sine){/fun1value (sin) store} (Cosine) {/fun1value (cos) store}
+	(Tangent){/fun1value (tan*) store}]/new DefaultMenu send def
+
+/OutFunMenu [(Sine){/outfun1value (sin) store} (Cosine) {/outfun1value (cos) store}
+	(Tangent) {/outfun1value (tan*) store}] /new DefaultMenu send def
+
+/InMulMenu  [(2)(3)(4)(5)(6)(7)(8)(9)] [{/fun1mulvalue currentkey cvr store}] /new DefaultMenu send def
+
+/OutMulMenu  [(2)(3)(4)(5)(6)(7)(8)(9)] [{/outfun1mulvalue currentkey cvr store}]  /new DefaultMenu send def
+
+/donothing {} def
+
+/InRelMenu [(Add) {/relationvalue (add) store} (Subtract) {/relationvalue (sub)
+	store} (Multiply) {/relationvalue (mul) store} (Divide) {/relationvalue
+	(div*) store}] /new DefaultMenu send def
+
+/OutRelMenu [(Add) {/outrelationvalue (add) store} (Subtract) {/outrelationvalue
+	 (sub) store} (Multiply) {/outrelationvalue (mul) store} (Divide)
+	{/outrelationvalue (div*) store}] /new DefaultMenu send def
+
+/InFun2Menu [(Sine){/fun2value (sin) store} (Cosine) {/fun2value (cos) store}
+	(Tangent){/fun2value (tan*) store}]/new DefaultMenu send def
+
+/OutFun2Menu [(Sine){/outfun2value (sin) store} (Cosine) {/outfun2value (cos) store}
+	(Tangent){/outfun2value (tan*) store}]/new DefaultMenu send def
+
+/InMul2Menu  [(2)(3)(4)(5)(6)(7)(8)(9)] [{/fun2mulvalue currentkey cvr store}]
+	/new DefaultMenu send def
+
+/OutMul2Menu  [(2)(3)(4)(5)(6)(7)(8)(9)] [{/outfun2mulvalue currentkey cvr store}]
+	  /new DefaultMenu send def
+
+/InSecMenu [(Relation =>) InRelMenu (Function =>) InFun2Menu (Multiplier =>)
+	InMul2Menu (Set) {/lenfun {/side1 stepfix fun1mulvalue mul fun1value
+	cvx exec stepfix fun2mulvalue mul fun2value cvx exec relationvalue cvx
+	exec len1 mul def} store}] /new DefaultMenu send def
+
+/OutSecMenu [(Relation =>) OutRelMenu (Function =>) OutFun2Menu (Multiplier =>)
+	OutMul2Menu (Set) {/outlenfun {/side2 outstepfix outfun1mulvalue mul
+	 outfun1value cvx exec outstepfix outfun2mulvalue mul outfun2value
+	 cvx exec outrelationvalue cvx
+	exec len2 mul def} store}] /new DefaultMenu send def
+
+
+/InCyclicMenu [(Function =>) InFunMenu (Multiplier =>) InMulMenu (Second Cycle =>)
+	InSecMenu (Set) {/len1 80 store /len1fun {lenfun} store}] /new DefaultMenu send def
+
+/OutCyclicMenu [(Function =>) OutFunMenu (Multiplier =>) OutMulMenu
+	 (Second Cycle =>) OutSecMenu (Set) {/len2 80 store
+	/len2fun {outlenfun} store}]
+	 /new DefaultMenu send def
+
+/incircle{infirsttime {/inshowwin framebuffer /new DefaultWindow send store
+		 /reshapefromuser inshowwin send
+		{4 (Zap!){inshowwin /IconCanvas get /Mapped false put
+			inshowwin /FrameCanvas get /Mapped false put
+			inshowwin /ClientCanvas get /Mapped false put
+			inshowwin /FrameEventMgr get killprocess
+			/infirsttime true store}
+		/changeitem FrameMenu send
+		/PaintClient {clippath pathbbox /y exch def /x exch def
+		erasepage x 2 div y 2 div translate /dot{0 0 rlineto} def
+				 /step 0 def 0 0 moveto
+				720  {len1fun
+					side1 0 rmoveto
+					dot pause stroke
+					0 0 moveto
+					1 rotate
+					/step step 1 add def} repeat
+		 stroke} def
+		/FrameLabel (Inner Vector Function Graph) def}
+		inshowwin send
+		/map inshowwin send /infirsttime false store}
+		{/paintclient inshowwin send}ifelse}def
+		/infirsttime true def
+
+/outcircle{outfirsttime {/outshowwin framebuffer /new DefaultWindow send store
+		 /reshapefromuser outshowwin send
+		{4 (Zap!){outshowwin /IconCanvas get /Mapped false put
+			outshowwin /FrameCanvas get /Mapped false put
+			outshowwin /ClientCanvas get /Mapped false put
+			outshowwin /FrameEventMgr get killprocess
+			/outfirsttime true store}
+		/changeitem FrameMenu send
+	/outstepfix {step} def
+		/PaintClient {clippath pathbbox /y exch def /x exch def
+		erasepage x 2 div y 2 div translate /dot{0 0 rlineto} def
+				 /step 0 def 0 0 moveto
+				720  {len2fun
+					side2 0 rmoveto
+					dot pause stroke
+					0 0 moveto
+					1 rotate
+					/step step 1 add def} repeat
+		 stroke} def
+		/FrameLabel (Outer Vector Function Graph) def}
+		outshowwin send
+		/map outshowwin send /outfirsttime false store}
+		{/paintclient outshowwin send}ifelse}def
+		/outfirsttime true def
+
+/outstraight{outstraightfirsttime {/outstraightshowwin framebuffer /new DefaultWindow send store
+		 /reshapefromuser outstraightshowwin send
+		{4 (Zap!){outstraightshowwin /IconCanvas get /Mapped false put
+			outstraightshowwin /FrameCanvas get /Mapped false put
+			outstraightshowwin /ClientCanvas get /Mapped false put
+			outstraightshowwin /FrameEventMgr get killprocess
+			/outstraightfirsttime true store}
+		/changeitem FrameMenu send
+		/outstepfix{step} def
+		/PaintClient {erasepage 0 100 translate /dot{0 0 rlineto} def
+				.5 .5 scale /step 0 def 0 0 moveto
+				3600  {len2fun step 100 moveto
+					0 side2 rmoveto
+					dot pause stroke
+					/step step 1 add def} repeat
+		 stroke} def
+		/FrameLabel (Outer Vector Function Graph) def}
+		outstraightshowwin send
+		/map outstraightshowwin send /outstraightfirsttime false store}
+		{/paintclient outstraightshowwin send}ifelse}def
+		/outstraightfirsttime true def
+/instraightshowwin{}def
+/outstraightshowwin{}def
+/inshowwin{}def
+/outshowwin{}def
+/instraight{instraightfirsttime {/instraightshowwin framebuffer /new DefaultWindow send store
+		 /reshapefromuser instraightshowwin send
+		{4 (Zap!){instraightshowwin /IconCanvas get /Mapped false put
+			instraightshowwin /FrameCanvas get /Mapped false put
+			instraightshowwin /ClientCanvas get /Mapped false put
+			instraightshowwin /FrameEventMgr get killprocess
+			/instraightfirsttime true store}
+		/changeitem FrameMenu send
+		/PaintClient {erasepage 0 100 translate /dot{0 0 rlineto} def
+				.5 .5 scale /step 0 def 0 0 moveto
+				3600  {len1fun step 100 moveto
+					0 side1 rmoveto
+					dot pause stroke
+					/step step 1 add def} repeat
+		 stroke} def
+		/FrameLabel (Inner Vector Function Graph) def}
+		instraightshowwin send
+		/map instraightshowwin send /instraightfirsttime false store}
+		{/paintclient instraightshowwin send}ifelse}def
+		/instraightfirsttime true def
+
+/PlotMenu [(Inner Vector Straight) /instraight (Inner Vector Circular) /incircle
+	(Outer Vector Straight)
+	/outstraight (Outer Vector Circular) /outcircle ] /new DefaultMenu send def
+
+/InAngleMenu [(Inner Angle, Adjusted) {/stepfix{/hold step midstep mul def
+	 /fracpart hold hold truncate sub def hold cvi around mod fracpart add}
+	store }(Inner Angle, Theoretical) {/stepfix{/hold step def
+	 /fracpart hold hold truncate sub def hold cvi around mod fracpart add}
+	store} (Outer Angle, Adjusted) {/stepfix{/hold step angle mul def
+	 /fracpart hold hold truncate sub def hold cvi around mod fracpart add}
+	store } (Outer Angle, Theoretical){/stepfix{/hold step 12ratio mul def
+	 /fracpart hold hold truncate sub def hold cvi around mod fracpart add}
+	store}] /new DefaultMenu send def
+
+/OutAngleMenu[(Outer Angle, Adjusted){/outstepfix{/hold step angle mul def
+	 /fracpart hold hold truncate sub def hold cvi around mod fracpart add}
+	store} (Outer Angle, Theoretical){/outstepfix{/hold step 12ratio mul def
+	 /fracpart hold hold truncate sub def hold cvi around mod fracpart add}
+	store} (Inner Angle, Adjusted) {/outstepfix{/hold step midstep mul def
+	 /fracpart hold hold truncate sub def hold cvi around mod fracpart add}
+	store}(Inner Angle, Theoretical)  {/outstepfix{/hold step def
+	 /fracpart hold hold truncate sub def hold cvi around mod fracpart add}
+	store}] /new DefaultMenu send def
+
+/InnerMenu [(Angle =>) InAngleMenu (Series =>) InSeriesMenu (Polygon =>) InPolyMenu (Circle) {/len1fun
+	 {/side1 150 def} def} (Cyclic =>) InCyclicMenu] /new DefaultMenu send def
+
+/OuterMenu [(Angle =>) OutAngleMenu (Series =>) OutSeriesMenu (Polygon =>) OutPolyMenu (Circle) {/len2fun {/side2 150 def} def}
+	 (Cyclic =>) OutCyclicMenu] /new DefaultMenu send def
+
+
+/FiddleMenu [(Flip Reverse){rev {/rev{false}store} {/rev{true}store} ifelse}
+(Set 12Ratio =>)12RatioMenu (Midstep =>)MidstepMenu (Weirdness =>)WeirdMenu
+(Plot =>)PlotMenu (Inner Vector =>)InnerMenu (Outer Vector =>) OuterMenu]
+/new DefaultMenu send def
+
+{/PaintClient{clippath pathbbox /tmpy exch def /tmpx exch def tmpx 600
+div tmpy 600 div scale pop pop erasepage 300 300 translate 0 0 moveto
+calc spiro}def
+
+/ClientMenu [(Fiddle Parameters)FiddleMenu(Redraw){/paintclient win send}]
+	/new DefaultMenu send def
+/FrameLabel (Spirograph) def}win send
+/map win send} def
+main

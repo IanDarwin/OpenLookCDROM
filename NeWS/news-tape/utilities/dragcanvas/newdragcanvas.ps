@@ -1,0 +1,175 @@
+%!
+% 
+% Date: Thu, 14 Jul 88 23:04:37 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Bounded Canvases
+% From: dennis@boulder.colorado.edu
+% 
+% Below is a modified 'dragcanvas' from 'util.ps'.
+% It forces dragged canvases to remain completely within
+% their parent canvases.  In particular, it will force
+% dragged windows to remain completely visible on the screen.
+% 
+% To use it, put something like
+% 	(newdragcanvas.ps) run
+% into your user.ps file, where newdragcanvas.ps contains the following code.
+% 
+% --------------------------------------------------
+
+% Modify dragcanvas so that canvas will never leave the
+% parent canvas screen.
+%
+% ----------------------------------------------------------------------
+% |                                                                    |
+% | (x,y+h)----------(x+w,y+h)        (x',y'+h)----------(x'+w,y'+h)   |
+% |   |        (x0,y0) |   ------>     |          (x0',y0')   |        |
+% |   |                |               |                      |        |
+% | (x,y)------------(x+w,y)          (x',y')------------(x'+w,y)      |
+% |                                                                    |
+% (0,0)-----------------------------------------------------------------
+%
+% Assume that the canvas is initially at (x,y) with respect to the
+% parent canvas.
+% Assume that the cursor is at (x0,y0) with respect to the parent canvas,
+% which means that it is at (x0-x,y0-y) w.r.t. canvas.
+%
+% Assume that we drag the cursor to (x0',y0') with respect to the parent
+% canvas.  This implies that the canvas should be dragged to the new
+% coordinates (x',y').
+%
+% Notice that this implies that
+% 1. dx = (x'-x) = (x0'-x0)
+% 2. dy = (y'-y) = (y0'-y0)
+% Solving for x' and y' gives
+% 3. x' = x + dx = x + (x0' - x0)
+% 4. y' = y + dy = y + (y0' - y0)
+%
+% The following code is supposed to enforce the constraint that
+% the canvas always stays on the parent canvas;
+% i.e., it never leaves the visible
+% part of the screen.  This is intended to mimic the action of windows
+% under sunwindows.
+%
+% DragFrame operates by using the current cursor position (w.r.t parent
+% canvas) to determine the location of the window.
+% Note that cursor is relative to parent rather than the canvas because
+% getanimated gives such absolute coordinates during the drag.
+% We also note that the canvas is moved using 'movecanvas'.
+% In this situation, the movement delta vector is such that
+% it must be given the new coordinates of the canvas
+% w.r.t the parent canvas, so it must be given (x',y')
+% as its arguments.
+% We choose to enforce our constraint by calculating the minimum and
+% maximum values for (x',y')
+% that will ensure that the window never leaves the screen.
+%
+% Let PCW be the width of the parent canvas and
+% let PCH be the height of the parent canvas.
+% Let w be the width of the canvas and h be its height.
+% Let xmax be the x' such that the right edge of the canvas
+% would be dragged to the right edge of the parent canvas.
+% Let xmin be the x' such that the left edge of the canvas
+% would be dragged to the left edge of the parent canvas.
+% Similarly for ymax and ymin.
+%
+% When moving left, the minimum x' value is, of course, 0.
+% When moving right, notice that the maximum value for x' is PCW - W
+% Similar observations hold for the y coordinate.
+%
+% From these observations, we obtain the equations:
+% 5. xmin = 0
+% 6. ymin = 0
+% 7. xmax = (PCW - w)
+% 8. ymax = (PCH - h)
+%
+% We calculate and save these values and use them to bound
+% the 'movecanvas' coordinates.
+%
+% In the following code, the original x and y coordinates
+% are kept as follows:
+% 	xinit = x
+% 	yinit = y
+%
+%
+
+systemdict begin
+
+/dragcanvas { % dragframe? (currentcanvas) => -
+30 dict begin
+    gsave
+    %[1 0 0 1 0 0] setmatrix % Device dependant!
+    initmatrix % Fixed for X11/NeWS. -Don
+    /Canvas currentcanvas def
+    /dragframe? exch def
+    /ParentCanvas Canvas parentcanvas def
+
+    % Get and save width and height of Canvas
+    Canvas setcanvas clippath pathbbox /height exch def /width exch def
+
+    % Calculate xmin and ymin
+    /xmin 0 def
+    /ymin 0 def
+
+    gsave
+	% Calculate xmax and ymax
+	ParentCanvas setcanvas clippath pathbbox % 0 0 PCW PCH
+	height sub /ymax exch def
+	width  sub /xmax exch def
+
+	% Get coordinates of Canvas w.r.t its Parent Canvas.
+	Canvas ParentCanvas setcanvas getcanvaslocation
+        /yinit exch def /xinit exch def
+    grestore
+
+    % remember the initial location of the cursor w.r.t parent canvas
+    currentcursorlocation % realtive to canvas
+    yinit add /yo exch def xinit add /xo exch def % relative to parent and save
+
+    % When not dragging frame, give this routine to getanimated
+
+    /absmovecanvas { % x y => -  where x,y cursor relative to parent canvas
+		     % that is, they are more-or-less absolute coordinates
+        gsave Canvas setcanvas
+%	[1 0 0 1 0 0] setmatrix % Device dependant! -Don
+	% Convert the incoming parent-relative cursor coordinates
+	% to (x',y') using equations 3 and 4.
+	yo sub yinit add exch
+	xo sub xinit add exch
+	% Apply bounds to these coordinates
+	ymin max ymax min exch
+	xmin max xmax min exch
+	movecanvas
+	grestore
+    } def
+
+
+    ParentCanvas createoverlay setcanvas
+    0 0 dragframe? {{
+	% this routine will be repeatedly called by getanimated
+	% to move the canvas
+	% the stack on entry will be x y of current cursor location
+	% relative to parentcanvas.
+	% Convert the incoming parent-relative cursor coordinates
+	% to (x',y') using equations 3 and 4.
+	yo sub yinit add exch
+	xo sub xinit add exch
+	% Apply bounds to these coordinates
+	ymin max ymax min exch
+	xmin max xmax min exch
+	% Now, draw a bounding box from these coordinates
+        moveto 0 height rlineto width 0 rlineto 0 height neg rlineto
+        closepath
+    }} {{
+	% this routine will be repeatedly called by getanimated
+	% to move the canvas
+	% the stack on entry will be x y of current cursor location
+	% relative to currentcanvas.
+        absmovecanvas
+        newpath
+    }} ifelse getanimated waitprocess aload pop
+    dragframe? {absmovecanvas} {pop pop} ifelse
+    grestore
+end
+} def
+
+end % systemdict

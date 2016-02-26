@@ -1,0 +1,33 @@
+#ifndef YYSTYPE
+#define YYSTYPE int
+#endif
+#define	TASK	258
+#define	NAME	259
+#define	DESCRIPTION	260
+#define	PARENT	261
+#define	DEPENDENCIES	262
+#define	RESOURCES	263
+#define	STRING	264
+#define	DURATION	265
+#define	FLOAT	266
+#define	PLANNEDSTART	267
+#define	ACTUALSTART	268
+#define	FORECASTSTART	269
+#define	EARLIESTSTART	270
+#define	LATESTSTART	271
+#define	PLANNEDEND	272
+#define	ACTUALEND	273
+#define	FORECASTEND	274
+#define	EARLIESTEND	275
+#define	LATESTEND	276
+#define	MILESTONE	277
+#define	DELIVERABLE	278
+#define	UNSIGNED	279
+#define	TRUE	280
+#define	FALSE	281
+#define	BEG	282
+#define	END	283
+#define	TASKS	284
+
+
+extern YYSTYPE yylval;

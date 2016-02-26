@@ -1,0 +1,177 @@
+#!/bin/sh
+
+MYNAME=`basename $0`
+USAGE="Usage:
+
+$MYNAME [-user <username>] [-dir <pan directory>] [-now] <pan command> <arguments> ...
+
+	Command Language Syntax:
+
+	expose    title <title RE> [windowmax <max # to expose>]
+	hide      title <title RE>
+	move      source <folder> title <title RE> destination <folder>
+	newfolder folder <name>
+	newnote   [folder <folder>] [title <title>] [size <width> <height>]
+		  [location <x> <y>] [hidden|visible|veiled] [file <name>]
+	print     folder <folder> title <title RE>
+	quit
+	veil      title <title RE>
+
+"
+
+errexit() {
+    echo $MYNAME:  "$@"
+    exit 1
+}
+
+#
+# Lock the control file
+#
+lockctrl() {
+    retries=0
+    while [ -f $PANCTRLLOCK -a $retries -lt 10 ]
+        do
+        sleep 1
+        retries=`expr $retries + 1`
+        done
+    if [ -f $PANCTRLLOCK ]; then
+        errexit "Could not lock $PANCTRL"
+    fi
+    touch $PANCTRLLOCK 
+    if [ $? -ne 0 ]; then
+        errexit "Could not lock $PANCTRL"
+    fi
+}
+
+#
+# Unlock the control file
+#
+unlockctrl() {
+    rm $PANCTRLLOCK
+    if [ $? -ne 0 ]; then
+        errexit "Problem unlocking $PANCTRL"
+    fi
+}
+
+#
+# Send pan a signal to check the control file immediately
+#
+startpan() {
+    if [ -s $PANPID ]; then
+        kill -USR1 `cat $PANPID`
+    fi
+}
+
+#
+# Start of script
+#
+
+if [ -z "$1" ]; then
+    echo "$MYNAME:  Missing arguments"
+    echo "$USAGE"
+    exit 1
+fi
+
+user=$USER
+dir=""
+now=0
+
+while expr match "$1" "-.*" >/dev/null
+    do
+    if [ "$1" = "-user" ]; then
+        shift
+        if [ -z "$1" ]; then
+            echo "Missing name for -user option."
+            errexit "$USAGE"
+        fi
+        user="$1"
+    fi
+
+    if [ -z "$user" ]; then
+        errexit "Environment variable USER not set."
+    fi
+
+    if [ "$1" = "-dir" ]; then
+        shift
+        if [ -z "$1" ]; then
+            echo "Missing directory for -dir option."
+            errexit "$USAGE"
+        fi
+        dir="$1"
+    fi
+    if [ "$1" = "-now" ]; then
+        now=1
+    fi
+    shift
+done
+
+#
+# Get user's home directory if -dir not used.
+#
+if [ -z "$dir" ]; then
+    ypmatch $user passwd > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        dir=`awk -F: '$1 == "'$user'" { print $6 }' < /etc/passwd`
+    else
+        dir=`ypmatch $user passwd | awk -F: '$1 == "'$user'" { print $6 }'`
+    fi
+    dir="$dir/.pan"
+fi
+
+if [ ! -d $dir ]; then
+    errexit "$dir:  No such file or directory."
+fi
+
+PANCTRL=$dir/PanCtrl
+PANCTRLLOCK=$PANCTRL.lock
+PANPID=$dir/PID
+
+if [ -z "$1" ]; then
+    if [ $now -eq 1 ]; then
+        startpan
+        exit 0
+    else
+        echo "$MYNAME:  Missing arguments"
+        echo "$USAGE"
+        exit 1
+    fi
+fi
+
+lockctrl
+
+set -- "$@"
+while [ -n "$1" ]
+    do
+    echo $1
+    shift
+    done | awk '
+    {
+    if(index($0, " ") || index($0, "    "))
+        {
+        if(index($0, "\""))
+            printf "'\'%s\'' ", $0
+        else
+            printf "\"%s\" ", $0;
+        }
+    else
+        {
+        printf "%s ", $0
+        }
+    }
+ 
+END {
+    printf "\n"
+    }' >> $PANCTRL
+
+if [ $? -ne 0 ]; then
+    unlockctrl
+    errexit "Problem writing $PANCTRL"
+fi
+
+unlockctrl
+
+if [ $now -eq 1 ]; then
+    startpan
+fi
+
+exit 0

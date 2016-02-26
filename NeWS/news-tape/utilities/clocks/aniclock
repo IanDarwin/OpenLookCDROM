@@ -1,0 +1,825 @@
+#!/usr/NeWS/bin/psh
+% Date: 3 May 89 13:07:13 GMT
+% From: mcvax!prlb2!bernard@uunet.uu.net  (Bernard Yves)
+% Subject: AniClock : a clock with animated objects
+% To: news-makers@brillig.umd.edu
+% 
+% 
+% Yet another clock. Based on animated objects.
+% 
+% Yves Bernard
+% Philips Research Lab, Brussels
+% bernard@prlb2.uucp
+% 
+% 
+% 
+% -------------------------------------------------------------------------
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  AniClock, a clock based on animated objects.
+%  Time base reference is made with the trick of Stan Switzer.
+%  Animation is inspired from the double-buffered animation of the
+%  Bounce program also from Stan Switzer.
+%  The number of animated objects is currently set to 15 and can be
+%  increased : see options in the menu.
+%
+%  There are some Living objects which reproduce when bouncing on the
+%  window rectangle. Change life time of clones to change rule of life.
+%  Initial objects are immortal. Others get older of one unit at each
+%  time step.
+%
+%  To set an initial position to the window, define in systemdict (in
+%  your user.ps) a /WindowInitPosition entry,  and then call AniClock
+%  after having stored in this entry [x0 y0 w h]; from a shell you
+%  could do something like:
+%  echo "systemdict /WindowInitPosition [930 690 200 200] put" | psh
+%  AniClock
+%
+%  The window icon displays the current time. In iconic state, does not
+%  consume so much cpu.
+%
+%  Yves Bernard 	bernard@prlb2.uucp
+%  Philips Research Lab, Brussels
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%get time
+systemdict /Midnight known not {
+    /GetDate { % - -> (str) true -or- false
+	{ 25 dict begin % fork (to keep events from being confused)
+	    /Interest createevent dup begin
+		/Name [ /TimeOut /Date ] def
+	    end dup expressinterest def
+	    /Timer Interest createevent copy dup begin
+		/Name /TimeOut def
+		/TimeStamp currenttime .25 add def
+	    end dup sendevent def
+	    (echo "createevent dup begin)
+	    (         /Name /Date def /Action (`date`)) append
+	    (      def end sendevent" | psh) append forkunix
+	    awaitevent dup /Name get /TimeOut eq {
+		pop [ false ]
+	    } {
+		Timer recallevent
+		/Action get [ exch true ]
+	    } ifelse
+	end } fork waitprocess aload pop
+    } def
+    
+
+/GetHHMMSS { % - -> hh mm ss true -or- false
+    GetDate {
+        3 { ( ) search { % (true) post match pre
+            { exch pop () ne { exit } if ( ) search not { exit } if } loop
+        } if } repeat
+        ( ) search 4 2 roll pop pop pop
+        2 { (:) search pop exch pop cvi exch } repeat cvi
+        true
+    } {
+        false
+    } ifelse
+} def
+    
+    systemdict /Midnight currenttime GetHHMMSS pop
+    3 -1 roll 60 mul 3 -1 roll add exch 60 div add sub put
+} if
+
+/decrease { % n decr => n'  -- decrease n toward zero, not beyond
+  exch dup 0 lt
+    { add dup 0 gt { pop 0 } if }
+    { exch sub dup 0 lt { pop 0 } if }
+    ifelse
+} def
+
+% Sleazy way to modify enclosing window variables
+/W+ { % /name incr =>
+  ThisWindow begin exch dup load 3 -1 roll add store end
+} def
+/W* { % /name factor =>
+  ThisWindow begin exch dup load 3 -1 roll mul store end
+} def
+/W= { % /name val =>
+  ThisWindow begin store end
+} def
+
+
+% Moving objects
+/AnimatedObject Object
+dictbegin
+  /X 0 def	%position
+  /Y 0 def
+  /Angle 0 def  %rotation
+  /Width 1.0 def	%dimension (in fact scaling factor)
+  /Height 1.0 def
+  /dX 16 def	%velocity
+  /dY 0 def
+  /dAngle 0 def
+  /d2X 0 def	%acceleration
+  /d2Y 0 def
+  /d2Angle 0 def
+  /dragX 0 def
+  /dragY 0 def
+  /ThingColor ColorDisplay? { 0 0 0 rgbcolor } { 0 } ifelse def %black
+  /DrawProc nullproc def
+  /wheredrawn null def
+  /RunState true def
+  /ObjectProcess null def
+  /Window null def	%Animation window where the object is animated
+  /Other null def	%for adding other info (e.g. as a dict)
+  /tableindex 0 def
+dictend
+classbegin
+/new {
+	/new super send begin
+      	  /wheredrawn 5 array store
+	currentdict end
+	} def
+
+/init {
+    Angle Width Height X Y wheredrawn astore pop } def
+
+/new-position { % update X,Y,DX,DY...
+   % acceleration
+    /dX dX d2X add store
+    /dY dY d2Y add store
+    /dAngle dAngle d2Angle add store
+    % velocity
+    /X X dX add store
+    /Y Y dY add store
+    /Angle Angle dAngle add store
+    % "friction"
+    /dX dX dragX decrease store
+    /dY dY dragY decrease store
+	} def
+
+/ScaleObject { % sx sy = -
+	/Height exch store
+	/Width exch store } def
+
+/draw-thing { % Angle Width Height X Y => -  
+    gsave translate scale rotate
+      /DrawProc self send
+    grestore
+  } def
+
+/show-thing { % - => -
+    Angle  Width  Height  X Y 
+     ThingColor setshade
+    5 copy wheredrawn astore pop	
+      /draw-thing self send
+  } def
+
+/thing-step {
+	RunState {
+		/new-position self send
+		/show-thing self send
+		} if
+	} def
+
+classend def
+
+/BouncingObject AnimatedObject
+dictbegin
+/BounceEventProc {pop} def
+dictend
+classbegin
+/new {
+	/new super send begin currentdict end} def
+
+/BounceOnFrame  { % - => (none) | (top) | (left) | (right) | (bottom)
+  Y 0 le  
+   {/dY dY neg store /Y 0 store (bottom) } 
+   {Y Window /CanH get ge
+	 {/dY dY neg store /Y Window /CanH get store (top)}
+	 {X 0 le
+		   {/dX dX neg store /X 0 store (left)}
+	  	   {X Window /CanW get ge 
+		    {/dX dX neg store /X Window /CanW get store (right)} 
+		    {(none)} ifelse}
+	  	   ifelse}
+	  ifelse}
+  ifelse
+} def
+
+/bounce-action {
+		BounceOnFrame % bounce state on stack
+		dup (none) ne
+			 {/BounceEventProc self send}
+			 { pop }
+			ifelse
+		} def
+
+/thing-step {
+	RunState {
+		/thing-step super send
+		/bounce-action self send} if
+	} def
+
+/clone { %	-> returns a clone of self 
+	self length dict self exch copy
+} def
+
+classend def
+	
+
+%Living objects : they born, try to reproduce when bouncing and die.
+
+/CloneLife 50 def
+/LivingObject BouncingObject
+dictbegin
+/LifeTime 100 def
+
+/CloneProc {pop} def  %clone initialisation proc : clone => -
+%working var.
+/bounce null def
+/CloneLifeTime 0 def
+dictend
+classbegin
+
+/new {
+	/new super send begin currentdict end} def
+
+/clone-on-bounce { % bouncing-condition CloneLifeTime => clone or null
+	/CloneLifeTime exch store
+	/bounce exch store
+	Window /ObjCount get Window /MaxObject get lt
+	   { /clone self send dup
+		begin
+		/LifeTime CloneLifeTime store
+		bounce (bottom) eq bounce (top) eq or
+			{ /dX dX neg store} 
+			{ /dY dY neg store} ifelse
+		end
+	   dup /AddObject Window send
+	   } 
+	   {null} ifelse
+	} def
+
+/GetOlder {
+	LifeTime 0 ge {
+	LifeTime 0 eq {self /RemoveObject Window send}
+		      {/LifeTime LifeTime 1 sub store} ifelse
+	} if
+	} def
+
+/bounce-action {
+		/BounceOnFrame self send % bounce state on stack
+		dup (none) ne
+		   {CloneLife 		  %Window /Nobjects get sub 
+			clone-on-bounce  %clone on stack if not max objects
+			dup null ne {CloneProc} {pop} ifelse}
+ 		   { pop }
+			ifelse
+		GetOlder
+		} def
+
+classend def
+
+/CloneLTmenu 
+        [ (2) (5) (10) (15) (20) (30) (50) (70) (100) (150) (200) ]
+	[{/CloneLife currentkey cvi store} ]
+	/new DefaultMenu send def
+
+
+/AnimationWindow DefaultWindow
+dictbegin
+%moving object
+  /Objects 100 array def
+  /SizeObjTable 100 def
+  /Nobjects 0 def
+  /MaxObject 15 def
+  /ObjCount 0 def
+  /dT 1 60 div def			%time step = 1 sec.
+  /olddT 0 def
+  /BackGroundColor 1 def		%white
+  /FrameCounter 0 def			
+
+  /CanW 0 def /CanH 0 def
+  /AnimateProcess null def
+  /ClockProcess null def	%the clock process
+  /dClock 1.0 def
+  /PaintClient { BackGroundColor fillcanvas show-objects } def
+%working variable
+  /theObj null def
+  /theInd 0 def
+  /Index1 0 def
+dictend
+classbegin
+/ForkPaintClient? false def
+
+  /IconFont /Times-Roman findfont 30 scalefont def
+
+  /new {
+    /new super send begin
+      /ClientMenu [
+        (Faster)	{ /dT 1 1.5 div W* }
+        (Slower)	{ /dT 1.5 W* }
+	(MaxObject+=1) { /MaxObject 1 W+}
+	(MaxObject-=1) { /MaxObject -1 W+
+			 {Nobjects MaxObject ge {
+				/Nobject MaxObject 1 sub store} if}
+				ThisWindow send
+			}
+	(CloneLifeTime =>) CloneLTmenu
+        (Zap)		{ /destroy ThisWindow send }
+      ] /new DefaultMenu send def
+    currentdict end
+    newprocessgroup
+  } def
+
+  /destroy {
+	AnimateProcess killprocess
+	ClockProcess killprocess
+        IconCanvas /Mapped false put
+	FrameCanvas /Mapped false put
+	/destroy super send} def
+
+  /start {
+    true clock
+    true animate 
+  } def
+
+  /stop {
+    false animate
+    false clock
+  } def
+
+  /animate {
+    { AnimateProcess null eq
+      { /AnimateProcess { animateproc } fork store }
+      { AnimateProcess continueprocess } ifelse
+    } {
+      AnimateProcess null ne
+      { AnimateProcess suspendprocess } if
+    } ifelse
+  } def
+
+  /clock {
+    { ClockProcess null eq
+      { /ClockProcess { clockproc } fork store }
+      { ClockProcess continueprocess } ifelse
+    } {
+      ClockProcess null ne
+      { ClockProcess suspendprocess } if
+    } ifelse
+  } def
+
+  /reshape { % x y w h => -
+    /reshape super send
+    gsave
+      ClientCanvas setcanvas clippath pathbbox 4 -2 roll pop pop % w h
+      /CanH exch store /CanW exch store
+    grestore
+      ClockObject begin /X CanW 2 div store /Y CanH store end
+  } def
+
+  /unix-command nullproc def
+
+  /animate-step { % - => -
+    ClientCanvas setcanvas
+    BackGroundColor fillcanvas  %erase canvas
+    Objects 0  Nobjects getinterval {
+	dup null ne {
+	/thing-step exch send pause} {pop} ifelse
+	} forall
+    } def
+
+  /show-objects {
+%    (show-objects\n) print
+    Objects 0  Nobjects getinterval {
+	dup null ne 
+	{{wheredrawn aload pop /draw-thing self send} exch send}
+	{pop} ifelse
+	} forall
+    } def
+
+  /animateproc { % - => -
+    % initial conditions
+    % initialize objects;
+    Objects 0 Nobjects getinterval {
+	dup null ne {
+	/init exch send} {pop} ifelse
+	} forall
+    /init ClockObject send
+
+    % create a timer event event interest
+    /TimerInterest createevent store
+    TimerInterest begin
+      /Name /DelayOver def
+    currentdict end dup expressinterest
+
+    % create a timer event and start it off
+    createevent copy begin
+      /TimeStamp currenttime dT add def
+    currentdict end sendevent
+
+    { % loop
+      awaitevent begin
+	/TimeStamp
+%         TimeStamp		% Makes up for lost time
+	  currenttime		% Accepts its loss
+		dT add def
+      currentdict end sendevent
+      animate-step
+    } loop
+  } def
+
+  /clockproc { % - => -
+	ClockObject	%initialize position
+		begin
+		/Y CanH store
+		/X CanW 2 div store 
+		end
+    reset-clock
+    /ClockInterest createevent store
+    ClockInterest begin
+      /Name /Clock def
+    currentdict end dup expressinterest
+
+    % create a timer event and start it off
+    createevent copy begin
+      /TimeStamp currenttime dClock add def  %one minute delay 
+    currentdict end sendevent
+
+    { % loop
+      awaitevent begin
+	/TimeStamp
+%         TimeStamp		% Makes up for lost time
+	  currenttime		% Accepts its loss
+	  dClock add def
+      currentdict end sendevent
+	reset-clock
+    } loop
+  } def
+
+  /reset-clock { % adds 1 minute to the clock object; reset its position;
+	ClockObject
+		begin 
+		 Other
+		  begin 
+		currenttime Midnight sub cvi %time in Min.
+		dup 60 idiv /Hours exch store
+		60 mod /Minutes exch store
+		Hours Minutes MakeStringFromHHMM /TimeStr exch store 
+		 TimeStr
+		 end
+		 /Y CanH store		 
+		 end
+	/IconLabel exch store			
+	Iconic? {/PaintIcon self send} if
+	} def
+
+/flipiconic{%the icon label is not updated correctly...
+	/flipiconic super send
+%	Iconic? not animate pause	%suspend animation proc
+					%create invalidaccess error...??
+%so we simply change the dT...
+	Iconic?
+		{/olddT dT store
+		 /dT 20 store
+		 }
+		{/dT olddT store
+	    	createevent  begin /Name /DelayOver def
+      		/TimeStamp currenttime dT add def
+    		currentdict end sendevent} ifelse
+		
+	/reset-clock self send
+	} def
+
+/Index1 0 def
+/AddObject {  % Obj => -
+	ObjCount MaxObject lt {
+	Nobjects SizeObjTable lt {%Obj; table not full
+	dup Objects Nobjects 3 -1 roll put	%Obj
+	dup /Window self put /tableindex Nobjects put
+	/Nobjects Nobjects 1 add store /ObjCount ObjCount 1 add store
+	}
+	{% table full; find empty entry
+	0 1 Nobjects 1 sub
+	{dup /Index1 exch store Objects exch get null eq %obj
+		{dup Objects Index1 3 -1 roll put 
+		/tableindex Index1 put
+		/ObjCount ObjCount 1 add store
+		exit
+		} if} for
+	} ifelse
+	} {pop} ifelse
+	} def
+
+/RemoveObject { % Obj => -
+	/tableindex get Objects exch null put
+	/ObjCount ObjCount 1 sub store
+	} def
+
+classend def
+
+/MakeStringFromHHMM { % HH MM => (HH:MM)
+dup 9 le { 1 string cvs (:0) exch append}
+	 { 2 string cvs (:) exch append} ifelse %HH (:MM)
+exch 2 string cvs exch append
+} def
+
+
+/FasterAnimationWindow AnimationWindow
+dictbegin
+  /FrameLabel (Ani Clock) def
+  /IconLabel (Ani Clock) def
+  /TmpCan null def
+dictend
+classbegin
+  /new {
+    /new super send begin
+      /TmpCan framebuffer newcanvas store
+      TmpCan /Transparent false put
+      TmpCan /Retained true put
+    currentdict end
+  } def
+
+  /pre-compute { % -- precompute the image in a second canvas;
+    gsave 
+      framebuffer setcanvas
+      0 0 moveto CanW CanH rect TmpCan reshapecanvas
+      TmpCan setcanvas
+      BackGroundColor fillcanvas 
+
+      Objects 0 Nobjects getinterval {
+	dup null ne {
+	/thing-step exch send pause  %draws it in TmpCan
+	} {pop} ifelse
+	} forall
+     /thing-step ClockObject send pause %always drawn the last
+     grestore
+  } def
+
+/animate-step {
+	pre-compute
+	ClientCanvas setcanvas
+	gsave
+	0 0 translate CanW CanH scale
+	TmpCan imagecanvas
+	grestore
+	} def
+
+classend def
+
+
+
+%-----------------------------------------------------------------------------
+%animated object definition
+/ClockObject /new BouncingObject send def
+{
+/dY -5 def
+/dX 0 def
+/Other dictbegin /Minutes 0 def /Hours 0 def /TimeStr (0:0) def dictend def
+/DrawProc {
+	/Times-Roman findfont 40 scalefont setfont
+	0 0 moveto
+	Other /TimeStr get show
+	} def
+} ClockObject send
+
+
+/obj1 /new LivingObject send def
+{
+/X 100 def
+/Y 300 def
+/dX 7 def
+/dY 5 def
+/dAngle 5 def
+%/d2Y -2 def
+/Width 10 def
+/Height 10 def
+/LifeTime -1 def
+/DrawProc {
+	newpath 0 0 moveto 1 0 lineto .5 1 lineto 0 0 lineto stroke
+	dY 0 eq { /dY random 10 mul cvi store} if
+	} def
+} obj1 send
+
+
+/obj2 /new LivingObject send def
+{
+/X 50 def
+/Y 30 def
+/Angle 30 def
+/dAngle -5 def
+/dX 5 def
+/dY 7 def
+/Width 10 def
+/Height 20 def
+/LifeTime -1 def
+/DrawProc {
+	newpath 0 0 moveto 1 0 lineto .5 1 lineto 0 0 lineto fill
+	Height 50 le {/Height Height 2 add store} 
+		     {/Height 10 store} ifelse
+	
+	} def
+} obj2 send
+
+/obj3 /new LivingObject send def
+{
+/X 100 def
+/Y 400 def
+/dX 5 def
+/dY 1 def
+/Width 20 def
+/Height 10 def
+/DrawProc {
+	newpath 0 0 moveto 1 0 lineto .5 1 lineto 0 0 lineto fill
+	} def
+} obj3 send
+
+/obj4 /new LivingObject send def
+{
+/X 500 def
+/Y 500 def
+/dX -1 def
+/dY -1.5 def
+/dAngle 5 def
+/LifeTime -1 def
+/DrawProc {
+	newpath 0 0 moveto 30 0 lineto 30 30 lineto 0 0 lineto 0.3
+	setgray fill
+	} def
+} obj4 send
+
+
+/TimeObj /new BouncingObject send def
+{
+/X 200 def
+/Y 300 def
+/dX -3 def
+/dY 4 def
+/dAngle 5 def
+/DrawProc {
+	/Times-Roman findfont 30 scalefont setfont
+	0 0 moveto
+	0.5 setgray
+	(TIME) show
+	} def
+} TimeObj send
+
+
+%pelle1 drawing definition
+/pelledict 8 dict def
+ pelledict begin
+ /manche 15 def
+ /dmanche 2 def
+ /maxmanche 100 def
+ /minmanche 10 def
+ /gray 0.9 def
+ /mtrx matrix def
+end
+
+%pelle2
+/pelledict2 8 dict def
+ pelledict2 begin
+ /manche 30 def
+ /dmanche 4 def
+ /maxmanche 60 def
+ /minmanche 10 def
+ /gray 0.5 def
+ /mtrx matrix def
+end
+
+
+/drawpelle { % pelledict = -
+begin
+/ds manche 0.15 mul def
+/savematrix mtrx currentmatrix def
+
+  newpath
+  0 0 moveto
+  0 manche lineto
+  ds manche lineto
+  ds 0 lineto
+  closepath
+  gsave
+    0.2 setgray fill
+  grestore
+    stroke
+  newpath
+  0 manche moveto
+  0.6 manche mul neg manche lineto
+  0.6 manche mul neg manche 2.3 mul lineto
+  0  manche  3 mul lineto
+  ds manche 3 mul lineto
+  0.6 manche mul ds add manche 2.3 mul lineto
+  0.6 manche mul ds add manche lineto
+  0  manche lineto
+  closepath
+  gsave
+    gray setgray fill
+  grestore
+    stroke
+ savematrix setmatrix
+end
+} def
+
+/updatepelle { % pelledict = -
+	begin
+	manche maxmanche ge {/dmanche dmanche neg store} 
+		{manche minmanche le
+			{/dmanche dmanche neg store} if} ifelse
+	/manche manche dmanche add store
+	end
+	} def
+
+
+/obj5 /new BouncingObject send def
+{
+/X 50 def
+/Y 50 def
+/Angle 30 def
+/dX 3 def
+/dY 3 def
+/dAngle 5 def
+/DrawProc {
+	pelledict drawpelle
+	pelledict updatepelle
+	} def
+} obj5 send
+
+/obj6 /new BouncingObject send def
+{
+/X 200 def
+/Y 10 def
+/Angle 60 def
+/dX -5 def
+/dY 5 def
+/dAngle -5 def
+%/Height 0.5 store
+%/Width 0.5 store
+/DrawProc {
+	pelledict2 drawpelle
+	pelledict2 updatepelle
+	} def
+
+} obj6 send
+
+
+/obj7 /new LivingObject send def
+{
+/X 20 def
+/Y 100 def
+/Angle 10 def
+/dX -2.5 def
+/dY 2 def
+/dAngle -5 def
+/LifeTime -1 def
+/DrawProc {
+	0 0 moveto 50 0 lineto 50 50 lineto 0 50 lineto 0 0 lineto
+	stroke
+	70 50 moveto 25 100 lineto -20 50 lineto 70 50 lineto stroke
+	} def
+/CloneProc {begin 
+	Width 0.1 gt {
+		/Width Width 1.2 div store
+		/Height Width store end} if
+	} def
+
+} obj7 send
+
+% a character object
+/obj8 /new LivingObject send def
+{
+/X 200 def
+/Y 2 def
+/Angle 10 def
+/dX -2.5 def
+/dY 2.5 def
+/dAngle -5 def
+/LifeTime -1 def
+/Other 1 def
+/DrawProc {
+	0 0 moveto Other 3 string cvs show
+	} def
+/CloneProc {begin /Other Other 1 add store end} def
+} obj8 send
+
+
+/win framebuffer /new FasterAnimationWindow send def
+% {/unix-command {savescreen} def} win send
+
+
+obj1 /AddObject win send
+obj2 /AddObject win send
+obj3 /AddObject win send
+obj4 /AddObject win send
+TimeObj /AddObject win send
+obj7 /AddObject win send
+%obj8 /AddObject win send
+obj5 /AddObject win send
+obj6 /AddObject win send
+%ClockObject /AddObject win send
+ClockObject /Window win put
+
+systemdict /WindowInitPosition known
+{
+WindowInitPosition dup null ne
+	{aload pop /reshape win send
+	/WindowInitPosition null store}
+	{pop /reshapefromuser win send} ifelse}
+{/reshapefromuser win send} ifelse
+
+/map win send
+/start win send

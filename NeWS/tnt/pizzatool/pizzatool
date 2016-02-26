@@ -1,0 +1,2546 @@
+#!/bin/sh
+psh << '%EOF'
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% This file is a product of Sun Microsystems, Inc. and is provided for
+% unrestricted use provided that this legend is included on all tape
+% media and as a part of the software program in whole or part.  Users
+% may copy or modify this file without charge, but are not authorized to
+% license or distribute it to anyone else except as part of a product
+% or program developed by the user.
+%
+% THIS FILE IS PROVIDED AS IS WITH NO WARRANTIES OF ANY KIND INCLUDING THE
+% WARRANTIES OF DESIGN, MERCHANTIBILITY AND FITNESS FOR A PARTICULAR
+% PURPOSE, OR ARISING FROM A COURSE OF DEALING, USAGE OR TRADE PRACTICE.
+%
+% This file is provided with no support and without any obligation on the
+% part of Sun Microsystems, Inc. to assist in its use, correction,
+% modification or enhancement.
+%
+% SUN MICROSYSTEMS, INC. SHALL HAVE NO LIABILITY WITH RESPECT TO THE
+% INFRINGEMENT OF COPYRIGHTS, TRADE SECRETS OR ANY PATENTS BY THIS FILE
+% OR ANY PART THEREOF.
+%
+% In no event will Sun Microsystems, Inc. be liable for any lost revenue
+% or profits or other special, indirect and consequential damages, even
+% if Sun has been advised of the possibility of such damages.
+%
+% Sun Microsystems, Inc.
+% 2550 Garcia Avenue
+% Mountain View, California  94043
+%
+%
+% %Z%%M% %I% %E%
+%
+% Copyright (c) 1991 by Sun Microsystems, Inc.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% User Interface Structure
+%
+% * ToolWindow: ClassBaseWindow
+% ** ToolPanel: /Calculated ClassPanel
+% *** addressmenubuttons: /Grid ClassMenuButtons
+% **** pizzaparlormenu: /Exclusive /Grid ClassMenu
+% *** winbuttons: /Grid ClassButtons
+%     /ShowToppingWindow /ShowPreviewWindow /OrderPizza /ShowEditWindow
+% *** namefieldlabel: ClassLabel
+% *** namefield: ClassTextField
+%     nullnotify
+% *** phonefieldlabel: ClassLabel
+% *** phonefield: ClassTextField
+%     nullnotify
+% *** addressfieldlabel: ClassLabel
+% *** addressfield: ClassTextField
+%     nullnotify
+% *** deliverylabel: ClassLabel
+% *** deliverymenubutton: /Grid ClassMenuButtons
+% **** deliverymenu: /Exclusive /Grid ClassMenu
+%      /SetDelivery
+% *** deliveryvalue: ClassLabel
+% *** totallabel: ClassLabel
+% *** totalfield: ClassTextField
+%     nullnotify
+% *** emaillabel: ClassLabel
+% *** emailfield: ClassTextField
+% *** instructionslabel: ClassLabel
+% *** instructionfield0..5: ClassTextField
+%     nullnotify
+%
+% * ToppingWindow: ClassPopupWindow
+% ** ToppingPanel: /Calculated ClassPanel
+% *** orderbuttons: /Grid ClassButtons
+%     /ShowPreviewWindow /ShowEditWindow /OrderPizza
+% *** pizzasizelabel: ClassLabel
+% *** pizzasizesettings: /Grid ClassSettings
+%     /SetPizzaSize
+% *** pizzafractionlabel: ClassLabel
+% *** pizzafractionsettings: /Grid ClassSettings
+%     /SetPizzaFraction
+% *** stylelabel: ClassLabel
+% *** stylemenubutton: /Grid ClassMenuButtons
+% **** stylemenu: /Exclusive /Grid ClassMenu
+%      /MenuSetStyle
+% *** stylevalue: ClassLabel
+% *** meatlabel: ClassLabel
+% *** meatcheckboxes: /Grid ClassCheckBoxes
+%     /SetCheckboxes
+% *** vegetablelabel: ClassLabel
+% *** vegetablecheckboxes: /Grid ClassCheckBoxes
+%     /SetCheckboxes
+% *** costlabel: ClassLabel
+% *** costfield: ClassTextField
+%     nullnotify
+%
+% * EditWindow: ClassPopupWindow
+% ** EditPanel: /Calculated ClassPanel
+% *** stylemenubuttons: /Grid ClassMenuButtons
+% **** editstylemenu: /Grid ClassMenu
+%      /NewPizzaStyle /EditPizzaStyle /RenamePizzaStyle
+%      /DeletePizzaStyle /SavePizzaStyle
+% **** edittoppingmenu: /Grid ClassMenu
+%      /RemoveSelected /CopyCheckboxes
+% ***** meattoppingmenu: /NonExclusive /Grid ClassMenu
+%	/UpdateToppings
+% ***** vegetabletoppingmenu: /NonExclusive /Grid ClassMenu
+%	/UpdateToppings
+% *** stylelabel: ClassLabel
+% *** stylescroll: ClassVScrollbar
+%     /scroll @ stylelist
+% *** stylelist: ClassScrollList
+%     /EditStyle
+% *** styletoppingslabel: ClassLabel
+% *** styletoppingsscroll: ClassVScrollbar
+%     /scroll @ styletoppingslist
+% *** styletoppingslist: ClassScrollList
+%     /EditTopping
+% *** stylenamelabel: ClassLabel
+% *** stylenamefield: ClassTextField
+%     /NewPizzaStyle
+% *** styleextralabel: ClassLabel
+% *** styleextrafield: ClassNumericField
+%     /SetStyleExtraToppings
+% *** stylepriceslabel: ClassLabel
+% *** styleprice10label: ClassLabel
+% *** styleprice10field: ClassTextField
+%     /SetStylePrice
+% *** styleprice14label: ClassLabel
+% *** styleprice14field: ClassTextField
+%     /SetStylePrice
+% *** styleprice16label: ClassLabel
+% *** styleprice16field: ClassTextField
+%     /SetStylePrice
+% *** styleprice18label: ClassLabel
+% *** styleprice18field: ClassTextField
+%     /SetStylePrice
+%
+% * PreviewWindow: ClassPopupPizzaWindow
+% ** Pizza: ClassPizza
+%
+% * Notice: ClassNotice
+% ** oknoticebuttons: ClassButtons
+%    /NoticeClose
+% ** yesnonoticebuttons: ClassButtons
+%    /NoticeYesNo
+%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Setup for OpenWindows 2.0 or 3.0
+
+systemdict /findpackage known {
+  /NeWS 3 0 findpackage beginpackage
+  /TNTCore 3 0 findpackage beginpackage
+  /TNT 3 0 findpackage beginpackage
+
+  /SLEEP { sleep } def
+  /BUILDIMAGE { framebuffer /Colormap get buildimage } def
+} {
+  /SLEEP { aload pop 1000 mul exch add 60 div sleep } def
+  /BUILDIMAGE { buildimage } def
+} ifelse
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Globals
+
+/FavoriteStyle (Cheese) def
+/ServerEnabled? false def
+/ConfigFile (.pizzatool.ps) def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Utilities
+
+/CheckedToppingNames { % - => [name ...]
+  [ { /value self send {
+        /item self send
+      } forall
+    } meatcheckboxes send
+    { /value self send {
+        /item self send
+      } forall
+    } vegetablecheckboxes send
+  ]
+} def
+
+/CheckedToppings { % - => [topping ...]
+  CheckedToppingNames {
+    [ exch {
+        findtopping
+        dup null eq { pop } if
+      } forall
+    ]
+  } ClassTopping send
+} def
+
+/MeatToppingNames { % - => [Topping ...]
+  [ /Meat /typetoppings ClassTopping send {
+      /name exch send
+    } forall ]
+} def
+
+/VegetableToppingNames { % - => [Topping ...]
+  [ /Vegetable /typetoppings ClassTopping send {
+      /name exch send
+    } forall ]
+} def
+
+/PizzaStyleNames { % - => [(name) ...]
+  [ /styles ClassStyle send {
+      /name exch send
+    } forall ]
+} def
+
+/SelectedStyleName { % - => style
+  { /value self send 0 get /item self send }
+  stylelist send
+} def
+
+/SelectedStyle { % - => style
+  SelectedStyleName
+  /findstyle ClassStyle send
+  dup null eq { pop /defaultstyle ClassStyle send } if
+} def
+
+/UpdateStyleToppingMenus { % - => -
+  SelectedStyle
+  [ /toppings 2 index send {
+      { /foodtype self send /Meat eq { /foodnumber self send } if }
+      exch send
+    } forall
+  ] /setvalue meattoppingmenu send
+
+  [ /toppings 3 -1 roll send {
+      { /foodtype self send /Vegetable eq { /foodnumber self send } if }
+      exch send
+    } forall
+  ] /setvalue vegetabletoppingmenu send
+} def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Notice Definitions
+
+/ShowNotice { % name => -
+  NoticeDict exch get begin
+    Text Buttons
+  end
+  /setbuttons Notice send
+  /settext Notice send
+  gsave
+    framebuffer setcanvas
+    [ currentcursorlocation ] /open Notice send
+  grestore
+} def
+
+/NoticeDict dictbegin
+
+  /TAOrder dictbegin
+    /Text [
+      (Do you really want to order a)
+      (pizza from Tony and Alba's?)
+      (This will cost real money and)
+      (make you want to drink beer.)
+    ] def
+    /Buttons { yesnonoticebuttons } def
+  dictend def
+
+  /SunOrder dictbegin
+    /Text [
+      (Are you sure you want Sun)
+      (to pay for this pizza?)
+    ] def
+    /Buttons { yesnonoticebuttons } def
+  dictend def
+
+  /DemoOrder dictbegin
+    /Text [
+      (Do you really want to order a pizza)
+      (from the demo room??!)
+      (This will most likely just confuse people,)
+      (and they probably won't cook you a pizza.)
+    ] def
+    /Buttons { yesnonoticebuttons } def
+  dictend def
+
+  /OtherOrder dictbegin
+    /Text [
+      (Are you sure you want)
+      (to order a pizza?)
+    ] def
+    /Buttons { yesnonoticebuttons } def
+  dictend def
+
+  /YouAreEditing dictbegin
+    /Text [
+      (You *are* editing the pizza menu!)
+      (So be careful!)
+    ] def
+    /Buttons { oknoticebuttons } def
+  dictend def
+
+  /NoSave dictbegin
+    /Text [
+      (This is a demo version of PizzaTool,)
+      (so the Save function is discomboobelated.)
+    ] def
+    /Buttons { oknoticebuttons } def
+  dictend def
+
+  /DidSave dictbegin
+    /Text [
+      (The PizzaTool configuration)
+      (has been successfully saved.)
+    ] def
+    /Buttons { oknoticebuttons } def
+  dictend def
+
+  /DontDeleteTheLastStyle dictbegin
+    /Text [
+      (It's not nice to delete all the pizza styles.)
+    ] def
+    /Buttons { oknoticebuttons } def
+  dictend def
+
+  /UnknownStyleName dictbegin
+    /Text [
+      (That pizza style name is not known.)
+      (You can select New from the style menu to define a new style,)
+      (or Rename to change the name of the currently selected style.)
+    ] def
+    /Buttons { oknoticebuttons } def
+  dictend def
+
+  /StyleAlreadyDefined dictbegin
+    /Text [
+      (That pizza style name is already being used.)
+      (Type in a new name and try again.)
+    ] def
+    /Buttons { oknoticebuttons } def
+  dictend def
+
+  /RenameToSelf dictbegin
+    /Text [
+      (Silly! Type in a *different* name,)
+      (if you want to rename the pizza style!)
+    ] def
+    /Buttons { oknoticebuttons } def
+  dictend def
+
+  /MaybeDeliver dictbegin
+    /Text [
+      (They probably won't deliver unless you make it)
+      (worth their while by ording *lots* of pizza!)
+    ] def
+    /Buttons { oknoticebuttons } def
+  dictend def
+
+  /PayUp dictbegin
+    /Text {
+      [ (Yer pizza is being held hostage,)
+        (until ya pay's off yer tab, chump!)
+	(Yer tab's presently:)
+        YerTab
+        dup 100 mul round cvi 100 mod
+        exch floor cvi
+        1 index 10 lt { ($%.0%) } { ($%.%) } ifelse
+        sprintf
+      ]
+    } def
+    /Buttons { oknoticebuttons } def
+  dictend def
+
+dictend def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Class Definitions
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ClassPizza
+
+/ClassPizza ClassCanvas [
+  /Toppings /Style /PizzaSize /Fraction /Price
+  /Cheese /ExtraToppings /PaintLock
+] classbegin
+  /Transparent false def
+  /Retained true def
+  /Mapped true def
+  /PaintProc null def
+  /MatchBias .9 def
+  /CrustColor .9 .6 .1 rgbcolor def
+  /SauceColor 1 .1 .1 rgbcolor def
+
+% class methods
+
+  /NewInit {
+    /NewInit super send
+    /Toppings nullarray def
+    /ExtraToppings nullarray def
+    /Style /defaultstyle ClassStyle send def
+    /PizzaSize 3 def
+    /Fraction 1 def
+    /Price 0 def
+    /Cheese (Cheese) findtopping def
+    /PaintLock createmonitor def
+    /Sprinklers growabledict def
+    /TempCanvas self newcanvas def
+    TempCanvas begin
+      /Mapped false def
+      /Transparent false def
+      /Retained true def
+    end
+  } def
+
+  /destroy {
+    SpinProcess null ne {
+      SpinProcess killprocess
+    } if
+    /SpinProcess unpromote
+  } def
+
+  /toppings { % - => [topping ...]
+    Toppings
+  } def
+
+  /addtopping { % topping => -
+    Toppings 1 index arraycontains? { pop } {
+      Toppings 1 index arrayappend
+      /Toppings exch def
+      /updateview self send
+      /mapped? Parent send {
+	  gsave
+	    self setcanvas
+	    /PaintSetup self send
+	    /PaintClip self send
+	    /StartSprinkle self send
+	  grestore
+      } { pop } ifelse
+    } ifelse
+  } def
+
+  /removetopping { % topping => -
+    Toppings exch arrayindex {
+      Toppings exch arraydelete
+      /settoppings self send
+    } if
+  } def
+
+  /settoppings { % [topping ...] => -
+    /Toppings exch def
+    /preview self send
+    /updateview self send
+  } def
+
+  /setstyle { % style => -
+    /Style 1 index def
+    /toppings exch send
+    /settoppings self send
+  } def
+
+  /style { % - => style
+    Style
+  } def
+
+  /pizzasize { % - => 0..3 (for 10", 14", 16", and 18")
+    PizzaSize
+  } def
+
+  /setpizzasize { % 0..3 => -
+    /PizzaSize exch def
+    /preview Pizza send
+    gsave
+      Parent setcanvas
+      /bbox PreviewWindow send /reshape PreviewWindow send
+    grestore
+    /updateview self send
+  } def
+
+  /fraction { % - => real
+    Fraction
+  } def
+
+  /setfraction { % real => -
+    /Fraction exch def
+    gsave
+      Parent setcanvas
+      /bbox PreviewWindow send /reshape PreviewWindow send
+    grestore
+    /updateview self send
+  } def
+
+  /radius { % - => r
+    {.5555 .7778 .8889 1} PizzaSize get
+  } def
+
+  /price { % - => price
+    Price
+  } def
+
+  /ViewUpdateProc null def
+
+  /updateview {
+    ViewUpdateProc null ne {
+      ViewUpdateProc waitprocess pop
+    } if
+    /ViewUpdateProc {
+      /UpdateView self send
+      /ViewUpdateProc unpromote
+    } fork promote
+  } def
+
+  /UpdateView { % - => -
+    PizzaSize {
+      dup /value self send 0 get ne {
+ 	[exch] /setvalue self send
+      } { pop } ifelse
+    } pizzasizesettings send
+
+    Fraction 1 eq { 0 } { 1 } ifelse {
+      dup /value self send 0 get eq { pop } {
+        [exch] /setvalue self send
+      } ifelse
+    } pizzafractionsettings send
+
+    /id Style send {
+      dup /value self send 0 get eq { pop } {
+        [exch] /setvalue self send
+      } ifelse
+    } stylemenu send
+
+    /name Style send {
+      dup /value self send eq { pop } {
+        /setvalue self send
+      } ifelse
+    } stylevalue send
+
+    [ Toppings {
+        { /foodtype self send /Meat eq {
+	    /foodnumber self send
+	  } if
+        } exch send
+      } forall
+    ] /setvalue meatcheckboxes send
+
+    [ Toppings {
+        { /foodtype self send /Vegetable eq {
+	  /foodnumber self send
+	  } if
+	} exch send
+      } forall
+    ] /setvalue vegetablecheckboxes send
+
+    {(10") (14") (16") (18")} PizzaSize get
+    Fraction 1 eq { (Whole Pie) } { (Half Pie) } ifelse
+    /setfooter PreviewWindow send
+
+    /updatecost self send
+  } def
+
+  /updatecost { % - => -
+    10 dict begin
+      /TheBest /defaultstyle ClassStyle send def
+      /TheStyle null def
+      /TheTopping null def
+      /TheBestCost 99 def
+      /TheBestExtras 0 def
+
+      /styles ClassStyle send {
+        /TheStyle exch def
+	/TheToppings /toppings TheStyle send def
+	true
+	TheToppings {
+	  Toppings exch arraycontains? not {
+	    pop false exit
+	  } if
+	} forall
+	{ /ExtraToppings [
+	    Toppings {
+	      TheToppings 1 index arraycontains? { pop } if
+	    } forall
+	  ] store
+
+	  PizzaSize  ExtraToppings length  /extraprice TheStyle send
+	  dup
+	  % Bias towards predefined pizzas rather than economical pizzas
+	  ExtraToppings length /extras TheStyle send sub 1 le {
+	    MatchBias mul
+	  } if
+
+	  TheBestCost le {
+	    /TheBestCost exch store
+	    /TheBest TheStyle store
+	    /TheBestExtras ExtraToppings length /extras TheBest send sub store
+	  } { pop } ifelse
+	} if
+      } forall
+
+      TheBestExtras dup 0 lt {
+	neg dup 1 eq { () } { (s) } ifelse
+	exch (Choose % more topping%!) sprintf
+	0 exch
+      } {
+	dup 0 eq {
+	  ()
+	} {
+	  dup dup 1 eq { () } { (s) } ifelse
+	  exch (With % extra topping%.) sprintf
+	} ifelse
+      } ifelse
+      /name TheBest send exch
+      /setfooter ToppingWindow send
+      pop
+
+      TheBestCost
+      Fraction mul
+      100 mul floor 100 div
+      /Price 1 index store
+      dup 100 mul round cvi 100 mod
+      exch floor cvi
+      1 index 10 lt { (%.0%) } { (%.%) } ifelse
+
+      sprintf dup /setvalue costfield send /setvalue totalfield send
+      /name TheBest send
+      dup /setvalue stylevalue send
+      PizzaStyleNames exch arrayindex {
+          [exch] /setvalue stylemenu send
+      } if
+      /Style TheBest store
+    end
+  } def
+
+  /extratoppings { % - => [topping ...]
+    ExtraToppings
+  } def
+
+  /prices { % - => [# # # #]
+    { /prices self send
+      /toppings self send length /extras self send add
+    } Style send					% toppings [# # # #]
+    10 dict begin
+      Toppings length exch sub /i exch def
+      i 0 gt {
+	/FirstToppingPrices ClassStyle send { add } arrayop
+	i 1 gt {
+	  /AdditionalToppingPrices ClassStyle send {
+	    i 1 sub mul add
+	  } arrayop
+	} if
+      } if
+    end
+  } def
+
+  /minsize { % - => w h
+    16 16
+  } def
+
+  /preferredsize { % - => w h
+    256 256
+  } def
+
+  /reshape { % x y w h => -
+    2 copy /size self send 3 -1 roll eq 3 1 roll eq and {
+      pop pop /move self send
+    } {
+      /reshape super send
+      gsave
+        self setcanvas
+	clippath
+	TempCanvas reshapecanvas
+      grestore
+    } ifelse
+  } def
+
+  /preview { % - => -
+    /paint self send
+    pause pause pause
+  } def
+
+  /reset {
+    StopSpin StopPaint
+  } def
+
+  /StopPaint { % - => -
+    PaintProc null ne {
+      PaintProc killprocess
+      /PaintProc unpromote
+    } if
+    [Sprinklers {pop} forall] {killprocess} forall
+    Sprinklers cleanoutdict
+  } def
+
+  /PaintSetup {
+    /size self send
+    2 div exch 2 div exch
+    2 copy translate
+    min 3 sub
+    /radius self send mul
+    dup scale
+  } def
+
+  /PaintInit {
+    /PaintSetup self send
+    0 0 1.02 0 360 arc
+    0 0 .895 0 360 arc
+    CrustColor setcolor eofill
+    0 0 .9 0 360 arc
+    gsave SauceColor setcolor fill grestore
+    /PaintClip self send
+  } def
+
+  /PaintClip {
+    0 0 .9 0 360 arc
+    clip newpath
+%    1 /radius self send div dup scale
+  } def
+
+  /Paint { % - => -
+    PaintLock {
+      /reset self send
+      /PaintProc {
+	pause
+	/PaintInit self send
+
+	[1 0] SLEEP % Wait a second until things settle down ...
+
+	/mapped? Parent send {
+	  % Draw all the toppings at once! Weeee!
+	  4 { Cheese /StartSprinkle self send } repeat
+	  /toppings Pizza send {
+	    /StartSprinkle self send
+	  } forall
+
+	  { Sprinklers length 0 eq { exit } if
+	    % push one of the sprinklers, doesn't matter which.
+	    Sprinklers { pop exit } forall
+	    waitprocess pop
+	  } loop
+	} if
+	/StopPaint self send
+      } fork def
+      PaintProc /ProcessName (Pizza Painter) put
+    } monitor
+  } def
+
+  /StartSprinkle { % topping => -
+    { {clear paint} exch send
+      Sprinklers currentprocess undef
+    } fork
+    Sprinklers exch dup put pop
+  } def
+
+  /SpinPause 10 def
+  /SpinAngle 7 def
+  /SpinProcess null def
+
+  /StartSpin { % - => -
+    /StopSpin self send
+    /SpinProcess {
+      clear
+      /SpinSetup self send
+      { SpinPause { pause } repeat
+	/Spin self send
+      } loop
+      SpinProcess currentprocess eq {
+        /SpinProcess unpromote
+      } if
+    } fork promote
+  } def
+
+  /StopSpin { % - => -
+    SpinProcess null ne {
+      SpinProcess killprocess
+      /SpinProcess unpromote
+    } if
+  } def
+
+  % Clip out the crust.
+  %
+  /SpinSetup {
+    self setcanvas
+    matrix currentmatrix
+    /size self send
+    2 div exch 2 div exch
+    2 copy translate
+    min 3 sub
+    /radius self send mul
+    dup scale
+    0 0 .9 0 360 arc
+    clip newpath
+    setmatrix
+  } def
+
+  /Spin {
+    gsave
+      TempCanvas setcanvas self imagecanvas
+    grestore
+    gsave
+      /size self send
+      2 div exch 2 div exch
+      2 copy translate
+      SpinAngle random add rotate
+      neg exch neg exch translate
+      TempCanvas imagecanvas
+     grestore
+  } def
+
+  /Menuable? true def
+  /Menu {stylemenu} def
+
+  /Trackable? true def
+
+  /TrackStart { % event => /Default true
+    gsave
+      /StopSpin self send
+      /SpinSetup self send
+      /size self send
+      2 div exch 2 div exch
+      translate
+      dup begin YLocation XLocation end
+      2 copy 0 eq exch 0 eq and { pop pop 0 } {
+	atan
+      } ifelse
+      /Ang0 1 index def
+      /Ang1 exch def
+      /SpinAngle 0 def
+    grestore
+    /TrackMotion self send
+    /Default true
+  } def
+
+  /TrackMotion { % event => -
+    gsave
+      /SpinSetup self send
+      /size self send
+      2 div exch 2 div exch
+      2 copy translate
+      3 -1 roll begin YLocation XLocation end
+      2 copy 0 eq exch 0 eq and { pop pop 0 } {
+	atan
+      } ifelse
+      /Ang1 exch def
+      /SpinAngle Ang1 Ang0 sub def
+      SpinAngle rotate
+      neg exch neg exch translate
+      self imagecanvas
+      /Ang0 Ang1 def
+    grestore
+  } def
+
+  /TrackStop { % event => -
+    pop
+    SpinAngle abs 1 ge {
+      /StartSpin self send
+    } if
+  } def
+
+  /Receptible? true def
+
+  /HandleReception { % event selection => bool
+    exch					% selection event
+    /begintransfer 2 index send
+
+    /Raster /query 3 index send {		% selection event canvas
+      /RasterReception self send		% selection bool
+    } {						% selection event
+      /Canvas /query 3 index send {		% selection event canvas
+	/RasterReception self send		% selection bool
+      } {					% selection event
+	pop false				% selection bool
+      } ifelse
+    } ifelse					% selection bool
+
+    dup /endtransfer 4 -1 roll			% bool bool /endt selection
+    send					% bool
+  } def
+
+  /RasterReception { % event canvas => bool
+      exch pop
+      gsave
+        self setcanvas
+	/SpinSetup self send
+	clippath pathbbox points2rect 4 2 roll translate scale
+	imagecanvas
+      grestore
+      true
+  } def
+
+classend def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ClassTopping
+
+/ClassTopping ClassObject [
+  /FoodType /Name /Sprinkles /Init /Paint /ID /FoodNumber
+] classbegin
+  /TheToppings nullarray def
+  /ToppingDict growabledict def
+  /ToppingTypes growabledict def
+
+  /findtopping {
+    ToppingDict 1 index known {
+      ToppingDict exch get
+    } {
+      pop null
+    } ifelse
+  } def
+
+  /typetoppings { % foodtype => [topping ...]
+    [ TheToppings {
+        { /foodtype self send
+          counttomark 1 add index eq { self } if
+	} exch send
+      } forall
+    ] exch pop
+  } def
+
+  /toppings { % - => [topping ...]
+    TheToppings
+  } def
+
+  /name { % - => string
+    Name
+  } def
+
+  /foodtype { % - => name
+    FoodType
+  } def
+
+  /id { % - => id
+    ID
+  } def
+
+  /foodnumber { % - => n
+    FoodNumber
+  } def
+
+  /NewInit { % foodtype name sprinkles {init} {paint} => -
+    /NewInit super send
+    /Paint exch def
+    /Init exch def
+    /Sprinkles exch def
+    /Name exch def
+    /FoodType exch def
+    ToppingTypes FoodType known not {
+      0  ToppingTypes FoodType 1 put
+    } {
+      ToppingTypes FoodType get
+      ToppingTypes FoodType 2 index 1 add put
+    } ifelse
+    /FoodNumber exch def
+    /ID TheToppings length def
+    /TheToppings [ TheToppings aload pop self ] store
+    ToppingDict Name self put
+  } def
+
+  /paint { % - => -
+    currentprocess /ProcessName
+    Name (Pizza Topping Sprinkler: %) sprintf put
+    gsave
+      /Init load cvx exec
+      /Paint load cvx
+      Sprinkles Sprinkle
+    grestore
+  } def
+
+  /Sprinkle { % proc shakes => -
+    { gsave
+	random 360 mul rotate
+	random sqrt 0 translate
+	random 360 mul rotate
+	dup exec
+	random .3 lt {
+	    random 10 mul 1 add cvi { pause } repeat
+	} if
+      grestore
+    } repeat
+  } def
+
+classend def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ClassStyle
+
+/ClassStyle ClassObject [
+  /Name /Toppings /Prices /Extras /ID
+] classbegin
+  /TheStyles nullarray def
+  /StyleDict growabledict def
+
+  /Economical? false def
+
+  /FirstToppingPrices [ 1.00 1.00 1.00 1.00 ] def
+  /AdditionalToppingPrices [ 0.50 0.75 1.00 1.25 ] def
+
+  /findstyle { % name => style|null
+    StyleDict 1 index known {
+      StyleDict exch get
+    } {
+      pop null
+    } ifelse
+  } def
+
+  /defaultstyle { % - => style
+    TheStyles 0 get
+  } def
+
+  /styles { % - => [style ...] 
+    TheStyles
+  } def
+
+  /name { % - => string
+    Name
+  } def
+
+  /setname { % name => -
+    Name null ne {
+      StyleDict Name undef
+    } if
+    /Name exch def
+    StyleDict Name self put
+    /value stylelist send
+    PizzaStyleNames
+    2 copy
+    {setitemlist setvalue paint} stylemenu send
+    {setitemlist setvalue validate locatechoice paint} stylelist send
+    null null EditStyle
+  } def
+
+  /delete { % - => -
+    StyleDict Name undef
+    /TheStyles TheStyles id arraydelete store
+    id 1 TheStyles length 1 sub {
+      /setid TheStyles 2 index get send
+    } for
+    /value stylelist send 0 get
+    /styles ClassStyle send length 1 sub min [exch]
+    PizzaStyleNames
+    2 copy
+    {setitemlist setvalue paint} stylemenu send
+    {setitemlist setvalue validate locatechoice paint} stylelist send
+    null null EditStyle
+  } def
+
+  /toppings { % - => [topping ...]
+    Toppings dup length array copy
+  } def
+
+  /settoppings { % [topping ...] => -
+    /Toppings exch def
+    SelectedStyleName
+    /name self send eq {
+      null null EditStyle
+    } if
+  } def
+
+  /typetoppings { % foodtype => [topping ...]
+    [ Toppings {
+        { /foodtype self send
+          counttomark 1 add index eq { self } if
+	} exch send
+      } forall
+    ] exch pop
+  } def
+
+  /prices { % - => [# # # #]
+    Prices
+  } def
+
+  /setprices { % [# # # #] => -
+    /Prices exch def
+    SelectedStyleName
+    /name self send eq {
+      /updatecost Pizza send
+      /updateprices self send
+    } if
+  } def
+
+  /updateprices {
+    styleprice18field styleprice16field styleprice14field styleprice10field 
+    /prices self send {
+      dup 100 mul round cvi 100 mod
+      exch floor cvi
+      1 index 10 lt { (%.0%) } { (%.%) } ifelse
+      sprintf /setvalue 3 -1 roll send
+    } forall
+  } def
+
+  /extras { % - => number
+    Extras
+  } def
+
+  /setextras { % number => -
+    /Extras exch def
+    SelectedStyleName
+    /name self send eq {
+      /updatecost Pizza send
+    } if
+  } def
+
+  /extraprice { % size extras => price
+    Prices 2 index get				% size extras price
+    exch Extras sub 0 max exch			% size extras' price
+    1 index 0 gt {
+      FirstToppingPrices 3 index get add
+      1 index 1 gt {
+        AdditionalToppingPrices 3 index get	% size extras' price ATP
+	2 index 1 sub mul add			% size extras' price
+      } if
+    } if
+    3 1 roll pop pop				% price
+  } def
+
+  /id { % - => id
+    ID
+  } def
+
+  /setid { % id => -
+    /ID exch def
+  } def
+
+  /editstyle {
+    [ID] /setvalue stylelist send
+    null null EditStyle
+  } def
+
+  /NewInit { % name toppings prices extras => -
+    /NewInit super send
+    /Extras exch def
+    /Prices exch def
+    [ exch {
+        dup type /stringtype eq {
+	  /findtopping ClassTopping send
+	  dup null eq { pop } if
+	} if
+      } forall
+    ] /Toppings exch def
+    /Name exch def
+    StyleDict Name self put
+    /ID TheStyles length def
+    /TheStyles [ TheStyles aload pop self ] store
+  } def
+classend def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ClassProPanel
+
+/ClassProPanel ClassPanel []
+classbegin
+  /minsize { % - => w h
+    /minsize super send
+    /minsize [ 3 index 3 index ] cvx promote
+  } def
+
+  /invalidate { % - => -
+    /minsize unpromote
+    /invalidate super send
+  } def
+classend def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ClassPopupPizzaWindow
+
+/ClassPopupPizzaWindow ClassPopupWindow []
+classbegin
+  /FooterGap 4 def
+
+  /BBoxStart {
+      true /inhibitfocus ClassFocus send
+      /BBoxStart super send
+  } def
+
+  /BBoxStop {
+      false /inhibitfocus ClassFocus send
+      /BBoxStop super send
+  } def
+
+  /path { % x y w h => -
+    /minsize self send xymax
+    matrix currentmatrix 5 1 roll		% mat x y w h
+    4 2 roll translate				% mat w h
+    0 0 3 index 3 index rectpath
+    WInset SInset
+    4 2 roll
+    WInset EInset add SInset NInset add xysub
+    4 copy rectpath
+
+    2 div exch 2 div exch
+    2 copy WInset SInset xyadd translate
+    min 3 sub dup neg scale
+    { /radius self send 0 moveto
+      0 0 /radius self send
+      0 360 /fraction self send mul
+      arc closepath
+    } /Center /client self send pop send
+    pop pop
+%    0 0 translate % XXX: V3 bug "setmatrix" work-around
+    setmatrix
+  } def
+
+  /reshape { % x y w h => -
+    /invalidate self send
+    gsave
+      4 2 roll translate 0 0 4 2 roll path self
+      eoreshapecanvas
+    grestore
+  } def
+
+  /PaintBorder { % - => -
+    currentlinewidth
+    ForegroundColor setcolor BorderStroke 2 mul setlinewidth
+    /bbox self send rectpath stroke
+    setlinewidth
+  } def
+
+classend def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Topping Definitions
+
+/maketopping { % foodtype name sprinkles {init} {paint} => -
+  /new ClassTopping send pop
+} def
+
+/findtopping { % name => topping|null
+  /findtopping ClassTopping send
+} def
+
+% TODO: Order all of these toppings to see what they really look like!
+
+/Dairy (Cheese) 150 {
+    1 1 0 setrgbcolor
+    .018 setlinewidth
+} {
+    0 0
+    random .1 mul .1 add
+    0  random 100 mul 30 add
+    arc
+    stroke
+} maketopping
+
+/Meat (Anchovies) 50 {
+    .2 .8 .2 setrgbcolor
+} {
+    .1 .08 scale
+    .2 .5 moveto
+    0 .5 .4 -90 90 arc
+    .2 .5 lineto closepath
+    1.2 .5 scale
+    1 1 lineto
+    .75 1 .5 20 340 arc  1 1 lineto closepath
+    fill
+} maketopping
+
+/Meat (Beef) 150 {
+    .65 .1 .1 setrgbcolor
+} {
+    random .1 mul random .1 mul moveto
+    8 {
+	random .1 mul random .1 mul lineto
+    } repeat
+    fill
+} maketopping
+
+/Meat (Clams) 150 {
+    .9 .9 2 setrgbcolor
+    /ZapfDingbats findfont .2 scalefont setfont
+} {
+    0 0 moveto (\173) show
+} maketopping
+
+/Meat (Coppa) 150 {
+    .55 .3 .2 setrgbcolor
+} {
+    random .1 mul random .1 mul moveto
+    5 {
+        random .1 mul random .1 mul lineto
+    } repeat
+    fill
+} maketopping
+
+/Meat (Ham) 150 {
+    .7 .7 .2 setrgbcolor
+} {
+    0 0 .07 .03 rectpath fill 
+} maketopping
+
+/Meat (Italian sausage) 150 {
+    .7 .1 .2 setrgbcolor
+} {
+    random .1 mul random .1 mul moveto
+    10 {
+        random .1 mul random .1 mul lineto
+    } repeat
+    fill
+} maketopping
+
+/Meat (Linguica) 150 {
+    .8 .1 .6 setrgbcolor
+} {
+    random .1 mul random .1 mul moveto
+    6 {
+	random .1 mul random .1 mul lineto
+    } repeat
+    fill
+} maketopping
+
+/Meat (Pancetta) 150 {
+    .8 .1 .1 setrgbcolor
+} {
+    random .1 mul random .1 mul moveto
+    7 {
+	random .1 mul random .1 mul lineto
+    } repeat
+    fill
+} maketopping
+
+/Meat (Pepperoni) 100 {
+    .7 .1 .2 setrgbcolor
+} {
+    0 0 .05 0 360 arc fill
+} maketopping
+
+/Meat (Prosciutto) 150 {
+    .9 .6 .1 setrgbcolor
+} {
+    random .1 mul random .1 mul moveto
+    10 {
+        random .1 mul random .1 mul lineto
+    } repeat
+    fill
+} maketopping
+
+/Meat (Salamete) 150 {
+    .9 .2 .5 setrgbcolor
+} {
+    random .1 mul random .1 mul moveto
+    8 {
+	random .1 mul random .1 mul lineto
+    } repeat
+    fill
+} maketopping
+
+/Meat (Salami) 150 {
+    .9 .2 .1 setrgbcolor
+} {
+    random .1 mul random .1 mul moveto
+    5 {
+	random .1 mul random .1 mul lineto
+    } repeat
+    fill
+} maketopping
+
+/Meat (Shrimp) 150 {
+    1 .5 .5 setrgbcolor
+    .02 setlinewidth
+} {
+    0 .05 moveto
+    .1 0 moveto
+    0 0 .1 0 50 arc
+    stroke
+} maketopping
+
+/Meat (Turkey) 150 {
+    .8 .8 .1 setrgbcolor
+} {
+    0 0 .07 .03 rectpath fill
+} maketopping
+
+/Vegetable (Artichoke hearts) 150 {
+    0 .7 0 setrgbcolor
+} {
+    0 0 moveto
+    0 0 .07 0 100 arc
+    fill
+} maketopping
+
+/Vegetable (Bell peppers) 150 {
+    .2 .7 0 setrgbcolor
+    .02 setlinewidth
+} {
+    0 0
+    .2
+    0 40 arc
+   stroke
+} maketopping
+
+/Vegetable (Fresh garlic) 150 {
+    .5 .4 .3 setrgbcolor
+} {
+    random .1 mul random .1 mul moveto
+    5 {
+	random .1 mul random .1 mul lineto
+    } repeat
+    fill
+} maketopping
+
+/Vegetable (Jalapenos) 150 {
+    .2 .9 0 setrgbcolor
+} {
+    0 0 .05 0 360 arc closepath
+    1 1.6 scale
+    -.025 0 .02 0 360 arc closepath
+    .025 0 .02 0 360 arc closepath
+    eofill
+} maketopping
+
+/Vegetable (Mushrooms) 150 {
+    .4 .5 .4 setrgbcolor
+} {
+    0 .01 .07 20 150 arc
+    0 -.01 .04 140 30 arcn
+    closepath
+    fill
+    -.02 -.05 moveto
+    -.01 .05 lineto
+    .01 .05 lineto
+    .02 -.05 lineto
+    closepath
+    fill
+} maketopping
+
+/Vegetable (Olives) 150 {
+  0 .2 .1 setrgbcolor
+} {
+  0 0 .03 0 360 arc closepath
+  0 0 .01 0 360 arc closepath
+  eofill
+} maketopping
+
+/Vegetable (Onions) 150 {
+    .9 .9 .8 setrgbcolor
+    .012 setlinewidth
+} {
+    0 0
+    random .1 mul .05 add
+    0  random 50 mul 30 add
+    arc
+    stroke
+} maketopping
+
+/Vegetable (Pesto) 150 {
+    .2 .9 .3 setrgbcolor
+} {
+    random .1 mul random .1 mul moveto
+    5 {
+	random .1 mul random .1 mul lineto
+    } repeat
+    fill
+} maketopping
+
+/Vegetable (Pineapple) 150 {
+    .9 .8 0 setrgbcolor
+} {
+    0 0 moveto
+    0 0 .07 0 60 arc
+    fill
+} maketopping
+
+/Vegetable (Pine nuts) 150 {
+    .9 .8 .6 setrgbcolor
+} {
+    0 0 moveto
+    0 0 .04 0 40 arc
+    fill
+} maketopping
+
+% (Well, Provolone is Dairy, actually, but it works better this way.
+/Vegetable (Provolone) 72 {
+    1 1 .5 setrgbcolor
+    .018 setlinewidth
+} {
+    0 0
+    random .1 mul .1 add
+    0  random 100 mul 30 add
+    arc
+    stroke
+} maketopping
+
+/Vegetable (Sicilian Olives) 150 {
+  0 .7 .3 setrgbcolor
+} {
+  0 0 .03 0 360 arc closepath
+  0 0 .01 0 360 arc closepath
+  eofill
+} maketopping
+
+/Vegetable (Tomatoes) 150 {
+    .8 0 0 setrgbcolor
+} {
+    1.2 1.2 scale
+    0 0 .05 0 360 arc closepath
+    1 1.6 scale
+    5 {
+      360 random mul rotate
+      -.025 0 .02 0 360 arc closepath
+    } repeat
+    eofill
+} maketopping
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Style Definitions
+
+/makestyle { % name toppings prices extras => -
+  /new ClassStyle send pop
+} def
+
+/findstyle { % name => style|null
+  /findstyle ClassStyle send
+} def
+
+(Cheese)
+  [ ]
+  [ 7.00 10.00 11.00 14.00 ]
+  0 makestyle
+
+(Ala Gilroy)
+  [ (Fresh garlic) (Jalapenos) ]
+  [ 9.00 12.00 14.00 17.00 ]
+  1 makestyle
+
+(All Meat Combo)
+  [ (Beef) (Ham) (Italian sausage) (Linguica)
+    (Pepperoni) (Salami) ]
+  [ 9.00 12.00 14.00 17.00 ]
+  0 makestyle
+
+(Garlic, Clam, & Tomato)
+  [ (Clams) (Fresh garlic) (Tomatoes) ]
+  [ 9.00 12.00 14.00 17.00 ]
+  0 makestyle
+
+(Keep Fit Special)
+  [ (Artichoke hearts) (Bell peppers) (Fresh garlic)
+    (Mushrooms) (Olives) (Onions) (Tomatoes) ]
+  [ 9.00 12.00 14.00 17.00 ]
+  0 makestyle
+
+(Pesto Pizza Special)
+  [ (Fresh garlic) (Pesto) (Pine nuts) (Tomatoes) ]
+  [ 9.00 12.00 14.00 17.00 ]
+  0 makestyle
+
+(Tony's Gourmet)
+  [ (Coppa) (Pancetta) (Prosciutto) (Salamete)
+    (Fresh garlic) (Provolone) (Sicilian Olives) ]
+  [ 10.00 15.00 17.00 19.00 ]
+  0 makestyle
+
+(Tony's Special)
+  [ (Beef) (Italian sausage) (Linguica) (Pepperoni)
+    (Salami) (Bell peppers) (Mushrooms) (Onions) ]
+  [ 9.00 12.00 14.00 17.00 ]
+  0 makestyle
+
+(Vegetarian Delight)
+  [ (Artichoke hearts) (Bell peppers) (Fresh garlic)
+    (Mushrooms) (Olives) (Onions) (Pine nuts) (Tomatoes) ]
+  [ 9.00 12.00 14.00 17.00 ]
+  0 makestyle
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Top Level Componants
+
+/ToolPanel
+  /Calculated framebuffer /new ClassProPanel send
+def
+
+/ToolWindow
+  ToolPanel framebuffer /new ClassBaseWindow send 
+def
+
+(Pizza Tool) /setlabel ToolWindow send
+/Reshape? false /setattribute ToolWindow send
+/toolicon
+  64 64 1 [64 0 0 -64 0 64] {<
+    FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF83CE66FFFFFFFFFF9F8E4EFFFFF
+    FFFFF9F4E1CFFFFFFFFFF064F3CFFFFFFFFFF3E0E1FFFFFFFFFFF3CCC99FFFFF
+    FFFFF3CC999FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+    5555555005555555AAAAAA8FF8AAAAAA5555547FFF155555AAAAA9FFFFCAAAAA
+    5555573446F55555AAAAAF56ED7AAAAA55555F34CD7D5555AAAABF77723EAAAA
+    55557F74CBBF5555AAAAFFFFFFFFAAAA5554FFFFFFFF9555AAA9FFFFFFFFCAAA
+    5555FFFFFFFFD555AAABFFFFFFFFEAAA5FFFFFFFFFFFFFFDBFFFFFFFFF11FFBA
+    503FFFF18799FF3DB4849107C79871425C924933D799248DBC924920839930C2
+    5C924D49939924F5B8464C60100060025FFFFCFFFFFFFFFDBFFFF0FFFFFFFFFA
+    5557FFC77FEFF555AAABFF6A942FEAAA5553F95DF0EFE555AAABFFFFFFFFEAAA
+    5555FFFFFFFFD555AAA9FFFFFFFFCAAA5554FFFFFFFF9555AAAAFD62AB3FAAAA
+    55557B26B05F5555AAAABBB0D75EAAAA55555FFFFFFD5555AAAAAFFFFFFAAAAA
+    555557FFFFF55555AAAAA9F7FBCAAAAA5555547EDF155555AAAAAA8FF8AAAAAA
+    FFFFFFF007FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF83CE66FFFFF
+    FFFFF9F8E4EFFFFFFFFFF9F4E1CFFFFFFFFFF064F3CFFFFFFFFFF3E0E1FFFFFF
+    FFFFF3CCC99FFFFFFFFFF3CC999FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+    >} buildimage
+def
+{ /size eq { 64 64 } {
+    gsave
+      64 64 scale
+      .9 0 0 rgbcolor setcolor
+      1 1 1 rgbcolor setbackcolor
+      //toolicon imagecanvas
+    grestore
+  } ifelse
+} /seticonimage ToolWindow send
+/QuitFromUser {
+  /reset Pizza send
+  /QuitFromUser super send
+} /installmethod ToolWindow send
+
+/ToppingPanel 
+ /Calculated framebuffer /new ClassProPanel send
+def
+
+/minsize { /minsize super send 4 4 xyadd } /installmethod ToppingPanel send
+
+/ToppingWindow
+  ToppingPanel framebuffer /new ClassPopupWindow send 
+def
+
+(Pizza Topping Panel) /setlabel ToppingWindow send
+/Footer? true /setattribute ToppingWindow send
+/Reshape? false /setattribute ToppingWindow send
+/pin ToppingWindow send
+ToppingWindow /addsubwindow ToolWindow send
+
+/EditPanel
+  /Calculated framebuffer /new ClassProPanel send
+def
+
+/EditWindow
+  EditPanel framebuffer /new ClassPopupWindow send
+def
+
+(Pizza Menu Editor) /setlabel EditWindow send
+/Reshape? false /setattribute EditWindow send
+/pin EditWindow send
+EditWindow /addsubwindow ToolWindow send
+
+/Pizza
+  framebuffer /new ClassPizza send
+def
+
+/PreviewWindow
+  Pizza framebuffer /new ClassPopupPizzaWindow send
+def
+
+/pin PreviewWindow send
+(Popup Pizza Preview) /setlabel PreviewWindow send
+/Footer? true /setattribute PreviewWindow send
+PreviewWindow /addsubwindow ToolWindow send
+/open {
+  /open super send
+  /preview Pizza send
+} /installmethod PreviewWindow send
+/close {
+  /close super send
+  /preview Pizza send
+} /installmethod PreviewWindow send
+
+/Notice
+  ToolWindow framebuffer /new ClassNotice send
+def
+
+/Paint { % Smoked Notice Hack
+  gsave
+    /path1 self send clip newpath
+    1 ApexName GetColor setcolor currentgray
+    [ exch /mul load ] cvx settransfer
+    currentcanvas imagecanvas
+    initclip
+    /path2 self send clip newpath
+    2 ApexName GetColor setcolor currentgray
+    [ exch /mul load ] cvx settransfer
+    currentcanvas imagecanvas
+  grestore
+} /installmethod /ClassNoticeTail ClassNotice send send
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ToolPanel Componants
+
+/pizzaparlormenu
+  /Grid framebuffer /new ClassMenu send 2 copy def
+  [ (Tony&Alba's)
+    (Sparcy's)
+    (Riscy's)
+    (Demo Room)
+    (Student Union)
+  ] /setitemlist 2 index send
+  /Exclusive /setchoicemode 2 index send
+  [0] /setvalue 2 index send
+  0 /setdefault 2 index send
+  pop pop
+
+/addressmenubuttons
+  /Grid framebuffer /new ClassMenuButtons send 2 copy def
+  [ [ (Pizza Parlor) pizzaparlormenu ]
+  ] /setitemlist 2 index send
+  [ /NorthWest { /NorthWest PARENT POSITION 10 -10 xyadd } ]
+  /addclient ToolPanel send
+
+/winbuttons
+  /Grid framebuffer /new ClassButtons send 2 copy def
+  [ [ (Topping...) /ShowToppingWindow ]
+    [ (Preview...) /ShowPreviewWindow ]
+    [ (Edit...) /ShowEditWindow ]
+    [ (Order!) /OrderPizza ]
+  ] /setitemlist 2 index send
+  userdict /settarget 2 index send
+  10 0 /setgaps 3 index send
+  [ /SouthWest { /SouthEast /addressmenubuttons POSITION 10 0 xyadd } ]
+  /addclient ToolPanel send
+
+/namefieldlabel
+  (Name:) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthWest { 30 /SouthWest /addressmenubuttons POSITION
+		 exch pop -15 add } ]
+  /addclient ToolPanel send
+
+/namefield
+  framebuffer /new ClassTextField send 2 copy def
+  0 0 /preferredsize 3 index send exch pop 200 exch /reshape 5 index send
+  [ /SouthWest { /SouthEast /namefieldlabel POSITION 10 -4 xyadd } ]
+  /addclient ToolPanel send
+
+/phonefieldlabel
+  (Phone:) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthEast { /SouthEast /namefieldlabel POSITION 0 -10 xyadd } ]
+  /addclient ToolPanel send
+
+/phonefield
+  framebuffer /new ClassTextField send 2 copy def
+  0 0 /preferredsize 3 index send exch pop 200 exch /reshape 5 index send
+  [ /SouthWest { /SouthEast /phonefieldlabel POSITION 10 -4 xyadd } ]
+  /addclient ToolPanel send
+
+/addressfieldlabel
+  (Address:) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthEast { /SouthEast /phonefieldlabel POSITION 0 -10 xyadd } ]
+  /addclient ToolPanel send
+
+/addressfield
+  framebuffer /new ClassTextField send 2 copy def
+  0 0 /preferredsize 3 index send exch pop 400 exch /reshape 5 index send
+  [ /SouthWest { /SouthEast /addressfieldlabel POSITION 10 -4 xyadd } ]
+  /addclient ToolPanel send
+
+/deliverymenu
+  /Grid framebuffer /new ClassMenu send 2 copy def
+  /Exclusive /setchoicemode 2 index send
+  [ (Eat at T&A) (Pick Up) (Take & Bake) (Please Deliver)
+  ] /setitemlist 2 index send
+  0 /setdefault 2 index send
+  [0] /setvalue 2 index send
+  userdict /settarget 2 index send
+  /SetDelivery /setnotifier 2 index send
+  pop pop
+
+/deliverylabel
+  (Delivery:) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthEast { /SouthEast /addressfieldlabel POSITION 0 -15 xyadd } ]
+  /addclient ToolPanel send
+
+/deliverymenubutton
+  /Grid framebuffer /new ClassMenuButtons send 2 copy def
+  [ [ () deliverymenu ] ] /setitemlist 2 index send
+  0 true /setabbreviated 3 index send
+  [ /SouthWest { /SouthEast /deliverylabel POSITION 10 0 xyadd } ]
+  /addclient ToolPanel send
+
+/deliveryvalue
+  (Eat at T&A         ) framebuffer /new ClassLabel send 2 copy def
+  [ /SouthWest { /SouthEast /deliverymenubutton POSITION 10 0 xyadd } ]
+  /addclient ToolPanel send
+
+/totallabel
+  (Total estimated cost: $) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthWest { 10 /SouthWest /deliverylabel POSITION exch pop -15 add } ]
+  /addclient ToolPanel send
+
+/totalfield
+  framebuffer /new ClassTextField send 2 copy def
+  0 0 /preferredsize 3 index send exch pop 80 exch /reshape 5 index send
+  true /setreadonly 2 index send
+  [ /SouthWest { /SouthEast /totallabel POSITION 0 -4 xyadd } ]
+  /addclient ToolPanel send
+
+/emaillabel
+  (Email copy to:   ) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthEast { /SouthEast /totallabel POSITION 0 -10 xyadd } ]
+  /addclient ToolPanel send
+
+/emailfield
+  framebuffer /new ClassTextField send 2 copy def
+  0 0 /preferredsize 3 index send exch pop 200 exch /reshape 5 index send
+  [ /SouthWest { /SouthEast /emaillabel POSITION 0 -4 xyadd } ]
+  /addclient ToolPanel send
+
+/instructionslabel
+  (Additional Instructions:) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthWest { 10 /SouthWest /emaillabel POSITION exch pop -15 add } ]
+  /addclient ToolPanel send
+
+  phonefield /setnextfocus namefield send
+  addressfield /setnextfocus phonefield send
+  emailfield /setnextfocus addressfield send
+  emailfield
+
+% /instructionfield[0-5]
+  0 1 5 {  % This should be a jot canvas, but we're just server side for now.
+    (instructionfield%) sprintf cvn
+      framebuffer /new ClassTextField send 2 copy def
+      0 0 /preferredsize 3 index send exch pop 500 exch /reshape 5 index send
+      dup /setnextfocus 5 -1 roll send
+      dup 3 1 roll
+      [ /NorthWest { /SouthWest PREVIOUS POSITION 0 -5 xyadd } ]
+      /addclient ToolPanel send
+  } for
+
+  namefield /setnextfocus 3 -1 roll send
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ToppingPanel Componants
+
+/orderbuttons
+  /Grid framebuffer /new ClassButtons send 2 copy def
+  [ [ (Preview...) /ShowPreviewWindow ]
+    [ (Order!) /OrderPizza ]
+  ] /setitemlist 2 index send
+  userdict /settarget 2 index send
+  10 0 /setgaps 3 index send
+  [ /NorthWest { /NorthWest PARENT POSITION 10 -10 xyadd } ]
+  /addclient ToppingPanel send
+
+/pizzasizelabel
+  (Pizza Size:) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthWest { /SouthWest /orderbuttons POSITION  0 -20 xyadd } ]
+  /addclient ToppingPanel send
+
+/pizzasizesettings
+  /Grid framebuffer /new ClassSettings send 2 copy def
+  [ (10") (14") (16") (18") ] /setitemlist 2 index send
+  userdict /settarget 2 index send
+  /SetPizzaSize /setnotifier 2 index send
+  [3] /setvalue 2 index send
+  [ /SouthWest { /SouthEast /pizzasizelabel POSITION 10 -6 xyadd } ]
+  /addclient ToppingPanel send
+
+/pizzafractionlabel
+  (Fraction:) framebuffer /new ClassLabel send 2 copy def
+  [ /SouthWest { /SouthEast /pizzasizesettings POSITION 20 6 xyadd } ]
+  /addclient ToppingPanel send
+
+/pizzafractionsettings
+  /Grid framebuffer /new ClassSettings send 2 copy def
+  [ (Whole) (Half) ] /setitemlist 2 index send
+  userdict /settarget 2 index send
+  /SetPizzaFraction /setnotifier 2 index send
+  [ /SouthWest { /SouthEast /pizzafractionlabel POSITION 10 -6 xyadd } ]
+  /addclient ToppingPanel send
+
+/stylelabel
+  (Style:) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthWest { /SouthWest /pizzasizelabel POSITION 0 -20 xyadd } ]
+  /addclient ToppingPanel send
+
+/stylemenu
+  /Grid framebuffer /new ClassMenu send 2 copy def
+  /Exclusive /setchoicemode 2 index send
+  PizzaStyleNames /setitemlist 2 index send
+  userdict /settarget 2 index send
+  /MenuSetStyle /setnotifier 2 index send
+  [0] /setvalue 2 index send
+  0 /setdefault 2 index send
+  true /setpinnable 2 index send
+  (Pizza Style) /setpinnedlabel 2 index send
+  (Pizza Style) /setlabel 2 index send
+  pop pop
+
+/stylemenubutton
+  /Grid framebuffer /new ClassMenuButtons send 2 copy def
+  [ [ () stylemenu ] ] /setitemlist 2 index send
+  0 true /setabbreviated 3 index send
+  [ /SouthWest { /SouthEast /stylelabel POSITION 10 0 xyadd } ]
+  /addclient ToppingPanel send
+
+/stylevalue
+  (Cheese) framebuffer /new ClassLabel send 2 copy def
+%  0 0 /preferredsize 3 index send exch pop 300 exch /reshape 5 index send
+  [ /SouthWest { /SouthEast /stylemenubutton POSITION 10 0 xyadd } ]
+  /addclient ToppingPanel send
+
+/meatlabel
+  (Meats:) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthWest { /SouthWest /stylelabel POSITION 10 -15 xyadd } ]
+  /addclient ToppingPanel send
+
+/meatcheckboxes
+  /Grid framebuffer /new ClassCheckBoxes send 2 copy def
+  MeatToppingNames /setitemlist 2 index send
+  [ true 5 3 ] /setlayoutparameters 2 index send
+  userdict /settarget 2 index send
+  /SetCheckboxes /setnotifier 2 index send
+  [ /NorthWest { /SouthWest /meatlabel POSITION 10 -10 xyadd } ]
+  /addclient ToppingPanel send
+
+/vegetablelabel
+  (Vegetables:) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthWest { /SouthWest /meatcheckboxes POSITION -10 -15 xyadd } ]
+  /addclient ToppingPanel send
+
+/vegetablecheckboxes
+  /Grid framebuffer /new ClassCheckBoxes send 2 copy def
+  VegetableToppingNames /setitemlist 2 index send
+  [ true 5 3 ] /setlayoutparameters 2 index send
+  userdict /settarget 2 index send
+  /SetCheckboxes /setnotifier 2 index send
+  [ /NorthWest { /SouthWest /vegetablelabel POSITION 10 -10 xyadd } ]
+  /addclient ToppingPanel send
+
+/costlabel
+  (Estimated cost: $) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthWest { /SouthWest /vegetablecheckboxes POSITION -15 -20 xyadd } ]
+  /addclient ToppingPanel send
+
+/costfield
+  framebuffer /new ClassTextField send 2 copy def
+  0 0 /preferredsize 3 index send exch pop 80 exch /reshape 5 index send
+  true /setreadonly 2 index send
+  [ /SouthWest { /SouthEast /costlabel POSITION 0 -4 xyadd } ]
+  /addclient ToppingPanel send
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% EditPanel Componants
+
+/editstylemenu
+  /Grid framebuffer /new ClassMenu send 2 copy def
+  [ [ (New) /NewPizzaStyle ]
+    [ (Edit) /EditPizzaStyle ]
+    [ (Rename  ) /RenamePizzaStyle ]
+    [ (Delete) /DeletePizzaStyle ]
+    [ (Save) /SavePizzaStyle ]
+  ] /setitemlist 2 index send
+  true /setpinnable 2 index send
+  (Style) /setpinnedlabel 2 index send
+  0 /setdefault 2 index send
+  pop pop
+
+/meattoppingmenu
+  /Grid framebuffer /new ClassMenu send 2 copy def
+  /NonExclusive /setchoicemode 2 index send
+  true /setpinnable 2 index send
+  (Meat Toppings) /setpinnedlabel 2 index send
+  MeatToppingNames /setitemlist 2 index send
+  userdict /settarget 2 index send
+  /UpdateToppings /setnotifier 2 index send
+  [ true 5 3 ] /setlayoutparameters 2 index send
+  pop pop
+
+/vegetabletoppingmenu
+  /Grid framebuffer /new ClassMenu send 2 copy def
+  /NonExclusive /setchoicemode 2 index send
+  true /setpinnable 2 index send
+  (Vegetable Toppings) /setpinnedlabel 2 index send
+  VegetableToppingNames /setitemlist 2 index send
+  userdict /settarget 2 index send
+  /UpdateToppings /setnotifier 2 index send
+  [ true 5 3 ] /setlayoutparameters 2 index send
+  pop pop
+
+/edittoppingmenu
+  /Grid framebuffer /new ClassMenu send 2 copy def
+  [ [ (Copy Checkboxes) /CopyCheckboxes ]
+    [ (Remove Selected) /RemoveSelected ]
+    [ (Meats) meattoppingmenu ]
+    [ (Vegetables) vegetabletoppingmenu ]
+  ] /setitemlist 2 index send
+  true /setpinnable 2 index send
+  (Toppings) /setpinnedlabel 2 index send
+  pop pop
+
+/stylemenubuttons
+  /Grid framebuffer /new ClassMenuButtons send 2 copy def
+  [ [ (Style) editstylemenu ]
+    [ (Toppings) edittoppingmenu ]
+  ] /setitemlist 2 index send
+  10 0 /setgaps 3 index send
+%  /Centered /setjustification 2 index send
+  userdict /settarget 2 index send
+  [ /NorthWest { /NorthWest PARENT POSITION 10 -10 xyadd } ]
+  /addclient EditPanel send
+
+/stylelabel
+  (Available Pizza Styles:) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthWest { /SouthWest /stylemenubuttons POSITION 0 -10 xyadd } ]
+  /addclient EditPanel send
+
+/stylescroll
+  framebuffer /new ClassVScrollbar send 2 copy def
+  /scroll /setnotifier 2 index send
+  /scroll /setpreviewer 2 index send
+  0 0 /preferredsize stylescroll send pop 150 /reshape 5 index send
+  [ /NorthWest { /SouthWest /stylelabel POSITION 0 -5 xyadd } ]
+  /addclient EditPanel send
+
+/stylelist
+  framebuffer /new ClassScrollList send 2 copy def
+  0 0 180 150 /reshape 5 index send
+  PizzaStyleNames /setitemlist 2 index send
+  /Exclusive /setchoicemode 2 index send
+  [0] /setvalue 2 index send
+  userdict /settarget 2 index send
+  /EditStyle /setnotifier 2 index send
+  dup /settarget stylescroll send
+  stylescroll /setscrollbar 2 index send
+  [ /SouthWest { /SouthEast /stylescroll POSITION 2 0 xyadd } ]
+  /addclient EditPanel send
+
+/styletoppingslabel
+  (Toppings:) framebuffer /new ClassLabel send 2 copy def
+  [ /SouthWest { /NorthEast /stylelist POSITION 10 5 xyadd } ]
+  /addclient EditPanel send
+
+/styletoppingsscroll
+  framebuffer /new ClassVScrollbar send 2 copy def
+  /scroll /setnotifier 2 index send
+  /scroll /setpreviewer 2 index send
+  0 0 /preferredsize styletoppingsscroll send pop 150 /reshape 5 index send
+  [ /NorthWest { /SouthWest /styletoppingslabel POSITION 0 -5 xyadd } ]
+  /addclient EditPanel send
+
+/styletoppingslist
+  framebuffer /new ClassScrollList send 2 copy def
+  0 0 180 150 /reshape 5 index send
+  /NonExclusive /setchoicemode 2 index send
+  userdict /settarget 2 index send
+  /EditTopping /setnotifier 2 index send
+  styletoppingsscroll /setscrollbar 2 index send
+  dup /settarget styletoppingsscroll send
+  [ /SouthWest { /SouthEast /styletoppingsscroll POSITION 2 0 xyadd } ]
+  /addclient EditPanel send
+
+/stylenamelabel
+  (Style:) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthWest { /SouthWest /stylescroll POSITION 0 -10 xyadd } ]
+  /addclient EditPanel send
+
+/stylenamefield
+  framebuffer /new ClassTextField send 2 copy def
+  0 0 /preferredsize 3 index send exch pop 140 exch /reshape 5 index send
+  (Cheese) /setvalue 2 index send
+  userdict /settarget 2 index send
+  /NewPizzaStyle /setnotifier 2 index send
+  [ /SouthWest { /SouthEast /stylenamelabel POSITION 10 -4 xyadd } ]
+  /addclient EditPanel send
+
+/styleextralabel
+  (Extra toppings:) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthWest { /SouthWest /styletoppingsscroll POSITION 0 -10 xyadd } ]
+  /addclient EditPanel send
+
+/styleextrafield
+  framebuffer /new ClassNumericField send 2 copy def
+  0 /setvalue styleextrafield send
+  0 9 /setrange styleextrafield send
+  4 /setminimumvisible 2 index send
+  userdict /settarget 2 index send
+  /SetStyleExtraToppings /setnotifier 2 index send
+  /increment {
+    /increment super send
+    /executenotifier self send
+  } /installmethod 3 index send
+  /decrement {
+    /decrement super send
+    /executenotifier self send
+  } /installmethod 3 index send
+  [ /SouthWest { /SouthEast /styleextralabel POSITION 10 -4 xyadd } ]
+  /addclient EditPanel send
+
+  styleextrafield /setnextfocus stylenamefield send
+
+/stylepriceslabel
+  (Prices:) framebuffer /new ClassLabel send 2 copy def
+  [ /NorthWest { /SouthWest /stylenamelabel POSITION 0 -10 xyadd } ]
+  /addclient EditPanel send
+
+/styleprice10label
+  (10" $) framebuffer /new ClassLabel send 2 copy def
+  [ /SouthWest { /SouthEast /stylepriceslabel POSITION 15 0 xyadd } ]
+  /addclient EditPanel send
+
+/styleprice10field
+  framebuffer /new ClassTextField send 2 copy def
+  0 0 /preferredsize 3 index send exch pop 40 exch /reshape 5 index send
+  /PizzaSize 0 /setproperty 3 index send
+  userdict /settarget 2 index send
+  /SetStylePrice /setnotifier 2 index send
+  [ /SouthWest { /SouthEast /styleprice10label POSITION 0 -4 xyadd} ]
+  /addclient EditPanel send
+
+  styleprice10field /setnextfocus styleextrafield send
+
+/styleprice14label
+  (14" $) framebuffer /new ClassLabel send 2 copy def
+  [ /SouthWest { /SouthEast /styleprice10field POSITION 15 2 xyadd } ]
+  /addclient EditPanel send
+
+/styleprice14field
+  framebuffer /new ClassTextField send 2 copy def
+  0 0 /preferredsize 3 index send exch pop 40 exch /reshape 5 index send
+  /PizzaSize 1 /setproperty 3 index send
+  userdict /settarget 2 index send
+  /SetStylePrice /setnotifier 2 index send
+  [ /SouthWest { /SouthEast /styleprice14label POSITION 0 -4 xyadd } ]
+  /addclient EditPanel send
+
+  styleprice14field /setnextfocus styleprice10field send
+
+/styleprice16label
+  (16" $) framebuffer /new ClassLabel send 2 copy def
+  [ /SouthWest { /SouthEast /styleprice14field POSITION 15 2 xyadd } ]
+  /addclient EditPanel send
+
+/styleprice16field
+  framebuffer /new ClassTextField send 2 copy def
+  0 0 /preferredsize 3 index send exch pop 40 exch /reshape 5 index send
+  /PizzaSize 2 /setproperty 3 index send
+  userdict /settarget 2 index send
+  /SetStylePrice /setnotifier 2 index send
+  [ /SouthWest { /SouthEast /styleprice16label POSITION 0 -4 xyadd } ]
+  /addclient EditPanel send
+
+  styleprice16field /setnextfocus styleprice14field send
+
+/styleprice18label
+  (18" $) framebuffer /new ClassLabel send 2 copy def
+  [ /SouthWest { /SouthEast /styleprice16field POSITION 15 2 xyadd } ]
+  /addclient EditPanel send
+
+/styleprice18field
+  framebuffer /new ClassTextField send 2 copy def
+  0 0 /preferredsize 3 index send exch pop 40 exch /reshape 5 index send
+  /PizzaSize 3 /setproperty 3 index send
+  userdict /settarget 2 index send
+  /SetStylePrice /setnotifier 2 index send
+  [ /SouthWest { /SouthEast /styleprice18label POSITION 0 -4 xyadd } ]
+  /addclient EditPanel send
+
+  styleprice18field /setnextfocus styleprice16field send
+  stylenamefield /setnextfocus styleprice18field send
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Notice Componants
+
+/oknoticebuttons
+  /Spaced framebuffer /new ClassButtons send 2 copy def
+  [ (OK) ] /setitemlist 2 index send
+  0 /setdefault 2 index send
+  userdict /settarget 2 index send
+  /NoticeClose /setnotifier 2 index send
+  pop pop
+
+/yesnonoticebuttons
+  /Spaced framebuffer /new ClassButtons send 2 copy def
+  [ (Yes) (No) ] /setitemlist 2 index send
+  0 /setdefault 2 index send
+  10 0 /setgaps 3 index send
+  userdict /settarget 2 index send
+  /NoticeYesNo /setnotifier 2 index send
+  pop pop
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Notifiers
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ToolPanel Notifiers
+
+/ShowToppingWindow { % index winbuttons => -
+  pop pop
+  {pin totop open} ToppingWindow send
+} def
+
+/ShowEditWindow { % index winbuttons => -
+  pop pop
+  {pin totop open} EditWindow send
+} def
+
+/ShowPreviewWindow { % index winbuttons|orderbuttons => -
+  pop pop
+  {pin totop open} PreviewWindow send
+} def
+
+/SetDelivery { % [index bool] deliverymenu => -
+  exch 0 get /item 3 -1 roll send 0 get
+  dup /setvalue deliveryvalue send
+  (Please Deliver) eq {
+    /MaybeDeliver ShowNotice
+  } if
+} def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ToppingPanel Notifiers
+
+/SetPizzaSize { % [index bool] pizzasizesettings => -
+  pop 0 get /setpizzasize Pizza send
+} def
+
+/SetPizzaFraction { % [index bool] pizzafractionsettings => -
+  pop 0 get 0 eq { 1 } { .5 } ifelse
+  /setfraction Pizza send
+} def
+
+/MenuSetStyle { % [index bool] stylemenu => -
+  exch 0 get exch /item exch send 0 get
+  /findstyle ClassStyle send
+  dup null eq { pop } {
+    /setstyle Pizza send
+  } ifelse
+} def
+
+/SetCheckboxes { % [index bool] {meat,vegetable}checkboxes => -
+  1 index 0 get		% [i b] cb i
+  /item 3 -1 roll send	% [i b] item
+  findtopping			% [i b] topping
+  dup null eq { pop pop } {	% [i b] topping
+    exch 1 get		% topping b
+    { /addtopping } { /removetopping } ifelse
+    Pizza send
+  } ifelse
+} def
+
+/OrderPizza { % index {win,order}buttons => -
+  pop pop
+  { /value self send 0 get /item self send 0 get
+  } pizzaparlormenu send
+  { (Tony&Alba's) {
+      /TAOrder ShowNotice
+    }
+    (Riscy's) (Sparcy's) {
+      /SunOrder ShowNotice
+    }
+    (Demo Room) {
+      /DemoOrder ShowNotice
+    }
+    /Default {
+      /OtherOrder ShowNotice
+    }
+  } case
+} def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% EditPanel Notifiers
+
+/NewPizzaStyle { % index editstylemenu|stylenamefield => -
+  /value stylenamefield send
+  PizzaStyleNames 1 index arraycontains? {
+    pop /StyleAlreadyDefined ShowNotice
+    pop pop
+  } {
+    /toppings Pizza send
+    /prices Pizza send
+    0
+    makestyle
+    PizzaStyleNames
+    dup length 1 sub [exch] exch
+    2 copy {setitemlist setvalue paint} stylemenu send
+    {setitemlist setvalue validate locatechoice paint} stylelist send
+    EditStyle
+  } ifelse
+} def
+
+/EditPizzaStyle { % index editstylemenu => -
+  pop pop
+  /YouAreEditing ShowNotice
+} def
+
+/RenamePizzaStyle { % index editstylemenu => -
+  pop pop
+  /value stylenamefield send
+  PizzaStyleNames 1 index arraycontains? {
+    SelectedStyleName eq
+    { /RenameToSelf } { /StyleAlreadyDefined } ifelse
+    ShowNotice
+  } {
+    SelectedStyle /setname exch send
+  } ifelse
+} def
+
+/DeletePizzaStyle { % index editstylemenu => -
+  pop pop
+  /styles ClassStyle send length 1 eq {
+    pop /DontDeleteTheLastStyle ShowNotice
+  } {
+    SelectedStyle dup null eq { pop } {
+      /delete exch send
+    } ifelse
+  } ifelse
+} def
+
+/SavePizzaStyle { % index editstylemenu => -
+  pop pop
+  ConfigFile (w) { file } stopped {
+    pop pop
+    /NoSave ShowNotice
+  } {
+    { 20 dict begin
+	/f exch def
+	% NOTE: *Always* be careful about defining /Stdout into a variable.
+	% Convert it to a literal, first. Because /Stdout is an executable
+	% file object (currentprocess /Stdout get xcheck => true), when you
+	% refer to the variable by name, the file will be *executed*! This
+	% leads to totally bizarre bugs.
+	/cf currentprocess /Stdout get cvlit def
+	currentprocess /Stdout f put
+
+	f (% TNT PizzaTool configuration file\n)
+	writestring
+
+	{ namefield phonefield addressfield emailfield
+	  instructionfield0 instructionfield1 instructionfield2
+	  instructionfield3 instructionfield4 instructionfield5
+	} {
+	  dup load /value exch send	% name string
+	  typedprint
+	  (/setvalue % send\n) printf
+	} forall
+
+	{ pizzaparlormenu deliverymenu
+	} {
+	  dup load
+	  { /value self send 0 get
+	  } exch send
+	  ([%]/setvalue % send\n) printf
+	} forall
+
+	/value pizzasizesettings send 0 get
+	(%/setpizzasize Pizza send\n) printf
+
+	/value pizzafractionsettings send 0 get
+	{ 1 .5 } exch get
+	(%/setfraction Pizza send\n) printf
+
+	{ /value self send 0 get /item self send 0 get
+	} stylemenu send
+	(/FavoriteStyle(%)def\n) printf
+
+	currentprocess /Stdout cf put
+	f closefile
+      end
+      /DidSave ShowNotice
+    } fork /ProcessName (Save Pizza Style) put
+    pop
+  } ifelse
+} def
+
+/RemoveSelected { % index edittoppingmenu => -
+  pop pop
+  10 dict begin
+    /ss SelectedStyle def
+    /currenttoppings /toppings ss send def
+    /selectedtoppings
+      { [ /value self send {
+	    /item self send findtopping
+	  } forall ]
+      } styletoppingslist send
+    def
+    [ currenttoppings {
+        selectedtoppings 1 index arraycontains? { pop } if
+      } forall
+    ] /settoppings ss send
+  end
+} def
+
+/CopyCheckboxes { % index edittoppingmenu => -
+  pop pop
+  CheckedToppings /settoppings SelectedStyle send
+} def
+
+/UpdateToppings { % [index bool] {meat,vegetable}toppingmenu => -
+  10 dict begin
+    /menu exch def
+    aload pop /bool exch def /i exch def
+    SelectedStyle
+
+    /toppings 1 index send
+    i /item menu send 0 get findtopping
+    bool {
+      [exch] append
+    } {
+      2 copy arrayindex pop
+      exch pop arraydelete
+    } ifelse
+    /settoppings 3 -1 roll send
+  end
+} def
+
+/EditStyle { % [index] stylelist => -
+  pop pop
+  SelectedStyle
+  [ /toppings 2 index send { /name exch send } forall ]
+  {gt} quicksort
+  /setitemlist styletoppingslist send  /paint styletoppingslist send
+  /name 1 index send /setvalue stylenamefield send
+  /extras 1 index send /setvalue styleextrafield send
+
+  /updateprices 1 index send
+  UpdateStyleToppingMenus
+  /setstyle Pizza send
+} def
+
+/EditTopping { % [index] styletoppingslist => -
+  pop pop
+} def
+
+/SetStyleExtraToppings { % number styleextrafield => -
+  pop
+  /setextras SelectedStyle send
+} def
+
+/SetStylePrice { % string styleprice{10,14,16,18}field => -
+  { exch token } stopped { null true } {
+    { exch pop
+      dup type dup /integertype eq exch /realtype eq or
+      { false } { pop true } ifelse
+    }
+    { null true } ifelse
+  } ifelse
+  { pop pop beep } {			% price field
+    SelectedStyle			% field price style
+    /PizzaSize /property		% field price style /PS /p
+    5 -1 roll send			% price style i
+    /prices 2 index send		% price style i [# # # #]
+    dup 4 1 roll			% price [# # # #] style i [# # # #]
+    exch 5 -1 roll put			% [# # # #] style
+    /setprices exch send		%
+  } ifelse
+} def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Notice Notifiers
+
+/NoticeClose { % index noticebuttons => -
+  /close Notice send
+  pop pop
+} def
+
+/NoticeYesNo { % index noticebuttons => -
+  /close Notice send
+  pop 0 eq { SendOrder } if
+} def
+
+/SendOrder { % - => -
+  ServerEnabled? {
+    20 dict begin
+      (/usr/ucb/mail -s 'Pizza Order' 'pizza-server@poit.eng.sun.com')
+      sprintf
+      /value emailfield send
+      dup length 0 eq { pop } { exch (% %) sprintf } ifelse
+
+      pipe /f exch def pop
+
+      { /value self send 0 get /item self send 0 get
+      } pizzaparlormenu send
+      (To pizza parlor:\t%\n) sprintf
+      f exch writestring
+      /value namefield send
+      (Food order from:\t%\n) sprintf
+      f exch writestring
+      /value phonefield send
+      (\t  Phone:\t%\n) sprintf
+      f exch writestring
+      /value addressfield send
+      (\tAddress:\t%\n\n) sprintf
+      f exch writestring
+
+      { (We will eat the food there.\n\n)
+	(This order is to go.\n\n)
+	(This order is "Take & Bake".\n\n)
+	(Please deliver to the above address.\n\n)
+      } /value deliverymenu send 0 get get
+      f exch writestring
+
+      { 10 14 16 18 }
+      /value pizzasizesettings send 0 get get
+      { (whole) (half of a) }
+      /value pizzafractionsettings send 0 get get
+      (One % % inch pie:\n) sprintf
+      f exch writestring
+
+      /style Pizza send /name exch send (\t%\n) sprintf
+      f exch writestring
+      /extratoppings Pizza send {
+	/name exch send (\tAdd %\n) sprintf
+	f exch writestring
+      } forall
+
+      f (\n\n) writestring
+      [ instructionfield0 instructionfield1 instructionfield2
+	instructionfield3 instructionfield4 instructionfield5
+      ] {
+	/value exch send
+	f exch writestring
+	f (\n) writestring
+      } forall
+
+      f (\n) writestring
+
+      f closefile
+    end
+  } {
+    /YerTab YerTab /price Pizza send add store
+    Guido null ne { Guido killprocess } if
+    /Guido {
+      currentprocess /ProcessName (Guido) put
+      [ 2 10 random mul cvi add 0] SLEEP
+      beep beep beep /PayUp ShowNotice
+      /Guido null store
+    } fork store
+  } ifelse
+} def
+
+/Guido null def
+/YerTab
+  1000 random 50000 mul floor 100 div add
+def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Initialization
+
+/mgr /new ClassEventMgr send def
+mgr /ProcessName (PizzaTool Manager) put
+
+[ToolWindow ToppingWindow PreviewWindow EditWindow Notice] {
+  mgr /activate 3 -1 roll send
+} forall
+
+[ToolWindow ToppingWindow PreviewWindow EditWindow] {
+  /place exch send
+} forall
+
+ConfigFile LoadFile pop
+
+FavoriteStyle /findstyle ClassStyle send
+dup null eq {
+  pop /defaultstyle ClassStyle send
+} if
+/editstyle exch send
+
+/map ToolWindow send
+
+newprocessgroup currentfile closefile
+%EOF

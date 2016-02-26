@@ -1,0 +1,176 @@
+#!/usr/NeWS/bin/psh
+%
+% Date: Mon, 27 Mar 89 18:17:07 EST
+% To: NeWS-makers@brillig.umd.edu
+% Subject: nclock: Yet another NeWS clock program
+% From: spectral!sjs@bellcore.com  (Stan Switzer)
+% 
+% Ok, so the last thing anyone needs is yet another NeWS clock, right?
+% 
+% Like Bret Thaeler's clock, this one has no client-side code.  It uses
+% a different trick to figure out a base reference time, though.
+% Basically, I "forkunix" a shell command which executes "date" and
+% stuffs it back into NeWS using "sendevent" in "psh."  Deviant, eh?  Of
+% course, this technique can be used to capture the results of any UNIX
+% command for further NeWS processing
+% 
+% Try it, maybe you'll like it.
+% 
+% Stan Switzer  sjs@ctt.bellcore.com
+% ------------
+%
+% nclock: a clock in NeWS alone
+%
+% Copyright (C) 1989 by Stan Switzer. All rights reserved.
+% This program is provided for unrestricted use, provided that this
+% copyright message is preserved. There is no warranty, and no author
+% or distributer accepts responsibility for any damage caused by this
+% program.
+%
+
+systemdict /Midnight known not {
+    /GetDate { % - -> (str) true -or- false
+	{ 25 dict begin % fork (to keep events from being confused)
+	    /Interest createevent dup begin
+		/Name [ /TimeOut /Date ] def
+	    end dup expressinterest def
+	    /Timer Interest createevent copy dup begin
+		/Name /TimeOut def
+		/TimeStamp currenttime .25 add def
+	    end dup sendevent def
+	    (echo "createevent dup begin)
+	    (         /Name /Date def /Action (`date`)) append
+	    (      def end sendevent" | psh) append forkunix
+	    awaitevent dup /Name get /TimeOut eq {
+		pop [ false ]
+	    } {
+		Timer recallevent
+		/Action get [ exch true ]
+	    } ifelse
+	end } fork waitprocess aload pop
+    } def
+
+    /GetHHMMSS { % - -> hh mm ss true -or- false
+	GetDate {
+	    3 { ( ) search pop pop pop } repeat
+	    ( ) search 4 2 roll pop pop pop
+	    2 { (:) search pop exch pop cvi exch } repeat cvi
+	    true
+	} {
+	    false
+	} ifelse
+    } def
+
+    systemdict /Midnight currenttime GetHHMMSS pop
+    3 -1 roll 60 mul 3 -1 roll add exch 60 div add sub put
+} if
+
+/ClockWin DefaultWindow dictbegin
+
+    /TickProc	null	def
+
+dictend classbegin
+
+    ColorDisplay? {
+	/FrameFillColor ColorDict /Firebrick get def
+    } {
+	/FrameFillColor 0 def
+	/KeyFocusColor 1 def
+    } ifelse
+
+    /ClockShape { % X Y W H -> -
+	4 2 roll translate scale
+    	newpath
+	DrawClock
+	DrawHands
+    } def
+
+    /ShapeFrameCanvas {
+	gsave
+	ParentCanvas setcanvas
+	FrameX FrameY FrameWidth FrameHeight ClockShape
+	FrameCanvas reshapecanvas
+	grestore
+    } def
+
+    /PaintFrame {
+	FrameFillColor fillcanvas
+    } def
+
+    /ShapeIconCanvas {
+	gsave
+	ParentCanvas setcanvas
+	0 0 IconWidth IconHeight ClockShape
+	IconCanvas reshapecanvas
+	grestore
+    } def
+
+    /PaintIcon {
+	IconBorderColor fillcanvas
+    } def
+
+    /PaintFocus {
+	gsave FrameCanvas setcanvas .5 .5 translate
+	KeyFocus? { KeyFocusColor } { FrameFillColor } ifelse setshade
+	0 0 .5 0 360 arc 0 0 .49 360 0 arcn fill
+	grestore
+    } def
+
+    /CreateClientCanvas nullproc def
+
+    /DrawHand { % deg lng wid -> -
+	matrix currentmatrix 4 1 roll .5 .5 translate 3 -1 roll rotate 2 div
+	dup neg dup moveto 0 1 index -.5 mul lineto
+	dup neg lineto 0 exch lineto closepath
+	setmatrix
+    } def
+
+    /DrawClock {
+	matrix currentmatrix .5 .5 translate
+	12 { -30 rotate
+	    0 0 .45 117 93 arcn 0 .40 lineto
+	} repeat
+	closepath
+	0 0 .5 0 360 arc
+	setmatrix
+    } def
+
+    /DrawHands {
+	currenttime Midnight sub cvi
+	dup 3600 mod 60 div -30 mul .28 .10 DrawHand
+	60 mod -6 mul .40 .08 DrawHand
+    } def
+
+    /TimerLoop {
+	createevent dup begin
+	    /Name /Timer def
+	    /Action /Tick def
+	end dup expressinterest
+	createevent copy dup begin
+	    /TimeStamp currenttime dup Midnight sub dup cvi sub 1 exch sub add def
+	end sendevent
+	{
+	    awaitevent dup begin
+		/TimeStamp TimeStamp 1 add def
+	    end sendevent
+	    ShapeFrameCanvas
+	} loop
+    } def
+
+    /on-off { % bool -> -
+	{
+	    TickProc null eq {
+		/TickProc { TimerLoop } fork def
+	    } if
+	} {
+	    TickProc null ne {
+		TickProc killprocess
+		/TickProc null def
+	    } if
+	} ifelse
+    } def
+
+classend def
+
+{ reshapefromuser map true on-off } framebuffer /new ClockWin send send
+

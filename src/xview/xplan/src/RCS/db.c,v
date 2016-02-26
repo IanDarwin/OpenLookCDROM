@@ -1,0 +1,2660 @@
+head	1.17;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.17
+date	92.12.13.07.44.26;	author lacey;	state Exp;
+branches;
+next	1.16;
+
+1.16
+date	92.12.13.02.04.21;	author lacey;	state Exp;
+branches;
+next	1.15;
+
+1.15
+date	92.12.11.15.45.50;	author lacey;	state Exp;
+branches;
+next	1.14;
+
+1.14
+date	92.12.10.09.04.24;	author lacey;	state Exp;
+branches;
+next	1.13;
+
+1.13
+date	92.12.03.14.57.09;	author lacey;	state Exp;
+branches;
+next	1.12;
+
+1.12
+date	92.11.19.15.28.20;	author lacey;	state Exp;
+branches;
+next	1.11;
+
+1.11
+date	92.11.19.05.28.04;	author lacey;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	92.11.17.02.06.31;	author marlow;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	92.11.12.20.09.47;	author lacey;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	92.11.12.14.30.23;	author lacey;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	92.11.12.14.26.18;	author lacey;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	92.11.12.03.36.55;	author marlow;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	92.11.09.14.40.37;	author lacey;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	92.11.09.01.29.55;	author lacey;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	92.11.07.23.16.54;	author lacey;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	92.10.26.04.58.15;	author lacey;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	92.10.22.21.07.35;	author lacey;	state Exp;
+branches;
+next	;
+
+
+desc
+@Database code
+@
+
+
+1.17
+log
+@*** empty log message ***
+@
+text
+@/* FILE db.c ****************************************
+ *
+ * xplan - project planning tool
+ * Copyright (C) 1992 Brian Gaubert, Mark M. Lacey, Richard Malingkas,
+ * and Mike Marlow.
+ * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation.
+ * 
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License (distributed with this program in the file
+ * COPYING) for more details.
+ * 
+ * If you did not received a copy of the GNU General Public License
+ * along with this program, write to the Free Software Foundation,
+ * Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * 
+ * Since this was a project for a one semester software engineering
+ * course, the authors will not be offering support for the product
+ * after its release.
+ *
+ * DESCRIPTION OF CONTENTS
+ * 
+ * General database functions for adding tasks and resources to the
+ * database, search for them, and remove them.
+ *  
+ */   
+
+#include <stdio.h>
+#include "db.h"
+#include "string_table.h"
+
+static struct task_list *main_task_list;
+static struct string_table *resource_table;
+
+/* FUNCTION get_main_task_list ****************************************
+
+   PURPOSE
+
+   Returns a pointer to the main task list.  Written so we don't have
+   to use it as a global pointer, and can always track the accesses to
+   it.
+
+   SAMPLE CALL
+
+   list = get_main_task_list();
+
+   OUTPUTS
+
+   list --- The main list of tasks in the project that is currently
+   loaded.
+
+   AUTHOR/AUDITOR/TESTER
+   
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Auditor... 
+   Tester.... Michael Marlow 11-16-92
+
+   MODIFICATIONS (most recent to least)
+
+*/
+struct task_list *get_main_task_list()
+{
+   return main_task_list;
+}
+
+/* FUNCTION create_main_task_list ****************************************
+
+   PURPOSE
+
+   Returns a pointer to the main task list.  Written so we don't have
+   to use it as a global pointer, and can always track the accesses to
+   it.
+
+   SAMPLE CALL
+
+   create_main_task_list();
+
+   AUTHOR/AUDITOR/TESTER
+   
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Auditor... 
+   Tester.... Michael Marlow 11-16-92
+
+   MODIFICATIONS (most recent to least)
+
+*/
+void create_main_task_list()
+{
+   main_task_list = create_task_list(NULL, NULL, NULL);
+}
+
+/* FUNCTION create_resource_table ****************************************
+
+   PURPOSE
+
+   Returns a pointer to the main task list.  Written so we don't have
+   to use it as a global pointer, and can always track the accesses to
+   it.
+
+   SAMPLE CALL
+
+   create_main_task_list();
+
+   AUTHOR/AUDITOR/TESTER
+   
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Auditor... 
+   Tester.... Michael Marlow 11-16-92
+
+   MODIFICATIONS (most recent to least)
+
+*/
+void create_resource_table()
+{
+   resource_table = string_table_create(151);
+}
+
+/* FUNCTION set_main_task_list ****************************************
+
+*/
+void set_main_task_list(struct task_list *list)
+{
+   main_task_list = list;
+}
+
+/* FUNCTION create_task_info ****************************************
+
+   PURPOSE
+
+   Creates a task_info data structure given all of the parameters
+   needed for it.
+
+   SAMPLE CALL
+
+   new_task = create_task_info(name, desc, duration,
+                               planned_start_date,
+                               planned_end_date,
+                               actual_start_date,
+                               actual_end_date,
+                               forecast_start_date,
+                               forecast_end_date,
+                               earliest_start_date,
+                               earliest_end_date,
+                               latest_start_date,
+                               latest_end_date,
+                               float_time, 
+                               milestone, deliverable, 
+                               resources, 
+                               subtasks, parent,
+                               dependencies, dependents,
+                               number_of_dependents,
+                               x_pert, y_pert, 
+			       x_gantt, y_gantt,
+			       length);
+
+   INPUTS
+
+   Each argument corresponds to an element of the task_info
+   structure.  See the database header file along with the detailed
+   design document for a description of each.
+
+   OUTPUTS
+
+   A pointer to an allocated and filled in task_info structure.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Auditor...
+   Tester.... Michael Marlow 11-16-92
+
+   MODIFICATIONS (most recent to least)
+
+   12 Nov 92 Mark M. Lacey
+   Changed the names of a few parameters.
+
+*/
+struct task_info *create_task_info(char *name, 
+				   char *desc, 
+				   unsigned duration, 
+				   unsigned planned_start_date, 
+				   unsigned planned_end_date, 
+				   unsigned actual_start_date, 
+				   unsigned actual_end_date, 
+				   unsigned forecast_start_date, 
+				   unsigned forecast_end_date, 
+				   unsigned earliest_start_date, 
+				   unsigned earliest_end_date, 
+				   unsigned latest_start_date, 
+				   unsigned latest_end_date, 
+				   unsigned float_time, 
+				   enum boolean milestone, 
+				   enum boolean deliverable, 
+				   struct resource_list *resources, 
+				   struct task_list *subtasks, 
+				   struct task_node *parent,
+				   struct task_list *dependencies,
+				   struct task_list *dependents,
+				   unsigned number_of_dependents,
+				   unsigned x_pert,   
+				   unsigned y_pert,   
+				   unsigned x_gantt,   
+				   unsigned y_gantt,   
+				   unsigned length)
+				                  
+{
+   struct task_info *new_info;
+
+   new_info = (struct task_info *) malloc(sizeof(struct task_info));
+
+   if (name != NULL) {
+      new_info->name = (char *) malloc(strlen(name)+1);
+      strcpy(new_info->name, name);
+   } else {
+      new_info->name = NULL;
+   }
+
+   if (desc != NULL) {
+      new_info->desc = (char *) malloc(strlen(desc)+1);
+      strcpy(new_info->desc, desc);
+   } else {
+      new_info->desc = NULL;
+   }
+
+   new_info->duration = duration;
+   new_info->planned_start_date = planned_start_date;
+   new_info->planned_end_date = planned_end_date;
+   new_info->actual_start_date = actual_start_date;
+   new_info->actual_end_date = actual_end_date;
+   new_info->forecast_start_date = forecast_start_date;
+   new_info->forecast_end_date = forecast_end_date;
+   new_info->earliest_start_date = earliest_start_date;
+   new_info->earliest_end_date = earliest_end_date;
+   new_info->latest_start_date = latest_start_date;
+   new_info->latest_end_date = latest_end_date;
+   new_info->float_time = float_time;
+   new_info->milestone = milestone;
+   new_info->deliverable = deliverable;
+   new_info->resources = resources;
+   new_info->subtasks = subtasks;
+   new_info->parent = parent;
+   new_info->dependencies = dependencies;
+   new_info->dependents = dependents;
+   new_info->x_pert = x_pert;   
+   new_info->y_pert = y_pert;   
+   new_info->x_gantt = x_gantt; 
+   new_info->y_gantt = y_gantt; 
+   new_info->length = length;
+
+   return new_info;
+}
+
+/* FUNCTION change_task_info ****************************************
+
+*/
+void change_task_info(struct task_info *info,
+		      char *name, 
+		      char *desc, 
+		      unsigned duration, 
+		      unsigned planned_start_date, 
+		      unsigned planned_end_date, 
+		      unsigned actual_start_date, 
+		      unsigned actual_end_date, 
+		      unsigned forecast_start_date, 
+		      unsigned forecast_end_date, 
+		      unsigned earliest_start_date, 
+		      unsigned earliest_end_date, 
+		      unsigned latest_start_date, 
+		      unsigned latest_end_date, 
+		      unsigned float_time, 
+		      enum boolean milestone, 
+		      enum boolean deliverable, 
+		      struct resource_list *resources, 
+		      struct task_list *subtasks, 
+		      struct task_node *parent,
+		      struct task_list *dependencies,
+		      struct task_list *dependents,
+		      unsigned number_of_dependents,
+		      unsigned x_pert,   
+		      unsigned y_pert,   
+		      unsigned x_gantt,   
+		      unsigned y_gantt,   
+		      unsigned length)
+     
+{
+   if (info->name != NULL) free(info->name);
+   if (name != NULL) {
+      info->name = (char *) malloc(strlen(name)+1);
+      strcpy(info->name, name);
+   } else info->name = NULL;
+
+   if (info->desc != NULL) free(info->desc);
+   if (desc != NULL) {
+      info->desc = (char *) malloc(strlen(desc)+1);
+      strcpy(info->desc, desc);
+   } else info->desc = NULL;
+
+   info->duration = duration;
+   info->planned_start_date = planned_start_date;
+   info->planned_end_date = planned_end_date;
+   info->actual_start_date = actual_start_date;
+   info->actual_end_date = actual_end_date;
+   info->forecast_start_date = forecast_start_date;
+   info->forecast_end_date = forecast_end_date;
+   info->earliest_start_date = earliest_start_date;
+   info->earliest_end_date = earliest_end_date;
+   info->latest_start_date = latest_start_date;
+   info->latest_end_date = latest_end_date;
+   info->float_time = float_time;
+   info->milestone = milestone;
+   info->deliverable = deliverable;
+   info->resources = resources;
+   info->subtasks = subtasks;
+   info->parent = parent;
+   info->dependencies = dependencies;
+   info->dependents = dependents;
+   info->x_pert = x_pert;   
+   info->y_pert = y_pert;   
+   info->x_gantt = x_gantt; 
+   info->y_gantt = y_gantt; 
+   info->length = length;
+}
+
+struct task_node *create_default_task()
+{
+   struct task_node *new_task_node;
+   struct task_info *new_task_info;
+
+   new_task_info = create_task_info("New Task",
+				    "",
+				    0, 
+				    0, 0, 0, 
+				    0, 0, 0, 
+				    0, 0, 0, 0,
+				    0, 0, 0, 
+				    create_resource_list(NULL, NULL, NULL), 
+				    create_task_list(NULL, NULL,
+						     NULL),
+				    NULL, 
+				    create_task_list(NULL, NULL,
+						     NULL),
+				    create_task_list(NULL, NULL,
+						     NULL), 
+				    0,
+				    0, 0, 0, 0, 0);
+   
+   new_task_node = create_task_node(new_task_info,
+				    NULL,
+				    NULL);
+
+   return new_task_node;
+}   
+
+/* FUNCTION destroy_task_info ****************************************
+
+   PURPOSE
+
+   Destroys a task_info data structure, along with structures that are
+   contained within it.
+
+   SAMPLE CALL
+
+   destroy_task_info(task);
+
+   INPUTS
+
+   task --- A pointer to the task_info structure to be destroyed.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Auditor...
+   Tester.... Michael Marlow 11-16-92
+   
+   MODIFICATIONS (most recent to least)
+
+*/
+void destroy_task_info(struct task_info *taskinfo)
+{
+   free(taskinfo->name);
+   free(taskinfo->desc);
+   free(taskinfo);
+}
+
+/* FUNCTION create_task_node ****************************************
+
+   PURPOSE
+
+   Creates a task_node data structure given all of the parameters
+   needed for it.
+
+   SAMPLE CALL
+
+   newnode = create_task_node(data, prev, next);
+
+   INPUTS
+
+   data --- A pointer to a task_info node, most likely created with
+   create_task_info.
+
+   prev --- A pointer to the previous node on the list.  
+
+   data --- A pointer to the next node on the list. 
+
+   OUTPUTS
+
+   newnode --- A pointer to the task_node that was created.  This will
+   be set up to include the information given in the call.
+
+   PERTINENT INFORMATION
+
+   Often called with prev and next equal to NULL when creating a new
+   node that isn't yet a part of a list.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Auditor...
+   Tester.... Michael Marlow 11-16-92
+
+   MODIFICATIONS (most recent to least)
+
+*/
+struct task_node *create_task_node(struct task_info *data,
+				   struct task_node *prev,
+				   struct task_node *next)
+{
+   struct task_node *new_node;
+
+   new_node = (struct task_node *) malloc(sizeof(struct task_node));
+
+   new_node->data = data;
+   new_node->prev = prev;
+   new_node->next = next;
+
+   return new_node;
+}
+
+/* FUNCTION destroy_task_node ****************************************
+
+   PURPOSE
+
+   Destroys a task_node data structure and removes it from the list
+   it is a part of, if it is in one.  Destroys all components of the
+   task_node structure, too.
+
+   SAMPLE CALL
+
+   destroy_task_node(tasknode);
+
+   INPUTS
+
+   tasknode --- A pointer to the task_node structure to be deleted.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Auditor...
+   Tester.... Michael Marlow 11-16-92
+
+*/
+void destroy_task_node(struct task_list *list,
+		       struct task_node *tasknode)
+{
+   /* decrement the size of the list */
+   --list->size;
+
+   /* if there is a next node, make it point to the previous of this */
+   if (tasknode->next != NULL) {
+      list->current = tasknode->next;
+      tasknode->next->prev = tasknode->prev;
+   } else {
+      list->tail = tasknode->prev;
+      list->current = tasknode->prev;
+   }
+
+   /* if there is a previous node, make it point to the next of this */
+   if (tasknode->prev != NULL)
+     tasknode->prev->next = tasknode->next;
+   else
+     list->head = tasknode->next;
+
+   /* destroy the information contained in the node */
+   destroy_task_info(tasknode->data);
+   free(tasknode);
+}
+
+/* FUNCTION remove_task_node ****************************************
+
+   PURPOSE
+
+   Destroys a task_node data structure and removes it from the list
+   it is a part of, if it is in one.  Destroys all components of the
+   task_node structure, too.
+
+   SAMPLE CALL
+
+   destroy_task_node(tasklist, tasknode);
+
+   INPUTS
+
+   tasklist ---
+   tasknode --- A pointer to the task_node structure to be deleted.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Auditor...
+   Tester.... Michael Marlow 11-16-92
+
+*/
+void remove_task_node(struct task_list *list,
+		       struct task_node *tasknode)
+{
+   /* decrement the size of the list */
+   --list->size;
+
+   /* if there is a next node, make it point to the previous of this */
+   if (tasknode->next != NULL) {
+      list->current = tasknode->next;
+      tasknode->next->prev = tasknode->prev;
+   } else {
+      list->tail = tasknode->prev;
+      list->current = tasknode->prev;
+   }
+
+   /* if there is a previous node, make it point to the next of this */
+   if (tasknode->prev != NULL)
+     tasknode->prev->next = tasknode->next;
+   else
+     list->head = tasknode->next;
+
+   free(tasknode);
+}
+
+void destroy_task_list(struct task_list *list)
+{
+   struct task_node *next;
+
+   list->current = list->head;
+   while (list->current) {
+      next = list->current->next;
+      destroy_task_node(list, list->current);
+      list->current = next;
+   }
+   list->head = list->tail = NULL;
+}
+
+/* FUNCTION create_task_list ****************************************
+
+   PURPOSE
+
+   Creates a task_list data structure given all of the parameters
+   needed for it.
+
+   SAMPLE CALL
+
+   tasklist = create_task_list(head, tail, current);
+
+   INPUTS
+
+   head --- A pointer to the head of the task list to be created.
+
+   tail --- A pointer to the tail of the task list to be created.
+
+   current --- A pointer to the current node of the task list to be
+   created.
+
+   OUTPUTS
+
+   tasklist --- A pointer to the newly created task_list structure.
+
+   PERTINENT INFORMATION
+
+   Often called with head, tail, and current all equal to NULL, to
+   create a new and empty list.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey
+   Auditor...
+   Tester.... Michael Marlow 11-16-92
+
+   MODIFICATIONS (most recent to least)
+
+*/
+struct task_list *create_task_list(struct task_node *head,
+				   struct task_node *tail,
+				   struct task_node *current)
+{
+   struct task_list *new_list;
+
+   new_list = (struct task_list *) malloc(sizeof(struct task_list));
+
+   new_list->head = head;
+   new_list->tail = tail;
+   new_list->current = current;
+   new_list->size = 0;
+
+   return new_list;
+}
+
+/* FUNCTION add_task_to_beginning ****************************************
+
+   PURPOSE
+
+   Adds a task to the beginning of a task list.
+   
+   SAMPLE CALL
+
+   add_task_to_beginning(list, task);
+
+   INPUTS
+
+   list --- The list that the task will be added to.
+
+   task --- The task to be added to the beginning of the list.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lactey, 7 Nov 1992
+   Auditor...
+   Tester.... Michael Marlow 11-16-92
+
+   MODIFICATIONS (most recent to least)
+
+*/
+void add_task_to_beginning(struct task_list *list, 
+			   struct task_node *task)
+{
+   add_task_before(list, list->head, task);
+}
+
+/* FUNCTION add_task_to_end *****************************************
+
+   PURPOSE
+
+   Adds a task to the end of a task list.
+
+   SAMPLE CALL
+
+   add_task_to_end(struct task_list *list, struct task_node *task);
+
+   INPUTS
+
+   list --- The list that the task will be added to.
+
+   task --- The task to be added to the end of the list.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Auditor...
+   Tester ... Michael Marlow 11-16-92
+
+   MODIFICATIONS (most recent to least)
+
+*/
+void add_task_to_end(struct task_list *list, struct task_node *task)
+{
+   add_task_after(list, list->tail, task);
+}
+
+/* FUNCTION add_task_before ****************************************
+
+   PURPOSE
+
+   Adds a task before another task in a list.
+
+   SAMPLE CALL
+
+   add_task_before(list, ref_task, new_task);
+
+   INPUTS
+
+   list --- The list to be added to.
+
+   ref_task --- The reference task that we are adding before.
+
+   new_task --- The task to be added before ref_task.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Auditor...
+   Tester.... Michael Marlow 11-16-92
+
+   MODIFICATIONS (most recent to least)
+
+   12 Nov 92 Mark M. Lacey
+   Bug fix.  Previously if the new task was added to the head of the
+   list, the list head pointer was not updated --- now it is.
+
+*/
+void add_task_before(struct task_list *list, struct task_node
+		     *ref_task, struct task_node *new_task)
+{
+   /* make the newest task the current task */
+   list->current = new_task;
+   
+   /* make the task after the new one be the reference task that we */
+   /* are adding the new task before */
+   new_task->next = ref_task;
+
+   if ( ref_task ) {
+      new_task->prev = ref_task->prev;
+
+      /* if the reference task doesn't have a predecessor, then it is */
+      /* the head of the list, and therefore our new node will be the */
+      /* new head */
+      if ( ref_task->prev == NULL ) {
+	 list->head = new_task;
+      } else {
+	 ref_task->prev->next = new_task;
+      }
+      ref_task->prev = new_task;
+   } else {
+      /* if the task sent to us is NULL, then we must be starting a */
+      /* new list, so set the head and tail to this new node, and set */
+      /* the previous pointer to NULL */
+      list->head = new_task;
+      list->tail = new_task;
+      new_task->prev = NULL;
+   }
+   ++list->size;
+}
+
+/* FUNCTION add_task_after ****************************************
+
+   PURPOSE
+
+   Adds a task after another task in a list.
+
+   SAMPLE CALL
+
+   add_task_after(list, ref_task, new_task);
+
+   INPUTS
+
+   list --- The list to be added to.
+
+   ref_task --- The reference task that we are adding after.
+
+   new_task --- The task to be added after ref_task.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey
+   Auditor...
+   Tester.... Michael Marlow 11-16-92
+
+   MODIFICATIONS (most recent to least)
+
+   12 Nov 92 Mark M. Lacey
+   Bug fix.  Previously if the new task was added to the tail of the
+   list, the list tail pointer was not updated --- now it is.
+
+*/
+void add_task_after(struct task_list *list, struct task_node *ref_task,
+		    struct task_node *new_task)
+{
+   /* make the newest task the current task */
+   list->current = new_task;
+
+   /* make the task before the new one be the reference task that we */
+   /* are adding the new task after */
+   new_task->prev = ref_task;
+
+   if ( ref_task ) {
+      new_task->next = ref_task->next;
+
+      /* if the reference task is the tail of the list, make our new */
+      /* node the new tail of the list */
+      if ( ref_task->next == NULL ) {
+	 list->tail = new_task;
+      } else {
+	 ref_task->next->prev = new_task;
+      }
+      ref_task->next = new_task;
+   } else {
+      /* if the task sent to us is NULL, then we must be starting a */
+      /* new list, so set the head and tail to this new node, and set */
+      /* the previous pointer to NULL */
+      list->head = new_task;
+      list->tail = new_task;
+      new_task->next = NULL;
+   }
+   ++list->size;
+}
+
+/* FUNCTION find_task ****************************************
+
+   PURPOSE
+
+   Given a task list to search through, and a task name to find, this
+   function finds it.
+
+   SAMPLE CALL
+
+   tasknode = find_task(list, name);
+
+   INPUTS
+
+   list --- The list to be searched.
+
+   name --- The task name we are searching for.
+
+   OUTPUTS
+
+   tasknode --- A pointer to the task in the list with the name given,
+   or NULL if it is not found.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Auditor...
+   Tester.... Michael Marlow 11-16-92
+
+   MODIFICATIONS (most recent to least)
+
+*/
+struct task_node *find_task(struct task_list *list, char *name)
+{
+   list->current = list->head;
+
+   /* Search through the entire list, updating list->current each time */
+   while (list->current) {
+      if (strcasecmp(list->current->data->name, name) == 0) {
+	 return list->current;
+      }
+      list->current = list->current->next;
+   }
+
+   /* If we didn't find it in the list, return NULL */
+   return NULL;
+}
+
+/* FUNCTION list_current ****************************************
+
+   PURPOSE
+
+   Returns a pointer to the last node in the list that was referenced
+   (i.e. the current node).
+
+   SAMPLE CALL
+
+   current = list_current(list);
+
+   INPUTS
+
+   list --- The list that we want to find the current node for.
+
+   OUTPUTS
+
+   current --- The current node of the given list.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Auditor... 
+   Tester.... Michael Marlow 11-16-92
+
+   MODIFICATIONS (most recent to least)
+
+*/
+struct task_node *list_current(struct task_list *list)
+{
+   return list->current;
+}
+
+/* FUNCTION list_next ****************************************
+
+   PURPOSE
+
+   Returns a pointer to the node after the current one in the list,
+   and sets the current one to this next node.
+
+   SAMPLE CALL
+
+   next = list_next(list);
+
+   INPUTS
+
+   list --- The list that we want the next node of.
+
+   OUTPUTS
+
+   next --- The next node of the list.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey
+   Auditor...
+   Tester.... Michael Marlow 11-16-92
+
+   MODIFICATIONS (most recent to least)
+
+*/
+struct task_node *list_next(struct task_list *list)
+{
+   /* advance to the next node unless we are already at the end */
+   if ( list->current )
+     list->current = list->current->next;
+
+   /* return where we are at now */
+   return list->current;
+}
+
+/* FUNCTION create_resource_info ****************************************
+
+   PURPOSE
+
+   Creates a resource information structure given the name of the
+   resource to be added.
+
+   SAMPLE CALL
+
+   resinfo = create_resource_info(resname);
+
+   INPUTS
+
+   resname --- The name of the resource to add.
+
+   OUTPUTS
+
+   resinfo --- A pointer to a resource info structure with the added
+   information.
+   
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Auditor... 
+   Tester.... Michael Marlow 11-16-92
+
+   MODIFICATIONS (most recent to least)
+
+*/
+struct resource_info *create_resource_info(char *name)
+{
+   struct resource_info *new_info;
+
+   new_info = (struct resource_info *) malloc(sizeof(struct resource_info));
+
+   new_info->resource = string_table_insert(resource_table, name,
+					    strlen(name));
+
+   return new_info;
+}
+
+/* FUNCTION destroy_resource_info ********************************************
+
+   PURPOSE
+
+   Destroys a resource_info structure.
+
+   SAMPLE CALL
+
+   destroy_resource_info(resinfo);
+
+   INPUTS
+
+   resinfo --- A pointer to the resource info structure to be
+   destroyed.
+
+   AUTHOR/AUDITOR/TESTER
+
+   Author.... Mark M. Lacey, 7 Nov 1992
+   Auditor...
+   Tester.... Michael Marlow 11-16-92
+
+   MODIFICATIONS (most recent to least)
+
+*/
+void destroy_resource_info(struct resource_info *resinfo)
+{
+   free(resinfo);
+}
+
+/***************************************************************************/
+/********************** NEW RESOURCE FUNCTIONS *****************************/
+/***************************************************************************/
+
+
+/* FUNCTION create_resource_node *******************************************
+*
+*   PURPOSE
+*
+*   Creates a resource_node data structure given all of the parameters
+*   needed for it.
+*
+*   SAMPLE CALL
+*
+*   newnode = create_resource_node(data, prev, next);
+*
+*   INPUTS
+*
+*   data --- A pointer to a resource_info node, most likely created with
+*   create_resource_info.
+*
+*   prev --- A pointer to the previous node on the list.  
+*
+*   data --- A pointer to the next node on the list. 
+*
+*   OUTPUTS
+*
+*   newnode --- A pointer to the resource_node that was created.  This will
+*   be set up to include the information given in the call.
+*
+*   PERTINENT INFORMATION
+*
+*   Often called with prev and next equal to NULL when creating a new
+*   node that isn't yet a part of a list.
+*
+*   AUTHOR/AUDITOR/TESTER
+*
+*   Author.... Michael Marlow 11-16-92
+*   Auditor...
+*   Tester.... Michael Marlow
+*
+*   MODIFICATIONS (most recent to least)
+*
+*/
+
+struct resource_node *create_resource_node(struct resource_info *data,
+                                   struct resource_node *prev,
+                                   struct resource_node *next)
+{
+   struct resource_node *new_node;
+   new_node = (struct resource_node *) malloc(sizeof(struct resource_node));
+   new_node->data = data;
+   new_node->prev = prev;
+   new_node->next = next;
+   return new_node;
+}
+
+/* FUNCTION destroy_resource_node ****************************************
+*
+*   PURPOSE
+*
+*   Destroys a task_node data structure and removes it from the list
+*   it is a part of, if it is in one.  Destroys all components of the
+*   task_node structure, too.
+*
+*   SAMPLE CALL
+*
+*   destroy_task_node(tasknode);
+*
+*   INPUTS
+*
+*   tasknode --- A pointer to the task_node structure to be deleted.
+*
+*   AUTHOR/AUDITOR/TESTER
+*
+*   Author.... Michael Marlow 11-16-92
+*   Auditor...
+*   Tester.... Michael Marlow
+*
+*/
+
+void destroy_resource_node(struct resource_node *resourcenode)
+{
+   /* if there is a next node, make it point to the previous of this */
+   if (resourcenode->next != NULL)
+     resourcenode->next->prev = resourcenode->prev;
+
+   /* if there is a previous node, make it point to the next of this */
+   if (resourcenode->prev != NULL)
+     resourcenode->prev->next = resourcenode->next;
+
+   /* destroy the information contained in the node */
+   destroy_resource_info(resourcenode->data);
+   free(resourcenode);
+}
+
+/* FUNCTION create_resource_list ****************************************
+*
+*   PURPOSE
+*
+*   Creates a resource_list data structure given all of the parameters
+*   needed for it.
+*
+*   SAMPLE CALL
+*
+*   resourcelist = create_resource_list(head, tail, current);
+*
+*   INPUTS
+*
+*   head --- A pointer to the head of the resource list to be created.
+*
+*   tail --- A pointer to the tail of the resource list to be created.
+*
+*   current --- A pointer to the current node of the resource list to be
+*   created.
+*
+*   OUTPUTS
+*
+*   resourcelist --- A pointer to the newly created resource_list structure.
+*
+*   PERTINENT INFORMATION
+*
+*   Often called with head, tail, and current all equal to NULL, to
+*   create a new and empty list.
+*
+*   AUTHOR/AUDITOR/TESTER
+*
+*   Author.... Michael Marlow  11-16-92
+*   Auditor...
+*   Tester.... Michael Marlow
+*
+*   MODIFICATIONS (most recent to least)
+*/
+struct resource_list *create_resource_list(struct resource_node *head,
+                                   struct resource_node *tail,
+                                   struct resource_node *current)
+{
+   struct resource_list *new_list;
+   new_list = (struct resource_list *) malloc(sizeof(struct resource_list));
+   new_list->head = head;
+   new_list->tail = tail;
+   new_list->current = current;
+   return new_list;
+}
+
+/* FUNCTION add_resource_to_beginning ****************************************
+*
+*   PURPOSE
+*
+*   Adds a resource to the beginning of a resource list.
+*   
+*   SAMPLE CALL
+*
+*   add_resource_to_beginning(list, resource);
+*
+*   INPUTS
+*
+*   list --- The list that the resource will be added to.
+*
+*   resource --- The resource to be added to the beginning of the list.
+*
+*   AUTHOR/AUDITOR/TESTER
+*
+*   Author.... Michael Marlow 11-16-92
+*   Auditor...
+*   Tester.... Michael Marlow
+*
+*   MODIFICATIONS (most recent to least)
+*/
+
+void add_resource_to_beginning(struct resource_list *list, 
+                           struct resource_node *resource)
+{
+   add_resource_before(list, list->head, resource);
+}
+
+/* FUNCTION add_resource_to_end *****************************************
+*
+*   PURPOSE
+*
+*   Adds a resource to the end of a resource list.
+*
+*   SAMPLE CALL
+*
+*   add_resource_to_end(struct resource_list *list, struct resource_node *resource);
+*
+*   INPUTS
+*
+*   list --- The list that the resource will be added to.
+*
+*   resource --- The resource to be added to the end of the list.
+*
+*   AUTHOR/AUDITOR/TESTER
+*
+*   Author.... Michael Marlow 11-16-92
+*   Auditor...
+*   Tester ... Michael Marlow
+*
+*   MODIFICATIONS (most recent to least)
+*/
+
+void add_resource_to_end(struct resource_list *list, struct resource_node *resource)
+{
+   add_resource_after(list, list->tail, resource);
+}
+
+/* FUNCTION add_resource_before ****************************************
+*
+*   PURPOSE
+*
+*   Adds a resource before another resource in a list.
+*
+*   SAMPLE CALL
+*
+*   add_resource_before(list, ref_resource, new_resource);
+*
+*   INPUTS
+*
+*   list --- The list to be added to.
+*
+*   ref_resource --- The reference resource that we are adding before.
+*
+*   new_resource --- The resource to be added before ref_resource.
+*
+*   AUTHOR/AUDITOR/TESTER
+*
+*   Author.... Michael Marlow 11-16-92
+*   Auditor...
+*   Tester.... Michael Marlow
+*
+*   MODIFICATIONS (most recent to least)
+*/
+
+void add_resource_before(struct resource_list *list, struct resource_node
+                     *ref_resource, struct resource_node *new_resource)
+{
+   /* make the newest resource the current resource */
+   list->current = new_resource;
+   /* make the resource after the new one be the reference resource that we */
+   /* are adding the new resource before */
+   new_resource->next = ref_resource;
+   if ( ref_resource ) {
+      new_resource->prev = ref_resource->prev;
+      /* if the reference resource doesn't have a predecessor, then it is */
+      /* the head of the list, and therefore our new node will be the */
+      /* new head */
+      if ( ref_resource->prev == NULL ) {
+         list->head = new_resource;
+      }
+      ref_resource->prev = new_resource;
+   } else {
+      /* if the resource sent to us is NULL, then we must be starting a */
+      /* new list, so set the head and tail to this new node, and set */
+      /* the previous pointer to NULL */
+      list->head = new_resource;
+      list->tail = new_resource;
+      new_resource->prev = NULL;
+   }
+}
+
+/* FUNCTION add_resource_after ****************************************
+*
+*   PURPOSE
+*
+*   Adds a resource after another resource in a list.
+*
+*   SAMPLE CALL
+*
+*   add_resource_after(list, ref_resource, new_resource);
+*
+*   INPUTS
+*
+*   list --- The list to be added to.
+*
+*   ref_resource --- The reference resource that we are adding after.
+*
+*   new_resource --- The resource to be added after ref_resource.
+*
+*   AUTHOR/AUDITOR/TESTER
+*
+*   Author.... Michael Marlow 11-16-92
+*   Auditor...
+*   Tester.... Michael Marlow
+*
+*   MODIFICATIONS (most recent to least)
+*
+*/
+
+void add_resource_after(struct resource_list *list, struct resource_node *ref_resource,
+                    struct resource_node *new_resource)
+{
+   /* make the newest resource the current resource */
+   list->current = new_resource;
+   /* make the resource before the new one be the reference resource that we */
+   /* are adding the new resource after */
+   new_resource->prev = ref_resource;
+   if ( ref_resource ) {
+      new_resource->next = ref_resource->next;
+      /* if the reference resource is the tail of the list, make our new */
+      /* node the new tail of the list */
+      if ( ref_resource->next == NULL ) {
+         list->tail = new_resource;
+      }
+      ref_resource->next = new_resource;
+   } else {
+      /* if the resource sent to us is NULL, then we must be starting a */
+      /* new list, so set the head and tail to this new node, and set */
+      /* the previous pointer to NULL */
+      list->head = new_resource;
+      list->tail = new_resource;
+      new_resource->next = NULL;
+   }
+}
+
+
+
+@
+
+
+1.16
+log
+@*** empty log message ***
+@
+text
+@d1020 1
+a1020 1
+*   Author.... Michael Marlow & Mark M. Lacey  11-16-92
+d1058 1
+a1058 1
+*   Author.... Michael Marlow & Mark M. Lacey 11-16-92
+d1110 1
+a1110 1
+*   Author.... Michael Marlow & Mark M. Lacey  11-16-92
+d1146 1
+a1146 1
+*   Author.... Michael Marlow & Mark M. Lacey 11-16-92
+d1177 1
+a1177 1
+*   Author.... Michael Marlow & Mark M. Lacey 11-16-92
+d1209 1
+a1209 1
+*   Author.... Michael Marlow & Mark M. Lacey 11-16-92
+d1263 1
+a1263 1
+*   Author.... Michael Marlow & Mark M. Lacey 11-16-92
+@
+
+
+1.15
+log
+@The file we did our final demo with.
+@
+text
+@d72 18
+d96 21
+d121 1
+@
+
+
+1.14
+log
+@*** empty log message ***
+@
+text
+@d78 4
+d299 2
+a300 1
+				    0, 0, 0, NULL, 
+@
+
+
+1.13
+log
+@Latest revisions before practice demo.
+@
+text
+@d2 29
+a30 7
+   
+   DESCRIPTION OF CONTENTS
+   
+   General database functions for adding tasks and resources to the
+   database, search for them, and remove them.
+   
+*/   
+d247 4
+a250 2
+   info->name = (char *) malloc(strlen(name)+1);
+   strcpy(info->name, name);
+d253 4
+a256 2
+   info->desc = (char *) malloc(strlen(desc)+1);
+   strcpy(info->desc, desc);
+d444 48
+@
+
+
+1.12
+log
+@Added a couple routines, and modified others.
+@
+text
+@d258 29
+d402 7
+a408 2
+   if (tasknode->next != NULL)
+     tasknode->next->prev = tasknode->prev;
+d413 2
+d421 13
+d598 2
+d661 2
+a663 1
+
+@
+
+
+1.11
+log
+@Added some functions.
+@
+text
+@d56 8
+d195 28
+a222 28
+				   char *name, 
+				   char *desc, 
+				   unsigned duration, 
+				   unsigned planned_start_date, 
+				   unsigned planned_end_date, 
+				   unsigned actual_start_date, 
+				   unsigned actual_end_date, 
+				   unsigned forecast_start_date, 
+				   unsigned forecast_end_date, 
+				   unsigned earliest_start_date, 
+				   unsigned earliest_end_date, 
+				   unsigned latest_start_date, 
+				   unsigned latest_end_date, 
+				   unsigned float_time, 
+				   enum boolean milestone, 
+				   enum boolean deliverable, 
+				   struct resource_list *resources, 
+				   struct task_list *subtasks, 
+				   struct task_node *parent,
+				   struct task_list *dependencies,
+				   struct task_list *dependents,
+				   unsigned number_of_dependents,
+				   unsigned x_pert,   
+				   unsigned y_pert,   
+				   unsigned x_gantt,   
+				   unsigned y_gantt,   
+				   unsigned length)
+				                  
+d366 2
+a367 1
+void destroy_task_node(struct task_node *tasknode)
+d369 3
+d434 1
+d559 1
+d621 1
+@
+
+
+1.10
+log
+@Functions were added for RESOURCE linked list operations like
+those that exist for TASK linked list operations.
+modified by Marlow 11-16-92
+@
+text
+@d48 8
+d141 6
+a146 2
+   new_info->name = (char *) malloc(strlen(name)+1);
+   strcpy(new_info->name, name);
+d148 6
+a153 2
+   new_info->desc = (char *) malloc(strlen(desc)+1);
+   strcpy(new_info->desc, desc);
+d181 67
+@
+
+
+1.9
+log
+@Modified add_task_before and add_task_after to update the list->head
+and list->tail pointers, respectively, for tasks added to the head/tail
+of a list.
+@
+text
+@d38 1
+a38 1
+   Tester.... 
+d92 1
+a92 1
+   Tester....
+d186 1
+a186 1
+   Tester....
+d232 1
+a232 1
+   Tester.... 
+d272 1
+a272 1
+   Tester....
+d323 1
+a323 1
+   Tester....
+d363 1
+a363 1
+   Tester....
+d394 1
+a394 1
+   Tester
+d426 1
+a426 1
+   Tester....
+d487 1
+a487 1
+   Tester....
+d552 1
+a552 1
+   Tester....
+d596 1
+a596 1
+   Tester.... 
+d629 1
+a629 1
+   Tester....
+d668 1
+a668 1
+   Tester....
+d704 1
+a704 1
+   Tester....
+d713 317
+@
+
+
+1.8
+log
+@Fixed compilation problem that was caused by incorrectly named
+component of a structure.
+@
+text
+@d430 4
+d447 7
+d491 4
+d508 7
+@
+
+
+1.7
+log
+@Revised the documentation a bit.
+@
+text
+@d15 1
+a15 1
+static struct string_table_pointer *resource_table;
+d657 1
+a657 1
+   new_info->resrouce = string_table_insert(resource_table, name,
+@
+
+
+1.6
+log
+@*** empty log message ***
+@
+text
+@d10 1
+d12 1
+a12 1
+#include "string_table.h"     /* Changed by Marlow 11-11-92 */
+d15 1
+a15 1
+static struct resources *string_table;
+d40 2
+d74 3
+a76 1
+                               x, y, length);
+d94 5
+d122 4
+a125 4
+				   unsigned x_Prt,   /* Changed by marlow */
+				   unsigned y_Prt,   /* Changed by marlow */
+				   unsigned x_Gnt,   /* Changed by Marlow */
+				   unsigned y_Gnt,   /* Changed by Marlow */
+d158 4
+a161 4
+   new_info->x_pert = x_Prt;     /* Changed by Marlow */
+   new_info->y_pert = y_Prt;     /* Changed by Marlow */
+   new_info->x_gantt = x_Gnt;    /* Changed by Marlow */
+   new_info->y_gantt = y_Gnt;    /* Changed by Marlow */
+d188 2
+d234 2
+d325 2
+d365 2
+d396 2
+d428 2
+d478 2
+d532 2
+d576 2
+d609 2
+d648 2
+d657 2
+a658 4
+   new_info->name = string_hash_search(resource_hash_table, name); /* changed by Marlow */
+   if (new_info->name == NULL) {
+      new_info->name = string_hash_insert(resource_hash_table, name);
+   }
+d683 2
+@
+
+
+1.5
+log
+@Added some documentation.
+@
+text
+@d11 1
+a11 1
+#include "str_table.h"
+d112 4
+a115 2
+				   unsigned x,
+				   unsigned y,
+d117 1
+d148 4
+a151 2
+   new_info->x = x;
+   new_info->y = y;
+d625 1
+a625 1
+   new_info->name = string_hash_search(resources_hash_table, name);
+d627 1
+a627 1
+      new_info->name = string_hash_insert(resources_hash_table, name);
+@
+
+
+1.4
+log
+@ci prototype.c
+list
+@
+text
+@d11 1
+d14 1
+a14 1
+static struct string_hash_table *resources_hash_table;
+d588 26
+a613 40
+ *
+ * Purpose
+ *
+ *    Creates a resource_info data structure given all of the parameters
+ *    needed for it.
+ *
+ * Sample call
+ *
+ *    <yet to complete>
+ *
+ * Inputs
+ *
+ *    <yet to complete>
+ *
+ * Outputs
+ *
+ *    <yet to complete>
+ *
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION create_resource_info */
+a628 43
+ *
+ * Purpose
+ *
+ *    Destroys a resource_info data structure.
+ *
+ * Sample call
+ *
+ *    <yet to complete>
+ *
+ * Inputs
+ *
+ *    <yet to complete>
+ *
+ * Outputs
+ *
+ *    <yet to complete>
+ *
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION destroy_resource_info */
+void destroy_resource_info(struct resource_info *old)
+{
+   free(old);
+}
+d630 1
+a630 44
+/* FUNCTION string_hash_search ***********************************************
+ *
+ * Purpose
+ *
+ *    <yet to complete>
+ *
+ * Sample call
+ *
+ *    <yet to complete>
+ *
+ * Inputs
+ *
+ *    <yet to complete>
+ *
+ * Outputs
+ *
+ *    <yet to complete>
+ *
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION string_hash_search */
+struct string_hash_node *string_hash_search(struct string_hash_table
+					    *hash_table, char *name)
+{
+}
+d632 19
+a650 42
+/* FUNCTION string_hash_insert ***********************************************
+ *
+ * Purpose
+ *
+ *    <yet to complete>
+ *
+ * Sample call
+ *
+ *    <yet to complete>
+ *
+ * Inputs
+ *
+ *    <yet to complete>
+ *
+ * Outputs
+ *
+ *    <yet to complete>
+ *
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION string_hash_insert */
+struct string_hash_node *string_hash_insert(struct string_hash_table
+					    *hash_table, char * name)
+d652 1
+@
+
+
+1.3
+log
+@*** empty log message ***
+@
+text
+@d1 8
+a8 11
+/* FILE db.c *****************************************************************
+ *
+ * Description of contents
+ *
+ *    General database functions.
+ *
+ * Header files referenced
+ *
+ *    db.h
+ *
+ * FILE db.c */
+a9 1
+#include <stdio.h>
+d15 24
+a38 35
+/* FUNCTION get_main_task_list ***********************************************
+ *
+ * Purpose
+ *
+ *    Returns a pointer to the main task list.  Written so we don't
+ *    have to use it as a global pointer, and can always track the
+ *    accesses to it.
+ *
+ * Sample call
+ *
+ *    list = get_main_task_list();
+ *
+ * Inputs
+ *
+ *    <none>
+ *
+ * Outputs
+ *
+ *    list             The main list of tasks in the project that is
+ *                     currently loaded.
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 7 Nov 1992
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION get_main_task_list */
+d44 45
+a88 58
+/* FUNCTION create_task_info *************************************************
+ *
+ * Purpose
+ *
+ *    Creates a task_info data structure given all of the parameters
+ *    needed for it.
+ *
+ * Sample call
+ *
+ *    new_task = create_task_info(name, desc, duration,
+ *       			  planned_start_date,
+ *                                planned_end_date,
+ *                                actual_start_date,
+ *                                actual_end_date,
+ *                                forecast_start_date,
+ *                                forecast_end_date,
+ *                                earliest_start_date,
+ *                                earliest_end_date,
+ *                                latest_start_date,
+ *                                latest_end_date,
+ *                                float_time, 
+ *                                milestone, deliverable, 
+ *                                resources, 
+ *                                subtasks, parent,
+ *                                dependencies, dependents,
+ *                                number_of_dependents,
+ *                                x,
+ *                                y,
+ *                                length);
+ *
+ * Inputs
+ *
+ *    Each argument corresponds to an element of the task_info
+ *    structure.  See the database header file along with the detailed
+ *    design document for a description of each.
+ *
+ * Outputs
+ *
+ *    A pointer to an allocated and filled in task_info structure.
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 7 Nov 1992
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION create_task_info */
+d151 23
+a173 41
+/* FUNCTION destroy_task_info *************************************************
+ *
+ * Purpose
+ *
+ *    Destroys a task_info data structure.
+ *
+ * Sample call
+ *
+ *    <yet to complete>
+ *
+ * Inputs
+ *
+ *    <yet to complete>
+ *
+ * Outputs
+ *
+ *    <yet to complete>
+ *
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 7 Nov 1992
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION destroy_task_info */
+void destroy_task_info(struct task_info *old)
+d175 3
+a177 3
+   free(old->name);
+   free(old->desc);
+   free(old);
+d180 37
+a216 41
+/* FUNCTION create_task_node *************************************************
+ *
+ * Purpose
+ *
+ *    Creates a task_node data structure given all of the parameters
+ *    needed for it.
+ *
+ * Sample call
+ *
+ *    <yet to complete>
+ *
+ * Inputs
+ *
+ *    <yet to complete>
+ *
+ * Outputs
+ *
+ *    <yet to complete>
+ *
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 
+ *
+ * Auditor... 
+ * Date......
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION create_task_node */
+d232 24
+a255 41
+/* FUNCTION destroy_task_node ************************************************
+ *
+ * Purpose
+ *
+ *    Destroys a task_node data structure.
+ *
+ * Sample call
+ *
+ *    <yet to complete>
+ *
+ * Inputs
+ *
+ *    <yet to complete>
+ *
+ * Outputs
+ *
+ *    <yet to complete>
+ *
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION destroy_task_node */
+void destroy_task_node(struct task_node *old)
+d257 11
+a267 1
+   free(old);
+d270 36
+a305 41
+/* FUNCTION create_task_list *************************************************
+ *
+ * Purpose
+ *
+ *    Creates a task_list data structure given all of the parameters
+ *    needed for it.
+ *
+ * Sample call
+ *
+ *    <yet to complete>
+ *
+ * Inputs
+ *
+ *    <yet to complete>
+ *
+ * Outputs
+ *
+ *    <yet to complete>
+ *
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION create_task_list */
+d321 23
+a343 40
+/* FUNCTION add_task_to_beginning ********************************************
+ *
+ * Purpose
+ *
+ *    <yet to complete>
+ *
+ * Sample call
+ *
+ *    <yet to complete>
+ *
+ * Inputs
+ *
+ *    <yet to complete>
+ *
+ * Outputs
+ *
+ *    <yet to complete>
+ *
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION add_task_to_beginning */
+d350 23
+a372 40
+/* FUNCTION add_task_to_end **************************************************
+ *
+ * Purpose
+ *
+ *    <yet to complete>
+ *
+ * Sample call
+ *
+ *    <yet to complete>
+ *
+ * Inputs
+ *
+ *    <yet to complete>
+ *
+ * Outputs
+ *
+ *    <yet to complete>
+ *
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION add_task_to_end */
+d378 25
+a402 40
+/* FUNCTION add_task_before **************************************************
+ *
+ * Purpose
+ *
+ *    <yet to complete>
+ *
+ * Sample call
+ *
+ *    <yet to complete>
+ *
+ * Inputs
+ *
+ *    <yet to complete>
+ *
+ * Outputs
+ *
+ *    <yet to complete>
+ *
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION add_task_before */
+d404 1
+a404 1
+		     *old_task, struct task_node *new_task)
+d408 4
+d413 3
+a415 4
+   new_task->next = old_task;
+   if ( old_task ) {
+      new_task->prev = old_task->prev;
+      old_task->prev = new_task;
+d426 26
+a451 41
+/* FUNCTION add_task_after **************************************************
+ *
+ * Purpose
+ *
+ *    <yet to complete>
+ *
+ * Sample call
+ *
+ *    <yet to complete>
+ *
+ * Inputs
+ *
+ *    <yet to complete>
+ *
+ * Outputs
+ *
+ *    <yet to complete>
+ *
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION add_task_after */
+void add_task_after(struct task_list *list, struct task_node *old_task,
+d457 7
+a463 4
+   new_task->prev = old_task;
+   if ( old_task ) {
+      new_task->next = old_task->next;
+      old_task->next = new_task;
+d474 29
+a502 40
+/* FUNCTION find_task ********************************************************
+ *
+ * Purpose
+ *
+ *    <yet to complete>
+ *
+ * Sample call
+ *
+ *    <yet to complete>
+ *
+ * Inputs
+ *
+ *    <yet to complete>
+ *
+ * Outputs
+ *
+ *    <yet to complete>
+ *
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION find_task */
+d508 2
+a509 2
+   while ( list->current ) {
+      if ( strcasecmp(list->current->data->name, name) == 0 ) {
+d519 26
+a544 40
+/* FUNCTION list_current ****************************************************
+ *
+ * Purpose
+ *
+ *    <yet to complete>
+ *
+ * Sample call
+ *
+ *    <yet to complete>
+ *
+ * Inputs
+ *
+ *    <yet to complete>
+ *
+ * Outputs
+ *
+ *    <yet to complete>
+ *
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION list_current */
+d550 26
+a575 40
+/* FUNCTION list_next *******************************************************
+ *
+ * Purpose
+ *
+ *    <yet to complete>
+ *
+ * Sample call
+ *
+ *    <yet to complete>
+ *
+ * Inputs
+ *
+ *    <yet to complete>
+ *
+ * Outputs
+ *
+ *    <yet to complete>
+ *
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date...... 
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * Tester....
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+ * FUNCTION list_next */
+d586 1
+a586 1
+/* FUNCTION create_resource_info *********************************************
+@
+
+
+1.2
+log
+@*** empty log message ***
+@
+text
+@a10 10
+ * Author.... Mark M. Lacey (mml)
+ * Date......
+ *
+ * Auditor...
+ * Date......
+ *
+ * Modifications (most recent to least)
+ *
+ *    <none>
+ *
+d23 3
+a25 1
+ *    <yet to complete>
+d29 1
+a29 1
+ *    <yet to complete>
+d33 1
+a33 1
+ *    <yet to complete>
+d37 2
+a38 1
+ *    <yet to complete>
+a39 8
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+ * Functions referenced
+ *
+ *    <yet to complete>
+ *
+d41 1
+a41 1
+ * Date...... 
+d46 3
+d68 20
+a87 1
+ *    <yet to complete>
+d91 3
+a93 1
+ *    <yet to complete>
+d97 1
+a97 1
+ *    <yet to complete>
+a98 4
+ * Pertinent information
+ *
+ *    <yet to complete>
+ *
+d104 1
+a104 1
+ * Date...... 
+d109 3
+d206 1
+a206 1
+ * Date...... 
+d211 3
+d257 1
+a257 1
+ * Date...... 
+d259 3
+d314 3
+d360 3
+d415 3
+d461 3
+d506 3
+d566 3
+d626 3
+d682 3
+d727 3
+d778 3
+d832 3
+d877 3
+d921 3
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d26 2
+a27 1
+FILE *debug_file;
+d29 42
+d110 24
+a133 20
+				 char *desc, 
+				 unsigned duration, 
+				 unsigned planned_start_date, 
+				 unsigned planned_end_date, 
+				 unsigned actual_start_date, 
+				 unsigned actual_end_date, 
+				 unsigned forecast_start_date, 
+				 unsigned forecast_end_date, 
+				 unsigned earliest_start_date, 
+				 unsigned earliest_end_date, 
+				 unsigned latest_start_date, 
+				 unsigned latest_end_date, 
+				 unsigned float_time, 
+				 boolean milestone, 
+				 boolean deliverable, 
+				 struct resource_list *resources, 
+				 struct task_list *subtasks, 
+				 struct task_data *parent,
+				 struct task_list *dependencies,
+				 struct task_list *dependants)
+d163 4
+a166 1
+   new_info->dependants = dependants;
+d363 341
+d748 4
+a751 2
+   new_info->name = (char *) malloc(strlen(name)+1);
+   strcpy(new_info->name, name);
+a794 1
+   free(old->name);
+d798 83
+@

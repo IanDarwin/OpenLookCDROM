@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# This script launches a videotext-process to display a videotext-file.
+# If videotext is already running, it justs sends a signal to the old
+# process to make it display the new file.
+
+PIDFILE=~/.view_vtx.pid
+trap "" USR1
+
+if [ $# -ne 1 ]; then
+  echo "Usage: view_vtx <file>" >&2
+  exit 1
+fi
+
+if [ -e "$PIDFILE" ]; then
+  pid="`cat $PIDFILE`"
+  cat "$1" > /tmp/vtx$pid
+  kill -USR1 $pid &>/dev/null && exit
+fi
+
+# This parts gets executed only when no pid-file exists in the user's home-
+# directory or we weren't able to send a signal to the old videotext-process,
+# which probably means that the contents of the pid-file are obsolete.
+
+trap "rm -f $PIDFILE" 0
+pid=$$
+echo $pid > "$PIDFILE"
+cat "$1" > /tmp/vtx$pid
+videotext -f "/tmp/vtx$pid" &
+vtxpid=$!
+trap "kill -USR1 $vtxpid" USR1
+wait >/dev/null
+rm -f /tmp/vtx$pid

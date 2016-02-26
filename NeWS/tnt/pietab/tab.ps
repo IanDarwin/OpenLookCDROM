@@ -1,0 +1,1616 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Tab Windows for the NeWS toolkit
+% Version 3.0.1
+%
+% Copyright (C) 1991, by Don Hopkins. All rights reserved.
+% This program is provided for unrestricted use, provided that this 
+% copyright message is preserved. There is no warranty, and no author 
+% or distributer accepts responsibility for any damage caused by this 
+% program. 
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% This file implements a pie menu tab window manager for the NeWS toolkit.
+% It should work with TNT2.0fcs on OW2.0fcs and TNT3.0beta on OW3.0beta.
+% This code and the ideas behind it were developed over time by Don Hopkins 
+% at the University of Maryland, UniPress Software, and Sun Microsystems. 
+% Pie menus and tab windows and NOT patented or restricted, and the
+% interface and algorithms may be freely copied and improved upon. 
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+openwinversion 0 get 51 eq { % XXX: V3
+    /NeWS 3 0 findpackage beginpackage
+    /TNTCore 3 0 findpackage beginpackage
+    /TNT 3 0 findpackage dup beginpackage
+    dup beginautoload begin
+} { % XXX: V2
+    systemdict begin
+} ifelse
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ClassTabWindow
+%
+
+/ClassTabWindow [ClassWindow ClassPieMenuCanvas]
+dictbegin
+    /TabEdge /West def
+    /TabPosition 1 def
+dictend
+classbegin
+
+    /Hands? true def
+
+    /tabedge { % - => /West|/East|/North|/South
+	TabEdge
+    } def
+
+    /settabedge { % /West|/East|/North|/South => -
+	/TabEdge exch store
+	/invalidate self send
+    } def
+
+    /changetabedge { % edge => -
+	gsave
+	    Parent setcanvas
+	    /bbox self send /unfittab self send
+	    5 -1 roll /settabedge self send
+	    /fittab self send
+	    /reshape self send
+	grestore
+    } def
+
+    /tabposition { % - => 0..1
+	TabPosition
+    } def
+
+    /settabposition { % 0..1 => -
+	/TabPosition exch store
+	/invalidate self send
+    } def
+
+    /changetabposition { % 0..1 => -
+	gsave
+	    Parent setcanvas
+	    /bbox self send
+	    5 -1 roll /settabposition self send
+	    /reshape self send
+	grestore
+    } def
+
+    /NInset { % - => n
+        /NInset super send
+	TabEdge /North eq { TabSize exch pop add } if
+	self /NInset 2 index put
+    } def
+
+    /SInset { % - => n
+        /SInset super send
+	TabEdge /South eq { TabSize exch pop add } if
+	self /SInset 2 index put
+    } def
+
+    /EInset { % - => n
+        /EInset super send
+	TabEdge /East eq { TabSize pop add } if
+	self /EInset 2 index put
+    } def
+
+    /WInset { % - => n
+        /WInset super send
+	TabEdge /West eq { TabSize pop add } if
+	self /WInset 2 index put
+    } def
+
+    /TabSize { 100 25 } def
+
+    /EdgeTabXYDict 4 dict def
+    EdgeTabXYDict begin
+	/North { % width height => x y
+	    TabSize xysub
+	    exch TabPosition mul round exch % x y
+	} def
+	/South { % width height => x y
+	    pop TabSize pop sub TabPosition mul round % x
+	    0 % x 0
+	} def
+	/East { % width height => x y
+	    TabSize xysub TabPosition mul round % x y
+	} def
+	/West { % width height => x y
+	    exch pop 0 exch % 0 height
+	    TabSize exch pop sub TabPosition mul round % 0 y
+	} def
+    end % EdgeTabXYDict
+
+    /TabXY { % - => x y
+        gsave
+	    /opened? self send {
+	        /size self send
+	        //EdgeTabXYDict TabEdge get exec
+	    } { 0 0 } ifelse
+	    2 copy 2 packedarray cvx
+	    self exch /TabXY exch put
+	grestore
+    } def
+
+    /TabPathDict 4 dict def
+    TabPathDict begin
+	/West { % - => -
+	    tw 0 moveto
+	    0 h th sub TabPosition mul round rlineto
+	    tw neg 0 rlineto
+	    0 th rlineto
+	    tw 0 rlineto
+	    tw h lineto
+	    w h lineto
+	    w 0 lineto
+	    closepath
+	} def
+	/East { % - => -
+	    h th sub TabPosition mul round
+	    0 0 moveto
+	    0 h rlineto
+	    w tw sub 0 rlineto
+	    0 1 index th add h sub
+	    rlineto
+	    tw 0 rlineto
+	    0 th neg rlineto
+	    tw neg 0 rlineto
+	    0 exch neg rlineto
+	    closepath
+	} def
+	/North { % - => -
+	    0 0 moveto
+	    0 h th sub rlineto
+	    w tw sub TabPosition mul round 0 rlineto
+	    0 th rlineto
+	    tw 0 rlineto
+	    0 th neg rlineto
+	    w h th sub lineto
+	    w 0 lineto
+	    closepath
+	} def
+	/South { % - => -
+	    0 th moveto
+	    0 h th sub rlineto
+	    w 0 rlineto
+	    0 h th sub neg rlineto
+	    w tw sub TabPosition mul round tw add
+	    th lineto
+	    0 th neg rlineto
+	    tw neg 0 rlineto
+	    0 th rlineto
+	    closepath
+	} def
+    end % TabPathDict
+
+    /TabPath { % x y w h => -
+	10 dict begin % tempdict
+	    /mat matrix currentmatrix def
+	    /minsize self send xymax
+	    /h exch def /w exch def
+	    TabSize /th exch def /tw exch def
+	    translate
+	    //TabPathDict TabEdge get exec
+	    mat setmatrix
+	end % tempdict
+    } def
+
+    /path { % x y w h => -
+        /TabPath self send
+    } def
+
+    /EdgeUnfitDict 4 dict def
+    EdgeUnfitDict begin
+	/West { % x y w h => x' y' w' h'
+	    4 -1 roll TabSize pop add 4 1 roll
+	    exch TabSize pop sub exch
+	} def
+	/East { % x y w h => x' y' w' h'
+	    exch TabSize pop sub exch
+	} def
+	/North { % x y w h => x' y' w' h'
+	    TabSize exch pop sub
+	} def
+	/South { % x y w h => x' y' w' h'
+	    3 -1 roll TabSize exch pop add 3 1 roll
+	    TabSize exch pop sub
+	} def
+    end % EdgeUnfitDict
+
+    % given tabbed frame bbox, returns bbox of frame w/out tab
+    %
+    /unfittab { % x y w h => x' y' w' h'
+        //EdgeUnfitDict TabEdge get exec
+    } def
+
+    /EdgeFitDict 4 dict def
+    EdgeFitDict begin
+	/West { % x y w h => x' y' w' h'
+	    4 -1 roll TabSize pop sub 4 1 roll
+	    exch TabSize pop add exch
+	} def
+	/East { % x y w h => x' y' w' h'
+	    exch TabSize pop add exch
+	} def
+	/North { % x y w h => x' y' w' h'
+	    TabSize exch pop add
+	} def
+	/South { % x y w h => x' y' w' h'
+	    3 -1 roll TabSize exch pop sub 3 1 roll
+	    TabSize exch pop add
+	} def
+    end
+
+    % given untabbed frame bbox, returns bbox of frame with tab
+    %
+    /fittab { % x' y' w' h' => x y w h
+        //EdgeFitDict TabEdge get exec
+    } def
+
+    /invalidate { % - => -
+        /NInset unpromote
+        /SInset unpromote
+        /EInset unpromote
+        /WInset unpromote
+	/TabSize unpromote
+	/TabXY unpromote
+	/invalidate super send
+    } def
+
+    /InReshapeArea? { % event => bool
+        matrix currentmatrix
+	/bbox self send /unfittab self send
+	4 2 roll translate
+	
+	4 -1 roll begin XLocation YLocation end		% w h X Y
+	4 2 roll
+	ReshapeSize dup xysub				% X Y w h
+
+	4 copy ReshapeSize dup pointinrect?		% X Y w h bool
+	4 index 4 index 0 0 ReshapeSize dup pointinrect? or
+	4 index 4 index 0 4 index ReshapeSize dup pointinrect? or
+	4 index 4 index 4 index 0 ReshapeSize dup pointinrect? or
+
+	5 1 roll pop pop pop pop
+	exch setmatrix
+    } def
+
+    /PaintReshape { % - => -
+	GraphicFont setfont
+	matrix currentmatrix
+	/bbox self send /unfittab self send
+	4 2 roll translate
+	exch ReshapeSize sub exch % w-reshape h
+	0 1 index
+	3D? {
+	    BG0 setcolor 2 copy moveto (\130) show
+	    BG setcolor  2 copy moveto (\132) show
+	    BG3 setcolor moveto (\131) show
+	    2 copy
+	    BG0 setcolor 2 copy moveto (\133) show
+	    BG setcolor  2 copy moveto (\135) show
+	    BG3 setcolor moveto (\134) show
+	    1 index ReshapeSize
+	    BG0 setcolor 2 copy moveto (\136) show
+	    BG setcolor  2 copy moveto (\140) show
+	    BG3 setcolor moveto (\137) show
+	    0 ReshapeSize
+	    BG0 setcolor 2 copy moveto (\141) show
+	    BG setcolor  2 copy moveto (\143) show
+	    BG3 setcolor moveto (\142) show
+	} {
+	    2DFG setcolor
+	    moveto (\242) show
+	    2 copy moveto (\243) show
+	    1 index ReshapeSize
+	    moveto (\244) show
+	    0 ReshapeSize
+	    moveto (\245) show
+        } ifelse
+	pop pop
+	setmatrix
+    } def
+
+    /PaintLabelBackground { % - => -
+	WInset SInset
+	/size self send
+	EInset NInset xysub 3 index 3 index xysub	% x y w h
+	3 -1 roll add exch HeaderHeight HeaderGap add
+	/opened? self send { 1 add } if
+	BackgroundColor setcolor
+	rectpath fill
+    } def
+
+    /reshape { % x y w h => -
+	/reshape super send
+	/?validate self send
+    } def
+
+    /minsize { % - => w h
+        /minsize super send
+	/TabSize self send xymax
+    } def
+
+    /PaintFocus { % - => -
+        WInset SInset
+	/size self send						% w h
+	EInset NInset xysub 3 index 3 index xysub		% x y w h
+	3 -1 roll add exch HeaderHeight
+	-1 2 xyadd
+
+	/ClickToType? self send {
+	    4 2 roll 1 add 4 2 roll
+	    3D? {true Paint3DBox} {2DFG setcolor rectpath fill} ifelse
+	} { % x y w h
+	    3 index ReshapeSize BorderEdge sub add
+	    3 index 2 index add 1 add
+	    3 index ReshapeSize BorderEdge sub dup add sub
+	    3D? {Paint3DLine} {2 rectpath 2DFG setcolor fill} ifelse
+    
+    	    pop
+	    3D? {Paint3DLine} {2 rectpath fill} ifelse
+	} ifelse
+    } def
+
+    /PaintTab { % - => -
+	gsave
+	    TabXY translate
+	    newpath 0 0 TabSize rectpath clip newpath
+	    BackgroundColor FillCanvas
+	    ForegroundColor BorderStroke StrokeCanvas
+	    /Label load dup null eq {pop} {
+		ForegroundColor setcolor FooterFont setfont
+		TabSize pop    					% dspitm w
+		1 index DisplayItemSize pop sub 2 div 4 max	% dspitm x
+		4 moveto DisplayItemPaint
+	    } ifelse
+	grestore
+    } def
+
+    /Paint { % - => -
+	/PaintBackground self send
+	/PaintTab self send
+	/PaintBorder self send
+	Reshape? {/PaintReshape self send} if
+	Label?   {false /PaintHeader self send} if
+	Footer?  {false /PaintFooter self send} if
+    } def
+
+    /PaintLabel { % erase? => -
+	/Label load 
+
+	WInset NInset /size self send			% ? di x y w h
+	EInset NInset xysub 3 index 3 index xysub	% ? di x y w h
+	3 -1 roll add HeaderGap add exch HeaderHeight
+
+	VisualState /Busy eq {
+	    ForegroundColor setcolor
+	    Gray12Stipple 5 copy pop //rectpath StipplePath
+	} if
+
+	Close? Pin? or {
+	    Close? {CloseSize ClosePad add} {PinSize PinPad add} ifelse
+	    5 2 roll 3 index sub
+	    5 2 roll exch add
+	    4 1 roll
+	} if
+	gsave % for clip
+	    TextFont setfont				% ? di x y w h
+	    4 copy rectpath clip			% ? di x y w h
+	    6 -1 roll {
+	        ClickToType? Focus? and {
+		    3D? {BG2} {2DFG} ifelse
+	        } {BackgroundColor} ifelse
+	        setcolor clippath fill
+	    } if					% di x y w h
+	    4 2 roll					% di w h x y
+	    HeaderPad add moveto			% di w h
+	    pop 1 index DisplayItemSize pop		% di w swidth
+	    2 copy lt {pop pop} {
+		sub 2.2 div 0 rmoveto % note: 2++ to round toward left
+	    } ifelse					% di
+	    3D? not ClickToType? Focus? and and
+	        {BackgroundColor} {ForegroundColor} ifelse
+	    setcolor DisplayItemPaint
+	grestore
+    } def
+
+    /PaintPin { % pinned? => -
+	% REMIND: simplify!
+	GraphicFont setfont
+	{103} {100} ifelse
+
+%	WInset PinX BorderEdge sub add
+	WInset PinPad add
+	/size self send exch pop NInset sub
+	HeaderHeight add HeaderPad add
+
+	2 copy PinSize HeaderHeight HeaderPad 2 mul sub neg % i x y x y w h
+	rectpath
+	3D? {
+	    BG setcolor fill	% i x y
+	    BG0 setcolor 2 copy moveto 2 index cvis show
+	    BG2 setcolor 2 copy moveto 2 index 2 add cvis show
+	    BG3 setcolor moveto 1 add cvis show
+	} {
+	    2DBG setcolor fill	% i x y
+	    2DFG setcolor moveto
+	    100 eq { (\23) } { (\24) } ifelse show
+	} ifelse
+    } def
+
+    /InCloseArea? { % event => bool
+	begin XLocation YLocation end			% X Y
+
+	/size self send exch pop NInset sub
+	HeaderGap add					% X Y y
+
+	Close? {
+	    CloseX exch CloseSize			% X Y x y w
+	} {
+	    PinX exch PinSize				% X Y x y w
+	} ifelse
+	HeaderHeight
+	pointinrect?					% bool
+    } def
+
+    /CloseX { % - => closex
+        WInset /CloseX super send BorderEdge sub add
+    } def
+
+    /PinX { % - => pinx
+        WInset /PinX super send BorderEdge sub add
+    } def
+
+    /HeaderDeltaY { % - => headerdeltay
+        NInset HeaderGap sub
+    } def
+
+    /PaintClose { % down? => -
+	GraphicFont setfont
+
+	CloseX
+	/size self send exch pop NInset sub
+	HeaderHeight add HeaderGap add
+	3D? {
+	    3 copy moveto {BG3} {BG0} ifelse setcolor (\63) show
+	    3 copy moveto {BG0} {BG3} ifelse setcolor (\64) show
+	    3 copy moveto {BG2} {BG} ifelse setcolor (\65) show
+
+	    4 -4 xyadd
+
+	    2 copy moveto BG3 setcolor (\55) show
+	    2 copy moveto BG0 setcolor (\56) show
+	    2 copy moveto BG2 setcolor (\57) show
+	    pop pop pop
+	} {
+	    2DBG setcolor 1 index 1 add 1 index moveto (\164) show
+	    2DFG setcolor moveto { (\27) } { (\26) } ifelse show
+        } ifelse
+    } def
+
+    /PaintFooter { % erase? => -
+	/LeftFooter load /RightFooter load		% ? l r
+	WInset FooterGap add				% ? l r x
+	/size self send pop				% ? l r x w
+	1 index sub EInset FooterGap add sub		% ? l r x w
+	exch						% ? l r w x
+	SInset FooterPad sub FooterHeight sub		% ? l r w x y
+	6 -1 roll {
+	    2 copy 4 index FooterHeight
+	    BackgroundColor setcolor rectpath
+	    fill
+	} if
+
+	FooterFont setfont
+	ForegroundColor setcolor
+	2 copy moveto 5 -1 roll DisplayItemPaint	% r w x y
+	3 1 roll					% r y w x 
+	add 2 index DisplayItemSize pop sub exch	% r x y
+	moveto DisplayItemPaint
+    } def
+
+    /InTabArea? { % event => bool
+	/opened? self send {
+	    begin XLocation YLocation end			% X Y
+	    TabXY TabSize
+	    pointinrect?					% bool
+	} {
+	    pop true
+	} ifelse
+    } def
+
+    /TrackStart { % event => /Default true
+        dup /Name get AdjustButton ne {
+	    /TrackStart super send
+	} {
+	    gsave
+	        self setcanvas
+		dup InTabArea? not { /TrackStart super send } {
+		    /WindowTracking? true store
+		    /opened? self send
+		    TrackDict begin
+			{   /Start /TabStart load def
+			    /Motion /TabMotion load def
+			    /Stop /TabStop load def
+			} {
+			    /Start /ShowWhereStart load def
+			    /Motion NullNotify def
+			    /Stop /ShowWhereStop load def
+			} ifelse
+		    end
+		    [exch TrackDict /Start get self]
+		    /sendmanager EventMgr send
+		    /Default true
+		} ifelse
+	    grestore
+        } ifelse
+    } def
+
+% Window sliding stuff:
+
+    /MoveStart { % event => -
+	true /inhibitfocus ClassFocus send
+        gsave
+	    TrackDict begin
+	        self setcanvas
+		/edge
+		    1 index InTabArea?
+		    opened? self send not or {
+		        TabEdge {
+			    /North /South { /Horizontal }
+			    /East /West { /Vertical }
+			} case
+		    } { /All } ifelse
+	        def
+	        /Can Parent createoverlay def
+		Can setcanvas
+		InitTracking
+		/TrackHasMoved? false store 
+		dup begin
+		    /TrackStartXY [ XLocation YLocation ] cvx store
+		end
+		TrackEvent				%
+		/downx x def /downy y def
+		/downname name def
+	    end % TrackDict
+	grestore
+    } def
+
+    /MoveMotion { % event => -
+        gsave
+	    TrackDict begin
+		TrackHasMoved? {
+		    Can setcanvas
+		    TrackEvent				%
+		    AdjustEdge
+		    e /Shift /modifierdown? ClassKeyboard send {
+			FinishAdjustEdge
+		    } if
+		    pop
+		    PreviewAdjustEdge
+		} {
+		    Can setcanvas
+		    begin XLocation YLocation end	%
+		    TrackStartXY xysub
+		    abs MoveThresh ge exch abs MoveThresh ge or {
+			/TrackHasMoved? true store
+		    } if
+		} ifelse
+	    end % TrackDict
+	grestore
+    } def
+
+    /MoveStop { % event => -
+        dup /MoveMotion self send		% event
+	TrackHasMoved? {
+	    pop					%
+	    gsave
+		TrackDict begin
+		    Can setcanvas erasepage
+		    FinishAdjustEdge
+		end % TrackDict
+	    grestore
+openwinversion 0 get 51 eq { % XXX: V3
+	        timeval
+} { % XXX: V2
+	        0
+} ifelse
+	} {					% event
+	    dup /HandleSingleClick self send	% event
+openwinversion 0 get 51 eq { % XXX: V3
+	        /TimeStamp get			% time
+} { % XXX: V2
+	        /TimeStampMS get		% time
+} ifelse
+	} ifelse				% time
+	/TrackStopTime exch store		%
+	TrackDict cleanoutdict
+        false /inhibitfocus ClassFocus send
+    } def
+
+% BBox dragging stuff:
+
+    /BBoxStart { % event => -
+	true /inhibitfocus ClassFocus send
+        gsave
+	    TrackDict begin
+	        /Can Parent createoverlay def
+		Can setcanvas
+		InitTracking
+		x x0 sub abs  x x1 sub abs  lt
+		y y0 sub abs  y y1 sub abs  lt { % South
+		    { /SouthWest } { /SouthEast } ifelse
+		} { % North
+		    { /NorthWest } { /NorthEast } ifelse
+		} ifelse
+		/edge exch def
+		TrackEvent
+		/downx x def /downy y def
+		/downname name def
+	    end % TrackDict
+	grestore
+    } def
+
+    /BBoxMotion { % event => -
+        gsave
+	    TrackDict begin
+		Can setcanvas
+		TrackEvent
+		AdjustEdge
+		e /Shift /modifierdown? ClassKeyboard send {
+		    FinishAdjustEdge
+		} if
+		pop
+		PreviewAdjustEdge
+	    end % TrackDict
+	grestore
+    } def
+
+    /BBoxStop { % event => -
+        dup /BBoxMotion self send
+	gsave
+	    TrackDict begin
+		Can setcanvas erasepage
+		FinishAdjustEdge
+	    end % TrackDict
+	grestore
+	TrackDict cleanoutdict
+        false /inhibitfocus ClassFocus send
+    } def
+
+% Tab dragging stuff:
+
+    /TabStart { % event => -
+	true /inhibitfocus ClassFocus send
+	gsave
+	    /TrackStartXY [
+		2 index begin XLocation YLocation end
+	    ] cvx store
+	    /TrackHasMoved? false store
+	    Parent createoverlay dup setcanvas			% event can
+	    /bbox self send /unfittab self send rect2points	% e c w s e n
+	    TrackDict begin
+		/north exch def /east exch def			% e c w s
+		/south exch def /west exch def			% e c
+		/Can exch def					% e
+	    end % TrackDict
+	grestore
+	/TabMotion self send					%
+    } def
+
+    /TabMotion { % event => -
+	gsave
+	    TrackDict begin
+		Can setcanvas
+		begin /x XLocation /y YLocation end def def
+		TrackHasMoved? not {
+		    x y TrackStartXY xysub
+		    abs MoveThresh ge exch abs MoveThresh ge or {
+			/TrackHasMoved? true store
+		    } if
+		} if
+		TrackHasMoved? {
+		    TabEdge {
+		      /West {
+			x west gt {
+			  y north gt { /North /settabedge self send } {
+			    y south lt { /South /settabedge self send } {
+			      x east gt { /East /settabedge self send } if
+			    } ifelse
+			  } ifelse
+			} if
+		      }
+		      /East {
+			x east lt {
+			  y north gt { /North /settabedge self send } {
+			    y south lt { /South /settabedge self send } {
+			      x west lt { /West /settabedge self send } if
+			    } ifelse
+			  } ifelse
+			} if
+		      }
+		      /North {
+			y north lt {
+			  x west lt { /West /settabedge self send } {
+			    x east gt { /East /settabedge self send } {
+			      y south lt { /South /settabedge self send } if
+			    } ifelse
+			  } ifelse
+			} if
+		      }
+		      /South {
+			y south gt {
+			  x west lt { /West /settabedge self send } {
+			    x east gt { /East /settabedge self send } {
+			      y north gt { /North /settabedge self send } if
+			    } ifelse
+			  } ifelse
+			} if
+		      }
+		    } case
+
+		    % XXX: clean this up
+		    TabEdge {
+		      /West /East {
+			y south sub
+			TabSize exch pop .5 mul sub
+			north south sub TabSize exch pop sub 1 max div
+			0 max 1 min
+		      }
+		      /North /South {
+			x west sub
+			TabSize pop .5 mul sub
+			east west sub TabSize pop sub 1 max div
+			0 max 1 min
+		      }
+		    } case
+		    /settabposition self send
+		} if
+		west south east 2 index sub north 2 index sub % x y w h
+	    end % TrackDict
+	    /fittab self send
+	    4 copy /TabPath self send
+	    4 2 roll -1 1 xyadd 4 2 roll /TabPath self send
+	    erasepage
+	    stroke
+	grestore
+    } def
+
+    /TabStop { % event => -
+        /TabMotion self send			%
+	gsave
+	    TrackHasMoved? {
+		TrackDict begin
+		    Can setcanvas erasepage
+		    west south			% x y
+		    east 2 index sub		% x y w
+		    north 2 index sub		% x y w h
+		end % TrackDict
+		/fittab self send
+		/minsize self send		% x y w h mw mh
+		3 -1 roll max		% x y w mw H
+		3 1 roll max		% x y H W
+		exch			% x y W H
+		/reshape self send		%
+	    } {
+	        TrackDict /Can get setcanvas erasepage
+	    } ifelse
+	grestore
+	TrackDict cleanoutdict
+        false /inhibitfocus ClassFocus send
+    } def
+
+    /UpdateTab {
+	/PaintTab self send
+	/PaintBorder self send
+    } def
+
+    /ShowWhereStart { % event => -
+        pop
+    } def
+
+    /ShowWhereStop { % event => -
+        pop
+    } def
+
+% Window Placement:
+
+    /PlaceDelta { % - => dx dy
+        0 TabSize neg exch pop
+    } def
+
+    % XXX: V2
+    /place { % - => -
+	gsave Parent dup setcanvas
+	    /TNTPlaceXY known not {
+		Parent /TNTPlaceXY [
+		    0 /size Parent send exch pop
+		] cvx put
+	    } if
+	    /reshaped? self send  		% bool
+	    Parent /TNTPlaceXY get exec		% bool x y
+	    2 index {
+		/size self send			% bool x y w h
+	    } {
+		/preferredsize self send	% bool x y w h
+	    } ifelse				% bool x y-h w h
+	    3 -1 roll 1 index sub 3 1 roll		
+
+	    4 copy rect2points			% bool x y-h w h x y-h x1 y1
+	    4 -1 roll 0 lt 4 -1 roll 0 lt or {	% bool x y-h w h x1 y1
+		pop pop true			% bool x y-h w h true
+	    } {					% bool x y-h w h x1 y1
+		/size Parent send		% bool x y-h w h x1 y1 W h
+		3 -1 roll lt			% bool x y-h w h x1 W H<y1
+		3 1 roll gt or			% bool x y-h w h H<y1|x1>W
+	    } ifelse				% bool x y-h w h init?
+
+	    {   Parent /TNTPlaceXY [
+		    0 /size Parent send exch pop
+		    PlaceDelta xyadd
+		] cvx put			% bool x y-h w h
+
+		4 2 roll			% bool w h x y-h
+		pop pop				% bool w h
+		0 /size Parent send exch pop
+		2 index sub			% bool w h x y-h
+		4 2 roll			% bool x y-h w h
+	    } {					% bool x y-h w h
+		3 index 3 index			% bool x y-h w h x y-h
+		2 index add			% bool x y-h w h x y
+		PlaceDelta xyadd		% bool x y-h w h x' y'
+		2 array astore cvx		% bool x y-h w h {x' y'}
+		Parent /TNTPlaceXY 3 -1 roll put% bool x y-h w h
+	    } ifelse
+
+	    5 -1 roll {				% x y-h w h
+		pop pop /move self send
+	    } {					% x y-h w h
+		/reshape self send
+	    } ifelse
+	grestore
+    } def
+
+% Random utilities:
+
+    /?Open { % - => -
+        /opened? self send not {
+	    /ToggleOpened self send
+	} if
+    } def
+
+openwinversion 0 get 51 eq { % XXX: V3
+    /flashwindow { % - => -
+	{   /Selected? Selected? not def /Focus? Focus? not def
+	    /paintwindow self send
+	    [0 500000] sleep
+	    /Selected? Selected? not def /Focus? Focus? not def
+	    /paintwindow self send
+	} fork pop
+    } def
+} { % XXX: V2
+    /flashwindow { % - => -
+	{   /Selected? Selected? not def /Focus? Focus? not def
+	    /paintwindow self send
+	    .5 60 div sleep
+	    /Selected? Selected? not def /Focus? Focus? not def
+	    /paintwindow self send
+	} fork pop
+    } def
+} ifelse
+
+% ClassPieMenuWindowManager mixin hooks:
+
+    /TrackBBox { % x y w h => x' y' w' h'
+	/unfittab self send
+    } def
+
+    /UnTrackBBox { % x y w h => x' y' w' h'
+        /fittab self send
+    } def
+
+    /demo {
+	ClassName /ClassTabWindow eq {
+	    /demo ClassTabBaseWindow send
+	    /demo ClassTabPopupWindow send
+	} {
+	    /demo super send
+	} ifelse
+    } def
+
+classend def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ClassPieMenuWindowManager
+%
+
+/ClassPieMenuWindowManager ClassCanvas []
+classbegin
+
+% ClassPieMenuWindowManager mixin hooks:
+
+%   /TrackBBox % x y w h => x' y' w' h'
+%   /UnTrackBBox % x y w h => x' y' w' h'
+
+% Pie Menu Definitions:
+
+/FBFindMenu where { pop } { % XXX: V2
+    % Utility for managing shared menus with multiple framebuffers.
+    % The proc should create and return a menu whose parent is
+    % "/framebufferof self send". The dict is the cache of menus
+    % keyed by framebuffer. The menu for the object's framebuffer is 
+    % looked up in the cache, created and stashed away if needed,
+    % and returned.
+    %
+    /FBFindMenu { % proc dict => menu
+	/framebufferof self send		% proc dict fb
+	2 copy known {
+	    get exch pop			% menu
+	} {					% proc dict fb
+	    3 -1 roll cvx exec			% dict fb menu
+	    dup 4 1 roll put			% menu
+	} ifelse
+    } def
+
+} ifelse
+
+    /Parent { framebuffer } /installmethod ClassCanvas send
+
+    /PieMenu { % - => menu
+	/MakeWindowPieMenu WindowPieMenus /FBFindMenu self send
+    } def
+
+    /EdgeItemList [
+        /Icon findfont 1 scalefont begin
+	    [ [ { /size eq {11  7}
+		  { [(\243) -2 -1] DisplayItemPaint }
+		ifelse } currentdict ] ]
+	    [ [ { /size eq {15 15}
+		  { [(\237)  0 -1] DisplayItemPaint }
+		ifelse } currentdict ] ]
+	    [ [ { /size eq { 7 11}
+		  { [(\244)  0 -1] DisplayItemPaint }
+		ifelse } currentdict ] ]
+	    [ [ { /size eq {15 15}
+		  { [(\241)  0 -1] DisplayItemPaint }
+		ifelse } currentdict ] ]
+	    [ [ { /size eq {11  7}
+		  { [(\243) -2 -1] DisplayItemPaint }
+		ifelse } currentdict ] ]
+	    [ [ { /size eq {15 15}
+		  { [(\242)  0 -1] DisplayItemPaint }
+		ifelse } currentdict ] ]
+	    [ [ { /size eq { 7 11}
+		  { [(\244)  0 -1] DisplayItemPaint }
+		ifelse } currentdict ] ]
+	    [ [ { /size eq {15 15}
+		  { [(\240)  0 -1] DisplayItemPaint }
+		ifelse } currentdict ] ]
+	end
+     ] def
+
+     /SlideItemList [
+	/ZapfDingbats findfont 35 scalefont begin
+	    [ [ (\327) currentdict ]
+		{ null blockinputqueue
+		  exch pop /VMoveFromUser /sendtarget 2 index send } ]
+	    [ [ (\326) currentdict ]
+		{ null blockinputqueue
+		  exch pop /HMoveFromUser /sendtarget 2 index send } ]
+	    [ [ (\327) currentdict ]
+		{ null blockinputqueue
+		  exch pop /VMoveFromUser /sendtarget 2 index send } ]
+	    [ [ (\326) currentdict ]
+		{ null blockinputqueue
+		  exch pop /HMoveFromUser /sendtarget 2 index send } ]
+	end
+    ] def
+
+    /WindowPieMenus growabledict def
+
+    /MakeWindowPieMenu { % - => menu
+        /framebufferof self send /new ClassPieMenu send
+	[   [ (Front!)
+	        { exch pop /FrontFromUser /sendtarget 2 index send } ]
+	    [ (Zoom!)
+	        { exch pop /ZoomFromUser /sendtarget 2 index send } ]
+	    [ ((Grab))
+	        /framebufferof self send /new ClassPieMenu send
+		[ /Icon findfont 1 scalefont begin
+		    [ [ { /size eq {11  7}
+			  { [(\243) -2 -1] DisplayItemPaint }
+			ifelse } currentdict ] ]
+		    [ [ { /size eq {15 15}
+			  { [(\237)  0 -1] DisplayItemPaint }
+			ifelse } currentdict ] ]
+		    [ [ { /size eq { 7 11}
+			  { [(\244)  0 -1] DisplayItemPaint }
+			ifelse } currentdict ] ]
+		    [ [ { /size eq {15 15}
+			  { [(\241)  0 -1] DisplayItemPaint }
+			ifelse } currentdict ] ]
+		    [ [ { /size eq {11  7}
+			  { [(\243) -2 -1] DisplayItemPaint }
+			ifelse } currentdict ] ]
+		    [ [ { /size eq {15 15}
+			  { [(\242)  0 -1] DisplayItemPaint }
+			ifelse } currentdict ] ]
+		    [ [ { /size eq { 7 11}
+			  { [(\244)  0 -1] DisplayItemPaint }
+			ifelse } currentdict ] ]
+		    [ [ { /size eq {15 15}
+			  { [(\240)  0 -1] DisplayItemPaint }
+			ifelse } currentdict ] ]
+		end ] /setitemlist 2 index send
+		/Icon findfont 1 scalefont /settextfont 2 index send
+		{ null blockinputqueue
+		  exch pop /AdjustEdgeFromUser /sendtarget 2 index send
+		} /setnotifier 2 index send
+		20 /setradiusmin 2 index send ]
+	    [ ((Frame))
+		/framebufferof self send /new ClassPieMenu send
+		[   [ (Quit!)
+		        { exch pop /QuitFromUser /sendtarget 2 index send } ]
+		    [ (Props...)
+		        { exch pop /PropsFromUser /sendtarget 2 index send } ]
+		] /setitemlist 2 index send ]
+	    [ (Back!)
+	        { exch pop /BackFromUser /sendtarget 2 index send } ]
+	    [ (Paint!)
+	        { exch pop /RefreshFromUser /sendtarget 2 index send } ]
+	    [ ((Push))
+		/framebufferof self send /new ClassPieMenu send
+		[   [ [ { /size eq {64 35} { (\271) DisplayItemPaint } ifelse
+		        } /Icon findfont ]
+			{ exch pop /PlaceFromUser /sendtarget 2 index send } ]
+		    [ [ (\054) /ZapfDingbats findfont 50 scalefont ]
+			{ null blockinputqueue
+		          exch pop /MoveFromUser /sendtarget 2 index send } ]
+		    [ [ (\327) /ZapfDingbats findfont 40 scalefont ]
+			{ null blockinputqueue
+			  exch pop /VMoveFromUser /sendtarget 2 index send } ]
+		    [ [ (\326) /ZapfDingbats findfont 40 scalefont ]
+			{ null blockinputqueue
+			  exch pop /HMoveFromUser /sendtarget 2 index send } ]
+		] /setitemlist 2 index send
+		5 /setradiusmin 2 index send ]
+	    [ (Icon!)
+	        { exch pop /CloseFromUser /sendtarget 2 index send } ]
+	] /setitemlist 2 index send
+    } def
+
+% Pie Menu Handlers:
+
+    /PieMenuStart { % piename event => piename event <pie true> | false
+        /PieMenuStart super send dup {
+	    % Let the right button pop up the regular frame menu if the
+	    % event is in the close button, by refusing pie tracking.
+	    Close? {
+	        gsave
+		    self setcanvas
+		    2 index InCloseArea? {
+		      pop pop false
+		    } if
+		grestore
+	    } if
+	} if
+    } def
+
+    /PlaceFromUser { % ctl => -
+	/place self send
+    } def
+
+    /FrontFromUser { % ctl => -
+	pop /totop self send
+    } def
+
+    /VMoveFromUser { % ctl => -
+	pop /Vertical /ClickAdjustEdge self send
+    } def
+
+    /HMoveFromUser { % ctl => -
+	pop /Horizontal /ClickAdjustEdge self send
+    } def
+
+    /MoveFromUser { % ctl => -
+	pop /All /ClickAdjustEdge self send
+    } def
+ 
+    /AdjustEdgeFromUser { % ctl => -
+        /value exch send 0 get
+	{   /North /NorthEast /East /SouthEast
+            /South /SouthWest /West /NorthWest
+	} exch get
+	/?Open self send
+	/ClickAdjustEdge self send
+     } def
+
+    /AdjustEdgeDict 20 dict def
+    AdjustEdgeDict begin
+	/North {
+	    /y1 y1 dy add store
+	} def
+	/South {
+	    /y0 y0 dy add store
+	} def
+	/East {
+	    /x1 x1 dx add store
+	} def
+	/West {
+	    /x0 x0 dx add store
+	} def
+	/NorthEast { North East } def
+	/NorthWest { North West } def
+	/SouthEast { South East } def
+	/SouthWest { South West } def
+	/Vertical { North South } def
+	/Horizontal { East West } def
+	/All { North South East West } def
+    end % AdjustEdgeDict
+
+    /AdjustEdge { % - => -
+	AdjustEdgeDict begin
+	    edge cvx exec
+	end
+    } def
+
+    /GrabInterest { % - => interest
+	createevent
+	dup /Name [ PointButton AdjustButton MenuButton /MouseDragged ] put
+	dup /Priority 1000 put
+	dup /IsPreChild true put
+	dup /Exclusivity true put
+	/GrabInterest 1 index store
+    } def
+
+    /ClickAdjustEdge { % edge => -
+        { gsave TrackDict begin
+	    /edge exch def
+	    /Can Parent createoverlay def
+	    Can setcanvas
+
+	    GrabInterest expressinterest
+	    unblockinputqueue
+
+	    InitTracking
+	    PreviewAdjustEdge
+
+	    {   awaitevent TrackEvent
+		action /DownTransition eq { exit } if
+		PreviewAdjustEdge
+	    } loop
+
+	    /downx x def /downy y def
+	    /downname name def
+
+	    {   AdjustEdge 
+		e /Shift /modifierdown? ClassKeyboard send {
+		    FinishAdjustEdge
+		} if
+		pop
+		PreviewAdjustEdge
+		awaitevent TrackEvent
+		name downname eq
+		action /UpTransition eq  and {
+		    exit
+		} if
+	    } loop
+
+	    Can setcanvas erasepage
+	    FinishAdjustEdge
+	    TrackDict cleanoutdict
+	    clear
+	} fork /ProcessName (ClickAdjustEdge tracker) put
+	pop
+    } def
+
+    /InitTracking { % - => -
+	/startx lasteventx def
+	/starty lasteventy def
+	/bbox self send
+        /TrackBBox self send
+	rect2points
+	/y1 exch def /x1 exch def /y0 exch def /x0 exch def
+	/x startx def /y starty def
+	/x' startx def /y' starty def
+	/xe 0 def /ye 0 def
+%	/Arrow Quiver dup length random mul floor cvi get cvis store
+    } def
+
+    /SlowTrackSpeed .1 def
+    /FastTrackSpeed 4 def
+
+    /TrackEvent { % event => -
+        /e 1 index def
+	Can setcanvas
+	{   /Meta /modifierdown? self send	% event slow?
+	    exch /FunctionAlt /modifierdown? self send% s? ev fast?
+	    3 -1 roll				% ev s? f?
+	} ClassKeyboard send			% ev s? f?
+	{ { 0 } { SlowTrackSpeed } ifelse }
+	{ { FastTrackSpeed } { 1 } ifelse }
+	ifelse					% ev speed
+	/x' x /y' y				% ev sp /x' x' /y' y'
+	6 -1 roll begin				% sp /x' x' /y' y'
+	    XLocation YLocation Name Action	% sp /x' x' /y' y' x y n a
+	end
+	/action exch def   /name exch def	% sp /x' x' /y' y' x y
+	/y exch def   /x exch def		% sp /x' x' /y' y'
+	def def					% speed
+	dup x x' sub mul			% speed dx
+	/dx exch def				% speed
+	y y' sub mul				% dy
+	/dy exch def				%
+    } def
+
+    /EdgeOffsetDict growabledict def
+    EdgeOffsetDict begin
+	/North		{.5  1} def
+	/South		{.5  0} def
+	/East		{ 1 .5} def
+	/West		{ 0 .5} def
+	/NorthEast	{ 1  1} def
+	/NorthWest	{ 0  1} def
+	/SouthEast	{ 1  0} def
+	/SouthWest	{ 0  0} def
+	/Vertical	{.5 .5} def
+	/Horizontal	//Vertical def
+	/All		//Vertical def
+    end % EdgeOffsetDict
+
+    /EdgeLen 50 def
+    /EdgeGap 10 def
+
+    /Quiver [
+        42 43 49 50 165 167 212 213 217 219 220 221 222 223 224 225
+	226 227 228 229 230 231 232 233 234 235 236 237 238 239 241
+	242 243 245 248 250 251 253 254
+    ] def
+    /Arrow [ 43 ] cvas def
+    /ding /ZapfDingbats findfont def
+    /s 50 def
+
+    /EastArrowFont
+      ding [ 1 0 0 1 0 0 ] makefont s scalefont def
+    /WestArrowFont
+      ding [ -1 0 0 1 0 0 ] makefont s scalefont def
+    /NorthArrowFont
+      ding [ 0 1 -1 0 0 0 ] makefont s scalefont def
+    /SouthArrowFont
+      ding [ 0 -1 -1 0 0 0 ] makefont s scalefont def
+
+    /hfr .35 def
+    /vfr .35 def
+
+    /NorthHand { % x y => -
+	NorthArrowFont setfont
+	s hfr mul -1 xyadd moveto Arrow show
+    } def
+
+    /SouthHand { % x y => -
+	SouthArrowFont setfont
+	s hfr mul 1 xyadd moveto Arrow show
+    } def
+
+    /EastHand { % x y => -
+	EastArrowFont setfont
+	-1 s vfr neg mul xyadd moveto Arrow show
+    } def
+
+    /WestHand { % x y => -
+	WestArrowFont setfont
+	1 s vfr neg mul xyadd moveto Arrow show
+    } def
+
+    /PreviewAdjustEdge { % - => -
+%	/Arrow Quiver dup length random mul floor cvi get cvis store
+
+	x0 y0 x1 y1 points2rect			% x0 y0 x1 y1
+	/UnTrackBBox self send
+	4 copy /path self send
+	4 2 roll -1 1 xyadd 4 2 roll		% x0-1 y0+1 x1 y1
+	/path self send				%
+	erasepage
+	edge {
+	    /All {
+		Hands? {
+		    x0 x1 add .5 mul
+		    y0 y1 add .5 mul
+		    1 index y0 SouthHand
+		    1 index y1 NorthHand
+		    x0 1 index WestHand
+		    x1 1 index EastHand
+		    pop pop
+		} if
+	    }
+	    /Horizontal {
+		x0 EdgeGap sub y0 moveto	EdgeLen neg 0 rlineto
+		x1 EdgeGap add y0 moveto	EdgeLen 0 rlineto
+		x0 EdgeGap sub y1 1 add moveto	EdgeLen neg 0 rlineto
+		x1 EdgeGap add y1 1 add moveto	EdgeLen 0 rlineto
+
+		Hands? {
+		    y0 y1 add .5 mul
+		    x0 1 index WestHand
+		    x1 exch EastHand
+		} if
+	    }
+	    /Vertical {
+		x0 1 sub y0 EdgeGap sub moveto	0 EdgeLen neg rlineto
+		x1 y0 EdgeGap sub moveto	0 EdgeLen neg rlineto
+		x0 1 sub y1 EdgeGap add moveto	0 EdgeLen rlineto
+		x1 y1 EdgeGap add moveto	0 EdgeLen rlineto
+
+		Hands? {
+		    x0 x1 add .5 mul
+		    dup y0 SouthHand
+		    y1 NorthHand
+		} if
+	    }
+	    /North {
+		x0 1 sub y1 EdgeGap add moveto	0 EdgeLen rlineto
+		x1 y1 EdgeGap add moveto	0 EdgeLen rlineto
+
+		Hands? {
+		    x0 x1 add .5 mul y1 2 copy NorthHand SouthHand
+		} if 
+	    }
+	    /South {
+		x0 1 sub y0 EdgeGap sub moveto	0 EdgeLen neg rlineto
+		x1 y0 EdgeGap sub moveto	0 EdgeLen neg rlineto
+
+		Hands? {
+		    x0 x1 add .5 mul y0 2 copy NorthHand SouthHand
+		} if
+	    }
+	    /East {
+		x1 EdgeGap add y0 moveto	EdgeLen 0 rlineto
+		x1 EdgeGap add y1 1 add moveto	EdgeLen 0 rlineto
+		
+		Hands? {
+		    x1 y0 y1 add .5 mul 2 copy EastHand WestHand
+		} if
+	    }
+	    /West {
+		x0 EdgeGap sub y0 moveto	EdgeLen neg 0 rlineto
+		x0 EdgeGap sub y1 1 add moveto	EdgeLen neg 0 rlineto
+
+		Hands? {
+		    x0 y0 y1 add .5 mul 2 copy EastHand WestHand
+		} if
+	    }
+	    /NorthEast {
+		x1 EdgeGap add y1 EdgeGap add
+		2 copy moveto EdgeLen neg 0 rlineto
+		moveto 0 EdgeLen neg rlineto
+		x1 EdgeGap sub y1 EdgeGap sub
+		2 copy moveto EdgeLen neg 0 rlineto
+		moveto 0 EdgeLen neg rlineto
+
+		Hands? {
+		    x0 x1 add .5 mul y1 2 copy NorthHand SouthHand
+		    x1 y0 y1 add .5 mul 2 copy EastHand WestHand
+		} if
+	    }
+	    /NorthWest {
+		x0 EdgeGap sub y1 EdgeGap add
+		2 copy moveto EdgeLen 0 rlineto
+		moveto 0 EdgeLen neg rlineto
+		x0 EdgeGap add y1 EdgeGap sub
+		2 copy moveto EdgeLen 0 rlineto
+		moveto 0 EdgeLen neg rlineto
+
+		Hands? {
+		    x0 x1 add .5 mul y1 2 copy NorthHand SouthHand
+		    x0 y0 y1 add .5 mul 2 copy EastHand WestHand
+		} if
+	    }
+	    /SouthEast {
+		x1 EdgeGap add y0 EdgeGap sub
+		2 copy moveto EdgeLen neg 0 rlineto
+		moveto 0 EdgeLen rlineto
+		x1 EdgeGap sub y0 EdgeGap add
+		2 copy moveto EdgeLen neg 0 rlineto
+		moveto 0 EdgeLen rlineto
+
+		Hands? {
+		    x0 x1 add .5 mul y0 2 copy NorthHand SouthHand
+		    x1 y0 y1 add .5 mul 2 copy EastHand WestHand
+		} if
+	    }
+	    /SouthWest {
+		x0 EdgeGap sub y0 EdgeGap sub
+		2 copy moveto EdgeLen 0 rlineto
+		moveto 0 EdgeLen rlineto
+		x0 EdgeGap add y0 EdgeGap add
+		2 copy moveto EdgeLen 0 rlineto
+		moveto 0 EdgeLen rlineto
+
+		Hands? {
+		    x0 x1 add .5 mul y0 2 copy NorthHand SouthHand
+		    x0 y0 y1 add .5 mul 2 copy EastHand WestHand
+		} if
+	    }
+	} case
+
+	stroke
+	pause
+    } def
+
+    /FinishAdjustEdge { % - => -
+	gsave
+	    x0 y0 x1 y1 points2rect
+	    /UnTrackBBox self send
+	    Parent setcanvas
+	    edge dup /Vertical eq 1 index /Horizontal eq or exch /All eq or {
+		pop pop /move self send
+	    } {
+		/reshape self send
+%		currentprocess /eventmgr self send eq {
+%		    /invalidate self send /damage self send
+%		} if
+	    } ifelse
+	grestore
+    } def
+
+% Demo:
+
+    /ClassBaseWindow { ClassTabBaseWindow } def
+    /ClassPopupWindow { ClassTabPopupWindow } def
+
+    /demo {
+	userdict begin
+	    framebuffer setcanvas
+
+	    1 1 4 { /i exch def
+	        /demo super send pop
+		/win exch def
+		i (Tab Demo #%) sprintf /setlabel win send
+		userdict win dup put
+		/QuitFromUser {
+		    userdict self undef /QuitFromUser super send
+		} /installmethod win send
+	    } for
+	    currentdict /win undef
+	end
+    } def
+
+classend def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ClassTabBaseWindow
+%
+
+/ClassTabBaseWindow [
+    ClassPieMenuWindowManager ClassTabWindow ClassBaseWindow
+] []
+classbegin
+
+    /IconFont /LucidaSans findfont 10 scalefont 
+	      false printermatchfont
+    	      /ISOLatin1Encoding encodefont def
+
+    /setlabel { % - => -
+	/IconLabel promoted? not {
+	    dup /seticonlabel self send
+	} if
+        /setlabel super send
+    } def
+
+    /seticonlabel { % - => -
+        /seticonlabel super send
+	/opened? self send /valid? self send and {
+	    /UpdateTab self send
+	} if
+    } def
+
+    /IconSize { % - => w h
+        /TabSize super send
+    } def
+
+    /IconImage null def
+
+    /DefaultIconSize { % - => w h
+        /TabSize super send
+    } def
+
+    /IconXY { % - => x y
+        /location self send
+	/TabXY self send xyadd
+    } def
+
+    /PaintIcon { % - => -
+        /PaintTab self send
+    } def
+
+    /path { % x y w h => -
+	Opened? {
+	    /TabPath self send
+        } {
+	    rectpath
+	} ifelse
+    } def
+
+    /ToggleOpened { % - => - 
+	/Opened? Opened? not def
+	gsave
+	    Parent setcanvas
+	    Opened? {
+		/location self send			% x y
+
+		/TabSize unpromote
+		/TabXY unpromote
+
+		BaseWindowBBox				% x y wx wy ww wh
+		4 2 roll pop pop			% x y ww wh
+
+		2 copy 6 2 roll				% ww wh x y ww wh 
+		//EdgeTabXYDict TabEdge get exec	% ww wh x y tx ty
+		xysub 4 2 roll				% wx wy ww wh
+
+		/reshape self send
+		/clientlist self send {/map exch send} forall
+		/Valid? true def
+	    } {
+		/BaseWindowBBox [ /bbox self send ] cvx def
+		IconXY IconSize /reshape self send
+		/clientlist self send {/unmap exch send} forall
+	    } ifelse
+	grestore
+    } def
+
+    /ShowWhereStart { % event => -
+	gsave
+	    TrackDict /Can Parent createoverlay dup setcanvas put
+	    /location self send			% x y
+	    BaseWindowBBox			% x y wx wy ww wh
+	    4 2 roll pop pop			% x y ww wh
+
+	    2 copy 6 2 roll			% ww wh x y ww wh 
+	    //EdgeTabXYDict TabEdge get exec	% ww wh x y tx ty
+	    xysub 4 2 roll			% wx wy ww wh
+	    4 copy /TabPath self send
+	    4 2 roll -1 1 xyadd 4 2 roll /TabPath self send
+	    stroke
+	grestore
+    } def
+
+    /ShowWhereStop { % event => -
+	gsave
+	    TrackDict /Can get setcanvas
+	    erasepage
+	    TrackDict cleanoutdict
+	grestore
+    } def
+
+classend def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ClassTabPopupWindow
+%
+
+/ClassTabPopupWindow [
+    ClassPieMenuWindowManager ClassTabWindow ClassPopupWindow
+] []
+classbegin
+
+    /ToggleOpened { % - => -
+	/ToggleOpened super send
+	/TabXY unpromote
+	/opened? self send { /damage self send } if
+    } def
+
+classend def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+openwinversion 0 get 51 eq { % XXX: V3
+    currentdict endautoload end % TNT
+    endpackage endpackage endpackage
+} { % XXX: V2
+    end % systemdict
+} ifelse
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

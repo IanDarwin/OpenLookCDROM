@@ -1,0 +1,615 @@
+head     1.9;
+branch   ;
+access   ;
+symbols  ;
+locks    ;
+comment  @ * @;
+
+
+1.9
+date     91.10.30.12.46.02;  author ian;  state Exp;
+branches ;
+next     1.8;
+
+1.8
+date     91.10.30.12.29.10;  author ian;  state Exp;
+branches ;
+next     1.7;
+
+1.7
+date     91.10.30.11.45.45;  author ian;  state Exp;
+branches ;
+next     1.6;
+
+1.6
+date     91.10.30.11.05.45;  author ian;  state Exp;
+branches ;
+next     1.5;
+
+1.5
+date     91.10.30.10.57.42;  author ian;  state Exp;
+branches ;
+next     1.4;
+
+1.4
+date     91.10.29.11.47.41;  author ian;  state Exp;
+branches ;
+next     1.3;
+
+1.3
+date     91.10.28.18.09.05;  author ian;  state Exp;
+branches ;
+next     1.2;
+
+1.2
+date     91.10.28.16.09.20;  author ian;  state Exp;
+branches ;
+next     1.1;
+
+1.1
+date     91.10.09.16.43.38;  author ian;  state Exp;
+branches ;
+next     ;
+
+
+desc
+@C code for object manipulation for genix.
+@
+
+
+1.9
+log
+@Remove bunch of testing code. Return -1 from insertPerson if NFG.
+@
+text
+@/* C-language routines for reading, writing, allocating, etc. data nodes */
+
+#ifndef	lint
+static char ident[] = "$Id: objs.c,v 1.8 91/10/30 12:29:10 ian Exp $";
+#endif
+
+#include <stdio.h>
+#include <sys/param.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <xview/xview.h>
+#include <xview/panel.h>
+#include <xview/textsw.h>
+#include <xview/xv_xrect.h>
+#include "genix_ui.h"
+#include "genix.h"
+
+/*
+ * Allocate, delete, & otherwise manipulate objects.
+ */
+PERSON *
+newPerson() 
+{
+	PERSON *p = (PERSON *)malloc(sizeof(PERSON));
+
+	if (p) {
+		p->gname = p->sname = NULL;
+		p->pname[0] = '\0';
+		p->sibling = p->next = NULL_PERSON;
+		p->parents = p->couple = NULL_COUPLE;
+	}
+	return p;
+}
+
+
+void
+freePerson(p) 
+PERSON *p;
+{
+	if (p)
+		free(p);
+};
+
+insertPerson(p, dosort)
+PERSON *p;
+int dosort;
+{
+	int i;
+
+	if (p->gname == NULL || p->sname == NULL || p->bdate == NULL ||
+	    p->gname[0] == 0 || p->sname[0] == 0 || p->bdate[0] == 0) {
+		warning("Must have firstname, lastname and bdate");
+		freePerson(p);
+		return -1;
+	}
+
+	if (p->pname[0] == '\0' || p->pname[0] == ' ')
+		build_pname(p);
+
+	for (i=0; i<np; i++)
+		if (personcmp(&allp[i], &p) == 0) {
+			freePerson(allp[i]);
+			allp[i] = p;
+		}
+
+	if (np < MAXPEOPLE)
+		allp[np++] = p;
+	else {
+		warning("Too many people!! Not Inserted!\n");
+		return -1;
+	}
+	if (dosort)
+		sort_lists();
+	Changed = 1;
+
+	return 0;
+}
+
+/* Get one person from the window system */
+PERSON *
+getPersonFromScreen(ip)
+genix_rootsWindow_objects *ip;
+{
+	PERSON *p = newPerson();
+
+	if (p) {
+		p->gname = strsave(xv_get(ip->gnameTF, PANEL_VALUE));
+		p->sname = strsave(xv_get(ip->surnameTF, PANEL_VALUE));
+		p->bdate = strsave(xv_get(ip->bdateTF, PANEL_VALUE));
+
+		build_pname(p);
+
+	}
+
+	return p;
+}
+
+/*
+ * Build up in "pname" a printable name that fits the
+ * scrolling list but also lines up reasonably (assuming a monospaced font!!).
+ */
+build_pname(p)
+PERSON *p;
+{
+	register int i, n;
+	register char *s;
+	static char spaces[PRTNAMELEN] = "                   "; /* ALIGN */
+
+	strcpy(p->pname, spaces);
+	for (i=0, s=p->gname; i<PRTNAMELEN && *s; i++,s++)
+		p->pname[i] = *s;	/* strcpy without null byte */
+	if ((n = strlen(p->gname)) < SNOFFSET)
+		strncpy(p->pname+SNOFFSET, p->sname, PRTNAMELEN-SNOFFSET);
+	else
+		strncpy(p->pname+n+1, p->sname, PRTNAMELEN-(n+1));
+}
+
+void
+readObjs(f) 
+char *f;
+{
+	int fd;
+	PERSON *p;
+	struct stat statbuf;
+	char *s, *t;
+	unsigned long filesize;
+
+	if (stat(f, &statbuf)<0) {
+		warning("file not readable");
+		return;
+	}
+	filesize = statbuf.st_size;
+
+	if ((fd = open(f, 0)) == NULL) {
+		warning("file not readable");
+		return;
+	}
+
+	/* strategy: malloc huge buffer using len from stat,
+	 * then walk in with pointers. Save hundreds of mallocs!
+	 */
+	s = emalloc(filesize);
+
+	if (read(fd, s, filesize) != filesize)
+		error("read failed");
+	(void) close(fd);
+
+	for (t = s, p = newPerson(); t < s + filesize; ) {
+
+#define INPUT_FIELD(STRING, TAG) { \
+		if (strncmp(t, STRING, sizeof(STRING)-1) == 0) { \
+			t += sizeof(STRING)-1; \
+			while (isspace(*t)) ++t; \
+			p->TAG = t; \
+			while (*t != '\n') ++t; \
+			*t++ = '\0'; \
+			} \
+		}
+		INPUT_FIELD("SN:", sname);
+		INPUT_FIELD("GN:", gname);
+		INPUT_FIELD("BD:", bdate);
+		INPUT_FIELD("BP:", bplace);
+		INPUT_FIELD("DD:", ddate);
+		INPUT_FIELD("DP:", dplace);
+
+		if (*t++ == '\n') {	/* i.e., null line */
+			insertPerson(p, 0);
+			p = newPerson();
+		}
+	}
+
+	sort_lists();	/* i.e., do this once, not after each insert. */
+
+	Changed = 1;
+};
+
+
+void
+writeObjs(f)
+char *f;
+{
+	FILE *fp;
+	PERSON *p;
+	int i;
+
+	if (fstat(fp, 0)) {
+		/* then should prompt before overwriting */
+	}
+	if ((fp = fopen(f, "w")) == NULL) {
+		/* then notice_prompt that it failed */
+	}
+
+	for (i=0; i < np; i++) {
+		p = allp[i];
+		if (p->sname && *(p->sname))
+			fprintf(fp, "SN:%s\n", p->sname);
+		if (p->gname && *(p->gname))
+			fprintf(fp, "GN:%s\n", p->gname);
+		if (p->bdate && *(p->bdate))
+			fprintf(fp, "BD:%s\n", p->bdate);
+		if (p->bplace && *(p->bplace))
+			fprintf(fp, "BP:%s\n", p->bplace);
+		fprintf(fp, "\n");
+	}
+
+	(void) fclose(fp);
+
+	Changed = 0;
+};
+
+
+/*
+ * String compare, first on surname, then on given name.
+ * Used from qsort; if calling from open code, don't forget
+ * to say personcmp(&p1, &p2); !!
+ */
+int
+personcmp(pp1, pp2)
+PERSON **pp1, **pp2;
+{
+	register int i;
+	register PERSON *p1 = *pp1, *p2 = *pp2;
+
+	if ((i=strcmp(p1->sname, p2->sname)) != 0)
+		return i;
+	else return strcmp(p1->gname, p2->gname);
+}
+
+
+sort_lists()
+{
+	PERSON *p;
+	int i;
+	static int oldnpers = 0;
+	extern genix_relationsWindow_objects   *Genix_relationsWindow;
+
+	qsort(allp, np, sizeof(PERSON*), personcmp);
+
+	/* try to put it into window system's scrolling list */
+	xv_set(Genix_relationsWindow->leftList, XV_SHOW, FALSE, NULL);
+	xv_set(Genix_relationsWindow->rightList, XV_SHOW, FALSE, NULL);
+	for (i=0; i<np; i++) {
+		xv_set(Genix_relationsWindow->leftList,
+			PANEL_LIST_DELETE, i,
+			PANEL_LIST_INSERT, i,
+			PANEL_LIST_STRING, i, allp[i]->pname,
+			NULL);
+		xv_set(Genix_relationsWindow->rightList,
+			PANEL_LIST_DELETE, i,
+			PANEL_LIST_INSERT, i,
+			PANEL_LIST_STRING, i, allp[i]->pname,
+			NULL);
+	}
+	xv_set(Genix_relationsWindow->leftList, XV_SHOW, TRUE, NULL);
+	xv_set(Genix_relationsWindow->rightList, XV_SHOW, TRUE, NULL);
+}
+
+char *emalloc(n)
+unsigned n;
+{
+	char *p = (char *)malloc(n);
+
+	if (!p) {
+		fprintf(stderr, "Out of memory, requested %u bytes\n");
+		exit(1);
+	}
+	return p;
+}
+
+char *
+strsave(s)
+char *s;
+{
+        char *emalloc(), *strcpy();
+
+        return (s == (char*)0)? s: strcpy(emalloc((unsigned)strlen(s)+1), s);
+}
+
+@
+
+
+1.8
+log
+@Missing name or bdate is error, not warning.
+@
+text
+@d4 1
+a4 1
+static char ident[] = "$Id: objs.c,v 1.7 91/10/30 11:45:45 ian Exp $";
+d54 1
+d69 2
+a70 1
+		fprintf(stderr, "Too many people!! Not Inserted!\n");
+d75 2
+a170 4
+#if	0
+	static COUPLE selfwedding;
+	static PERSON rmbc = { "Betty", "Cerar", "", "1956-09-03" },
+		ian = { "Ian", "Darwin", "", "1951-04-24" };
+a171 10
+	ian.couple = rmbc.couple = &selfwedding;
+
+	selfwedding.husband = &ian;
+	selfwedding.wife = &rmbc;
+	build_pname(&ian);
+	build_pname(&rmbc);
+
+	insertPerson(&ian, 0);
+	insertPerson(&rmbc, 0);
+#endif
+@
+
+
+1.7
+log
+@Update both scrolling lists. Add error returns. Better checking of null
+fields.
+@
+text
+@d4 1
+a4 1
+static char ident[] = "$Id: objs.c,v 1.6 91/10/30 11:05:45 ian Exp $";
+d52 1
+a52 1
+		error("Must have firstname, lastname and bdate");
+@
+
+
+1.6
+log
+@Pname can be null-bytes OR spaces; in either case, build it, in insertPerson
+@
+text
+@d4 1
+a4 1
+static char ident[] = "$Id: objs.c,v 1.5 91/10/30 10:57:42 ian Exp $";
+d50 2
+a51 1
+	if (p->gname == 0 || p->sname == 0 || p->bdate == 0) {
+d113 1
+d126 1
+d132 1
+d159 2
+d227 2
+a228 1
+int personcmp(pp1, pp2)
+a237 1
+	
+d239 1
+d251 1
+a252 6
+#if		0
+		printf("sortlist: %s (%s %s)\n",
+			allp[i]->pname,
+			allp[i]->gname,
+			allp[i]->sname);
+#endif
+d258 5
+d265 1
+@
+
+
+1.5
+log
+@readObjs() and writeObjs() now working for four sample fields, using
+mcbeath's geneal format.
+@
+text
+@d4 1
+a4 1
+static char ident[] = "$Id: objs.c,v 1.4 91/10/29 11:47:41 ian Exp $";
+d55 1
+a55 1
+	if (p->pname[0] == ' ')
+@
+
+
+1.4
+log
+@Debug build_pname after making it a function.
+@
+text
+@d4 1
+a4 1
+static char ident[] = "$Id: objs.c,v 1.3 91/10/28 18:09:05 ian Exp $";
+d10 1
+d50 8
+d63 1
+d71 1
+d84 1
+a87 1
+		p->bdate = strsave(xv_get(ip->bdateTF, PANEL_VALUE));
+d116 5
+a120 4
+#if	0
+FILE *fp;
+PERSON *p;
+struct stat statbuf;
+d122 2
+a123 2
+	if (stat(f, &statbuf)) {
+		/* then should prompt before overwriting */
+d125 4
+a128 2
+	if ((fp = fopen(f, "r")) == NULL) {
+		/* then notice_prompt that it failed */
+d131 1
+a131 1
+	/* proposed strategy: malloc using len from stat,
+d134 1
+d136 26
+a161 3
+	(void) fclose(fp);
+#endif
+#if	1
+d163 2
+a164 2
+	static PERSON rmbc = { "Betty", "Cerar", "", 0, &selfwedding },
+		ian = { "Ian", "Darwin" };
+d166 1
+a166 1
+	ian.couple = &selfwedding;
+d173 2
+a174 2
+	allp[np++] = &ian;
+	allp[np++] = &rmbc;
+d176 3
+a178 1
+	sort_lists();
+d182 2
+a183 1
+void writeObjs(f)
+d197 1
+a197 1
+	for (i = 0; i < np; i++) {
+d199 9
+a207 1
+		fprintf(fp, "%s %s\n", p->gname, p->sname);
+d211 2
+@
+
+
+1.3
+log
+@Merge in xv_objs.c; add insertPerson and getPersonFromScreen.
+@
+text
+@d4 1
+a4 1
+static char ident[] = "$Id: genix_stubs.c,v 1.4 91/10/28 15:11:59 ian Exp $";
+a68 2
+	static char spaces[PRTNAMELEN] = "                   "; /* ALIGN */
+	int n;
+d73 3
+a75 4
+		strncpy(p->pname, p->gname, PRTNAMELEN);
+		strncat(p->pname+strlen(pname), spaces,
+			PRTNAMELEN-strlen(p->gname));
+		strncat(p->pname+SNOFFSET, p->sname, PRTNAMELEN-SNOFFSET);
+d82 10
+d93 8
+d106 3
+a108 3
+	FILE *fp;
+	PERSON *p;
+	struct stat statbuf;
+d125 2
+a126 3
+	static PERSON rmbc = { "Betty", "Cerar", "Betty Cerar",
+		0, &selfwedding },
+		ian = { "Ian", "Darwin", "Ian Darwin", 0, 0};
+d132 2
+d192 1
+d194 2
+a195 1
+		printf("%s (%s %s)\n",		/* debug */
+d199 1
+d206 1
+@
+
+
+1.2
+log
+@Sketch out list update code; comment it out for now.
+@
+text
+@d4 1
+a4 1
+char *ident = "$Id$";
+d8 7
+d17 3
+d43 5
+d49 37
+d110 3
+a112 2
+	static PERSON rmbc = { "Cerar", "Betty", "Betty Cerar",
+		0, &selfwedding };
+d114 1
+a114 1
+	root.couple = &selfwedding;
+d116 1
+a116 1
+	selfwedding.husband = &root;
+d119 1
+a119 1
+	allp[np++] = &root;
+d151 2
+d171 1
+d175 1
+a175 2
+#if	0
+	/* TODO put it into window system's scrolling list */
+d181 4
+a184 3
+		xv_set(XX, PANEL_LIST_DELETE, i,
+			PANEL_LIST_CREATE, i,
+			PANEL_LIST_STRING, i, allp[i]->sname,
+a186 1
+#endif
+d188 22
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d3 4
+d10 2
+a11 1
+void newObj() 
+d13 1
+a13 1
+};
+d15 8
+d24 4
+a27 1
+void freeObj() 
+d29 2
+d34 3
+a36 1
+void readObjs() 
+d38 32
+d78 1
+d87 2
+a88 1
+	for (p = &root; p != NULL_PERSON; p=p->next)
+d90 1
+d96 37
+@

@@ -1,0 +1,101 @@
+#!/bin/bash
+
+[ $1 ] && TV2HTML_DIR=$1
+if [ ! -d "$TV2HTML_DIR" ]; then
+  echo 'Usage: updatedb <directory>' >&2
+  exit 1
+fi
+
+echo This is updatedb, started on `date`
+
+rm -f $TV2HTML_DIR/All_stations.db
+
+for db in $TV2HTML_DIR/*.db; do
+  station=`basename $db .db`
+  echo processing $station
+
+  gawk -v "station=$station" '
+    {									# Find hidden date
+      append_station = 0
+      if (match($0 "x", /{AL_MAGENTA}.*{CONCEAL.*[^0-9][0-9][0-9][0-9][0-9][0-9][0-9][^0-9]/)) {
+        pos = match($0, /[^0-9][0-9][0-9][0-9][0-9][0-9][0-9][^0-9]/)
+        date = substr($0, pos + 5, 2) substr($0, pos + 3, 2) substr($0, pos + 1, 2)
+      } else if (match($0, /{AL_MAGENTA}{CONCEAL}[0-9][0-9][0-9][0-9][0-9][^0-9]/)) {
+        append_station = 1
+        dump = 0
+      }
+
+      if ($0 ~ /Satelliten-Empfang über ASTRA{GR_RED}/) {
+        skippage = 1
+      } else if ($0 ~ /bis.*[0-9][0-9]\.[0-9][0-9].*Uhr/ || $0 ~ /^{GR_RED}{GCHR_12}{GCHR_12}.*>>/ ||
+          $0 ~ /ca.*um.*[0-9].?\.[0-9][0-9].*Ende/ || $0 ~ /^{PAGE [0-9][0-9][0-9]\/[0-9].*}$/) {
+        dump = 0
+        skippage = 0
+      } else if (!skippage && $0 ~ /^({[^}]*}| )[0-9][0-9]\.[0-9][0-9]{[^}]*}{[^}]*}[0-9][0-9][0-9][0-9]/) {
+        dump = 1						# Find first line of telecast
+        stripline = $0
+        gsub(/{[^}]*}/, " ", stripline)
+        firstline = 0
+        tmp_station = station
+        prefix = date "~" substr(stripline, 2, 2) substr(stripline, 5, 2) "~" substr(stripline, 9, 4) "~" station
+        dumpprefix = 1
+      }
+      if (dump || append_station) {
+        if (!date) {
+          print "updatedb: Error: No date found." > "/dev/stderr"
+          exit 1
+        }
+        stripline = $0						# Find sign for PALplus
+        if (gsub(/{GR_YELLOW}{GCHR_12}{AL_[A-Z]*}/, " «BB» ", stripline) > 1) {
+          stripline = $0
+        }
+        gsub(/{AL_RED}UT( *$|{AL_[A-Z]*})/, " «UT»", stripline)
+        gsub(/{AL_YELLOW}d\/f( *$|{AL_[A-Z]*})/, " «ZK» ", stripline)
+        gsub(/{AL_YELLOW}d\/spanisch( *$|{AL_[A-Z]*})/, " «ZK» ", stripline)
+        gsub(/{CONCEAL}/, "[", stripline)			# Remove hidden parts of page
+        gsub(/{AL_[A-Z]*}/, "]", stripline)
+        gsub(/{GR_[A-Z]*}/, "]", stripline)
+        gsub(/{[^}]*}/, " ", stripline)
+        stripline = stripline "]"
+        while (match(stripline, /\[[^]]*\]/)) {
+          sub(/\[[^]]*\]/, substr("                                        ", 1, RLENGTH), stripline)
+        }
+        gsub(/\]/, " ", stripline)
+        gsub(/ *$/, "", stripline)				# Remove trailing whitespace
+        gsub(/\.\.\.* ?[0-9][0-9][0-9]$/, "", stripline)	# Remove links to other pages
+        if (!append_station) {
+          if (stripline != "") {
+            if (dumpprefix) {
+              printf "\n" prefix
+            }
+            tmpline = stripline						# Find sign for subtitles
+            if (gsub(/\*/, "«UT»", tmpline) > 1) {
+              tmpline = stripline
+              gsub(/\*$/, "«UT»", tmpline)
+            }
+            stripline = tmpline
+            if (gsub(/°°/, "«ZK»", tmpline) > 1) {		# Find sign for 2-channel sound
+              tmpline = stripline
+              gsub(/°°$/, "«ZK»", tmpline)
+            }
+            printf "~" substr(tmpline, 15)		# Write line for telecast to database
+            if (length(append_str)) {
+              printf "   (" append_str ")"
+              append_str = ""
+            }
+          }
+          dumpprefix = 0
+        } else {
+          append_str = stripline
+          gsub(/^ */, "", append_str)
+        }
+      }
+    }
+    
+    END {
+      print ""
+    }
+  ' $TV2HTML_DIR/$station*[0-9] >> $db
+done
+
+cat $TV2HTML_DIR/*.db > $TV2HTML_DIR/All_stations.db

@@ -1,0 +1,582 @@
+From: ksall@cen.com (Ken Sall)
+Newsgroups: comp.windows.x.motif,comp.answers,news.answers
+Subject: Motif FAQ (Part 5 of 9)
+Date: 7 May 1995 12:28:47 GMT
+Organization: none
+Approved: news-answers-request@MIT.EDU
+Expires: 20 Jun 1995 12:27:35 GMT
+Message-ID: <motif-faq/part5_799849655@rtfm.mit.edu>
+Reply-To: ksall@cen.com (Ken Sall)
+Keywords: FAQ question answer
+
+Archive-name: motif-faq/part5
+Last-modified: MAY 05, 1995
+Posting-Frequency: monthly
+Organization: Century Computing, Inc. <URL:http://www.cen.com/>
+Version: 4.4
+
+
+
+
+-----------------------------------------------------------------------------
+Subject: 130)  TOPIC: MENUS
+
+-----------------------------------------------------------------------------
+Subject: 131)* How do I set the current choice in a radio box or an option
+menu?
+
+[Last modified: May 95]
+
+Answer: Set the XmNmenuHistory resource on its RowColumn parent.
+
+Thanks to Ken Lee, kenton@rahul.net
+
+buser@tartan.com (Mark) sent this code fragment:
+
+    Widget      menu;
+    int         num_buttons;
+    WidgetList  buttons;
+
+    XtVaGetValues( simple_option_widget, XmNsubMenuId, &menu, NULL);
+
+    XtVaGetValues( menu, XmNnumChildren, &num_buttons,
+                XmNchildren, &buttons, NULL ) ;
+
+ and change current selection with:
+
+    XtVaSetValues( simple_option_widget, XmNmenuHistory, buttons[index], NULL ) ;
+
+    /* where index is between 0 and num_buttons */
+
+Thanks to Phil Gehlich <pgehlich@hp7001.ecae.StorTek.COM> for a correction.
+-----------------------------------------------------------------------------
+Subject: 132)  How do I make a menu choice insensitive if it was created with
+XmVaCreateSimplePulldownMenu?
+
+[Last modified: Sept 94]
+
+Answer: According to the Motif manual, the buttons are named "button_n", where
+"n" is an integer starting from 0.  You can use XtNameToWidget() to convert
+these names to widget ID's.
+
+Thanks to Ken Lee, kenton@rahul.net
+
+-----------------------------------------------------------------------------
+Subject: 133)  What can I put inside a menu bar?
+
+Answer: You can only put cascade buttons in menu bars. No pushbuttons, toggle
+buttons or gadgets are allowed. When you create a pulldown menu with parent a
+menu bar, its real parent is a shell widget.
+
+-----------------------------------------------------------------------------
+Subject: 134)  Can I have a cascade button without a submenu in a pulldown
+menu?
+
+Answer: Yes you can. A cascade button has an activate callback which is called
+when you click on it and it doesn't have a submenu. It can have a mnemonic,
+but keyboard traversal using the arrow keys in the menu will skip over it.
+
+-----------------------------------------------------------------------------
+Subject: 135)  Should I have a cascade button without a submenu in a pulldown
+menu?
+
+Answer: No. This is forbidden by the style guide. Technically you can do it
+(see previous question) but if you do it will not be Motif style compliant.
+This is unlikely to change - if a "button" is important enough to be in a
+pulldown menu bar with no pulldown, it should be a button elsewhere.  (Mind
+you, you won't be able to put accelerators on it elsewhere though.)
+
+-----------------------------------------------------------------------------
+Subject: 136)  What is the best way to create popup menus?
+
+[Last modified: August 92]
+
+Susan Murdock Thompson (from OSF): In general, create a popupMenu as the child
+from which you will be posting it from (ie: if you have a bulletinBoard with a
+PushButton in it and want MB2 on the pushButton to post the popupMenu, create
+the popupMenu as a child of the pushButton).  [This parent-child relationship
+seems to make a big difference in the behavior of the popups.]  Add an event
+handler to handle buttonPress events.  You'll need to check for the correct
+button (what you've specified menuPost to be) before posting the menu.
+
+To create a popup that can be accessible from within an entire client window,
+create it as the child of the top-most widget (but not the shell) and add
+event handlers for the top-most widget and children widgets.
+
+ie:
+
+{
+  ....
+
+  XtManageChild(rc=XmCreateRowColumn(Shell1, "rc", NULL, 0));
+  XtManageChild(label = XmCreateLabel(rc, "label", NULL, 0));
+  XtManageChild(text = XmCreateText(rc, "text", NULL, 0));
+  XtManageChild(pushbutton = XmCreatePushButton(rc, "pushbutton", NULL, 0));
+
+  n = 0;
+  XtSetArg(args[n], XmNmenuPost, "<Btn3Down>"); n++;
+  popup = XmCreatePopupMenu(rc, "popup", args, n);
+
+  XtAddEventHandler(rc, ButtonPressMask, False, PostMenu3, popup);
+  XtAddEventHandler(text, ButtonPressMask, False, PostMenu3, popup);
+  XtAddEventHandler(label, ButtonPressMask, False, PostMenu3, popup);
+  XtAddEventHandler(pushbutton, ButtonPressMask, False, PostMenu3, popup);
+
+  XtManageChild(m1 = XmCreatePushButton(popup, "m1", NULL, 0));
+  XtManageChild(m2 = XmCreatePushButton(popup, "m2", NULL, 0));
+  XtManageChild(m3 = XmCreatePushButton(popup, "m3", NULL, 0));
+
+  XtAddCallback(m1, XmNactivateCallback, SayCB, "button M1");
+  XtAddCallback(m2, XmNactivateCallback, SayCB, "button M2");
+  XtAddCallback(m3, XmNactivateCallback, SayCB, "button M3");
+  ...
+}
+
+/* where PostMenu3 is ... */
+
+PostMenu3 (w, popup, event)
+Widget w;
+Widget popup;
+XButtonEvent * event;
+{
+  printf("menuPost = 3, button %d0, event->button);
+
+  if (event->button != Button3)
+    return;
+  XmMenuPosition(popup, event);
+  XtManageChild(popup);
+}
+
+
+-----------------------------------------------------------------------------
+Subject: 137)  How do popup menus work?
+
+[Last modified: August 92]
+
+Answer:
+
+When a popup menu is created as the child of a widget the menu system installs
+a translation on the parent of the popup and descendants with an action which:
+(1) when 3-rd button (the default for the menuPost resource) is pressed the
+cursor changes and the mouse is grabbed for 5 seconds; (2) disables event
+handlers on the descendants and the handlers are never called; (3) an event
+handler installed on the parent works fine.
+
+It is done so that the correct event handler will (in fact) be called.  There
+is a grab with owner_events true.  The grab is released by a timer,  but
+normally the posted menu shell puts up it's own grab.
+
+If you only have widgets then you can use the subwindow field in the event to
+identify the original widget.  If you have gadgets or other data that you want
+to change the menu for (or use a specific menu for) then you must do a walk of
+the parent's children to find the best match.
+
+One thing to beware of is that even with the grab,  because the menu system
+does a grab with owner events true, you must either have an event handler, or
+nothing that will use the event on each widget in the hierarchy of the menu's
+parent.  If a child widget has another event handler for button down, it may
+swallow the event and do something else.
+
+-----------------------------------------------------------------------------
+Subject: 138)  Should I use translation tables or actions for popup menus?
+
+[Last modified: August 92]
+
+Answer: The original goal of popupMenus was that the user would not have to
+specify an event handler to manage popupMenus; however, that did not become
+reality.  Larry Rogers wrote:
+
+> There appear to be two ways to manage popup menus.  I
+> am curious what the correct way would be:
+
+> 1.  Change the translation table of the widget with the
+>    popup child to popup the menu.  Note that this does
+>    not currently working for many widgets, because aug-
+>    menting their translations, even for augment breaks
+>    the widget.
+
+> 2.  Add an event handler at creation to the widget; then
+>    determine if the event that caused the event handler
+>    to be called is the current button being used by the
+>    menu as its activation button.
+
+Susan Murdock Thompson (from OSF) replied: *Theoretically, you should be able
+to do both.*  Our documentation says use event handlers.  Our tests for the
+toolkit use event handlers and for UIL use translations.  (Although I tried an
+event handler with a UIL test and it works).
+
+-----------------------------------------------------------------------------
+Subject: 139)  What are the known bugs in popup menus?
+[Last modified: August 92]
+
+Answer: As at Motif 1.1.4, the bugs for which an OSF PIR exists are:
+
+   (3)  Menus not being sticky (ie: posted on a Btn CLICK)  [ Note:this
+        problem occurs with OptionMenus as well]  (PIR 3435)
+
+
+   (6)  Destroying a widget with an associated popupMenu results in
+        "Warning: Attempt to remove non-existant passive grab"         (PIR
+2972)
+
+   (7)  Current documentation insufficient regarding requirements for
+        success in using PopupMenus.  (PIR 3433)
+
+
+-----------------------------------------------------------------------------
+Subject: 140)  Can I have multiple popup menus on the same widget?
+
+[Last modified: August 92]
+
+Answer: If you want to have several popups (activated by different mouse
+buttons) on the same widget..., well, that doesn't work yet.
+
+If you want to have several popups on different children... that works.  But
+don't put a popup on the parent (manager) widget, or it will rule!
+
+
+-----------------------------------------------------------------------------
+Subject: 141)  TOPIC: INPUT FOCUS
+
+-----------------------------------------------------------------------------
+Subject: 142)  How can I specify the widget that should have the keyboard
+focus when my application starts up?  Answer: In Motif 1.2, use
+XmNinitialFocus on the manager widget.
+
+Thanks to Ken Lee, kenton@rahul.net
+
+-----------------------------------------------------------------------------
+Subject: 143)  How can I direct the keyboard input to a particular widget?
+
+Answer: In Motif 1.1 call XmProcessTraversal(target, XmTRAVERSE_CURRENT).  The
+widget (and all of its ancestors) does need to be realized BEFORE you call
+this. Otherwise it has no effect.  XmProcessTraversal is reported to have many
+bugs, so it may not work right.  A common occurrence is that it doesn't move
+to the widget, but if you call XmProcessTraversal *twice* in a row, it will.
+If you can't get it to work, try this from Kee Hinckley:
+
+    // This insane sequence is as follows:
+    //      On manage set up a focus callback
+    //      On focus callback set up a timer (and get rid of focus callback!)
+    //      On timer set the focus (which only works if the parent
+    //      has the focus,
+    //      which is why we went through all of this garbage)
+    // There may be a better way, but I haven't time to try it now.
+    //
+    static void focusTO(void *data, XtIntervalId *) {
+        XmProcessTraversal((Widget) data, XmTRAVERSE_CURRENT);
+    }
+
+    static void focusCB(Widget w, XtPointer data, XtPointer) {
+        XtRemoveCallback(w, XmNfocusCallback, focusCB, data);
+        XtAppAddTimeOut(XtWidgetToApplicationContext(w), 0, focusTO, data);
+    }
+
+    void OmXSetFocus(Widget parent, Widget w) {
+        XtAddCallback(parent, XmNfocusCallback, focusCB, w);
+    }
+
+
+In Motif 1.0 call the undocumented _XmGrabTheFocus(target).
+
+Do not use the X or Xt calls such as XtSetKeyboardFocus since this bypasses
+the Motif traversal layer and can cause it to get confused.  This can lead to
+odd keyboard behaviour elsewhere in your application.
+
+-----------------------------------------------------------------------------
+Subject: 144)  How can I have a modal dialog which has to be answered before
+the application can continue?
+
+[Last modified: Feb 95]
+
+Answer: Note: J.-N. Meurisse (uunet!rc4.vub.ac.be!jnmeuris) sent a correction
+to the following code fragment. Change:
+
+        XtAddCallback(dialog, XmNpopdownCallback, ...)
+to
+        XtAddCallback(XtParent(dialog), XmNpopdownCallback, ...)
+
+The answer depends on whether you are using the Motif window manager mwm or
+not.  Test for this by XmIsMotifWMRunning.
+
+The window manager mwm knows how to control event passing to dialog widgets
+declared as modal. If the dialog is set to application modal, then no
+interaction with the rest of the application can occur until the dialog is
+destroyed or unmanaged.
+
+Use the appropriate code in the following program.  There is followup
+discussion after the program.
+
+
+/* Written by Dan Heller.  Copyright 1991, O'Reilly && Associates.
+ * This program is freely distributable without licensing fees and
+ * is provided without guarantee or warranty expressed or implied.
+ * This program is -not- in the public domain.  This program is
+ * taken from the Motif Programming Manual, O'Reilly Volume 6.
+ */
+
+/*
+ * ask_user.c -- create a pushbutton that posts a dialog box
+ * that asks the user a question that requires an immediate
+ * response.  The function that asks the question actually
+ * posts the dialog that displays the question, waits for and
+ * returns the result.
+ */
+#include <X11/Intrinsic.h>
+#include <Xm/DialogS.h>
+#include <Xm/SelectioB.h>
+#include <Xm/RowColumn.h>
+#include <Xm/MessageB.h>
+#include <Xm/PushBG.h>
+#include <Xm/PushB.h>
+
+XtAppContext app;
+
+#define YES 1
+#define NO  2
+
+/* main() --create a pushbutton whose callback pops up a dialog box */
+main(argc, argv)
+char *argv[];
+int argc;
+{
+    Widget parent, button, toplevel;
+    XmString label;
+    void pushed();
+
+    toplevel = XtAppInitialize(&app, "Demos",
+        NULL, 0, &argc, argv, NULL, NULL, 0);
+
+    label = XmStringCreateLocalized("/bin/rm *");
+    button = XtVaCreateManagedWidget("button",
+        xmPushButtonWidgetClass, toplevel,
+        XmNlabelString,          label,
+        NULL);
+    XtAddCallback(button, XmNactivateCallback,
+        pushed, "Remove Everything?");
+    XmStringFree(label);
+
+    XtRealizeWidget(toplevel);
+    XtAppMainLoop(app);
+}
+
+/* pushed() --the callback routine for the main app's pushbutton. */
+void
+pushed(w, question)
+Widget w;
+char *question;
+{
+    if (AskUser(w, question) == YES)
+        puts("Yes");
+    else
+        puts("No");
+}
+
+/*
+ * AskUser() -- a generalized routine that asks the user a question
+ * and returns the response.
+ */
+AskUser(parent, question)
+char *question;
+{
+    static Widget dialog;
+    XmString text, yes, no;
+    static int answer;
+    extern void response();
+
+    answer = 0;
+    if (!dialog) {
+        dialog = XmCreateQuestionDialog(parent, "dialog", NULL, 0);
+        yes = XmStringCreateLocalized("Yes");
+        no = XmStringCreateLocalized("No");
+        XtVaSetValues(dialog,
+            XmNdialogStyle,        XmDIALOG_APPLICATION_MODAL,
+            XmNokLabelString,      yes,
+            XmNcancelLabelString,  no,
+            NULL);
+        XtSetSensitive(
+            XmMessageBoxGetChild(dialog, XmDIALOG_HELP_BUTTON), False);
+        XtAddCallback(dialog, XmNokCallback, response, &answer);
+        XtAddCallback(dialog, XmNcancelCallback, response, &answer);
+        /* if the user interacts via the system menu: */
+/* SEE CORRECTION ABOVE */
+        XtAddCallback(dialog, XmNpopdownCallback, response, &answer);
+    }
+    text = XmStringCreateLocalized(question);
+    XtVaSetValues(dialog,
+        XmNmessageString,      text,
+        NULL);
+    XmStringFree(text);
+    XtManageChild(dialog);
+    XtPopup(XtParent(dialog), XtGrabNone);
+
+    /* while the user hasn't provided an answer, simulate XtMainLoop.
+     * The answer changes as soon as the user selects one of the
+     * buttons and the callback routine changes its value.  Don't
+     * break loop until XtPending() also returns False to assure
+     * widget destruction.
+     */
+    while (answer == 0 || XtAppPending(app))
+        XtAppProcessEvent(app, XtIMAll);
+    return answer;
+}
+
+/* response() --The user made some sort of response to the
+ * question posed in AskUser().  Set the answer (client_data)
+ * accordingly and destroy the dialog.
+ */
+void
+response(w, answer, reason)
+Widget w;
+int *answer;
+XmAnyCallbackStruct *reason;
+{
+    switch (reason->reason) {
+        case XmCR_OK:
+            *answer = YES;
+            break;
+        case XmCR_CANCEL:
+            *answer = NO;
+            break;
+        default:
+            *answer = NO;
+            return;
+    }
+}
+
+
+If you aren't running a window manager that acknowledges this hint, then you
+may have to grab the pointer (and keyboard) yourself to make sure the user
+doesn't interact with any other widget.  Change the grab flag in XtPopup to
+XtGrabExclusive, and XtRemoveGrab(XtParent(w)) to the response() function.
+
+
+-----------------------------------------------------------------------------
+Subject: 145)  TOPIC: MEMORY AND SPEED
+
+-----------------------------------------------------------------------------
+Subject: 146)  When can I free data structures passed to or retrieved from
+Motif?
+
+Answer:
+ In most cases, especially for XmStrings and XmFontLists, Motif copies data
+passed to it or retrieved from it, so it may be freed immediately.  Server-
+side resources, such as pixmaps and color cells, however, are not copied, so
+should not be freed.  More recent versions of Motif are better than earlier
+versions and exceptions should be documented.
+
+Thanks to Ken Lee, kenton@rahul.net
+
+-----------------------------------------------------------------------------
+Subject: 147)  Why does my application grow in size?
+
+[Last modified: Feb 95]
+
+Answer: Motif 1.0 has many memory leaks, particularly in XmString
+manipulation.  Switch to Motif 1.1. 1.2, or 2.0.
+
+Answer: The Intrinsics have a memory leak in accelerator table management, and
+Motif uses this heavily.  Avoid this by mapping/unmapping widgets rather than
+creating/destroying them, or get  X11R4 fix-15/16/17.
+
+Answer: The server may grow in size due to its own memory leaks.  Switch to a
+later server.
+
+Answer: You are responsible for garbage collection in `C'.  Some common cases
+where a piece of memory becomes garbage are
+
+ a.  Memory is allocated by Motif for XmStrings by the functions
+     XmStringConcat, XmStringCopy, XmStringCreate, XmStringCreateLtoR,
+     XmStringCreateLocalized, XmStringDirectionCreate, XmStringNConcat,
+     XmStringNCopy, XmStringSegmentCreate, and XmStringSeparatorCreate.  The
+     values returned by these functions should be freed using XmStringFree
+     when they are no longer needed.
+
+ b.  Memory is allocated by Motif for ordinary character strings (of type
+     String) by Motif in XmStringGetLtoR, XmStringGetNextComponent, and
+     XmStringGetNextSegment. After using the string, XtFree() it. [Note that
+     XmStrings and Strings are two different data types.  XmStrings are
+     XmStringFree'd, Strings are XtFree'd.]
+
+ c.  If you have set the label (an XmString) in a label, pushbutton, etc
+     widget, free it after calling XtSetValues() or the widget creation
+     routine by XmStringFree().
+
+ d.  If you have set text in a text widget, the text widget makes its own
+     copy.  Unless you have a use for it, there is no need to keep your own
+     copy.
+
+ e.  If you have set the strings in a list widget the list widget makes its
+     own copy.  Unless you have a use for it, there is no need to keep your
+     own copy.
+
+ f.  When you get the value of a single compound string from a Widget e.g.
+     XmNlabelString, XmNmessageString, ... Motif gives you a copy of its
+     internal value.  You should XmStringFree this when you have finished with
+     it.
+
+ g.  On the other hand, when you get a value of a Table e.g. XmStringTable for
+     a List, you get a *pointer* to the internal Table, and should not free
+     it.
+
+ h.  When you get the value of the text in a widget by XmTextGetString or from
+     the resource XmNvalue, you get a copy of the text.  You should XtFree
+     this when you have finished with it.
+
+Answer: Josef Nelissen wrote: at least in Motif 1.1.4, X11R4 on a HP 720, the
+XmText/XmTextFieldSetString() functions have a memory leak.  The old
+value/contents of the Widget isn't freed correctly.  To work around this bug,
+one should use a XmText Widget (in single-line-mode) instead of a XmTextField
+Widget (the solution fails with XmTextField Widgets !) and replace any
+
+       XmTextSetString(text_widget, str);
+
+by
+
+       XmTextReplace(text_widget, (XmTextPosition) 0,
+                     XmTextGetLastPosition(text_widget), str);
+
+
+-----------------------------------------------------------------------------
+Subject: 148)  Why does my application take a long time to start up?
+
+Answer: You are probably creating too many widgets at startup time.  Delay
+creating them until needed.  If you have a large number of resources in text
+files (such as in app-defaults), time may be spent reading and parsing it.
+
+-----------------------------------------------------------------------------
+Subject: 149)  My application is running too slowly. How can I speed it up?
+
+Answer: Use the R4 rather than R3 server.  It is much faster.
+
+Answer: The standard memory allocator is not well tuned to Motif, and can
+degrade performance.  Use a better allocator.  e.g. with SCO Unix, link with
+libmalloc.a; use the allocator from GNU emacs; use the allocator from Perl.
+
+Answer: Avoid lots of widget creation and destruction.  It fragments memory
+and slows everything down.  Popup/popdown, manage/unmanage instead.
+
+Answer: Set mappedWhenManaged to FALSE, and then call XtMapWidget()
+XtUnmapWidget() rather than managing.
+
+Answer: Get more memory - your application, the server and the Operating
+System may be spending a lot of time being swapped.
+
+Answer: If you are doing much XmString work yourself, such as heavy use of
+XmStringCompare, speed may deteriorate due to the large amount of internal
+conversions and malloc'ing.  Try using XmStringByteCompare if appropriate or
+ordinary Ascii strings if you can.
+
+
+-----------------------------------------------------------------------------
+Subject: 150)  Why is my application so huge?
+
+Answer: The typical size of a statically linked Motif app is in the megabytes.
+This is often caused by the size of libXm.a. A large part of this gets linked
+in to even trivial Motif programs. You can reduce the code size by linking
+against shared libraries if they are available.  Running "strip" on the
+executable can often reduce size. Note that the size of the running program
+should be measured by "ps", not by the code size.
+
+-----------------------------------------------------------------------------
+END OF PART FIVE

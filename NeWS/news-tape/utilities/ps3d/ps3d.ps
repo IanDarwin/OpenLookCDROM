@@ -1,0 +1,811 @@
+%!
+% From: liam@cs.qmc.ac.uk (William Roberts)
+% Subject: Re: Macros
+% Summary: Some 3D stuff
+% Keywords: Macros, Postscript, Procedures
+% Message-ID: <798@sequent.cs.qmc.ac.uk>
+% Date: 11 Jan 89 12:20:25 GMT
+% References: <917@gmdzi.UUCP>
+% Reply-To: liam@cs.qmc.ac.uk (William Roberts)
+% Organization: Computer Science Dept, Queen Mary College, University of London, UK.
+% 
+% In article <917@gmdzi.UUCP> al@gmdzi.UUCP (Alexander Linden) writes:
+% >
+% >- procedures to plot 3-dimensional functions in different
+% >  shapes, and to rotate them.
+% 
+% The following PostScript code handles the calculations for 2D
+% views of 3D objects include 3D paths and Bezier patches.
+% It is an appendix in
+% 
+%         R. Salmon & M. Slater
+%         "Computer Graphics: Systems and Concepts"
+%         August 1987, Addison-Wesley.
+% 
+% which contains a more detailed explanation of the code and the
+% 3D machinery involved (view planes, view vectors, homogeneous
+% coordinate transforms etc).  It is given here with the prior
+% permission of Mel Slater who wrote it.
+% 
+% There is an example on the end, which is in fact a figure from
+% the paper "First Impressions of NeWS" that appeared in
+% "Computer Graphics Forum", 7, 39-57, 1988, North-Holland, and
+% which was mailed out to the 400+ people that requested it.
+% 
+% Happy New Year!
+% 
+% ------------------------------------------------------
+% 
+% William Roberts         ARPA: liam@cs.qmc.ac.uk  (gw: cs.ucl.edu)
+% Queen Mary College      UUCP: liam@qmc-cs.UUCP
+% LONDON, UK              Tel:  01-975 5250
+% ------------------------------------------------------
+%!
+%% Copyright M. Slater at Queen Mary College, London, 1988.
+%% This code may be freely distributed and copied
+%% provided this copyright message is retained.
+
+/BEFOREstate save def
+
+%Matrix handling package
+%Here a matrix is a 4*4 matrix represented as a flattened array
+
+/MatrixWithValueDict 2 dict def
+
+%delivers a matrix with every element equal to value
+%value MatrixWithValue => [value value ... value]
+/MatrixWithValue
+{
+  MatrixWithValueDict begin
+    /value exch def /matrix 16 array def
+    0 1 15 {matrix exch value put} for
+    matrix
+  end
+} def
+
+
+/IdentityMatrixDict 1 dict def
+
+%delivers an identity matrix
+% - IdentityMatrix => 4*4 identity matrix
+/IdentityMatrix
+{
+  IdentityMatrixDict begin
+    /matrix 0 MatrixWithValue def
+    0 5 15 {matrix exch 1 put} for
+    matrix
+  end
+} def
+
+
+/IndexDict 2 dict def
+
+%delivers the index into the flattened array corresponding to (i,j)
+%i j Index => i*4+j
+/Index
+{
+  IndexDict begin
+    /j exch def
+    /i exch def
+    i 4 mul j add
+  end
+} def
+
+
+/MatMultiplyDict 9 dict def
+
+%matrix multiplication
+%MatrixA MatrixB MatMultiply => MatrixA*MatrixB
+/MatMultiply
+{
+  MatMultiplyDict  begin
+    /B exch def
+    /A exch def
+    /sum 0 def  /matrix 16 array def
+
+      0 1 3
+      {/i exch def
+          0 1 3
+          {/j exch def
+             /sum 0 def
+             0 1 3
+             {/k exch def
+              /sum A i k Index get B k j Index get mul sum add def
+             } for
+             matrix i j Index sum put
+          } for
+       } for
+       matrix
+  end
+} def
+
+
+/CrossProductDict 3 dict def
+
+%vector cross product
+%a b CrossProduct => a * b  (cross product)
+/CrossProduct
+{
+  CrossProductDict begin
+    /b exch def
+    /a exch def
+    /c 3 array def
+    c 0 a 1 get b 2 get mul a 2 get b 1 get mul sub put
+    c 1 a 2 get b 0 get mul a 0 get b 2 get mul sub put
+    c 2 a 0 get b 1 get mul a 1 get b 0 get mul sub put
+    c
+  end
+} def
+
+
+/NormDict 3 dict def
+
+%vector normalization
+%a Norm => b (normalization)
+/Norm
+{
+  NormDict begin
+     /a exch def
+     /b 3 array def
+     a b copy pop
+     /n 0 b {dup mul add} forall def %sum of squares
+     /n n sqrt def
+     b {n div} forall b astore
+  end
+} def
+
+
+/DotProductDict 5 dict def
+
+%vector dot product
+%a b DotProduct  => a.b (dot product)
+/DotProduct
+{
+  DotProductDict begin
+     /b exch def /a exch def
+     /n 0 def
+     0 1 2
+     {/i exch def
+      /n a i get b i get mul n add def
+     } for
+     n
+  end
+} def
+
+
+/VectorSumDict 4 dict def
+
+%vector sum
+%a b VectorSum => a+b
+/VectorSum
+{
+  VectorSumDict begin
+    /b exch def /a exch def
+    /c 0 0 0 3 array astore def
+    0 1 2
+    {/i exch def
+     c i a i get b i get add put
+    } for
+    c
+  end
+} def
+
+
+/VectorDiffDict 4 dict def
+
+%vector difference
+%a b VectorDiff => a-b
+/VectorDiff
+{
+  VectorDiffDict begin
+    /b exch def /a exch def
+    /c 0 0 0 3 array astore def
+    0 1 2
+    {/i exch def
+     c i a i get b i get sub put
+    } for
+    c
+  end
+} def
+
+
+/PointByMatrixDict 6 dict def
+
+%delivers non-homogeneous point resulting from the multiplication
+%point Matrix PointByMatrix => point(3D)
+/PointByMatrix
+{
+  PointByMatrixDict begin
+    /m exch def /p exch def
+    /hp 4 array def
+    /q 3 array def
+    0 1 3
+    {
+      /j exch def
+      %hp[j] = m[3,j]
+      hp j m 3 j Index get put
+      0 1 2
+      {
+        /i exch def
+        %hp[j] = hp[j] + p[i]*m[i,j]
+        hp j  hp j get p i get m i j Index get mul add put
+      } for
+    } for
+    %for i = 0 to 2 do q[i] = hp[i]
+    hp aload pop pop q astore
+    %for i = 0 to 2 do q[i] = q[i]/hp[3]
+    q {hp 3 get div} forall q astore
+  end
+} def
+
+
+/PointByMatrixToCoordsDict 6 dict def
+
+%delivers x and y coordinates of the point resulting
+%from the multiplication of the point by the matrix
+%point matrix PointByMatrixToCoords => x y
+/PointByMatrixToCoords
+{
+  PointByMatrixToCoordsDict begin
+    /m exch def /p exch def
+    /hp 4 array def
+    0 1 3
+    {
+      /j exch def
+      %hp[j] = m[3,j]
+      hp j m 3 j Index get put
+      0 1 2
+      {
+        /i exch def
+        %hp[j] = hp[j] + p[i]*m[i,j]
+        hp j  hp j get p i get m i j Index get mul add put
+      } for
+    } for
+    /w hp 3 get def
+    hp 0 get w div hp 1 get w div
+  end
+} def
+
+%Data Structures and Procedures for specifying a 3D view
+
+%dictionary to hold the internal representation of the current view
+/ViewRepresentation 2 dict def
+ViewRepresentation  begin
+   %view matrix
+  /ViewMatrix IdentityMatrix def
+   %matrix for transformation to display
+  /displaymatrix matrix def
+end
+
+
+%dictionary to hold the current view specification
+/ViewSpecification 8 dict def
+ViewSpecification  begin
+   /vpn 0 0 -1 3 array astore      def %view plane normal
+   /vuv 0 1  0 3 array astore      def %view up vector
+   /vrp 0 0 0 3 array  astore      def %view reference point
+   /cop 0 0 0 3 array  astore      def %centre of projection
+   /vd  0                          def %view distance
+   /dmin -1                        def %front clipping plane
+   /dmax  1                        def %back clipping plane
+   /vwin 0 1 0 1 4 array astore    def %view window
+end
+
+
+/SetViewportDict 10 dict def
+
+%computes factor values assuming the given viewport.
+%The 2D window is x and y between -1 and +1.
+%The results saved in ViewRepresentation
+%xmin xmax ymin ymax SetViewport => -
+/SetViewport
+{
+  SetViewportDict begin
+      /ymax exch def /ymin exch def
+      /xmax exch def /xmin exch def
+      /dx xmax xmin sub 2 div def
+      /dy ymax ymin sub 2 div def
+
+      /f0 xmin dx add def
+      /f1 dx          def
+      /f2 ymin dy add def
+      /f3 dy          def
+
+      ViewRepresentation begin
+         f1 0 0 f3 f0 f2 displaymatrix astore pop
+      end
+  end
+} def
+
+
+/SetViewDict 16 dict def
+
+%computes the current view and saves in ViewRepresentation
+%according to the data in ViewSpecification
+%- SetView => -
+/SetView
+{
+    ViewSpecification begin
+      ViewRepresentation begin
+        SetViewDict begin
+          /n vpn Norm def
+          /u n vuv CrossProduct Norm def
+          /v u n CrossProduct def
+            /VM IdentityMatrix def
+            0 1 2
+            { /i exch def
+              %VM[i,0] = u[i]
+              VM i 0 Index u i get put
+
+              %VM[i,1] = v[i]
+              VM i 1 Index v i get put
+
+              %VM[i,2] = n[i]
+              VM i 2 Index n i get put
+
+              %VM[3,0] = VM[3,0] - vrp[i]*u[i]
+              VM 3 0 Index
+                 VM 3 0 Index get vrp i get u i get mul sub
+              put
+
+              %VM[3,1] = VM[3,1] - vrp[i]*v[i]
+              VM 3 1 Index
+                VM 3 1 Index get vrp i get v i get mul sub
+              put
+
+              %VM[3,2] = VM[3,2] - vrp[i]*n[i]
+              VM 3 2 Index
+                 VM 3 2 Index get vrp i get n i get mul sub
+              put
+            } for
+
+            %transform cop to the origin
+            0 1 2
+            { /i exch def
+              %VM[3,i] = VM[3,i] - (cop[i]+vrp[i])
+              VM 3 i Index
+                 VM 3 i Index get cop i get vrp i get add sub
+              put
+            } for
+
+            %and redefine the view distances
+            %VD = vd - cop[2]
+            /VD vd cop 2 get sub def
+
+            %DMIN = dmin - cop[2]
+            /DMIN dmin cop 2 get sub def
+
+            %DMAX = dmax - cop[]
+            /DMAX dmax cop 2 get sub def
+
+            %set the projection matrix
+            %dx = xmax - xmin etc
+            /dx vwin 1 get vwin 0 get sub def
+            /dy vwin 3 get vwin 2 get sub def
+            /px vwin 1 get vwin 0 get add def
+            /py vwin 3 get vwin 2 get add def
+            /dD DMAX DMIN sub def
+
+            /P 0 MatrixWithValue def
+            P 0 0 Index 2 VD dx div mul put
+
+            P 1 1 Index 2 VD dy div mul put
+
+            P 2 0 Index px dx div neg put
+
+            P 2 1 Index py dy div neg put
+
+            P 2 2 Index DMAX dD div put
+
+            P 2 3 Index 1 put
+
+            P 3 2 Index DMIN DMAX dD div mul neg put
+
+            /ViewMatrix VM P MatMultiply store
+
+      end
+    end
+  end
+}def
+
+
+/SetVPNDict 3 dict def
+
+%sets the View Plane Normal in ViewSpecification
+%x y z SetVPN => -
+/SetVPN
+{
+  ViewSpecification begin
+    SetVPNDict begin
+       /z exch def /y exch def /x exch def
+       /vpn x y z vpn astore store
+    end
+  end
+} def
+
+
+/SetVUVDict 3 dict def
+
+%sets the View Up Vector in ViewSpecification
+%x y z SetVUV => -
+/SetVUV
+{
+  ViewSpecification begin
+    SetVUVDict begin
+        /z exch def /y exch def /x exch def
+        /vuv x y z vuv astore store
+    end
+  end
+} def
+
+
+/SetVRPDict 3 dict def
+
+%sets the View Reference Point in ViewSpecification
+%x y z SetVRP => -
+/SetVRP
+{
+  ViewSpecification begin
+    SetVRPDict begin
+        /z exch def /y exch def /x exch def
+        /vrp x y z vrp astore store
+    end
+  end
+} def
+
+
+/SetCOPDict 3 dict def
+
+%sets the Centre of Projection in ViewSpecification
+%x y z SetCOP => -
+/SetCOP
+{
+  ViewSpecification begin
+    SetCOPDict begin
+        /z exch def /y exch def /x exch def
+        /cop x y z cop astore store
+    end
+  end
+} def
+
+
+%sets the View Distance, and planes in ViewSpecification
+%viewDistance backPlane frontPlane SetViewDistance => -
+/SetViewDistance
+{
+  ViewSpecification begin
+    /dmax exch store
+    /dmin exch store
+    /vd   exch store
+  end
+} def
+
+
+/SetViewWindowDict 4 dict def
+
+%sets the View Window in ViewSpecification
+%xmin xmax ymin ymax SetViewWindow => -
+/SetViewWindow
+{
+  ViewSpecification begin
+    SetViewWindowDict begin
+       /ymax exch def /ymin exch def
+       /xmax exch def /xmin exch def
+       /vwin xmin xmax ymin ymax vwin astore store
+    end
+  end
+} def
+
+
+
+
+
+
+
+%Basic functions for 3D drawing
+
+/path3DDict 3 dict def
+
+%a path is produced from an array of 3D points
+%assumes an array of 3D points on stack, delivers path
+%pointArray path3D => x0 y0 moveto x1 y1 lineto ... xn-1 yn-1 lineto
+/path3D
+{
+  ViewRepresentation begin
+    path3DDict begin
+       /parray exch def
+       /qarray parray length 1 sub array def
+
+       %firstPoint moveto
+       parray 0 get ViewMatrix PointByMatrixToCoords
+%       displaymatrix transform % NeWS 1.1 deficiency!
+       gsave displaymatrix setmatrix transform grestore
+       moveto
+
+       /qarray parray aload length -1 roll pop qarray astore def
+       qarray {ViewMatrix PointByMatrixToCoords
+%               displaymatrix transform % NeWS 1.1 deficiency!
+               gsave displaymatrix setmatrix transform grestore
+               lineto
+              } forall
+    end
+  end
+} def
+
+%Bezier cubic patches
+%Control point array represented by [[x0 y0 z0] [x1 y1 z1] ... [x3 y3 z3]]
+
+/sumPointsDivDict 5 dict def
+
+%sums elements of two points and divides by d
+%p q d sumPointsDiv => (p+q)/d
+/sumPointsDiv
+{
+   sumPointsDivDict begin
+      /d exch def /q exch def /p exch def
+      /s 3 array def
+      0 1 2
+      {
+        /i exch def
+        s i
+           p i get q i get add d div
+        put
+      } for
+      s
+    end
+} def
+
+
+/sumPointsDict 4 dict def
+
+%sums elements of two points
+%p q sumPoints => p+q
+/sumPoints
+{
+   sumPointsDict begin
+      /q exch def /p exch def
+      /s 3 array def
+      0 1 2
+      {
+        /i exch def
+        s i
+           p i get q i get add
+        put
+      } for
+      s
+    end
+} def
+
+
+/pointDivDict 4 dict def
+
+%divides elements of a point
+%p d pointDiv => p/d
+/pointDiv
+{
+   pointDivDict begin
+      /d exch def /p exch def
+      /q 3 array def
+      0 1 2
+      {
+        /i exch def
+        q i
+           p i get d div
+        put
+      } for
+      q
+    end
+} def
+
+/splitDict 4 dict def
+
+%splits control point sequence (p) into sequences q and r
+%p split => q r
+/split
+{
+  splitDict begin
+     /p exch def
+     /q 4 array def /r 4 array def       %initialise return arrays
+
+     %q[0] = p[0]
+     q 0
+        p 0 get
+     put
+
+     %q[1] = (p[0]+p[1])/2
+     q 1
+         p 0 get p 1 get 2 sumPointsDiv
+     put
+
+     %t = (p[1] + p[2])/4
+     /t p 1 get p 2 get 4 sumPointsDiv 3 array copy def
+
+     %q[2] = q[1]/2 + (p[1] + p[2])/4
+     q 2
+        q 1 get 2 pointDiv
+        t
+        sumPoints
+     put
+
+     %r[3] = p[3]
+     r 3  p 3 get put
+
+     %r[2] = (p[2] + p[3])/2
+     r 2
+        p 2 get p 3 get 2 sumPointsDiv
+     put
+
+     %r[1] = (p[1]+p[2])/4 + r[2]/2
+     r 1
+        t
+        r 2 get 2 pointDiv
+        sumPoints
+      put
+
+      %q[3] = (q[2] + r[1])/2
+      q 3
+         q 2 get r 1 get 2 sumPointsDiv
+      put
+
+      %r[0] = q[3]
+      r 0 q 3 get put
+
+      q r
+  end
+} def
+
+/splitControlGraphDict 9 dict def
+/decomposeDict 5 dict def
+
+%given a 4*4 array of control points p delivers q,r,s,t
+%each of p,q,r,s,t are organized as [cp0 cp1 cp2 cp3]
+%where cpi is an array of control points
+%p splitControlGraph => q r s t
+/splitControlGraph
+{
+  splitControlGraphDict begin
+     /p exch def
+     /q 4 array def /r 4 array def /s 4 array def /t 4 array def
+     /u 4 array def /v 4 array def
+
+     0 1 3
+     {
+      /i exch def
+       p i get split %leaves two arrays of control points on stack
+       %assign second to v[i] and first to u[i]
+       v exch i exch put u exch i exch put
+     } for
+
+     /decompose
+     {
+      %runs through u in column order, and splits it for each
+      %column, leaving the results in q and r
+      decomposeDict begin
+         /r exch def /q exch def /u exch def
+         0 1 3
+         {
+           /j exch def
+           0 1 3
+           {
+             /i exch def
+             u i get j get
+           } for
+           4 array astore split
+           r  exch j exch put q exch j exch put
+         } for
+      end
+     } def
+
+     u q r decompose
+     v s t decompose
+
+     q r s t
+  end
+} def
+
+
+/pathControlGraphDict 3 dict def
+
+%given a control graph, produces a path
+%p pathControlGraph => -
+/pathControlGraph
+{
+  pathControlGraphDict begin
+      /p exch def
+      0 1 3
+      {
+        /j exch def
+        p j get path3D
+        0 1 3
+        {
+         /i exch def
+         p i get j get
+        } for
+        4 array astore path3D
+      } for
+  end
+} def
+
+
+
+%given a control graph(p) and a non-negative integer(n), recursively
+%splits and draws the control graph
+%the recursion is to a depth of n
+%p n => -
+/simpleBezier
+{
+  4 dict begin
+    /n exch def /p exch def
+    0 n eq
+                                   %if n=0 then
+       {p pathControlGraph stroke}
+                                   %else
+       {
+        /nm1 n 1 sub def
+        /g  p splitControlGraph 4 array astore def
+        g {nm1 simpleBezier} forall
+       }
+    ifelse
+  end
+} def
+
+%Example of a Control Graph
+%defines a control graph, looking like a step
+%together with appropriate viewing parameters
+/Step
+{
+  /G
+  [
+    [ [0.0 1.0 1.0] [0.3 1.0 1.2] [0.7 1.0 1.4] [1.0 1.0 1.6] ]
+    [ [0.0 1.0 0.5] [0.3 1.0 0.5] [0.7 1.0 0.5] [1.0 1.0 0.5] ]
+    [ [0.0 0.0 0.5] [0.3 0.0 0.3] [0.7 0.0 0.2] [1.0 0.0 0.5] ]
+    [ [0.0 0.0 0.0] [0.3 0.0 0.0] [0.7 0.0 0.0] [1.0 0.0 0.0] ]
+  ]
+  def
+  0.5 0.5 1.0 SetVRP
+  1.0 0.5 0.0 SetVPN
+  0.0 0.0 1.0 SetVUV
+  -4 1 -4 1 SetViewWindow
+  0 -4 4 SetViewDistance
+  0 0 -3 SetCOP
+  SetView
+}
+def
+
+
+%draws 3D axes
+/axes
+{
+ /Xaxis {[[-0.2 -0.2 -0.2] [ 1.5 -0.2 -0.2]] path3D} def
+ /Yaxis {[[-0.2 -0.2 -0.2] [-0.2  1.5 -0.2]] path3D} def
+ /Zaxis {[[-0.2 -0.2 -0.2] [-0.2 -0.2  1.5]] path3D} def
+ gsave
+   1 setlinewidth
+   Xaxis gsave stroke grestore (X) show
+   Yaxis gsave stroke grestore (Y) show
+   Zaxis gsave stroke grestore (Z) show
+ grestore
+} def
+
+%% Main
+
+%resolution 72 div dup neg scale         % convert to normal coords
+%0 -500 translate
+
+/Times-Roman findfont 10 scalefont setfont
+0 500 0 500 SetViewport
+Step
+2 setlinewidth
+1 setlinecap
+1 setlinejoin
+G 2 simpleBezier
+G pathControlGraph
+gsave
+  0 setlinewidth
+  [ 2 1 ] 0 setdash stroke
+grestore
+1 setlinewidth
+axes
+
+BEFOREstate restore
+showpage

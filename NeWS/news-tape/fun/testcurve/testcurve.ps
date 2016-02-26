@@ -1,0 +1,194 @@
+%!/usr/NeWS/bin/psh
+% Purpose:
+%   To find out what the hell the undocumented "controlpoint" primative does!
+% Don Hopkins
+
+/CurveWindow DefaultWindow
+dictbegin
+  /StartX 10 def
+  /StartY 10 def
+  /StartCPX 80 def
+  /StartCPY 20 def
+  /EndCPX 20 def
+  /EndCPY 100 def
+  /EndX 120 def
+  /EndY 200 def
+  /StartTightness 1 def
+  /EndTightness 1 def
+  /ClientWidth null def
+  /ClientHeight null def
+  /ClientCanvasMatrix null def
+
+  /PaintClient {
+    gsave
+      ClientCanvas setcanvas initgraphics
+      clipcanvaspath pathbbox /ClientHeight exch def /ClientWidth exch def
+      pop pop
+      1 fillcanvas
+      1 setlinequality
+      1 setlinewidth
+      newpath
+      StartCPX StartCPY 4 0 360 arc
+      .25 setgray fill
+      newpath
+      EndCPX EndCPY 4 0 360 arc
+      .25 setgray fill
+      newpath
+      StartX StartY moveto
+      StartCPX StartCPY StartTightness controlpoint
+      EndX EndY lineto
+      EndCPX EndCPY EndTightness controlpoint
+      StartX StartY lineto
+      .52 setgray
+      gsave fill grestore
+      3 setlinewidth
+      0 setgray stroke
+    grestore
+  } def
+
+dictend
+classbegin
+
+  /ShapeClientCanvas { % - => - ([Re]set client canvas' shape)
+    /ShapeClientCanvas super send
+    ClientCanvas setcanvas
+    ClientCanvasMatrix null eq {
+      /ClientCanvasMatrix matrix def
+    } if
+    ClientCanvasMatrix currentmatrix
+  } def
+
+  /closeness { % x1 y1 x2 y2 => -
+    3 -1 roll sub dup mul
+    3 1 roll sub dup mul
+    add
+  } def
+
+  /CreateFrameInterests { % - => - (Create frame control interests)
+    /CreateFrameInterests super send
+    FrameInterests begin
+      /SetPoint
+        PointButton /setpoint
+	DownTransition ClientCanvas eventmgrinterest def
+      SetPoint /Exclusivity true put
+      /SetControl
+        AdjustButton /setcontrol
+	DownTransition ClientCanvas eventmgrinterest def
+      SetControl /Exclusivity true put
+      /SetTightness
+        MenuButton /settightness
+	DownTransition ClientCanvas eventmgrinterest def
+      SetControl /Exclusivity true put
+    end
+  } def
+
+  /startdrag { % => name x y
+    DragProc null ne { DragProc waitprocess pop } if
+    ClientCanvasMatrix setmatrix
+    CurrentEvent begin Name XLocation YLocation end
+   } def
+
+  /setpoint {
+    startdrag
+    2 copy StartX StartY closeness
+    3 copy pop EndX EndY closeness
+    lt {
+      { StartY add /StartY exch store
+        StartX add /StartX exch store }
+    } {
+      { EndY add /EndY exch store
+        EndX add /EndX exch store }
+    } ifelse
+    3 1 roll
+    dragcurve      
+  } def
+
+  /setcontrol {
+    startdrag
+    2 copy StartCPX StartCPY closeness
+    3 copy pop EndCPX EndCPY closeness
+    lt {
+      { StartCPY add /StartCPY exch store
+        StartCPX add /StartCPX exch store }
+    } {
+      { EndCPY add /EndCPY exch store
+        EndCPX add /EndCPX exch store }
+    } ifelse
+    3 1 roll
+    dragcurve      
+  } def
+
+  /tightness { % x1 y1 x2 y2 => t
+    closeness
+    20 sub 0 max
+    3000 div .003 max 50 min
+  } def
+
+  /settightness {
+    startdrag
+    2 copy StartCPX StartCPY closeness
+    3 copy pop EndCPX EndCPY closeness
+    lt {
+      2 copy StartCPX StartCPY tightness
+      /StartTightness exch store
+      { pop pop
+        x y StartCPX StartCPY tightness
+	/StartTightness exch store }
+    } {
+      2 copy EndCPX EndCPY tightness
+      /EndTightness exch store
+      { pop pop
+        x y EndCPX EndCPY tightness
+	/EndTightness exch store }
+    } ifelse
+    3 1 roll
+    PaintClient
+    dragcurve
+  } def
+
+  /DragInterests null def
+  /DragProc null def
+
+  /dragcurve { % stopbutton proc firstx firsty => -
+    10 dict begin
+      /y exch def /x exch def
+      /dragproc exch def
+      /stopbutton exch def
+      /DragInterests 10 dict begin
+        /DoDrag
+          MouseDragged /dodrag
+	  null null eventmgrinterest def
+	DoDrag /Exclusivity true put
+	/StopDrag
+	  stopbutton /stopdrag
+	  null null eventmgrinterest def
+	StopDrag /Exclusivity true put
+      currentdict end def
+      0 0 dragproc
+      /DragProc DragInterests forkeventmgr store
+    end
+  } def
+
+  /dodrag {
+    CurrentEvent begin
+      XLocation x sub
+      YLocation y sub
+      /x XLocation store
+      /y YLocation store
+    end
+    2 copy 0 ne exch 0 ne or {
+      dragproc PaintClient } if
+  } def
+
+  /stopdrag {
+    0 0 dodrag
+    /DragProc null store
+    currentprocess killprocess
+  } def
+
+classend def
+
+/w framebuffer /new CurveWindow send def
+/reshapefromuser w send
+w /ClientCanvas get setcanvas
+/map w send

@@ -1,0 +1,262 @@
+#! /usr/NeWS/bin/psh
+%
+% NeWS is a product of Sun Microsystems, Inc. and is provided for
+% unrestricted use provided that this legend is included on all tape
+% media and as a part of the software program in whole or part.  Users
+% may copy or modify NeWS without charge, but are not authorized to
+% license or distribute it to anyone else except as part of a product
+% or program developed by the user.
+% 
+% NEWS IS PROVIDED AS IS WITH NO WARRANTIES OF ANY KIND INCLUDING THE
+% WARRANTIES OF DESIGN, MERCHANTIBILITY AND FITNESS FOR A PARTICULAR
+% PURPOSE, OR ARISING FROM A COURSE OF DEALING, USAGE OR TRADE PRACTICE.
+% 
+% NeWS is provided with no support and without any obligation on the
+% part of Sun Microsystems, Inc. to assist in its use, correction,
+% modification or enhancement.
+% 
+% SUN MICROSYSTEMS, INC. SHALL HAVE NO LIABILITY WITH RESPECT TO THE
+% INFRINGEMENT OF COPYRIGHTS, TRADE SECRETS OR ANY PATENTS BY NEWS
+% OR ANY PART THEREOF.
+% 
+% In no event will Sun Microsystems, Inc. be liable for any lost revenue
+% or profits or other special, indirect and consequential damages, even
+% if Sun has been advised of the possibility of such damages.
+% 
+% Sun Microsystems, Inc.
+% 2550 Garcia Avenue
+% Mountain View, California  94043
+%
+%
+%	spin 1.8 87/03/13
+%
+% PostScript program that does some round animation
+% No command line arguments.  Control through menu.
+% Relies on files in $NEWSHOME/globes/globe*.im1.
+%
+% Copyright (c) 1986 by Sun Microsystems, Inc.
+%
+
+% Old: createcanvas (found in compat.ps)
+
+% User dict data
+/images 30 def
+/image_array images array def
+/micro_units 0.0016 def
+/macro_units 0.016 def
+/do_rect false def
+/do_numbers false def
+/do_globes true def
+/back_gray .5 def
+
+/spinner_process null def
+/start_process false def
+
+/client_can null def
+/time_delay 0 def
+    
+/adjust_time_delay { % microseconds => -
+    time_delay add /time_delay exch store
+    time_delay 0 lt { /time_delay 0 store } if
+} def
+
+/load_image { % image_number => - (Load array[image_number])
+    gsave
+    10 dict begin % Local storage
+    	% Get image number in a correctly lengthed string
+    	/image_number exch def
+    	/file_number image_number 9 gt {2} {1} ifelse string def
+    	image_number file_number cvs pop
+    	% Build file name
+    	/file_name (NEWSHOME) getenv (/smi/globes/globe) append
+    	file_number append (.im1) append def
+	% Allocate a canvas that is the shape of the client canvas
+
+	/can ClientCanvas FrameWidth FrameHeight createcanvas def
+
+	% Make the canvas retained
+	can /Transparent false put
+	can /Retained true put
+	% Don't stop any input (the frame will catch it)
+	can /EventsConsumed /NoEvents put
+    	% Set up path to be size of bounding box and produce image
+    	can setcanvas clippath pathbbox scale pop pop
+    	% Set the background
+    	back_gray setgray
+    	% See if should do globes
+    	do_globes { 
+	    file_name readcanvas
+	    gsave
+	      .5 .5 translate
+	      image_number images div 360 mul
+	      3 mul cos 10 mul rotate
+	      -.5 -.5 translate
+	      imagecanvas
+	    grestore
+	} if
+    	% See if should do numberes
+    	do_numbers  {
+    	   .4 setgray
+    	    image_number 9 gt { .25 .15 moveto file_number show } if
+    	    .55 .15 moveto image_number 10 mod file_number cvs show
+    	} if
+    	% Store canvas in array
+    	image_array image_number 1 sub can put
+    	can /Mapped true put
+    end % of local storage
+    grestore
+} def
+
+/spin_stop { % Kill spinner_process if alive - => -
+    spinner_process null ne
+    {spinner_process killprocess /spinner_process null store} if
+} def
+
+/spin_start { % Start spinner_process if start_process is true - => -
+    start_process spinner_process null eq and
+        { /spinner_process animation store } if
+} def
+
+/reset_images { % Reset all data structures to null state ClientCanvas => -
+10 dict begin % Local storage
+    /top_can exch /TopChild get def
+    /top_index images 1 add def
+    % Stop animation
+    spin_stop
+% Note: Recode to use removecanvas
+% Remove image canvases (all except top) to avoid flashing as take down
+    /i 0 def
+    {   % loop
+	% Reset if not top canvas
+	top_can image_array i get ne
+	    { image_array i null put }
+	    { /top_index i def } ifelse
+	% Terminate the loop going to run off end of array
+	/i i 1 add def
+	i images 1 sub gt { exit } if
+    } loop
+    % Now reset top canvas
+    top_index images 1 add ne
+    { image_array top_index null put /top_can null def } if
+end % of local storage
+} def
+
+/load_images { % Create a collection of image canvases - => -
+    1 1 images { % loop
+	load_image
+	% Give chance to other processes to run
+	pause
+    } for
+    % Start animation
+    spin_start
+} def
+
+/next_image { % Show the next image - => -
+    % Pull the bottom canvas to the top of the sibling stack
+    client_can /TopChild get /BottomCanvas get dup null ne
+        { canvastotop } { pop } ifelse
+    pause
+} def
+
+/animation { % Process that animates the image
+gsave
+    { % fork
+
+	% Express interest and create a next image event
+	% Note the dup of the interest & COPY its innards into the
+	% event used by sendevent.  This is because the interest
+	% must be a different object but have some of the same filds
+	% as the interest.
+	createevent dup begin
+	    /Name /NextImage def
+	    /Canvas client_can def
+	end dup expressinterest
+	createevent copy dup /Process currentprocess put
+	{ % loop
+	    % Send an event to this process
+	    dup /TimeStamp currenttime time_delay add put sendevent
+	    % Wait for any event an leave event on stack for next sendevent
+	    awaitevent
+	    next_image
+	} loop
+    } fork
+grestore
+} def
+
+/main {
+    /win framebuffer /new DefaultWindow send def	% Create a window
+    {
+	% The client canvas will be rectangular inside an
+	% elliptical frame with 0 borders.
+	/BorderLeft 0 def
+	/BorderRight 0 def
+	/BorderTop 0 def
+	/BorderBottom 0 def
+	/ShapeFrameCanvas { % Form into a circle
+	    gsave
+	    ParentCanvas setcanvas
+	    FrameX FrameY translate
+	    0 0 FrameWidth FrameHeight do_rect {rectpath} {ovalpath} ifelse
+	    FrameCanvas reshapecanvas
+	    FrameCanvas /Mapped true put
+	    grestore
+	} def
+	/ShapeClientCanvas { % Form into a circle
+	    gsave
+	    FrameCanvas setcanvas
+	    0 0 translate
+	    0 0 FrameWidth FrameHeight do_rect {rectpath} {ovalpath} ifelse
+	    ClientCanvas reshapecanvas
+            ClientCanvas reset_images
+	    ClientCanvas /Mapped true put
+	    load_images
+	    grestore
+	} def
+	/ShapeIconCanvas {
+	    ParentCanvas setcanvas
+	    % Try to align the bits of the icon with the round shape
+	    0 0 translate 2 1 IconWidth 2 sub IconHeight 2 sub ovalpath
+	    IconCanvas reshapecanvas
+	} def
+	/PaintFrame {  } def % Supposedly can't see frame
+	/IconImage /globe def
+	/flipiconic { % - => -  (override flipiconic: start & stop spinning)
+	    /flipiconic super send
+	    Iconic? {spin_stop} {spin_start} ifelse
+	} DefaultWindow methodcompile def
+	/PaintFocus { } def % Don't show input focus--ruins images
+	/ForkPaintClient? false def	% avoid forking PaintClient.
+    } win send
+    /reshapefromuser win send				% Shape window.
+
+    % Add menus
+    /spinmenu [
+	(Freeze)		{ spin_stop }
+	(Step)			{ next_image }
+        (Thaw)			{ spin_start }
+        (Slower (split seconds)){ micro_units adjust_time_delay }
+        (Slower (seconds))	{ macro_units adjust_time_delay }
+        (Faster (split seconds)){ 0 micro_units sub adjust_time_delay }
+        (Faster (seconds))	{ 0 macro_units sub adjust_time_delay }
+        (Fastest)		{ /time_delay 0 store }
+    ] /new DefaultMenu send def
+    /imagemenu [
+        (Toggle Shape)		{ /do_rect do_rect not store }
+        (Toggle Numbers)	{ /do_numbers do_numbers not store }
+        (Toggle Globes)		{ /do_globes do_globes not store }
+        (** Stretch to see changes **)	{  }  % CALL RESIZE HERE!
+    ] /new DefaultMenu send def
+
+    0 (Image =>) imagemenu /insertitem win /FrameMenu get send
+    0 (Spin =>) spinmenu /insertitem win /FrameMenu get send
+
+    win /FrameCanvas get setcanvas
+    /client_can win /ClientCanvas get store
+    
+    /map win send  % Map the window. (Damage causes PaintClient to be called)
+
+    /spinner_process animation store
+    /start_process true store
+} def
+
+main

@@ -1,0 +1,921 @@
+#ifndef lint
+static char    *RCSid = "$Header: /n/homeserver/i/gounares/pu/apex/src/apex/RCS/file_browser.c,v 1.1 93/01/06 03:27:31 gounares Exp Locker: gounares $";
+
+#endif
+
+/*
+ * $Log:	file_browser.c,v $
+ * Revision 1.1  93/01/06  03:27:31  gounares
+ * Initial revision
+ * 
+ */
+
+/*
+ * file_browser.c
+ * 
+ * This file contains the routines needed to create a gui file browser.
+ * 
+ * written by
+ * 
+ * Alexander Gounares 10/3/92
+ * 
+ */
+
+/*
+ * Copyright 1993 Alexander Gounares
+ * 
+ * This source is covered by the GNU General Public License Version 2
+ * 
+ * see the apeX manual for more details
+ */
+
+#include <stdio.h>
+#include <strings.h>
+#include <xview/xview.h>
+#include <xview/frame.h>
+#include <xview/panel.h>
+#include <xview/textsw.h>
+#include <xview/notice.h>
+#include <xview/scrollbar.h>
+#include <dirent.h>
+#include <sys/timeb.h>
+#include <sys/param.h>
+
+#include "file_browser.h"
+#include "file_io.h"
+#include "apex_options.h"
+
+extern int      CLIENT_DATA_KEY;
+
+static void     fb_done_proc();
+static void     dir_proc();
+static void     filter_proc();
+static void     filter_choice_proc();
+static void     dir_list_proc();
+static void     file_list_proc();
+static void     load_file_proc();
+static void     load_file_new_proc();
+static void     save_file_proc();
+static void     update_editor_after_save();
+static void     update_lists();
+void            re_fail();
+
+static char    *fb_help[] =
+{
+	"File Browsers",
+	"B", "Directories",
+	"b", "    Single click on a directory item to move to the new",
+	"b", "directory.",
+	"B", "    OR",
+	"b", "    Type the directory name in the 'Directory:' field and",
+	"b", "press return.",
+	"B", "Filters",
+	"b", "    Either select one of the default glob filters from",
+	"b", "the choice stack.",
+	"B", "    OR",
+	"b", "    Type the desired glob filter in the 'Filter:' field",
+	"b", "and press return.",
+	"B", "Default Actions",
+	"b", "    Pressing return on the 'File:' field is equivalent to",
+	"b", "hitting the top action button.",
+	0};
+
+/*
+ * update_editor_after_save -- remove the (edited) label and reset the edited
+ * flag
+ */
+static void
+update_editor_after_save(ped)
+    Editor         *ped;
+{
+	char            frame_label[50 + MAXNAMLEN + MAXPATHLEN];
+
+	ped->fEdited = 0;
+
+	strcpy(ped->szFilename, ped->pFile->szFilename);
+	strcpy(ped->szDirname, ped->pFile->szDirname);
+
+	sprintf(frame_label, "%s apeX Editor #%d - %s%s %s",
+		(ped->fCaps_lock_on) ? "[CAPS] " : "",
+		ped->id,
+		ped->szFilename,
+		(ped->fRead_only) ? " (read only)"
+		: (ped->fEdited) ? " (edited)" : "",
+		ped->szDirname);
+
+	xv_set(ped->frame, FRAME_LABEL, frame_label, NULL);
+	xv_set(ped->file_menu, MENU_DEFAULT_ITEM, ped->load_menu_item, NULL);
+
+}
+
+/*
+ * update_editor_after_edit -- update the editor after edit's have been
+ * made...this function is actually used by the object.c library of routines,
+ * but was included here to make modifications easier (since similar code to
+ * update_editor_after_save).  In a less brain-damaged inplementation, there
+ * would be a function to make this more modular
+ */
+void
+update_editor_after_edit(ped)
+    Editor         *ped;
+{
+	char            frame_label[50 + MAXNAMLEN + MAXPATHLEN];
+
+	strcpy(ped->szFilename, ped->pFile->szFilename);
+	strcpy(ped->szDirname, ped->pFile->szDirname);
+
+	sprintf(frame_label, "%s apeX Editor #%d - %s%s %s",
+		(ped->fCaps_lock_on) ? "[CAPS] " : "",
+		ped->id,
+		ped->szFilename,
+		(ped->fRead_only) ? " (read only)"
+		: (ped->fEdited) ? " (edited)" : "",
+		ped->szDirname);
+
+	xv_set(ped->frame, FRAME_LABEL, frame_label, NULL);
+	xv_set(ped->file_menu, MENU_DEFAULT_ITEM, ped->save_menu_item, NULL);
+
+}
+
+/*
+ * position_browser -- try to position the browser in some intelligent
+ * fashion
+ */
+static void 
+position_browser(frame, bframe)
+    Frame           frame,
+                    bframe;
+{
+	static Display *dpy;
+	Rect            rect,
+	                brect;
+	static int      width;
+
+	if (!dpy) {
+		dpy = (Display *) xv_get(frame, XV_DISPLAY);
+		width = DisplayWidth(dpy, DefaultScreen(dpy));
+	}
+	frame_get_rect(frame, &rect);
+	frame_get_rect(bframe, &brect);
+
+	if (rect.r_left + rect.r_width + brect.r_width < width) {
+		/* we can put it on the right */
+		brect.r_left = rect.r_left + rect.r_width;
+		brect.r_top = rect.r_top;
+#ifdef hpux
+		frame_set_rect(bframe, &brect);
+#else  hpux
+		frame_set_rect(bframe, brect);
+#endif hpux
+	} else if (rect.r_left - brect.r_width > 0) {
+		/* put it on the left */
+		brect.r_left = rect.r_left - brect.r_width;
+		brect.r_top = rect.r_top;
+#ifdef hpux
+		frame_set_rect(bframe, &brect);
+#else  hpux
+		frame_set_rect(bframe, brect);
+#endif hpux
+	}
+	window_fit(bframe);
+	/* give up otherwise */
+}
+
+/*
+ * create_generic_browser -- create a generic file browser, but leave the
+ * actions of the various buttons unspecified.
+ */
+FB             *
+create_generic_browser(frame, ped)
+    Frame           frame;
+    Editor         *ped;
+{
+	FB             *pfb;
+	int             height,
+	                top;
+	char            szDirname[MAXPATHLEN];
+
+	getwd(szDirname);
+
+	pfb = (FB *) acalloc(1, sizeof(FB));
+	pfb->pEd = ped;
+
+	pfb->frame = (Frame) xv_create(frame, FRAME_CMD,
+		FRAME_DONE_PROC, fb_done_proc,
+		XV_KEY_DATA, CLIENT_DATA_KEY, pfb,
+		FRAME_SHOW_FOOTER, FALSE,
+		NULL);
+
+	pfb->panel = (Panel) xv_get(pfb->frame, FRAME_CMD_PANEL);
+	xv_set(pfb->panel, XV_KEY_DATA, CLIENT_DATA_KEY, pfb,
+		PANEL_LAYOUT, PANEL_VERTICAL,
+		NULL);
+
+	pfb->dir_item = (Panel_item) xv_create(pfb->panel, PANEL_TEXT,
+		PANEL_LABEL_STRING, "Directory:",
+		PANEL_VALUE_DISPLAY_LENGTH, 30,
+		PANEL_VALUE_X, 78,
+		PANEL_CLIENT_DATA, pfb,
+		PANEL_NOTIFY_PROC, dir_proc,
+		PANEL_VALUE, szDirname,
+		NULL);
+	pfb->file_item = (Panel_item) xv_create(pfb->panel, PANEL_TEXT,
+		PANEL_LABEL_STRING, "File:",
+		PANEL_VALUE_DISPLAY_LENGTH, 30,
+		PANEL_VALUE_X, 78,
+		PANEL_CLIENT_DATA, pfb,
+		NULL);
+
+	pfb->filter_item = (Panel_item) xv_create(pfb->panel, PANEL_TEXT,
+		PANEL_LABEL_STRING, "Filter:",
+		PANEL_VALUE_DISPLAY_LENGTH, 15,
+		PANEL_VALUE_X, 78,
+		PANEL_CLIENT_DATA, pfb,
+		PANEL_NOTIFY_PROC, filter_proc,
+		PANEL_VALUE, get_filter(),
+		NULL);
+
+	xv_set(pfb->panel, PANEL_LAYOUT, PANEL_HORIZONTAL, NULL);
+
+	pfb->filter_choice_item = (Panel_item) xv_create(pfb->panel,
+		PANEL_CHOICE_STACK,
+		PANEL_CHOICE_STRINGS, get_filter(),
+		"*.apex",
+		"*.[ch]",
+		"*.c.apex",
+		"*.c",
+		"*.h.apex",
+		"*.h",
+		"*",
+		NULL,
+		PANEL_CLIENT_DATA, pfb,
+		PANEL_NOTIFY_PROC, filter_choice_proc,
+		NULL);
+
+	xv_set(pfb->panel, PANEL_LAYOUT, PANEL_VERTICAL, NULL);
+
+	pfb->file_list = (Panel_item) xv_create(pfb->panel, PANEL_LIST,
+		PANEL_LABEL_STRING, "Files:",
+		PANEL_LAYOUT, PANEL_VERTICAL,
+		PANEL_LIST_DISPLAY_ROWS, 15,
+		PANEL_LIST_WIDTH, 150,
+		PANEL_CHOOSE_NONE, TRUE,
+		PANEL_CHOOSE_ONE, TRUE,
+		PANEL_NOTIFY_PROC, file_list_proc,
+		PANEL_CLIENT_DATA, pfb,
+		NULL);
+
+	pfb->dir_list = (Panel_item) xv_create(pfb->panel, PANEL_LIST,
+		PANEL_LABEL_STRING, "Directories:",
+		PANEL_LAYOUT, PANEL_VERTICAL,
+		PANEL_LIST_DISPLAY_ROWS, 10,
+		PANEL_LIST_WIDTH, 150,
+		XV_X, 180,
+		XV_Y, 183,
+		PANEL_CHOOSE_NONE, TRUE,
+		PANEL_CHOOSE_ONE, TRUE,
+		PANEL_NOTIFY_PROC, dir_list_proc,
+		PANEL_CLIENT_DATA, pfb,
+		NULL);
+
+	window_fit(pfb->panel);
+	window_fit(pfb->frame);
+
+	/*
+	 * now set this thing to appear at the right hand corner of the
+	 * editor
+	 */
+
+	position_browser(frame, pfb->frame);
+
+	set_help_button(pfb->frame, pfb->panel, fb_help);
+
+	update_lists(pfb);
+
+	return pfb;
+}
+
+static void
+fb_done_proc(frame)
+    Frame           frame;
+{
+	FB             *pfb;
+
+	pfb = (FB *) xv_get(frame, XV_KEY_DATA, CLIENT_DATA_KEY);
+	xv_destroy_safe(pfb->frame);
+
+	free(pfb);
+
+}
+
+/*
+ * dir_proc -- called when the somebody hits enter on the directory item
+ */
+static void
+dir_proc(item, event)
+    Panel_item      item;
+    Event          *event;
+{
+	FB             *pfb;
+
+	pfb = (FB *) xv_get(item, PANEL_CLIENT_DATA);
+
+	update_lists(pfb);
+}
+
+/*
+ * filter_proc -- called when somebody hits enter on the filter item
+ */
+static void
+filter_proc(item, event)
+    Panel_item      item;
+    Event          *event;
+{
+	FB             *pfb;
+
+	pfb = (FB *) xv_get(item, PANEL_CLIENT_DATA);
+
+	update_lists(pfb);
+}
+
+/*
+ * filter_choice_proc -- called when the default filter choice thingy is
+ * activated
+ */
+static void
+filter_choice_proc(item, value, event)
+    Panel_item      item;
+    int             value;
+    Event          *event;
+{
+	FB             *pfb;
+	char           *szFilter;
+
+	pfb = (FB *) xv_get(item, PANEL_CLIENT_DATA);
+
+	szFilter = (char *) xv_get(item, PANEL_CHOICE_STRING, value);
+
+	xv_set(pfb->filter_item, PANEL_VALUE, szFilter, NULL);
+
+	update_lists(pfb);
+}
+
+/*
+ * file_list_proc -- called when an item on the File list is selected
+ */
+static void 
+file_list_proc(item, szVal, client_data, op, event)
+    Panel_item      item;
+    char           *szVal;
+    caddr_t         client_data;
+    Panel_list_op   op;
+    Event          *event;
+{
+	FB             *pfb;
+
+	pfb = (FB *) xv_get(item, PANEL_CLIENT_DATA);
+
+	if (op == PANEL_LIST_OP_SELECT) {
+		xv_set(pfb->file_item, PANEL_VALUE, szVal, NULL);
+		xv_set(pfb->dir_item, PANEL_VALUE, (char *) client_data, NULL);
+	} else if (op == PANEL_LIST_OP_DESELECT) {
+		xv_set(pfb->file_item, PANEL_VALUE, " ", NULL);
+	}
+}
+
+/*
+ * dir_list proc -- called when an item is selected from the directory list
+ */
+static void
+dir_list_proc(item, szVal, client_data, op, event)
+    Panel_item      item;
+    char           *szVal;
+    caddr_t         client_data;
+    Panel_list_op   op;
+    Event          *event;
+{
+	FB             *pfb;
+	static char     szBuf[MAXPATHLEN],
+	               *szTemp;
+	int             i;
+
+	pfb = (FB *) xv_get(item, PANEL_CLIENT_DATA);
+
+	if (op == PANEL_LIST_OP_SELECT) {
+		if (!(strcmp(szVal, ".."))) {
+			szTemp = rindex(client_data, '/');
+			i = szTemp - client_data;
+			if (!szTemp) {
+				return;
+			}
+			strncpy(szBuf, client_data, i);
+			szBuf[i] = '\0';
+		} else if (!(strcmp(szVal, "."))) {
+			return;
+		} else {
+			sprintf(szBuf, "%s/%s", (char *) client_data, szVal);
+		}
+		xv_set(pfb->dir_item, PANEL_VALUE, szBuf, NULL);
+		update_lists(pfb);
+	}
+}
+
+
+void
+create_load_browser_proc(menu, menu_item)
+    Menu            menu;
+    Menu_item       menu_item;
+{
+	FB             *pfb;
+	Editor         *ped;
+	char            szBuf[100];
+
+	ped = (Editor *) xv_get(menu, MENU_CLIENT_DATA);
+	pfb = create_generic_browser(ped->frame, ped);
+
+	sprintf(szBuf, "Load File for apeX Editor #%d", ped->id);
+
+	xv_set(pfb->frame, XV_SHOW, TRUE,
+		FRAME_LABEL, szBuf,
+		NULL);
+
+	xv_set(pfb->file_item, PANEL_NOTIFY_PROC, load_file_proc, NULL);
+
+	pfb->btn1 = (Panel_item) xv_create(pfb->panel, PANEL_BUTTON,
+		PANEL_LABEL_STRING, "Load File into Editor",
+		XV_X, 180,
+		XV_Y, 110,
+		PANEL_NOTIFY_PROC, load_file_proc,
+		PANEL_CLIENT_DATA, pfb,
+		NULL);
+	pfb->btn2 = (Panel_item) xv_create(pfb->panel, PANEL_BUTTON,
+		PANEL_LABEL_STRING, "Open File into new Editor",
+		XV_X, 180,
+		XV_Y, 135,
+		PANEL_CLIENT_DATA, pfb,
+		PANEL_NOTIFY_PROC, load_file_new_proc,
+		NULL);
+}
+
+void
+create_save_browser_proc(menu, menu_item)
+    Menu            menu;
+    Menu_item       menu_item;
+{
+	FB             *pfb;
+	Editor         *ped;
+	char            szBuf[100];
+
+	ped = (Editor *) xv_get(menu, MENU_CLIENT_DATA);
+	pfb = create_generic_browser(ped->frame, ped);
+
+	sprintf(szBuf, "Save File for apeX Editor #%d", ped->id);
+
+	xv_set(pfb->file_item, PANEL_NOTIFY_PROC, save_file_proc, NULL);
+
+	xv_set(pfb->frame, XV_SHOW, TRUE,
+		FRAME_LABEL, szBuf,
+		NULL);
+
+	pfb->btn1 = (Panel_item) xv_create(pfb->panel, PANEL_BUTTON,
+		PANEL_LABEL_STRING, "Save File",
+		XV_X, 180,
+		XV_Y, 110,
+		PANEL_NOTIFY_PROC, save_file_proc,
+		PANEL_CLIENT_DATA, pfb,
+		NULL);
+}
+
+
+/*
+ * update_lists -- given a File Browser structure, update the two scrolling
+ * lists on the basis on the entries in directory and file
+ */
+static void
+update_lists(pfb)
+    FB             *pfb;
+{
+	char           *szDirname,
+	               *szFilter,
+	               *hDFA,
+	               *t;
+	static char     szFullname[MAXPATHLEN + MAXNAMLEN];
+	DIR            *dir,
+	               *dir2;
+	struct dirent  *dp;
+	int             rows;
+
+	/* clear out whatever is there */
+
+#ifdef hpux
+	rows = (int) xv_get(pfb->file_list, PANEL_LIST_NROWS);
+	if (rows >= 0 )
+	{
+		t = (char *) xv_get(pfb->file_list, PANEL_LIST_CLIENT_DATA, 0);
+		if ( t != NULL && t != XV_ERROR ) 
+		free(t);
+	}
+	xv_set(pfb->file_list, PANEL_LIST_DELETE_ROWS, 0, rows, NULL);
+	rows = (int) xv_get(pfb->dir_list, PANEL_LIST_NROWS);
+	if (rows >= 0 )
+        {
+		t = (char *) xv_get(pfb->file_list, PANEL_LIST_CLIENT_DATA, 0);
+		if ( t != NULL && t != XV_ERROR ) 
+		free(t);
+	}
+	xv_set(pfb->dir_list, PANEL_LIST_DELETE_ROWS, 0, rows, NULL);
+#else  hpux
+	rows = (int) xv_get(pfb->file_list, PANEL_LIST_NROWS);
+	if (rows >= 0 &&
+		(t = (char *) xv_get(pfb->file_list, PANEL_LIST_CLIENT_DATA, 0))
+		!= NULL) {
+		free(t);
+	}
+	xv_set(pfb->file_list, PANEL_LIST_DELETE_ROWS, 0, rows, NULL);
+	rows = (int) xv_get(pfb->dir_list, PANEL_LIST_NROWS);
+	if (rows >= 0 &&
+		(t = (char *) xv_get(pfb->file_list, PANEL_LIST_CLIENT_DATA, 0))
+		!= NULL) {
+		free(t);
+	}
+	xv_set(pfb->dir_list, PANEL_LIST_DELETE_ROWS, 0, rows, NULL);
+#endif hpux
+
+	/* now go through the current directory, matching on pmatch */
+
+	szDirname = (char *) xv_get(pfb->dir_item, PANEL_VALUE);
+	szDirname = strdup(szDirname);
+	szFilter = (char *) xv_get(pfb->filter_item, PANEL_VALUE);
+
+	if ((dir = opendir(szDirname)) == NULL) {
+		return;
+	}
+
+	/*
+	 * set both the file and directory to XV_SHOW false to improve speed
+	 */
+
+	xv_set(pfb->dir_list, XV_SHOW, FALSE, NULL);
+	xv_set(pfb->file_list, XV_SHOW, FALSE, NULL);
+
+	hDFA = re_comp(szFilter);
+
+	for (dp = readdir(dir); dp != NULL; dp = readdir(dir)) {
+
+		/*
+		 * ugg this is pretty nasty
+		 */
+		sprintf(szFullname, "%s/%s", szDirname, dp->d_name);
+		if ((dir2 = opendir(szFullname)) == NULL) {
+			/* was a regular file */
+			if ((t = pmatch(dp->d_name, hDFA)) != NULL &&
+				(t - dp->d_name == strlen(dp->d_name))) {
+				xv_set(pfb->file_list, PANEL_LIST_INSERT, 0,
+					PANEL_LIST_STRING, 0, dp->d_name,
+					PANEL_LIST_CLIENT_DATA, 0, szDirname,
+					NULL);
+			}
+		} else {
+			/* was a directory */
+			xv_set(pfb->dir_list, PANEL_LIST_INSERT, 0,
+				PANEL_LIST_STRING, 0, dp->d_name,
+				PANEL_LIST_CLIENT_DATA, 0, szDirname,
+				NULL);
+			closedir(dir2);
+		}
+
+	}
+
+	xv_set(pfb->file_list, PANEL_LIST_SORT, PANEL_FORWARD, NULL);
+	xv_set(pfb->dir_list, PANEL_LIST_SORT, PANEL_FORWARD, NULL);
+
+	/* we want to show the first items in both lists */
+
+	xv_set((Scrollbar) xv_get(pfb->file_list, PANEL_LIST_SCROLLBAR),
+		SCROLLBAR_VIEW_START, 0, NULL);
+
+	xv_set((Scrollbar) xv_get(pfb->dir_list, PANEL_LIST_SCROLLBAR),
+		SCROLLBAR_VIEW_START, 0, NULL);
+
+	closedir(dir);
+
+	xv_set(pfb->file_list, XV_SHOW, TRUE, NULL);
+	xv_set(pfb->dir_list, XV_SHOW, TRUE, NULL);
+
+
+}
+
+/*
+ * load_file_proc -- called when the load file button is pushed...will load a
+ * file into the editor belonging to the file broweser.
+ */
+static void
+load_file_proc(item, event)
+    Panel_item      item;
+    Event          *event;
+{
+	FB             *pfb;
+	char           *szFilename,
+	               *szDirname;
+	static char     szFullname[MAXNAMLEN + MAXPATHLEN];
+
+	pfb = (FB *) xv_get(item, PANEL_CLIENT_DATA);
+	szFilename = (char *) xv_get(pfb->file_item, PANEL_VALUE);
+	szDirname = (char *) xv_get(pfb->dir_item, PANEL_VALUE);
+
+	sprintf(szFullname, "%s/%s", szDirname, szFilename);
+
+	set_editor(pfb->pEd, szFullname, 0);
+
+	if ((int) xv_get(pfb->frame, FRAME_CMD_PUSHPIN_IN) != TRUE)
+		fb_done_proc(pfb->frame);
+}
+
+/*
+ * load_file_new_proc -- called when the load file into new editor is
+ * pushed...will load a file into a *new* editor window.
+ */
+static void
+load_file_new_proc(item, event)
+    Panel_item      item;
+    Event          *event;
+{
+	FB             *pfb;
+	char           *szFilename,
+	               *szDirname;
+	static char     szFullname[MAXNAMLEN + MAXPATHLEN];
+
+	pfb = (FB *) xv_get(item, PANEL_CLIENT_DATA);
+	szFilename = (char *) xv_get(pfb->file_item, PANEL_VALUE);
+	szDirname = (char *) xv_get(pfb->dir_item, PANEL_VALUE);
+
+	sprintf(szFullname, "%s/%s", szDirname, szFilename);
+
+	new_editor(szFullname, 0, EDITOR_MAIN);
+}
+
+/*
+ * save_file_proc -- called when the save file button is pushed...will save a
+ * file from the editor into the specified filename
+ */
+static void 
+save_file_proc(item, event)
+    Panel_item      item;
+    Event          *event;
+{
+	FB             *pfb;
+	char           *szFilename,
+	               *szDirname;
+	static char     szFullname[MAXNAMLEN + MAXPATHLEN];
+
+	pfb = (FB *) xv_get(item, PANEL_CLIENT_DATA);
+	szFilename = (char *) xv_get(pfb->file_item, PANEL_VALUE);
+	szDirname = (char *) xv_get(pfb->dir_item, PANEL_VALUE);
+
+	sprintf(szFullname, "%s/%s", szDirname, szFilename);
+
+	if (!save_file(szFullname, pfb->pEd)) {
+		char            szBuf[1024];
+
+		sprintf(szBuf, "Trouble saving file '%s'", szFullname);
+		notice_prompt(pfb->pEd->frame, NULL,
+			NOTICE_MESSAGE_STRINGS,
+			szBuf,
+			NULL,
+			NOTICE_BUTTON_YES, "OK",
+			NULL);
+	}
+	update_editor_after_save(pfb->pEd);
+}
+
+/*
+ * save_existing_file_proc -- called when the "Save File" option on the main
+ * file menu is pushed
+ */
+void
+save_existing_file_proc(menu, menu_item)
+    Menu            menu;
+    Menu_item       menu_item;
+{
+	Editor         *ped;
+	char            szFullname[MAXNAMLEN + MAXPATHLEN];
+
+	ped = (Editor *) xv_get(menu_item, MENU_CLIENT_DATA);
+
+	sprintf(szFullname, "%s/%s", ped->szDirname, ped->szFilename);
+
+	if (!save_file(szFullname, ped)) {
+		char            szBuf[1024];
+
+		sprintf(szBuf, "Trouble saving file '%s'", szFullname);
+		notice_prompt(ped->frame, NULL,
+			NOTICE_MESSAGE_STRINGS,
+			szBuf,
+			NULL,
+			NOTICE_BUTTON_YES, "OK",
+			NULL);
+	}
+	update_editor_after_save(ped);
+}
+
+/*
+ * glob pattern matching stuff
+ */
+void
+re_fail(s, c)
+    char           *s;
+    char            c;
+{
+	fprintf(stderr, "%s [opcode %o]\n", s, c);
+	exit(1);
+}
+
+#define PATH_MAX 256
+#define MAXDFA  1024
+#define MAXTAG  10
+
+#define OKP     1
+#define NOP     0
+
+#define CHR     1
+#define ANY     2
+#define CCL     3
+#define NCL     4
+#define BOL     5
+#define EOL     6
+#define BOT     7
+#define EOT     8
+#define BOW	9
+#define EOW	10
+#define REF     11
+#define CLO     12
+
+#define END     0
+
+/*
+ * The following defines are not meant to be changeable. They are for
+ * readibility only.
+ * 
+ */
+#define MAXCHR	128
+#define CHRBIT	8
+#define BITBLK	MAXCHR/CHRBIT
+#define BLKIND	0170
+#define BITIND	07
+
+#define ASCIIB	0177
+
+typedef /* unsigned */ char CHAR;
+
+static CHAR     dfa[MAXDFA];	       /* automaton..       */
+static int      sta = NOP;	       /* status of lastpat */
+
+static CHAR     bittab[BITBLK];	       /* bit table for CCL */
+
+static void
+chset(c)
+    register CHAR   c;
+{
+	bittab[((c) & BLKIND) >> 3] |= 1 << ((c) & BITIND);
+}
+
+#define badpat(x)	return(*dfa = END, x)
+#define store(x)	*mp++ = x
+
+
+/*
+ * * re_comp -- build dfa for a golb pattern
+ */
+char           *
+re_comp(pat)
+    char           *pat;
+{
+	register char  *p;
+	register CHAR  *mp = dfa;
+	register CHAR  *lp;
+	register CHAR  *sp = dfa;
+
+	register int    tagi = 0;
+	register int    tagc = 1;
+
+	register int    n;
+	int             c1,
+	                c2;
+
+	sta = NOP;
+
+	for (p = pat; *p; p++) {
+		lp = mp;
+		switch (*p) {
+
+		case '?':
+			store(ANY);
+			break;
+
+		case '[':
+
+			if (*++p == '^') {
+				store(NCL);
+				p++;
+			} else
+				store(CCL);
+
+			if (*p == '-')
+				chset(*p++);
+			if (*p == ']')
+				chset(*p++);
+			while (*p && *p != ']') {
+				if (*p == '-' && *(p + 1) && *(p + 1) != ']') {
+					p++;
+					c1 = *(p - 2) + 1;
+					c2 = *p++;
+					while (c1 <= c2)
+						chset(c1++);
+				} else
+					chset(*p++);
+			}
+			if (!*p)
+				badpat("Missing ]");
+
+			for (n = 0; n < BITBLK; bittab[n++] = (char) 0)
+				store(bittab[n]);
+
+			break;
+
+		case '*':
+			store(CLO);
+			/* store(ANY); */
+			/* store(END); */
+			break;
+		default:
+			store(CHR);
+			store(*p);
+			break;
+		}
+		sp = lp;
+	}
+	store(END);
+	sta = OKP;
+	return dfa;
+}
+
+#define inascii(x)	(0177&(x))
+#define isinset(x,y) 	((x)[((y)&BLKIND)>>3] & (1<<((y)&BITIND)))
+
+/*
+ * * pmatch -- chug a string through the dfa and see if it matches
+ */
+char           *
+pmatch(name, ap)
+    char           *name,
+                   *ap;
+{
+	register char  *e;
+	register char  *bp;
+	register char  *ep;
+	register int    op,
+	                c,
+	                n;
+	char           *are;
+	char           *lp = name;
+
+	while ((op = *ap++) != END)
+		switch (op) {
+
+		case CHR:
+			if (*lp++ != *ap++)
+				return (0);
+			break;
+		case ANY:
+			if (!*lp++)
+				return (0);
+			break;
+		case CCL:
+			c = *lp++;
+			if (!isinset(ap, c))
+				return (0);
+			ap += BITBLK;
+			break;
+		case NCL:
+			c = *lp++;
+			if (isinset(ap, c))
+				return (0);
+			ap += BITBLK;
+			break;
+		case CLO:
+			are = lp;
+			while (*lp)
+				lp++;
+
+			while (lp >= are) {
+				if (e = pmatch(lp, ap))
+					return (e);
+				--lp;
+			}
+			return (0);
+		default:
+			re_fail("re_exec: bad dfa.", op);
+			return (0);
+		}
+	return (lp);
+}

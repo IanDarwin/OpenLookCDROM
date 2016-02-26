@@ -1,0 +1,711 @@
+From sq.com!ian Wed Jun 15 11:50:13 1994
+From: celeste@xs.com (Celeste Stokely)
+Subject: Celeste's Guide to Terminals & Modems under Solaris 2.x
+Date: Sat, 11 Jun 1994 15:15:38 GMT
+Content-Length: 29109
+Status: RO
+X-Lines: 702
+
+------------- cut this line and all above it, then print ----
+Feb 23 1994  Celeste's Guide to Terminals & Modems in Solaris 2.x Page 1
+
+          Celeste's Guide to Terminals & Modems under Solaris 2.x
+          =======================================================
+        Revision 2/23/94 (and probably the last there will ever be)
+
+                                 INDEX
+  Section    Description                                            Page
+  ----------------------------------------------------------------------
+   A.........Setting up a terminal on Solaris 2.x......................2
+                 BEFORE YOU BEGIN: SET UP THE TERMINAL.................2
+                 ENABLING SOLARIS FOR A TERMINAL.......................2
+                 add_terminal script...................................3
+
+   B.........Setting Up a Bidirectional Modem on Solaris 2.x...........4
+                 BEFORE YOU BEGIN: SETTING UP THE MODEM................4
+                 ENABLING SOLARIS FOR A BIDIRECTIONAL MODEM............4
+                 add_modem script......................................6
+
+   C.........Setting up a Modem for dial-out only......................7
+                 BEFORE YOU BEGIN: SETTING UP THE MODEM................7
+                 ENABLING SOLARIS FOR A DIAL-OUT-ONLY MODEM............7
+
+   D.........Tip and /etc/remote ......................................8
+                 /etc/remote example...................................9
+
+   E.........Setting other serial port modes..........................10
+                 /etc/ttydefs examples................................11
+
+   F.........Random notes of various uses of serial ports.............12
+                 Parity in UUCP.......................................12
+                 Flow control with UUCP...............................13
+
+   This document uses a "cook book" approach to setting up modems and
+   terminals under Sun's Solaris 2.x. It is not a tutorial and does not
+   cover all variations of serial port usage. But, between the explanations
+   and the scripts, you should be able to get common asynchronous modems
+   and terminals working fairly quickly.
+
+   You must execute the commands as root and you will probably have to
+   reboot the machine. So, plan the system's downtime accordingly.
+
+   You may distribute this information to anyone who wants it, as long as
+   you never attempt to copyright it in any way. If you find errors in it,
+   or have suggestions for changes in future revisions, please let me know
+   via email.  Go for it--you can do it!
+
+   ..Celeste Stokely
+   Unix System Administration Consultant, Stokely Consulting
+   EMAIL:          celeste@xs.com
+   Voice Line:     415-967-6898 / FAX: 415-967-0160
+   USMAIL Address: Stokely Consulting
+                   211 Thompson Square / Mountain View CA 94043
+
+
+Feb 23 1994  Celeste's Guide to Terminals & Modems in Solaris 2.x Page 2
+
+
+
+A. Setting up a terminal on Solaris 2.x
+=======================================
+
+*********************************************************************
+***                      IMPORTANT NOTES:                         ***
+***   1. All single quotes in these directions are BACK QUOTES,   ***
+***     not FORWARD QUOTES, except where specifically noted.      ***
+***                                                               ***
+***   2. Be sure and execute these commands as root, from a       ***
+***     BOURNE shell (sh), not ksh, tcsh, or csh. (If you put the ***
+***     commands into a Bourne shell script, that's fine, too.)   ***
+***                                                               ***
+***   3. If, after following these instructions, you get          ***
+***     terminal failures, and you're not using a script, then    ***
+***     make sure that root's default shell is /sbin/sh and not   ***
+***     csh.                                                      ***
+*********************************************************************
+
+
+BEFORE YOU BEGIN: SETTING UP THE TERMINAL
+        - Set the terminal for the speed you wish (example below
+          assumes you are using 9600 baud)
+        - The only lines you really need in the terminal-to-Sun cable
+          are 2, 3, and 7. Be sure to cross lines 2 and 3 in your cable.
+        - Set the terminal for Xon/Xoff flow control
+        - Set the terminal for 7 bits, Even Parity. (1 stop bit, if
+          you have that setting.) If you want a different parity or
+          word length, see Section D of this document.
+
+
+ENABLING SOLARIS FOR A TERMINAL:
+        - Save the following script as add_terminal
+        - make it executable with "chmod u+x add_terminal"
+        - Edit add_terminal to meet your particular needs
+        - Execute add_terminal
+        - If the terminal doesn't give you a login when you hit <return>
+          try rebooting the machine once.
+
+
+
+Feb 23 1994  Celeste's Guide to Terminals & Modems in Solaris 2.x Page 3
+
+
+
+#!/bin/sh
+##########################################################################
+# add_terminal shell script. Must be run as root.
+# This script invokes pmadm with the following parameters.
+# Change these parameters as needed for your particular needs.
+#
+# PARAMETER                MEANING
+# ---------                -------
+# PORT                     Port you want to set up. "a" or "b"
+# TTYSPEED                 Speed setting, from /etc/ttydefs
+# -s tty$PORT              Terminal is on tty$PORT
+# -d /dev/term/$PORT       Actual port device. you may want
+# -l $TTYSPEED             Speed/stty setting from /etc/ttydefs. choose a
+#                          $TTYSPEED entry that meets your needs
+# -T tvi925                Your default terminal type for this port. This
+#                          is a terminfo terminal type
+# -i 'terminal disabled'   Message sent to the tty port if the port is
+#                          ever disabled
+#
+#    QUOTE-ALERT: The single quotes in the "terminal-disabled" message are
+#                 FORWARD QUOTES
+##########################################################################
+# set PORT = either a or b
+#----------------------------------------
+#PORT="a"
+PORT="b"
+#----------------------------------------
+# choose your speed setting. See /etc/ttydefs for more settings,
+# or build your own from the examples in the rest of this document
+#      contty5H =  19200 bps, 7 bits even parity
+#      contty3H =  2400 bps, 7 bits even parity
+#      conttyH =   9600 bps, 7 bits even parity
+#----------------------------------------
+TTYSPEED="conttyH"
+#----------------------------------------
+# change ownership of outgoing side of port to user uucp, group tty
+# change ownership of incoming side of port to user root, group tty
+#----------------------------------------
+chown uucp /dev/cua/$PORT; chgrp tty /dev/cua/$PORT
+chown root /dev/term/$PORT; chgrp tty /dev/term/$PORT
+#----------------------------------------
+# Remove any existing port monitor on the port
+#----------------------------------------
+pmadm -r -p zsmon -s tty$PORT
+#----------------------------------------
+# Create the new port monitor
+#
+#     QUOTE-ALERT: The single quotes in the port-disabled message
+#                  [terminal disabled] are FORWARD QUOTES
+#----------------------------------------
+pmadm -a -p zsmon -s tty$PORT -i root -fu -v `ttyadm -V` \
+-m "`ttyadm -l $TTYSPEED -d /dev/term/$PORT -T tvi925 \
+-i 'terminal disabled' -s /usr/bin/login -S y`"
+
+
+Feb 23 1994  Celeste's Guide to Terminals & Modems in Solaris 2.x Page 4
+
+
+
+B. Setting Up a Bidirectional Modem on Solaris 2.x
+==================================================
+
+BEFORE YOU BEGIN: SETTING UP THE MODEM
+  Be sure that the modem is configured in the following way:
+
+    - Hardware DTR. When the Sun drops DTR the modem should hang up and
+      reset the modem.
+    - Hardware Carrier Detect. The modem only raises the CD line when
+      there is an active carrier signal on the phone connection. When carrier
+      drops, either when the other end of the connection terminated or if
+      the phone connection is broken, the Sun will be notified and
+      act appropriately.  The CD signal is also used for coordinating dial-in
+      and dial-out use on a single serial port and modem.
+    - Respond with numeric result codes. (Usually this is ATV0)
+    - Sends BASIC result codes ONLY. (Sometimes this is ATX0 or ATQ0)
+    - Does not echo commands. (Usually this is ATE0)
+    - Modem is locked at a single speed setting between Sun and modem.
+      Speed may vary as needed between local and remote modem, but
+      should remain constant between Sun and modem.
+
+
+ENABLING SOLARIS FOR A BIDIRECTIONAL MODEM
+
+*********************************************************************
+***                      IMPORTANT NOTES:                         ***
+***   1. All single quotes in these directions are BACK QUOTES,   ***
+***      not FORWARD QUOTES, except where specifically noted.     ***
+***                                                               ***
+***   2. Be sure and execute these commands as root, from a       ***
+***      BOURNE shell (sh), not ksh, tcsh, or csh. (If you use    ***
+***      the a Bourne shell script, that's ok.)                   ***
+***                                                               ***
+***   3. If, after following these instructions, you get          ***
+***      modem failures, or if step #7 gives an error message     ***
+***      about "ttyadm: -V: invalid parameter", then make sure    ***
+***      that root's default shell is /sbin/sh and not csh.       ***
+*********************************************************************
+
+1. Login as root and type:
+        prompt# eeprom ttya-ignore-cd=true
+        prompt# eeprom ttya-rts-dtr-off=true
+   >> go to step 2
+
+2. Reboot the system by typing:
+        prompt# init 6
+   >> Go to step 3
+
+3. Make sure the modem is properly connected and configured.
+   Make sure the cable is ok. (A 25-pin cable, wired "straight through"
+   is fine. A Null Modem cable will NOT work.)
+   >> Go to step 4
+
+
+Feb 23 1994  Celeste's Guide to Terminals & Modems in Solaris 2.x Page 5
+
+
+
+4. Is zsmon configured and running?
+   (The following instructions assume that the modem is on serial port A.)
+   Login as root and type:
+        prompt# sacadm -l -t ttymon
+
+   If you get a message like:
+      "Invalid request, zsmon does not exist"
+      then the zsmon port monitor is not configured.
+   >> Go to step 5
+
+   If you get a result like:
+       PMTAG   PMTYPE    FLGS RCNT STATUS     COMMAND
+       zsmon   ttymon    -    0    ENABLED    /usr/lib/saf/ttymon
+   >>  Go to step 6
+
+5.  To configure the zsmon port monitor
+
+      prompt# sacadm -a -p zsmon -t ttymon -c /usr/lib/saf/ttymon \
+              -v `ttyadm -V` -y "dial in/out on serial port a"
+
+      (Note: The string "zsmon" is known as a PMTAG.
+             "dial in/out on serial port a" is a helpful comment.)
+    >>  Go to step 6
+
+6. Is ttymon configured and running?
+   Type:
+      prompt# pmadm -l -s ttya        (where ttya is the SVCTAG)
+
+   a) If there is no service, you will get a result like:
+           Service <ttya> does not exist.
+      >> Go to step 7.
+
+   b) If you got a result like:
+
+      PMTAG    PMTYPE      SVCTAG      FLGS ID         <PMSPECIFIC>
+      zsmon    ttymon      ttya        u    root   /dev/term/a I - /
+
+      Then you need to remove the existing service by typing:
+            prompt# pmadm -r -p zsmon -s ttya
+                                 ^        ^
+                               (PMTAG)  (SVCTAG)
+      >> Go to step 7.
+
+7. Make a script which will remove any existing port monitor and create a new
+   bidirectional port service.
+
+   (Putting this in a script is a Very Good Idea because if you make a mistake,
+   you can easily fix the problem and rerun the script. Don't try to do this
+   without a script--there are too many typing errors waiting to be made in
+   this command.
+
+   Type in the following script as a file (for instance, /sbin/add_modem),
+   make it executable, then run it.
+
+
+Feb 23 1994  Celeste's Guide to Terminals & Modems in Solaris 2.x Page 6
+
+
+
+#!/bin/sh
+##########################################################################
+# add_modem shell script. Must be run as root from bourne shell
+# This script invokes pmadm with the following parameters.
+# Change these parameters as needed for your particular needs.
+# PARAMETER                MEANING
+# ---------                -------
+# PORT                     Port you want to set up. "a" or "b"
+# TTYSPEED                 Speed setting, from /etc/ttydefs
+# -p zsmon                 PMTAG / name of this port monitor
+# -s ttya                  SVCTAG / modem is on ttya. you may want ttyb
+# -d /dev/term/$PORT       Actual port device.
+# -l contty5H              Ttylabel, defined in /etc/ttydefs file. (speed
+#                          setting. contty5H=19200 baud.
+# -b                       Flag for bidirectional port use
+# -S n                     Turn software carrier off (modem supplies hardware
+#                          carrier detect signal)
+# "dial in/out on serial port"  This is a comment you'll see on pmadm -l
+##########################################################################
+# set PORT = either a or b
+PORT="a"
+#----------------------------------------
+# choose your speed setting. See /etc/ttydefs for more, or build your
+# own from the examples in the rest of this document
+#      contty5H =  19200 bps, 7 bits even parity
+#      conttyH =   9600 bps, 7 bits even parity
+#----------------------------------------
+TTYSPEED="conttyH"
+#----------------------------------------
+# change ownership of outgoing side of port to user uucp, group tty
+# change ownership of incoming side of port to user root, group tty
+#----------------------------------------
+chown uucp /dev/cua/$PORT; chgrp tty /dev/cua/$PORT
+chown root /dev/term/$PORT; chgrp tty /dev/term/$PORT
+#----------------------------------------
+# Remove any existing port monitor on this port
+#----------------------------------------
+pmadm -r -p zsmon -s tty$PORT
+#----------------------------------------
+# Create the new port monitor
+#----------------------------------------
+pmadm -a -p zsmon -s tty$PORT -i root -v `ttyadm -V` -fu -m \
+"`ttyadm -d /dev/term/$PORT -s /usr/bin/login -l  $TTYSPEED -b \
+-S n -m ldterm,ttcompat`" -y "dial in/out on serial port"
+#end of add_modem script
+#####################################################################
+
+    Make the script executable by typing
+        prompt# chmod 700 /sbin/add_modem
+    then run it with:
+        prompt# /sbin/add_modem
+
+    For more information, see Section D, "Tip and /etc/remote".
+
+
+Feb 23 1994  Celeste's Guide to Terminals & Modems in Solaris 2.x Page 7
+
+
+
+C. Setting up a modem for dial-out only
+=======================================
+BEFORE YOU BEGIN: SETTING UP THE MODEM
+  Be sure that the modem is configured for the following:
+    - Hardware DTR, when the Sun drops DTR the modem should hang up and
+      reset the modem.
+    - Hardware Carrier Detect, the modem only raises the CD line when
+      there is an active carrier signal on the phone connection. When carrier
+      drops, either when the other end of the connection terminated or if
+      the phone connection is broken, the Sun will be notified and
+      act appropriately.  The CD signal is also used for coordinating dial-in
+      and dial-out use on a single serial port and modem.
+    - Respond with numeric result codes. (Usually this is ATV0)
+    - Sends BASIC result codes ONLY. (Sometimes this is ATX0 or ATQ0)
+    - Does not echo commands. (Usually this is ATE0)
+    - Modem is locked at a single speed setting between Sun and modem.
+      Speed may vary as needed between local and remote modem, but
+      should remain constant between Sun and modem.
+    - Modem is set to not answer the phone. (Usually this is S0=0)
+
+ENABLING SOLARIS FOR A DIAL-OUT-ONLY MODEM
+  If there is no port monitor running on the port, then the Sun will not
+  try to spawn a login.
+
+1. Login as root and  type:
+        prompt# eeprom ttya-ignore-cd=true
+        prompt# eeprom ttya-rts-dtr-off=true
+   >> go to step 2
+
+2. Reboot the system by typing:
+        prompt# init 6
+   >> Go to step 3
+
+3. Make sure the modem is properly connected and configured.
+   Make sure the cable is ok. (A 25-pin cable, wired "straight through"
+   is fine. A Null Modem cable will NOT work.)
+   >> Go to step 4
+
+4. Is ttymon configured and running? Type:
+      prompt# pmadm -l
+
+   If you got a result like:
+      PMTAG    PMTYPE    SVCTAG    FLGS ID     <PMSPECIFIC>
+      zsmon    ttymon    ttya      u    root   /dev/term/a I - /.....
+
+      Then you need to remove the existing service by typing:
+            prompt# pmadm -r -p zsmon -s ttya
+                                 ^        ^
+                               (PMTAG)  (SVCTAG)
+      >> Go to section D, "Tip and /etc/remote".
+
+   If you see nothing listed for the port you're dealing with, then the
+   Sun will not spawn a login on that port.
+
+
+Feb 23 1994  Celeste's Guide to Terminals & Modems in Solaris 2.x Page 8
+
+
+
+D. Tip and /etc/remote
+======================
+
+ *************************************************************************
+ * NOTE: Never run tip from a cmdtool. Use a shelltool, xterm, or some   *
+ * other window without scrollbars. The scrollbars may confuse tip's     *
+ * <carriage return> processing.                                         *
+ *                                                                       *
+ * There are exceptions to this, but if you never run tip in a scrollbar *
+ * window, you won't have to remember all the ways it does and does not  *
+ * work.                                                                 *
+ *************************************************************************
+
+
+1. Edit /etc/remote and find the entry beginning with "hardwire:". Change
+   the portion which says:
+        :dv=/dev/??????:
+   to read
+        :dv=/dev/cua/a:    (or /dev/cua/b if you're using the B port)
+
+   Change the portion which says:
+        :br#somenumber:
+   to read
+        :br#9600:   (or 19200, or whatever baud rate you plan to use)
+   >> Go to step 2
+
+
+2. Type:
+   prompt#  tip hardwire
+               you should see "connected"
+   type:
+      ATE1V1<carriage return>
+               you should see "OK".
+               Congratulations! You're talking with the modem!
+
+    If you don't see "OK", you are not communicating with the modem.
+    See if the modem is plugged in, verify the baud rate of the modem
+    and the hardwire entry in /etc/remote, verify the modem cable.
+
+
+3.  The cuaa entry (below) allows you to type "tip cuaa" and talk
+    directly to a modem on port a at 2400 bps.
+
+
+4.  "tip some_phone_number" will look for the tip0 entry and use that
+    definition. (In the example below, it will use tip0, which points to
+    UNIX-2400, which sets up a dialup 2400 bps hayes compatible modem.
+    UNIX-2400 points to dialers, which references /dev/cua/a.
+
+
+5. "tip mysystem"  (below) looks up the "mysystem" entry, and dials the
+    number 14155551212 via a 9600 bps connection on /dev/cua/b.
+
+
+Feb 23 1994  Celeste's Guide to Terminals & Modems in Solaris 2.x Page 9
+
+
+
+/etc/remote example:
+--------------------
+
+  The following sample file is set up for
+    port a, 2400 bps hayes-compatible modem, 8 bits no parity ("p8" entry)
+    port b, 9600 bps hayes-compatible modem, 7 bits even parity (no "p8" entry)
+
+
+
+
+  cuaa:dv=/dev/cua/a:p8:br#2400:
+  mysystem:pn=14155551212:tc=UNIX-9600:
+  hardwire:\
+        :dv=/dev/cua/b:br#9600:el=^C^S^Q^U^D:ie=%$:oe=^D:
+  tip1200:tc=UNIX-1200:
+  tip0|tip2400:tc=UNIX-2400:
+  tip9600:tc=UNIX-9600:
+  tip19200:tc=UNIX-19200:
+  cu1200:tc=UNIX-1200:
+  cu0|cu2400:tc=UNIX-2400:
+  UNIX-1200:\
+        :el=^D^U^C^S^Q^O@:du:at=hayes:ie=#$%:oe=^D:br#1200:tc=dialers:
+  UNIX-2400:\
+        :el=^D^U^C^S^Q^O@:du:at=hayes:ie=#$%:oe=^D:br#2400:tc=dialers:
+  UNIX-9600:\
+        :el=^D^U^C^S^Q^O@:du:at=hayes:ie=#$%:oe=^D:br#9600:tc=dialfast:
+  UNIX-19200:\
+        :el=^D^U^C^S^Q^O@:du:at=hayes:ie=#$%:oe=^D:br#19200:tc=dialers:
+  dialers:\
+        :dv=/dev/cua/a:
+  dialfast:\
+        :dv=/dev/cua/b:
+  --------------------------------------------------------------------
+  The attributes are:
+  dv      device to use for the tty
+  du      make a call flag (dial up)
+  pn      phone numbers (@ =>'s search phones file; possibly taken from
+                              PHONES environment variable)
+  at      ACU type
+  ie      input EOF marks (default is NULL)
+  oe      output EOF string (default is NULL)
+  cu      call unit (default is dv)
+  br      baud rate (defaults to 300)
+  tc      to continue a capability
+
+
+Feb 23 1994  Celeste's Guide to Terminals & Modems in Solaris 2.x Page 10
+
+
+
+E. Setting other serial port modes
+==================================
+Serial port modes (the terminal I/O options found in stty(1) ) are set in the
+file /etc/ttydefs. The name of the serial port mode (like contty5H) is used
+as the argument to the "-l" option in the "ttyadm" portion of the "pmadm
+-a" command. (This is the "speed" setting you use when you add a new port
+monitor.) See the stty man page for all the available terminal I/O options.
+
+The format of the entries in ttydefs is defined as:
+   ttylabel:initial-flags:final-flags:autobaud:nextlabel
+
+   ttylabel     The string ttymon tries to match against the TTY port's
+                ttylabel field in the port monitor administrative file.
+                It often describes the speed at which the terminal is
+                supposed to run, for example, 1200.
+
+  initial-flags Contains the initial termio(7) settings to which the
+                terminal is to be set. For example, the system administrator
+                will be able to specify what the default erase and kill
+                characters will be. initial-flags must be specified in the
+                syntax recognized by the stty command.
+
+   final-flags  final-flags must be specified in the same format as
+                initial-flags. ttymon sets these final settings after a
+                connection request has been made and immediately prior to
+                invoking a port's service.
+
+   autobaud     If the autobaud field contains the character `A', autobaud
+                will  be enabled.  Otherwise, autobaud will be disabled.
+                ttymon determines what line speed to set the TTY port to by
+                analyzing the carriage returns entered. If autobaud has been
+                disabled, the hunt sequence is used for baud rate determination.
+
+   nextlabel    If the user indicates that the current terminal setting is
+                not appropriate by sending a BREAK, ttymon searchs for a
+                ttydefs entry whose ttylabel field matches the nextlabel field.
+                If a match is found, ttymon uses that field as its ttylabel
+                field.  A series of speeds is often linked together in this
+                way into a closed set called a hunt sequence. For example,
+                4800 may be linked to 1200, which in turn is linked to 2400,
+                which is finally linked to 4800.
+
+ WARNING: These stty modes are processed from left to right within each set
+ of "initial-flags" or "final-flags". So, the order of the modes in each
+ entry is significant.
+
+ ***************************************************************************
+ **  IMPORTANT NOTE: When setting the mode to 8bits, do NOT enter it as   **
+ **  ".... -parity ... sane", but as "... sane... -parity" because "sane" **
+ **  resets the port to 7 bits.                                           **
+ ***************************************************************************
+
+
+Feb 23 1994  Celeste's Guide to Terminals & Modems in Solaris 2.x Page 11
+
+
+
+/etc/ttydefs examples:
+----------------------
+
+1. contty5H, as supplied by Sun, is 19200 bps, 7 bits even parity
+        contty5H:19200 opost onlcr:19200 hupcl sane::conttyH
+
+   This is equivalent to:
+        contty5H:19200 evenp opost onlcr:19200 sane evenp hupcl::conttyH
+             or
+        contty5H:19200 parenb -parodd opost onlcr:19200 sane parenb
+        -parodd hupcl::conttyH
+
+
+
+2. To change contty5H to "7 bits, no parity" (-parenb):
+        contty5H:19200 -parenb opost onlcr:19200 sane -parenb hupcl::conttyH
+
+
+
+3. To change contty5H to "7bits, odd parity" (parenb parodd, or oddp):
+        contty5H:19200 parenb parodd opost onlcr:19200 sane parenb parodd
+        hupcl::conttyH
+           or
+        contty5H:19200 oddp opost onlcr:19200 sane oddp hupcl::conttyH
+
+
+
+4. To change contty5H to "8 bits, no parity" (-parenb cs8, or -parity):
+ contty5H:19200 -parenb cs8 opost onlcr:19200 sane -parenb cs8 hupcl::conttyH
+           or
+ contty5H:19200 -parity opost onlcr:19200 sane -parity hupcl::conttyH
+
+
+ WARNING: These stty modes are processed from left to right within each set
+ of "initial-flags" or "final-flags". So, the order of the modes in each
+ entry is significant.
+
+ ***************************************************************************
+ **  IMPORTANT NOTE: When setting the mode to 8bits, do NOT enter it as   **
+ **  ".... -parity ... sane", but as "... sane... -parity" because "sane" **
+ **  resets the port to 7 bits.                                           **
+ ***************************************************************************
+
+
+Feb 23 1994  Celeste's Guide to Terminals & Modems in Solaris 2.x Page 12
+
+
+
+E. Random notes of various uses of serial ports
+===============================================
+1. Parity in UUCP:
+   People often get confused about running UUCP in 7 bits vs. 8 bits vs.
+   even vs. odd parity. Here's what's really going on and how to deal with it.
+
+   Both the caller and receiver must agree on parity (even, odd, none) during
+   the login sequence. 7 or 8 bit word length often doesn't matter, if you
+   "do the right thing" with parity.
+
+   Once the uucico's are running, UUCP's own protocol handles all these
+   issues for you, but you need to be concerned with it during login.
+
+   There are 4 parity-related options you can set up during the login chat:
+       P_ZERO - No parity
+       P_EVEN - Even parity
+       P_ODD  - Odd parity
+       P_ONE  - "1" or Mark parity
+
+   It is usually safest to set up parity on a per-system-to-call basis, in
+   the /etc/uucp/Systems file, but it can also be set for all uses of the
+   port, in /etc/uucp/Dialers file.
+
+    Example 1. Setting up a port within UUCP to run with no parity, on a
+      per-system-connect basis.
+
+      In the file /etc/uucp/Systems, include P_ZERO in the chat script,
+      as in:
+
+        outhost Any ACU 9600 5551212 "" P_ZERO ogin: mylogin ssword: mypass
+
+      This means that when you first start trying to contact the machine
+      "outhost" uucp expects nothing ("") and sets P_ZERO (no parity).
+
+
+    Example 2. Setting up a port within UUCP to run with no parity, for all
+      uses of this port.
+
+      (This example assumes you are using the "tbfast" entry in your
+      /etc/uucp/Devices file)
+
+      In /etc/uucp/Dialers:
+         tbfast  =W-,    "" P_ZERO "" \dA\pA\pA\pTE1V1X1......
+
+
+Feb 23 1994  Celeste's Guide to Terminals & Modems in Solaris 2.x Page 13
+
+
+
+2. Flow control with UUCP:
+   With UUCP, either use hardware flow control or no flow control. Please
+   remember that there is no incoming hardware flow control on Sun CPU
+   serial ports, only outgoing hardware flow control. (There is no such
+   limitation on non-cpu ports which claim to have hardware flow control.)
+
+   Sun has released a patch to enable hardware flow control on some
+   systems' cpu serial ports. It may work on your system.
+
+   The lack of incoming hardware flow control is not a problem with UUCP,
+   usually, because the UUCP protocol is robust enough to request
+   retransmission of packets when the data isn't correct.
+
+   Using a good modem that has built-in UUCP protocol support (also known as
+   spoofing) will also help. If all else fails, slow down the connection
+   between the Sun and the modem to what you can support in your environment.
+
+   The string "STTY=crtscts" tells UUCP to use hardware flow control. It's
+   usually better to set this up on a per-port basis, rather than on a
+   per-system basis, but UUCP will let you configure it however you want.
+
+
+    Example 1. Setting up a port with UUCP to use hardware flow control for
+      all uses of this port. (Preferred way)
+
+      (This example assumes you are using the "tbfast" entry in your
+      /etc/uucp/Devices file)
+
+      In /etc/uucp/Dialers, add "STTY=crtscts" after the CONNECT\sFAST:
+
+        tbfast  =W-,  "" \dA\pTE1.... \EATDT\T\r\c CONNECT\sFAST STTY=crtscts
+
+
+    Example 2.  Setting up a port with UUCP to use hardware flow control, on
+      a per-system-connect basis. (Do this if you feel you must, but there
+      are very few good reasons for it.)
+
+      In the file /etc/uucp/Systems, include "STTY=crtscts" in the chat
+      script, as in:
+
+       outhost Any ACU 9600 5551212 ogin: mylog ssword: mypass "" STTY=crtscts
+
+

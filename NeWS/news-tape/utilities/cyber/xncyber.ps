@@ -1,0 +1,6856 @@
+#!/usr/NeWS/bin/psh
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Cyber Space Deck
+% Copyright (C) 1989.
+% By Don Hopkins. (don@brillig.umd.edu)
+% All rights reserved.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  This program is provided for UNRESTRICTED use provided that this
+%  copyright message is preserved on all copies and derivative works.
+%  This is provided without any warranty. No author or distributor
+%  accepts any responsibility whatsoever to any person or any entity
+%  with respect to any loss or damage caused or alleged to be caused
+%  directly or indirectly by this program. This includes, but is not
+%  limited to, any interruption of service, loss of business, loss of
+%  information, loss of anticipated profits, core dumps, abuses of the
+%  virtual memory system, or any consequential or incidental damages
+%  resulting from the use of this program.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% WARNING WARNING! DANGER! DANGER WILL ROBINSON! DANGER!
+% This is *gross* code. I mean UUUUUGLY! (And it used to be
+% even more contorted, if you can believe that.) 
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% This version works with NeWS 1.1, X11/NeWS beta 2, and X11/NeWS pre-fcs
+
+systemdict /XNeWS? known not {
+  systemdict /XNeWS? false put
+} if
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Load necessary stuff
+
+% I want to know the name of the directory in which to look for all the 
+% files I'm going to want to suck in. Here are three ways for you to tell
+% me, any of which you can select and paste into a terminal emulator.
+% You can put the directory name in the systemdict variable /CyberDir:
+%   echo "/CyberDir (`pwd`) def" | psh ; psh cyber.ps
+% Or set the environmment variable CYBERDIR:
+%   echo "(CYBERDIR) (`pwd`) putenv" | psh ; psh cyber.ps
+% Or pass it in as an argument to psh (NeWS 1.1):
+%   psh cyber.ps `pwd`
+
+systemdict begin
+
+/CyberDir where { 
+  pop
+  /CyberDir CyberDir (/) append def
+} {
+  { (CYBERDIR) getenv } errored {
+    pop 
+    % Warning:
+    %   X11/NeWS psh does not support the undocumented $1 $2 $3 feature.
+    ($1/) dup 0 get 36 eq {
+      pop
+      /CyberDir () def
+    } {
+      /CyberDir exch (/) append def
+    } ifelse
+  } {
+    /CyberDir exch (/) append def
+  } ifelse
+} ifelse
+
+end % systemdict
+
+systemdict /DontSetDefaultMenu true put
+
+[
+  /Item			(liteitem.ps)
+  /dbgstart		(debug.ps)
+  /TextCanvas		(textcan.ps)
+  /PieMenu		(piemenu.ps)
+  /PulloutPieMenu	(pullout.ps)
+  /OverlayWindow	(overlay.ps)
+  /pointing-hand	(pointer.ps)
+  /StillDict		(distill.ps)
+  /start_visualizer	(mics.ps)
+] {
+  dup type /nametype eq {
+    systemdict exch known not
+  } {
+    exch {
+      (Loading ) print dup print (\n) print flush
+      pause pause pause
+      CyberDir 1 index append 
+      LoadFile {
+	pop
+      } {
+        dup LoadFile {
+	  pop
+	} {
+	  dup (NeWS/) exch append 
+	  LoadFile {
+	    pop
+	  } {
+	    (Can't find the file ") print print ("!\n) print
+	  } ifelse
+	} ifelse
+      } ifelse
+    } {
+      pop
+    } ifelse
+  } ifelse
+} forall
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Brute force debugging hacks
+% Ignore this stuff. It was written when I was very frustrated.
+
+
+(% ifdef PISSEDOFF
+systemdict begin
+  /s 32 string def
+  false setautobind
+systemdict /logfile known not {
+  /logfile (log.out) (w) file def
+  %/logfile ($1) (w) file def
+  %/logfile (/j/don/foo) (w) file def
+  /def { 
+    2 copy exch
+    logfile (def: ) writestring
+    logfile exch //s cvs writestring
+    logfile ( = ) writestring
+    logfile exch //s cvs writestring
+    logfile (\n) writestring
+    logfile flushfile
+    //def
+  } def
+  /store {
+    2 copy exch
+    logfile (store: ) writestring
+    logfile exch //s cvs writestring
+    logfile ( = ) writestring
+    logfile exch //s cvs writestring
+    logfile (\n) writestring
+    logfile flushfile
+    //store
+  } def
+  /put {
+    3 copy exch 3 -1 roll
+    logfile (put: ) writestring
+    logfile exch //s cvs writestring
+    logfile ( ) writestring
+    logfile exch //s cvs writestring
+    logfile ( = ) writestring
+    logfile exch //s cvs writestring
+    logfile (\n) writestring
+    logfile flushfile
+    //put
+  } def
+  /get {
+    2 copy exch
+    logfile (get: ) writestring
+    logfile exch //s cvs writestring
+    logfile ( ) writestring
+    logfile exch //s cvs writestring
+    logfile ( = ) writestring
+    //get
+    logfile 1 index //s cvs writestring
+    logfile (\n) writestring
+    logfile flushfile
+  } def
+  /send {
+    logfile (send: ) writestring
+    logfile 2 index //s cvs writestring
+    logfile ( ) writestring
+    logfile 1 index /ClassName exch //send //s cvs writestring
+    logfile (\n) writestring
+    logfile flushfile
+    //send
+  } def
+} if
+systemdict /s undef
+end % systemdict
+) % endif PISSEDOFF
+%cvx exec
+pop
+
+% For use when mildly irritated:
+
+% XXX: Uncomment to find mismatched parens:
+%/def {1 index = //def} def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% And now for something completely different
+
+statusdict begin
+  0 setjobtimeout
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% X11/NeWS Compatibility
+
+% This is nasty evil vile implementation dependant hackery. 
+
+XNeWS? {
+
+systemdict begin
+
+% not defined in X11/NeWS beta 2
+  /PutInEventMgrInterest { % interest key value => -
+      3 -1 roll dup /ClientData get % key val int CD
+      dup null ne { exch pop } { % key val int null
+	pop dup /ClientData 20 dict put
+	/ClientData get
+      } ifelse
+      3 1 roll put
+  } def
+
+% not defined in X11/NeWS beta 2
+  /GetFromCurrentEvent { % key => value
+      CurrentEvent /Interest get /ClientData get exch get
+  } def
+
+% not defined in X11/NeWS beta 2
+  /removefocusinterest {
+    pop
+  } def
+
+% not defined in X11/NeWS beta 2 class.ps
+  Object /InstanceVarDict { InstanceVars } put
+
+% not defined in X11/NeWS beta 2
+  /overlayerase {} def % beta2
+
+% not defined in X11/NeWS beta 2
+  /overlaydraw {} def % beta2
+
+% Make it so the debugger /printf's in MessageItem context don't hose us!
+  MessageItem /printf undef
+
+% The rest of this crud is for beta 2 bugs that were fixed in pre-fcs.
+version (1.0) eq { % beta 2 (not pre-fcs)
+
+% Fixes fatal debugger bug:
+  /executive { % - => - (Execute current file)
+      countdictstack 1 eq {200 dict begin} if % make sure there is a userdict
+      currentprocess /ErrorDetailLevel 1 put
+      /execfile currentfile dup null eq {pop (%stdin) (r) file} if def
+
+      (Welcome to %NeWS Version %\n) [XNeWS?{(X11/)} {()} ifelse version] printf
+      {   % restart loop for errors.
+% Removed references to execfile (screws up debugger).
+%	{ execfile cvx exec } stopped pop
+%	execfile status not { quit } if	% quit if file closed
+	  { currentprocess /Stdout get cvx exec } stopped pop
+	  currentprocess /Stdout get status not { quit } if % quit if file closed
+	  ExecutiveErrorHandler
+      } loop
+  } def
+
+% Another patch for the debugger bug just in case:
+  /execfile { currentprocess /Stdout get } def
+
+% Keep killprocess "errors" from being caught by the debugger.
+% (assuming debug.ps is already loaded.)
+
+  DbgErrorDict /killprocess undef
+
+  { % send to LiteMenu:
+
+% Beta 2 bug, litemenu.ps, class LiteMenu
+    /&ShowThingDict 20 dict dup begin
+	/fonttype {setfont dup truetype exec} def
+	/colortype {setcolor dup truetype exec} def
+	/integertype {rmoveto dup truetype exec} def
+	/realtype {rmoveto dup truetype exec} def
+	/stringtype {0 currentfont fontdescent rmoveto show} def	
+	/nametype {iconfont setfont IconString show} def
+	/arraytype {
+	    dup xcheck {/paint exch exec} {aload pop dup truetype exec} ifelse
+	} def
+	/packedarraytype /arraytype load def
+	/dicttype {/paint exch send} def
+    end def
+    /&ThingSizeDict 20 dict dup begin
+	/fonttype {setfont dup truetype exec} def
+	/colortype {setcolor dup truetype exec} def
+	/integertype {pop pop dup truetype exec} def
+	/realtype {pop pop dup truetype exec} def
+
+	/stringtype {stringwidth pop currentfont fontheight} def
+	/nametype {iconfont setfont IconString stringbbox 4 2 roll pop pop} def
+	/arraytype {
+	    dup xcheck {/size exch exec} {aload pop dup truetype exec} ifelse
+	} def
+	/packedarraytype /arraytype load def
+	/dicttype {/size exch send} def
+    end def
+
+% Beta 2 bug, litemenu.ps, class LiteMenu
+(% This is a string so //&ThingSizeDict is scanned at the right time.
+    /ThingSize { % thing => width height
+    //&ThingSizeDict begin
+    gsave
+	dup truetype exec
+    grestore
+    end
+    } def
+) cvx exec
+
+% Beta 2 bug, litemenu.ps, class LiteMenu
+(% This is a string so //&ShowThingDict is scanned at the right time.
+    /ShowThing { % thing x y => -
+    //&ShowThingDict begin
+    gsave
+	moveto dup truetype exec
+    grestore
+    end
+    } def
+) cvx exec
+
+  } LiteMenu send
+
+  { % send to Item:
+
+% Beta 2 bug, liteitem.ps, class Item
+    /ThingSize { % thing textfont => width height
+    gsave
+	setfont
+%	dup type { % X11/NeWS font type = dicttype, so use 'truetype'
+	dup truetype {
+	    /stringtype {stringwidth pop currentfont fontheight}
+	    /nametype {
+		dup { load } stopped pop xcheck {
+		    false exch cvx exec
+		} {
+		    iconfont setfont iconstring stringbbox 4 2 roll pop pop
+		} ifelse
+	    }
+	    /nulltype {0 0}
+	    /Default {0 0}
+	} case
+    grestore
+    } def
+
+% Beta 2 bug, liteitem.ps, class Item
+    /ShowThing { % thing color x y textfont => -
+    gsave
+	setfont translate setcolor
+	0 0 moveto % moveto establishs current pt.
+%	dup type { % X11/NeWS font type = dicttype, so use 'truetype'
+	dup truetype {
+	    /stringtype {0 currentfont fontdescent rmoveto show}
+	    /nametype {
+		dup { load } stopped pop xcheck {
+		    true exch cvx exec
+		} {
+		    iconfont setfont iconstring show
+		} ifelse
+	    }
+	    /nulltype {pop}
+	    /Default {pop}
+	} case
+    grestore
+    } def
+
+% Beta 2 bug, liteitem.ps, class Item
+    /EraseThing { % thing color x y textfont => -
+    gsave
+% X11/NeWS: {load} stopped => ... `load` true, but {load} errored => ... true
+%	4 index dup type /nametype eq exch { load } stopped pop xcheck and {
+	4 index dup type /nametype eq exch { load } errored pop xcheck and {
+	    5 -1 roll exch ThingSize rectpath setcolor fill
+	} {
+	    ShowThing
+	} ifelse
+    grestore
+    } def
+
+  } Item send
+
+  { % send to SimpleScrollbar:
+
+% Beta 2 bug, liteitem.ps, class SimpleScrollbar
+%     /ScrollDownArrow 16 16 1 { } { < % X11/NeWS: matrix arg isn't ignored!
+%	> } buildimage def
+      /ScrollDownArrow 16 16 1 [16 0 0 -16 0 16] { <
+	  07F8 0FF8 0818 0818 0818 0818 781F F81F
+	  8002 4004 2008 1010 0820 0440 0280 0100
+	> } buildimage def
+
+% Arrgh, it's still hosing me! I'm mad now!
+      /PaintArrow {
+	gsave
+	  translate scale setshade
+	  .5 .1 moveto
+	  .1 .9 lineto
+	  .5 .6 lineto
+	  .9 .9 lineto
+	  closepath
+	  fill
+	grestore
+      } def
+
+    } SimpleScrollbar send
+
+} if % version 1.0 (beta 2 bugs)
+
+end % systemdict
+
+% end of X11/NeWS compatibility crud
+
+} { % else if not X11/NeWS (install NeWS 1.1 compatibility stuff)
+  systemdict begin
+
+    /truetype { type } ?def
+    /RootUserDict 10 dict def
+
+  end % systemdict
+} ifelse
+
+% End of compatibility crud. You can empty your barf bag now.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Icky system globals and merciless kludges
+
+systemdict begin
+
+/array? { % obj => bool
+  type dup /arraytype eq exch /packedarraytype eq or
+} def
+
+/comment { pop } def
+
+% Reap dead debuggers
+/rd {
+  systemdict /DbgDicts known {
+    [ DbgDicts {pop} forall ] {
+      dup /State get /zombie eq {
+	dup killprocess
+	DbgDicts exch undef
+      } { pop } ifelse
+    } forall
+  } if
+} def
+
+rd
+
+/_ViewCanvas null def
+
+/_SendUpdateStack {
+  count array astore aload
+  null /UpdateStack _SendViewEvent
+%  { flush } errored {
+%    { dbgstop } errored quit
+%  } if
+} def
+
+/_SendViewEvent { % ClientData Action Name => -
+  createevent begin
+    /Name exch def
+    /Action exch def
+    /ClientData exch def
+    /Canvas
+      currentprocess /Interests get 0 get % event
+      /ClientData get /ViewCanvas get % can
+    def
+  currentdict end sendevent
+} def
+
+/_ReadyProcess {
+  {
+    currentprocess
+    XNeWS? {
+      dup /ProcessName (Spike) put
+    } if
+    createevent begin
+      /Canvas _ViewCanvas def
+      /Name /ProcessReady def
+      /Action currentprocess def
+      count array astore aload
+      /ClientData exch def
+    currentdict end sendevent
+    createevent begin
+      /Name 20 dict def
+      Name begin
+	/ExecIt {
+	  /ClientData get
+	  exec
+	  _SendUpdateStack
+	} def
+	/ReplaceStack {
+	  dup /Action get dup type /stringtype ne { pop } {
+	    { print flush } errored { 
+	      { dbgstop } errored 
+	      clear currentprocess killprocessgroup
+	    } if
+	  } ifelse
+	  /ClientData get
+	  count 1 roll
+	  count 1 sub {pop} repeat
+	  aload pop
+	} def
+	/DropDead {
+	  { dbgstop } errored
+	  { (Ayyyeee!\n) print flush } errored
+	  clear currentprocess killprocessgroup
+	} def
+      end % Name
+      /ClientData 20 dict def
+      ClientData begin
+	/ViewCanvas _ViewCanvas def % Stash!
+      end % ClientData
+    currentdict end expressinterest
+
+% The /execfile kludge is to get around the fact that /execfile is a 
+% function defined in systemdict in X11/NeWS pre fcs, instead of being
+% a file defined in userdict by executive, as in earlier versions. 
+% The problem is that "dbgstart" checks for /execfile in userdict to 
+% tell if an executive has already been started, and if it's not (or
+% even if it is, in our case), it starts one. (and executive doesn't 
+% return, so we've lost control!) (Supposedly a call to "executive" 
+% occurs right before "_ReadyProcess" on the input stream.) So until 
+% such a time as "dbgstart" knows how to tell an executive has already
+% been started, we must fool it... 
+    /execfile dup load def 
+
+    dbgstart
+
+    256 {
+      rd % reap dead rebuggers
+      dstack { eventloop } stopped { 
+	(\nI'm confused...\n) print
+	pause pause
+        ExecutiveErrorHandler
+	pause pause
+      } if
+      (\nTry again...\n) print
+      pause pause
+    } repeat
+    (\nGame over, man!\n) print
+  } fork
+  createevent begin
+    /Name /ExecIt def
+    /Process exch def
+    currentdict
+  end
+  { currentfile dup null eq { clear exit } if
+    token {
+      1 index createevent copy % ev1 ob ev2
+      dup /ClientData 4 -1 roll % ev1 ev2 /CD obj
+      [ exch ] cvx
+      put % ev1 ev2
+      sendevent
+    } {
+      clear exit
+    } ifelse
+  } loop
+} def
+
+/eventloop {
+  { awaitevent } loop 
+} def
+
+/dstack {
+  currentprocess /DictionaryStack get 
+  dup length (dstack[%]: ) printf
+  {
+    smart-name print (  ) print
+  } forall
+  (\n) print
+} def
+
+/enter-eventloop {
+  dstack eventloop
+} def
+
+% This does not exit when you type "exit"...(invalidexit error)
+/enter-executive {
+  { dstack executive exit } loop
+} def
+
+/enter {
+  currentprocess /Interests get length 0 eq
+  /enter-executive /enter-eventloop ifelse
+  exch send
+  dstack
+} def
+
+% Debugger Aliases
+/dbe	{dbgbreakenter} def
+/dbx	{dbgbreakexit} def
+/dc	{dbgcontinue} def
+/dcb	{dbgcontinuebreak} def
+/dcc	{dbgcopystack dbgcontinue} def
+/dcs	{dbgcopystack} def
+/de	{dbgenter} def
+/deb	{dbgenterbreak} def
+/dgb	{dbggetbreak} def
+/dk	{dbgkill} def
+/dkb	{dbgkillbreak} def
+/dlb	{dbglistbreaks} def
+/dmp	{dbgmodifyproc} def
+/dp	{dbgpatch} def
+/dpe	{dbgprintfenter} def
+/dpx	{dbgprintfexit} def
+/dw	{dbgwhere} def
+/dwb	{dbgwherebreak} def
+/dx	{dbgexit} def
+
+% Useful aliases
+/fb	{framebuffer} def
+/ls	{[currentdict {pop} forall] ==} def
+
+XNeWS? not { % XXX?
+  /revokekbdinterests {	%  [ int1 int2 ... intn ]  can =>  -
+      removefocusinterest
+  %    aload pop revokeinterest revokeinterest revokeinterest
+      {{revokeinterest} errored {pop} if} forall
+  } store
+} if
+
+{
+  /getmenuaction { % index => action
+    dup null ne {
+      MenuActions 1 index MenuActions length 1 sub min get
+  % Execute actions that are names! (This is so we can have the executable 
+  % name of a submenu, or a functions to compute the menu action!)
+      dup type /nametype eq { exec } if
+    } {nullproc} ifelse
+    exch pop
+  } def
+} LiteMenu send
+
+XNeWS? {
+  % ick!
+  /Primary dup framebuffer /new ClassSelection send
+  exch setselection
+} if
+
+systemdict /old-setselection known not {
+  /old-setselection /setselection load def
+  /setselection { % dict rank
+    2 copy old-setselection
+    createevent begin
+      /Name /SelectionChanged def
+      /Action exch def
+      /ClientData exch def
+    currentdict end sendevent
+  } def
+} if
+
+/select-object { % obj => -
+  20 dict begin
+    /SelectionType /object def
+    /ContentsPostScript 1 index def
+    /ContentsAscii exch (%) sprintf def
+    /SelectionObjSize 1 def
+    /SelectionResponder null def
+    /Canvas currentcanvas def % XXX?
+    /SelectionHolder currentprocess def % XXX?
+    currentdict
+  end
+  /PrimarySelection setselection
+} def
+
+/select-pointer { % obj index => -
+  20 dict begin
+    /SelectionType /pointer def
+    /SelectionStartIndex exch def
+    /ContentsPostScript exch def
+    /ContentsAscii
+      /ContentsPostScript load
+      /SelectionStartIndex load get
+      (%) sprintf
+    def
+    /SelectionObjSize 1 def
+    /SelectionResponder null def
+    /Canvas currentcanvas def % XXX?
+    /SelectionHolder currentprocess def % XXX?
+    currentdict
+  end
+  /PrimarySelection setselection
+} def
+
+/select-interval { % obj start len => -
+  20 dict begin
+    /SelectionType /interval def
+    /SelectionObjSize exch def
+    /SelectionStartIndex exch def
+    /SelectionLastIndex
+      SelectionStartIndex SelectionObjSize add 1 sub
+    def
+    /ContentsPostScript exch def
+    /ContentsAscii
+      /ContentsPostScript load
+      SelectionStartIndex  SelectionObjSize getinterval
+      (%) sprintf
+    def
+    /SelectionResponder null def
+    /Canvas currentcanvas def % XXX?
+    /SelectionHolder currentprocess def % XXX?
+    currentdict
+  end
+  /PrimarySelection setselection
+} def
+
+/dissect-selection { % seldict => obj
+  dup selection-type {
+    /empty {
+      pop null % null
+    }
+    /unknown {
+      % seldict
+    }
+    /text {
+      /ContentsAscii get % string
+    }
+    /object {
+      /ContentsPostScript get % obj
+    }
+    /pointer {
+      dup /ContentsPostScript get % seldict container
+      exch /SelectionStartIndex get % container index
+      1 index type /dicttype eq {
+        2 copy known
+      } true ifelse {
+	get % obj
+      } {
+	pop pop null % null
+      } ifelse
+    }
+    /interval {
+      dup /ContentsPostScript get % seldict container
+      exch dup /SelectionStartIndex get % container seldict start
+      exch /SelectionLastIndex get % container start last
+      1 index sub 1 add % container start len
+      getinterval % obj
+    }
+    /Default {
+      % seldict
+    }
+  } case
+} def
+
+/selection-type { % seldict => name
+  dup null ne { 
+    dup /SelectionType known { 
+      dup /SelectionType get dup null ne exch /UnknownRequest ne and
+    } false ifelse {
+      /SelectionType get
+    } {
+      dup /ContentsAscii known {
+	pop /text
+      } {
+	pop /unknown
+      } ifelse
+    } ifelse
+  } {
+    pop /empty
+  } ifelse
+} def
+
+/interesting-keys [
+  /SelectionType
+  /ContentsAscii /ContentsPostScript
+  /SelectionStartIndex /SelectionLastIndex
+] def
+
+XNeWS? {
+  /request-selection { % rank => seldict
+    10 dict begin
+      interesting-keys { null def } forall
+      currentdict
+    end
+    exch selectionrequest
+  } def
+} {
+  /request-selection { % rank => seldict
+    dup getselection dup null ne {
+      exch pop
+    } {
+      pop
+      10 dict begin
+	interesting-keys { null def } forall
+	currentdict
+      end
+      exch selectionrequest
+    } ifelse
+  } def
+} ifelse
+/selected-object { % - => obj
+  /PrimarySelection request-selection
+  dissect-selection
+} def
+
+/selected-pointer? { % - => false / collection index true
+  /PrimarySelection request-selection
+  dup selection-type /pointer eq {
+    dup /ContentsPostScript get exch /SelectionStartIndex get 
+    true
+    2 index type /dicttype eq {
+      3 copy pop known not { % invalid pointer
+	pop pop pop false
+      } if
+    } if
+  } {
+    pop false
+  } ifelse
+} def
+
+/selected-interval? { % - => false / collection start last true
+  /PrimarySelection request-selection
+  dup selection-type /interval eq {
+    dup /ContentsPostScript get 
+    exch dup /SelectionStartIndex get 
+    exch /SelectionLastIndex get true
+  } {
+    pop false
+  } ifelse
+} def
+
+/selected-pointer-or-interval? { % - => false / collection first last true
+  /PrimarySelection request-selection dup selection-type {
+    /interval {
+      dup /ContentsPostScript get exch
+      dup /SelectionStartIndex get exch
+      /SelectionLastIndex get
+      true
+    }
+    /pointer {
+      dup /ContentsPostScript get exch
+      /SelectionStartIndex get dup
+      true
+      2 index type /dicttype eq {
+	3 copy pop known not { % invalid pointer
+	  pop pop pop false
+	} if
+      } if
+    }
+    /Default {
+      pop false
+    }
+  } case
+} def
+
+% NeWS-print 0.996
+% Written by Josh Siegel
+% Munged by Don Hopkins
+
+/Externals 512 dict def
+/ExternalsBack 512 dict def
+Externals /Count 0 put
+
+/string-magic 
+        dictbegin
+            (\b) 0 get (\\b) def
+            (\f) 0 get (\\f) def
+            (\n) 0 get (\\n) def
+            (\r) 0 get (\\r) def
+            (\t) 0 get (\\t) def
+            (\() 0 get (\\\() def
+            (\)) 0 get (\\\)) def
+            (\\) 0 get (\\\\) def
+        dictend
+def
+
+/fixstring { 
+    10 dict
+    begin
+	/len 0 def
+        /out 1 index length 3 mul string def
+        {
+            dup string-magic exch known {
+                string-magic exch get
+	    } {
+	        cvis
+            } ifelse
+	    out len 2 index putinterval
+	    /len exch length len add def
+        } forall
+        out 0 len getinterval dup length string copy
+    end
+} def
+
+/stringer { % proc => string
+    dup type cvlit
+    {
+        /arraytype {
+	  pause
+	  /arraylvl arraylvl 1 add store
+	  dup xcheck {
+            /the_string the_string ( {\n) append store
+            {
+                stringer
+            } forall
+            /the_string the_string ( }\n) append store
+	  } {
+            /the_string the_string ( [\n) append store
+            {
+                stringer
+            } forall
+            /the_string the_string ( ]\n) append store
+	  } ifelse
+	  /arraylvl arraylvl 1 sub store
+        }
+        /nametype {
+            dup xcheck {
+                the_string
+	        arraylvl 0 eq (% /% cvx ) (% %) ifelse
+		sprintf
+                /the_string exch store
+            } {
+                the_string (% /%) sprintf
+		/the_string exch store
+            } ifelse
+        }
+        /operatortype {
+            255 string cvs dup length 2 sub 1 exch getinterval
+	    the_string
+	    arraylvl 0 eq (% /% cvx ) (% %) ifelse
+	    sprintf
+            /the_string exch store
+        }
+        /stringtype {
+            fixstring
+            the_string (% \(%\)) sprintf
+            /the_string exch store
+        }
+	/marktype {
+	    (mark ) % [ DANGER! ]
+	}
+        /booleantype /integertype /realtype /nulltype {
+            the_string (% %) sprintf
+            /the_string exch store
+        }
+	/Default {
+	  dup type /dicttype ne dictlvl 0 ne or arraylvl 0 ne or {
+	    ExternalsBack 1 index known {
+	      ExternalsBack exch get % name
+	    } {
+	      Externals begin Count /Count Count 1 add def end % obj count
+	      1 index type (&%_%) sprintf % obj name
+	      Externals 1 index 3 index put % obj name
+	      ExternalsBack 3 -1 roll 2 index put % name
+	    } ifelse
+	    the_string ( //) append exch append /the_string exch store
+	  } {
+	    /dictlvl dictlvl 1 add store
+            /the_string the_string ( dictbegin\n) append store
+            {   pause
+		/the_string the_string (\t) append store
+		exch stringer stringer
+		/the_string the_string ( def\n) append store
+            } forall
+            /the_string the_string ( dictend \n) append store
+	    /dictlvl dictlvl 1 sub store
+	  } ifelse
+	} def
+    } case
+} def
+
+/tokeout { % obj => string
+    10 dict
+    begin
+        /cnt Externals /Count get def
+	/dictlvl 0 def
+	/arraylvl 0 def
+	/the_string () def
+        stringer the_string
+	cnt Externals /Count get ne {
+	  (Externals begin\n%\nend\n) sprintf
+	} def
+    end
+} def
+
+% Short readable names
+
+  /ShortNameDict 40 dict def
+
+  ShortNameDict begin
+    /nametype {
+      dup xcheck (%) (/%) ifelse
+      sprintf
+    } def
+    /dicttype {
+      dup maxlength exch length (<%/%>)
+      sprintf
+    } def
+    /arraytype {
+      dup length exch xcheck ({%}) ([%]) ifelse
+      sprintf
+    } def
+    /packedarraytype /arraytype load def
+    /stringtype {
+      dup length 80 gt { 0 80 getinterval ((%)...) } ((%)) ifelse
+      sprintf
+    } def
+    /marktype {
+      pop (mark)
+    } def
+    /eventtype {
+      dup /Name get short-name
+      exch /IsInterest get
+      (interest(%)) (event(%)) ifelse
+      sprintf
+    } def
+    /canvastype {
+      gsave
+	dup setcanvas
+	clippath pathbbox points2rect 4 2 roll pop pop exch % h w
+	framebuffer setcanvas
+	3 -1 roll getcanvaslocation exch
+	(can(%,%,%,%)) sprintf
+      grestore
+    } def
+XNeWS? {
+    /processtype {
+       dup /Execee get exch
+       dup /State get exch
+       dup /ProcessName known { /ProcessName get } (anonymous) ifelse
+       (proc('%',%,%)) sprintf
+    } def
+} { % not XNeWS?
+    /processtype {
+% One or more of these is causing a core dump some of the time... (NeWS 1.1)
+%       dup /Interests get length exch
+%       dup /ExecutionStack get length exch % CORE DUMP
+%       dup /DictionaryStack get length exch
+%       dup /OperandStack get length exch
+%       dup /Execee get exch
+%       /State get
+%       (proc(%,%,o%,d%,e%,i%)) sprintf
+       dup /Execee get exch
+       /State get
+       (proc(%,%)) sprintf
+    } def
+} ifelse % XNeWS?
+  end %  ShortNameDict
+
+  /short-name {
+    dup type ShortNameDict 1 index known {
+      ShortNameDict exch get exec
+    } {
+      pop 80 string cvs
+    } ifelse
+  } def
+
+  /smart-name {
+    dup smart-type ( ) append exch short-name append
+  } def
+
+  /SmartTypeDict 40 dict def
+
+  SmartTypeDict begin
+
+      /dicttype {
+	dup systemdict eq {
+	  pop (systemdict)
+	} {
+	  % TODO: Detect the process's userdict ...
+	  magic-type
+	} ifelse
+      } def
+
+      /canvastype {
+% 	dup framebuffer eq {
+% 	  pop (framebuffer)
+% 	} {
+% 	  magic-type
+% 	} ifelse
+	magic-type
+      } def
+
+      /eventtype {
+        magic-type
+      } def
+
+      /processtype {
+	magic-type
+      } def
+
+      /fonttype {
+        magic-type
+      } def
+    
+    end % SmartTypeDict
+
+  /smart-type { % obj => str
+    dup truetype % obj type
+    SmartTypeDict 1 index known {
+      SmartTypeDict exch get exec % str
+    } { % obj type
+      pop short-type % str
+    } ifelse
+  } def
+
+  /magic-type {
+    dup /ParentDictArray known 
+    { dup /ParentDictArray get type /nametype ne } % Detect bogus classes!
+    false ifelse {
+      dup /ClassName known { % class
+	/ClassName get 64 string cvs
+      } { % instance
+	% ugly ugly!
+	/ClassName exch send
+	64 string cvs (.) exch append
+      } ifelse
+    } {
+      short-type
+    } ifelse
+  } def
+
+  /short-type { % obj => str
+    truetype 20 string cvs
+    0 1 index length 4 sub getinterval
+  } def
+
+systemdict /quicksort known not {
+
+%
+% quicksort by Don Woods at Sun Microsystems, Inc.
+%
+/quicksort { % array proc => array (sorted, reuses same storage)
+10 dict begin
+    /Bigger? exch cvx def               % a b bigger? => t if a<b
+    dup quickrecur                      % start recursion
+end
+} def % quicksort
+
+/quickrecur { % array => --  sorts array in place, using Bigger? for comparisons
+    dup length dup 2 gt {               % A N
+	% the next lines (until but not incl /Key...) subsort three elements
+	% so we can use the median as the partitioning element; this improves
+	% performance for the case where the array is initially nearly sorted,
+	% but is not strictly necessary for the algorithm to work (it does
+	% seem to improve average runtime by about 10%)
+	2 copy 1 sub 2 copy 2 idiv 1 index 0    % A N A N-1 A (N-1)/2 A 0
+	6 copy get 5 1 roll get 3 1 roll get    % above & A[N-1] A[(N-1)/2] A[0]
+	2 copy Bigger? {exch} if                % subsort for three elements
+	3 1 roll 2 copy Bigger? {exch} if       %   ... (call them min mid max)
+	3 -1 roll 2 copy Bigger? {exch} if      %   ... subsort finished
+	9 index % A N A N-1 A (N-1)/2 A 0 min mid max N
+	3 eq {
+	    5 2 roll put 4 1 roll put put       % store min/mid/max back
+	    pop pop                             % pop A & N
+	} { % else store mid at 0, max at N-1, min at (N-1)/2, then partition
+	    3 -1 roll 5 2 roll put exch 4 1 roll put put        % A N
+	    /Key 2 index 0 get def              % partitioning value
+	    0                                   % A N 0, also known as A j i
+	    {   % main partitioning loop
+		% incr i until i=j or A[i]>=A[0]; note A[j] is rangecheck
+		{   1 add 2 copy gt {           % i++; A j i j>i?
+			dup 3 index exch get    % A j i A[i]
+			Key exch Bigger? not {exit} if
+		    } {exit} ifelse
+		} loop
+		% decr j until A[j]<=A[0]; happens at j=i-1 if not sooner
+		exch {                          % A i j
+		    1 sub dup 3 index exch get  % A i j A[j]
+		    Key Bigger? not {exit} if
+		} loop
+		2 copy gt {exit} if             % if i>=j, finished partition
+		% swap A[j] & A[i]; stack has: A i j
+		2 index 4 copy exch get         % A i j A A i A[j]
+		4 1 roll get                    % A i j A[j] A A[i]
+		3 index exch put                % A i j A[j]
+		4 copy exch pop put pop exch    % A j i
+	    } loop
+	    % finish partition by exchanging A[j] with A[0]; stack has: A i j
+	    exch pop 2 copy 4 copy get          % A j A j A j A[j]
+	    exch pop 0 exch put Key put         % A j
+	    % now recur on A[0..j-1] and A[j+1..N-1]
+	    2 copy 1 add 1 index length 1 index sub     % A j A j+1 N-1
+	    getinterval 3 1 roll 0 exch getinterval     % A[j+1..N-1] A[0..j-1]
+	    2 copy length exch length gt {exch} if      % put smaller on top
+	    quickrecur quickrecur       % tail recursion avoids deep stack
+	} ifelse % =3 or >3 elements
+    } { % handle 1- and 2-element cases specially for efficiency
+	2 eq {
+	    dup aload pop Bigger? {aload 3 1 roll exch 3 -1 roll astore} if
+	    } if
+	pop     % pop the array
+    } ifelse
+} def % quickrecur
+
+% end of quicksort
+
+} if % quicksort not known
+
+% This function in systemdict makes sure ClassName is always in a
+% dictionary on the dict stack.  Objects all have their own class
+% name.  This function provides names for /systemdict and /userdict.
+% It returns the dictionary itself for other dictionaries.
+%
+% The use of this is a little bad and hacky because /ClassName is used
+% as a method for any object (including classes themselves), even though
+% it is not an advertised method in class Object.
+%
+/ClassName { % - => name | dict
+    currentdict
+    dup userdict   eq {pop /userdict} if
+    dup systemdict eq {pop /systemdict} if
+} ?def
+
+end % systemdict
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Userdict Utilities
+
+/shift-names 10 dict def
+shift-names begin
+  /Meta false def
+  /Shift false def
+  /Control false def
+end % shift-names
+
+/update-shifts {
+  shift-names {store} forall
+  /KeyState get {
+    shift-names 1 index known { true store } { pop } ifelse
+  } forall
+} def
+
+/key-names 40 dict def
+key-names begin
+  8 (Backspace) def
+  9 (Tab) def
+  10 (Newline) def
+  13 (Return) def
+  27 (Escape) def
+  32 (Space) def
+  127 (Delete) def
+end % key-names
+
+/key-name { % key => string
+  dup type /integertype eq {
+    dup 127 and
+    key-names 1 index known {
+      key-names exch get
+    } {
+      dup 32 lt {
+        64 add cvis (^%) sprintf
+      } {
+        cvis
+      } ifelse
+    } ifelse
+    exch 128 ge {
+      (Meta-%) sprintf
+    } if
+  } {
+    (%) sprintf
+  } ifelse
+} def
+
+/comment-string { % obj => string
+  dup array? {
+    dup length 2 ge {
+      dup 1 get /comment eq {
+	0 get
+      } if
+    } if
+  } if
+  (%) sprintf
+} def
+
+/destroy { % dummy destroy method for items
+} def
+
+% Forward messages on to stack 
+/prompt {
+  {} execute-it
+} def
+
+/execute-it {
+  /execute-it dialog-item send
+} def
+
+/exec-it {
+  /exec-it dialog-item send
+} def
+
+/push-it {
+  /push-it dialog-item send
+} def
+
+/kbd-select-object {
+  gsave
+    can setcanvas
+    select-object
+  grestore
+} def
+
+/kbd-select-pointer {
+  gsave
+    can setcanvas
+    select-pointer
+  grestore
+} def
+
+/kbd-select-interval {
+  gsave
+    can setcanvas
+    select-interval
+  grestore
+} def
+
+% This is here because the scanner doesn't believe that \r's end comments!
+/remove-returns { % str => str'
+  dup (\r) search not { pop } { % str rest \r pre
+    length 1 add exch pop % str rest len
+    3 -1 roll dup length string copy % rest len str'
+    3 1 roll { % str' rest len
+      2 index 1 index 1 sub 10 put
+      exch (\r) search { % str' len rest \r pre
+	length 1 add exch pop % str' len rest len
+	3 -1 roll add % str' rest len
+      } { % str' len rest
+	pop pop exit
+      } ifelse
+    } loop
+  } ifelse
+} def
+
+% Stolen from:
+% stickem version 1.0
+% Written by Josh Siegel (Wed Jun 29 1988)
+
+XNeWS? {
+
+  /find_canvas { % x y => [canvases]
+    canvasesunderpoint
+  } def
+
+} { % NeWS 1.1
+
+  % getxyloc returns the position of the next left-button
+  % mouse up event.  It passes all other events.
+
+  /getxyloc { %  => x y
+    gsave % ???
+      framebuffer setcanvas % ???
+      10 dict 
+      begin
+	  createevent
+	  dup /Priority 20 put
+	  dup /Name /LeftMouseButton put
+	  dup /Action /UpTransition put
+	  /foobar exch def
+	  foobar expressinterest
+	  {
+	      awaitevent
+	      dup /Name get /LeftMouseButton eq { 
+		  exit 
+	      } if
+	      redistributeevent
+	  } loop
+	  foobar revokeinterest
+	  dup /XLocation get
+	  exch /YLocation get
+      end
+    grestore % ???
+  } def
+
+  % find_tree traverses the canvas tree passed to it and calls
+  % check_canvas to check to see if the point is in the
+  % canvas.   It is also a example of a recursive NeWS routine.
+
+  /find_tree { % canvas => found?
+      dup null eq {
+	  pop false
+      } {
+	  dup /Mapped get {
+	      dup check_canvas {
+	          dup [ exch ] answer exch append /answer exch def
+		  /TopChild get
+		  {   dup null eq {
+			  pop true exit
+		      } if
+		      dup find_tree { pop true exit } if
+		      /CanvasBelow get
+		  } loop
+	      } {
+		pop false
+	      } ifelse
+	  } {
+	    pop false
+	  } ifelse
+      } ifelse
+  } def
+
+  % Check canvas checks to see if the point is inside of the
+  % clipping path of the canvas.  This is VERY important for things
+  % like the clock where the clipping path is round.
+  %
+
+  /check_canvas { % canvas => boolean
+      framebuffer setcanvas % ???
+      dup getcanvaslocation % can xwin ywin
+      ypnt exch sub % can xwin ypnt-ywin
+      exch xpnt exch sub exch % can xpnt-xwin ypnt-ywin
+      3 -1 roll setcanvas clipcanvaspath pointinpath % boolean
+      framebuffer setcanvas
+  } def
+
+  % find_canvas is a convient front end to the whole system.
+  % I use a local dictionary to help in garbage collected in case
+  % this routine is later used as part of a larger piece of code.
+
+  /find_canvas { % x y => [canvas]
+    gsave % ???
+      framebuffer setcanvas % ???
+      10 dict
+      begin
+	  /answer [ ] def
+	  /ypnt exch def
+	  /xpnt exch def
+	  framebuffer find_tree
+	  answer
+      end
+    grestore % ???
+  } def
+
+} ifelse
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% CyberMenu class definition
+
+/CyberMenu
+  systemdict /SoftMenu known { SoftMenu } { PieMenu } ifelse
+def
+
+/PulloutCyberMenu
+  PulloutPieMenu
+def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% NeWSScrollBar item definition
+
+systemdict begin % this is for textcan.ps
+
+/NeWSScrollbar SimpleScrollbar []
+classbegin
+   /setbgcolor { % color - => -
+     /BoxFillColor exch def 
+     /ButtonFillColor BoxFillColor def
+   } def
+classend def
+
+end % systemdict
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% StructItem class definition
+
+% This huge blob implements the data doo-dads.
+% It just kept getting bigger and bigger, before I realized what 
+% was happening. This class should be factored out into several 
+% classes... (I'll probably just reimplement it in NDE from 
+% scratch.)
+
+/StructItem LabeledItem
+dictbegin
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Instance variables
+
+  /Shrink .9 def
+  /Pad 3 def
+  /Point null def
+  /x 0 def
+  /y 0 def
+  /Levels 0 def
+  /DL null def
+  /ItemFrame 2 def
+  /ItemRadius 5 def
+  /ItemBorder 6 def
+  /ItemButton [PointButton AdjustButton MenuButton] def
+  /StackI null def
+  /LayoutLock null def
+  /LastX 0 def
+  /LastY 0 def
+  /LastTime 0 def
+  /Clicks 1 def
+  /TrackProc null def
+  /DX 0 def /DY 0 def
+  /TabX 0 def
+  /TabY 0 def
+  /TabWidth 0 def
+  /TabHeight 0 def
+  /PinX 0 def
+  /StartIndex 0 def
+  /LastIndex 0 def
+  /OldIndex 0 def
+  /MySiblings null def
+  /layout-proc /layout-struct def
+  /click-proc /click-transfer def
+  /transfer-proc /paste-obj def
+  /display-proc /display-tree-struct def
+  /erase-proc /erase-label def
+  /label-proc /object-label def
+  /lw null def
+  /lh null def
+  /lx null def
+  /ly null def
+  /BigWidth 64 def
+  /BigHeight 64 def
+  /Filter? false def
+  /OpenToRight? false def
+  /ShowFan? true def
+dictend
+classbegin
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Class variables
+
+  /StartPoint 18 def
+  /DoubleClickTime 2 60 div def
+  /DoubleClickDistanceSquared 8 dup mul def
+  /CanvasYFudge 2 store
+  /Sort? true def
+  /SubStructureIndent 10 def
+  /LineGap 30 def
+  /Icon? false def
+  /SortBy /by-name def
+  /ItemLabelFont /Helvetica-Bold findfont 14 scalefont def
+XNeWS? { % How about something sexy...
+%   /ItemFont /AvantGarde-Book findfont def % Normal font
+%   /ItemXFont /AvantGarde-BookOblique findfont def % Executable font
+%   /ItemSFont /AvantGarde-Book findfont def % Small font
+%   /ItemFont /GillSans findfont def % Normal font
+%   /ItemXFont /GillSans-Italic findfont def % Executable font
+%   /ItemSFont /GillSans findfont def % Small font
+  /ItemFont /LucidaSans findfont def % Normal font
+  /ItemXFont /LucidaSans-Italic findfont def % Executable font
+  /ItemSFont /LucidaSans findfont def % Small font
+  /SmallPointSize 7 def % Use small font when smaller than this.
+} { % NeWS 1.1
+  /ItemFont /Courier-Bold findfont def % Normal font
+  /ItemXFont /Courier-BoldOblique findfont def % Executable font
+  /ItemSFont /Courier findfont def % Small font
+  /SmallPointSize 10 def % Use small font when smaller than this.
+} ifelse
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Initialization stuff
+
+  /new { % Collection Index notifyproc parentcanvas => instance
+    4 2 roll 2 copy get type (% \267) sprintf % notify parent cont ind label
+    5 1 roll 2 array astore % label notify parent object
+    3 1 roll /Right % label object notify parent loc
+    3 1 roll % label object loc notify parent
+    /new super send begin
+       ItemCanvas /Transparent false put
+%       ItemCanvas /Transparent true put
+       ItemCanvas /Retained true put
+       /LayoutLock createmonitor def
+       /xhair /xhair_m ItemCanvas setstandardcursor
+    currentdict end
+  } def
+
+  /ensure-DL {
+    DL null eq {
+      Collection Index Levels grow-struct
+      /DL exch store
+      /ObjectWidth 0 store
+    } if
+    ObjectWidth 0 eq ObjectHeight 0 eq or { 
+        perform-layout
+    } if
+  } def
+
+  /makestartinterests {
+    /makestartinterests super send
+    [ exch aload pop
+      /DoTransfer {/DoTransfer /Self GetFromCurrentEvent send}
+      null ItemCanvas eventmgrinterest
+      dup /Exclusivity true put
+      dup /Self self PutInEventMgrInterest
+    ]
+  } def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Event handlers
+
+  /DoTransfer { % event => -
+    ItemBegin
+      /it self store
+      CurrentEvent update-shifts
+      do-search
+      ob null eq {
+	% pththth
+      } {
+	% Are we transfering something to where it already is?
+	CurrentEvent /ClientData get ob eq {
+	  % Transfering an object into itsself toggles its opened/closed state
+	  click-open
+	} {
+	  % Beam me up, Scotty!
+	  ob begin /transfer-proc load end
+	  cvx { exec } fork pop pop
+	} ifelse
+      } ifelse
+    ItemEnd
+    pop % XXX? 
+  } def
+
+  /ClientDown {
+    ItemBegin
+      /it self store
+      currenttime LastTime sub DoubleClickTime lt 
+      CurrentEvent begin
+	LastX XLocation sub dup mul LastY YLocation sub dup mul add
+	/LastX XLocation store  /LastY YLocation store
+      end
+      DoubleClickDistanceSquared lt
+      and {
+	/Clicks Clicks 1 add store
+      } {
+	/Clicks 1 store
+      } ifelse
+      /LastTime currenttime store
+      CurrentEvent update-shifts
+      CurrentEvent /Name get MenuButton eq {
+	event-in-tab? {
+	  show-tab-menu
+	} {
+	  show-struct-menu
+	} ifelse
+      } {
+	CurrentEvent /Name get PointButton eq {
+%	  CurrentEvent recallevent
+	  event-in-tab? {
+	    items FillColor self slideitem
+	  } {
+	    do-search
+	    ob null eq {
+	      items FillColor self slideitem
+	    } {
+	      Clicks 1 eq {
+		make-selection
+	      } {
+		TrackProc null ne { TrackProc killprocess } if
+		click-exec
+	      } ifelse
+	    } ifelse
+	  } ifelse
+	} {
+	  CurrentEvent /Name get AdjustButton eq {
+	    event-in-tab? {
+	      toggle-icon
+	    } {
+	      do-search
+	      ob null eq {
+	      } {
+		NotifyUser
+	      } ifelse
+	     } ifelse
+	  } if
+	} ifelse
+      } ifelse
+    ItemEnd
+  } def
+
+  /make-selection {
+    TrackProc null ne { TrackProc killprocess } if
+    2 60 div blockinputqueue
+    /TrackProc {
+      unblockinputqueue
+      /OldIndex null store
+      obs length 1 le {
+        /MySiblings [ob] store
+	/TipX null def /TipY null def
+	/Multiple? false def
+      } {
+        obs dup length 2 sub get
+        /MySiblings 
+	  1 index /Branches get dup null eq { pop nullarray } if
+	  2 index /Controls get dup null eq { pop } { append } ifelse
+	store
+	/Pointers? false def
+        /TipX 1 index /TipX get def
+        /TipY exch /TipY get def
+	/Multiple?
+	  ob /C get array-or-string?
+	  Shift and
+	def
+      } ifelse
+      /StartIndex 
+        0 MySiblings {
+	  /I get ob /I get eq { exit } if
+	  1 add
+        } forall
+      store
+      /LastIndex StartIndex store
+      ItemCanvas createoverlay setcanvas
+      ObjectX ObjectY ObjectHeight add translate
+      currentcursorlocation
+      { newpath pop pop
+	/LastIndex
+	  0 MySiblings {
+	    /Y get y le {
+	      exit
+	    } if
+	    1 add
+	  } forall
+	  MySiblings length 1 sub min
+	store
+	Multiple? not {
+	  /StartIndex LastIndex store
+	} if
+	TipX null ne {
+%	  TipX TipY moveto
+	  TipX 1 add TipY moveto
+	  MySiblings StartIndex LastIndex min get begin
+%	    X Y H add lineto
+	    X Y H add 1 sub lineto
+	  end
+	  MySiblings StartIndex LastIndex max get begin
+%	    X Y lineto
+	    X Y 1 add lineto
+	  end
+	  closepath
+	  fill
+	} if
+	MySiblings StartIndex LastIndex min get begin
+	  X 1 sub Y H add moveto
+	end
+        StartIndex LastIndex min  1  StartIndex LastIndex max {
+	  MySiblings exch get begin
+	    X W add dup Y H add lineto
+	    Y lineto
+	  end
+	} for
+	MySiblings StartIndex LastIndex max get begin
+	  X 1 sub Y lineto
+	end
+	closepath
+	Shift { stroke } { fill } ifelse
+
+	OldIndex LastIndex ne {
+	  /OldIndex LastIndex store
+	  Multiple? {
+	    % Don't select part of control panel
+	    MySiblings StartIndex get /C get 
+	    MySiblings LastIndex get /C get eq {
+	      MySiblings StartIndex get /C get
+	      StartIndex LastIndex 2 copy gt {exch} if
+	      MySiblings exch get /I get exch
+	      MySiblings exch get /I get exch
+	      1 index sub 1 add
+	      kbd-select-interval
+	    } if
+	  } {
+	    MySiblings LastIndex get
+	    Shift { % Shift to select array index
+	       /I get kbd-select-object
+	    } {
+	       dup /C get exch /I get kbd-select-pointer
+	    } ifelse
+	  } ifelse
+	} if
+
+      } getanimated waitprocess
+      /MySiblings null store
+      /TrackProc null store
+    } fork store
+  } def
+
+  /show-tab-menu {
+    userdict /it self put
+    CurrentEvent /showat TabMenu send
+  } def
+
+  /show-struct-menu {
+    ItemBegin
+      do-search
+      ob null eq { /ob DL store } if
+      ob null ne {
+	CurrentEvent /showat StructMenu send
+      } if
+    ItemEnd
+  } def
+
+  /ClientUp {
+    StopItem
+  } def
+
+  /click-exec {
+    Shift { click-step } {
+      ob /Obj get exec-it
+    } ifelse
+  } def
+
+  /click-transfer {
+    2 60 div blockinputqueue
+    {
+      unblockinputqueue
+      % (Aaah, that feels much better -- thanks Stan!)
+      gsave 10 dict begin
+	Shift { % Shift to select the index
+	 ob /I get
+	} {
+	 ob /Obj get
+	} ifelse
+	/thing exch def
+	/thing load kbd-select-object
+	/str /thing load smart-name def
+	ItemLabelFont setfont
+	fboverlay setcanvas
+	currentcursorlocation
+	{ lineto str show } getanimated waitprocess aload pop % x y
+	createevent begin
+	  /Name /DoTransfer def
+	  /YLocation exch def /XLocation exch def
+	  /Action 1 dict def
+	  Action begin
+	    /Source /thing load def
+	  end
+	  % We're sneaking this in so DoTransfer can tell if we're transfering
+	  % something to where it already is, in which case we just do a
+	  % click-open, to open or close the object's internal structure.
+	  /ClientData ob def
+	  currentdict sendevent
+	end
+      grestore
+    } fork pop
+  } def
+
+  /click-magic {
+    % Invoke magic editing function...
+    obs length 1 gt {
+      { ob /C get dup array-or-string? { pop currentdict } if
+        begin
+          ob /Obj get 
+	  use-parent-obj 
+	  cvx exec
+	end
+      } fork pop pause
+    } if
+  } def
+
+  /click-edit {
+    % Invoke magic editing function...
+    obs length 1 gt {
+      { ob /C get dup array-or-string? { pop currentdict } if
+        begin
+          ob /Obj get cvx change-parent-obj
+	end
+      } fork pop pause
+    } if
+  } def
+
+  /click-push {
+    push-obj
+  } def
+
+  /old-click-step {
+    [ ob /Obj get ] cvx exec-it
+  } def
+
+  /click-step {
+    gsave
+      ItemCanvas createoverlay setcanvas
+      ObjectX ObjectY ObjectHeight add translate
+      ob dup begin
+        X Y W H rectpath 
+      end
+      [ exch /Obj get
+	/gsave load %  Whip me beat me make me check bad writes!
+	  currentstate /setstate load /erasepage load
+	/grestore load 
+      ] cvx fill exec-it
+
+      obs length 1 le {
+        /MySiblings [ob] store
+      }{
+        obs dup length 2 sub get
+        /MySiblings
+	  1 index /Branches get dup null eq { pop nullarray } if
+	store
+      } ifelse
+      /StartIndex
+        0 MySiblings {
+	  /I get ob /I get eq { exit } if
+	  1 add
+        } forall
+      store
+      /LastIndex StartIndex store
+      currentcursorlocation
+      { newpath pop pop
+	/LastIndex
+	  0 MySiblings {
+	    /Y get y le {
+	      exit
+	    } if
+	    1 add
+	  } forall
+	  MySiblings length 1 sub min
+	store
+	{ StartIndex LastIndex ge { exit } if
+	  /StartIndex StartIndex 1 add store
+
+          MySiblings StartIndex get dup begin
+            newpath X Y W H rectpath 
+          end
+          [ exch /Obj get
+            /gsave load %  Whip me beat me make me check bad writes!
+	      currentstate /setstate load /erasepage load
+	    /grestore load
+          ] cvx fill exec-it
+	} loop
+      } getanimated waitprocess
+      /MySiblings null store
+    grestore
+  } def
+
+  /click-type-dict 100 dict def
+  click-type-dict begin
+    /integertype {
+      Shift 1 -1 ifelse add
+    } def
+    /realtype {
+      Shift -1 1 ifelse add
+    } def
+    /booleantype {
+      not
+    } def
+  end % click-type-dict
+
+  /click-type {
+    ob /Obj get dup type
+    click-type-dict 1 index known {
+      click-type-dict exch get
+      cvx exec
+      replace-obj
+    } {
+      pop pop %%% /click-proc load cvx exec
+    } ifelse
+  } def
+
+  /click-dragcanvas {
+    { ob /C get ob /I get get 
+      dup /Parent get null eq { pop } {
+        gsave
+	  setcanvas false dragcanvas
+	grestore
+	obs { begin } forall
+	ItemTextColor setcolor
+	ObjectX ObjectY ObjectHeight add translate
+	currentdict end draw-struct
+	obs length 1 sub { end } repeat
+      } ifelse
+    } fork pop
+  } def
+
+  /click-dragimage {
+    { ob /C get ob /I get get % % can
+      gsave
+        dup createoverlay setcanvas
+	ob /C get % EditorDict
+	begin % EditorDict
+	    currentcursorlocation
+	    { 2 copy
+	      y0 sub ViewY exch sub /ViewY exch store
+	      x0 sub ViewX exch sub /ViewX exch store
+	      /y0 exch store /x0 x store
+	      ViewX ViewY ViewWidth ViewHeight rectpath
+	    } getanimated waitprocess pop
+	end % EditorDict
+	obs { begin } forall
+	  ItemCanvas setcanvas
+	  ItemTextColor setcolor
+	  ObjectX ObjectY ObjectHeight add translate
+	  currentdict end draw-struct
+	obs length 1 sub { end } repeat
+      grestore
+    } fork pop
+  } def
+    
+  /handle-click { % - => -
+    ob null ne {
+%      obs /begin load forall
+      ob begin
+        /click-proc load 
+      end % ob
+%      obs length /end load repeat
+      cvx exec
+    } if
+%    pop % ??? the notifyproc should not pop the event
+  } def
+
+  /open-icon {
+    Icon? {
+      /ObjectWidth OW store
+      /ObjectHeight OH store
+      currentdict /Icon? undef
+      redo-shape
+    } if
+  } def
+
+  /close-icon {
+    Icon? not {
+      gsave
+        /OW ObjectWidth def
+        /OH ObjectHeight def
+        Font setfont Str stringbbox points2rect
+        /IconH exch def /IconW exch def
+	pop pop
+        /ObjectWidth IconW store
+        /ObjectHeight IconH store
+      grestore
+      /Icon? true def
+      redo-shape
+    } if
+  } def
+
+  /toggle-icon {
+    DL begin
+      Icon? { open-icon } { close-icon } ifelse
+    end
+    /LastTime 0 store
+  } def
+
+  /click-select {
+    Clicks 1 eq {
+      % first click
+      ob null ne {
+	Shift { % Shift to select the index
+	  ob /I get
+	} {
+	  ob /Obj get
+	} ifelse
+	Control {
+	  exec-it
+	  /LastTime 0 store
+	} {
+	  kbd-select-object
+	} ifelse
+      } if
+    } {
+      click-open
+    } ifelse
+  } def
+
+  /click-open {
+      ob null ne {
+	DL begin Icon? end {
+	  toggle-icon
+	} {
+	  Shift {
+	    ob /L get 1 add open-struct
+	  } {
+	    ob /L get 0 eq {
+	      1 open-struct
+	    } {
+	      close-struct
+	    } ifelse
+	  } ifelse
+	} ifelse
+      } if
+  } def
+
+  /event-in-tab? {
+    ItemBegin
+      newpath label-bbox rectpath
+      CurrentEvent begin XLocation YLocation end pointinpath
+    ItemEnd
+  } def
+
+  /ClientExit {
+    StopItem
+  } def
+
+  /Silent? { % - => bool
+    Meta Control Shift or and
+  } def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Menu callbacks
+
+  /push-array-obj {
+    ob /Obj get % [stack] 
+    selected-object % [stack] top
+    1 index type /stringtype eq 1 index type /integertype ne and {
+      pop pop
+    } {
+      1 index type /stringtype eq {
+	cvis
+      } {
+        [ exch ]
+      } ifelse % [stack] [top]
+      1 index exch append % [stack] [stack top]
+      exch xcheck { cvx } if
+      replace-obj
+    } ifelse
+  } def
+
+  /pop-array-obj {
+    ob /Obj get
+    dup length 0 eq { pop } {
+      dup dup length 1 sub get kbd-select-object
+      0 1 index length 1 sub getinterval
+      replace-obj
+    } ifelse
+  } def
+
+  /prepend-to-array-obj {
+    selected-object dup array-or-string? not { pop } { % [sel]
+      ob /Obj get % [sel] {obj}
+      dup type /stringtype eq % [sel] {obj} objstring?
+      1 index type /stringtype eq xor { % [sel] {obj}
+	% incompatible types
+        pop pop %
+      } { % [sel] {obj}
+	exch 1 index % {obj} [sel] {obj}
+	append % {obj} [sel obj]
+	exch xcheck { cvx } if % {sel obj}
+	replace-obj %
+      } ifelse
+    } ifelse
+  } def
+
+  /append-to-array-obj {
+    selected-object dup array-or-string? not { pop } { % [sel]
+      ob /Obj get % [sel] {obj}
+      dup type /stringtype eq % [sel] {obj} objstring?
+      1 index type /stringtype eq xor { % [sel] {obj}
+	% incompatible types
+        pop pop %
+      } { % [sel] {obj}
+	dup 3 -1 roll % {obj} {obj} [sel]
+	append % {obj} [obj sel]
+	exch xcheck { cvx } if % {obj sel}
+	replace-obj %
+      } ifelse
+    } ifelse
+  } def
+
+  /top-array-obj {
+    selected-pointer-or-interval? { %  collection start last
+      2 index ob /Obj get ne {
+	pop pop pop
+	% error: first select part of this array
+      } {
+	10 dict begin
+	  /Last exch def /Start exch def /Len exch length def
+          [ ob /Obj get {} forall
+	    Len Start neg roll
+	    Start Len Last sub 1 sub add Start roll
+	  ] ob /Obj get
+	  dup type /stringtype eq { % [65 66 67] (abc)
+	    exch 0 exch { % (abc) 0 65
+	      3 copy put pop 1 add
+	    } forall
+	    pop pop
+	  } {
+	    copy pop
+	  } ifelse
+        end
+	ob /Obj get replace-obj
+      } ifelse
+    } if
+  } def
+
+  /bottom-array-obj {
+    selected-pointer-or-interval? { %  collection start last
+      2 index ob /Obj get ne {
+	pop pop pop
+	% error: first select a part of this array
+      } {
+	10 dict begin
+	  /Last exch def /Start exch def /Len exch length def
+          [ ob /Obj get {} forall
+	    Len Start sub
+	    Len Last sub 1 sub roll
+	  ] ob /Obj get
+	  dup type /stringtype eq { % [65 66 67] (abc)
+	    exch 0 exch { % (abc) 0 65
+	      3 copy put pop 1 add
+	    } forall
+	    pop pop
+	  } {
+	    copy pop
+	  } ifelse
+        end
+	ob /Obj get replace-obj
+      } ifelse
+    } if
+  } def
+
+  /delete-array-obj {
+    selected-pointer-or-interval? { % collection start last
+      2 index ob /Obj get ne {
+	pop pop pop
+	% error: first select a part of this array
+      } {
+	10 dict begin
+	  /Last exch def /Start exch def /Cont exch cvlit def
+	  /Len Cont length def
+	  Cont 0 Start getinterval cvlit
+	  Cont Last 1 add Len Last 1 add sub getinterval cvlit
+	  append
+%           [ ob /Obj get aload pop
+% 	    Len Start sub
+% 	    Len Last sub 1 sub roll
+% 	    Last Start sub 1 add {pop} repeat
+% 	  ]
+        end
+	ob /Obj get xcheck {cvx} if
+	replace-obj
+      } ifelse
+    } if
+  } def
+
+  /splice-array-obj {
+    selected-interval? { % collection start last
+      2 copy get dup array? {
+	2 index ob /Obj get eq {
+	  10 dict begin
+	    /Last exch def /Start exch def /Len exch length def
+	    [ ob /Obj get  0  Start  getinterval  aload pop
+	      ob /Obj get  Start  Last Start sub 1 add getinterval
+	      ob /Obj get  xcheck {cvx} if
+	      ob /Obj get  Last 1 add  Len Last sub 1 sub  getinterval aload pop
+	    ]
+	  end
+	  ob /Obj get xcheck {cvx} if
+	  replace-obj
+	} {
+	  pop pop pop
+	  % error: select an array or an interval of this array
+	} ifelse
+      } {
+        pop pop pop
+	% error: can't do that to strings!
+      } ifelse
+    } {
+      selected-pointer? { % collection index
+        2 copy get dup array? { % collection index array
+	  2 index ob /Obj get eq {
+	    10 dict begin
+	      /Arr exch cvlit def /Start exch def /Len exch length def
+	      [ ob /Obj get  0  Start  getinterval  aload pop
+		Arr aload pop
+		ob /Obj get  Start 1 add  Len Start sub 1 sub
+		getinterval aload pop
+	      ]
+	    end
+	    ob /Obj get xcheck {cvx} if
+	    replace-obj
+	  } {
+	    pop pop pop
+	    % error: select an array or an interval of this array
+	  } ifelse
+	} {
+	  pop pop pop
+	  % error: select an array or an interval of this array
+	} ifelse
+      } if
+    } ifelse
+  } def
+ 
+  /def-in-dict-obj {
+    selected-pointer? { % collection index
+      exch 1 index get % index obj
+      true
+    } {
+      selected-object dup null eq { pop false } { % index
+        dup type /stringtype eq { cvn } if
+        null % index object
+	true
+      } ifelse
+    } ifelse
+    { % index obj
+      ob /Obj get 3 copy pop put % index obj
+      pop ob /Obj get exch % dict index
+      ob /Branches get null eq { pop pop } { % dict index
+	0 grow-struct % DL
+	ob begin
+	  /Branches [ % DL mark
+	    Branches { % DL mark branch
+	      dup /I get
+	      counttomark 2 add index /I get
+	      eq {pop} if
+	    } forall
+	    counttomark 3 add -1 roll % mark branches... DL
+	  ] Sort? {SortBy quicksort} if def %
+	end
+      } ifelse % 
+      redo-layout
+    } if
+  } def
+
+  /undef-in-dict-obj {
+    selected-pointer? { % collection index
+      exch pop ob /Obj get exch % dict index
+      true
+    } {
+      selected-object null eq { pop false } {
+	ob /Obj get exch % dict index
+        dup type /stringtype eq { cvn } if % XXX: NeWS BUG in undef!! (Marja)
+	true
+      } ifelse
+    } ifelse
+    { % dict index
+      ob /Obj get 1 index known not { pop } { % index
+	ob /Obj get exch % dict index
+	2 copy get kbd-select-object
+	undef % 
+	ob begin
+	  Branches null ne {
+	    /Branches [
+	      Branches {
+		begin /C load /I load known { currentdict } if end
+	      } forall
+	    ] def
+	  } if
+	end
+	redo-layout
+      } ifelse % 
+    } if
+  } def
+
+  /break-obj {
+    { clear
+      ob /Obj get dup type /dicttype eq {
+	dup /ParentDict known {
+	  { { ClassName dbgbreak } exch send }
+	} {
+	  { countdictstack 1 sub { end } repeat
+	    dup begin currentdict 30 string cvs cvn dbgbreak }
+	} ifelse
+      } {
+	{ dup type dbgbreak }
+      } ifelse
+      { exec } fork pop pop
+    } fork pop
+  } def
+
+  /begin-obj {
+    ob /Obj get begin-it
+  } def
+
+  /enter-obj {
+    ob /Obj get enter-it
+  } def
+
+  /change-obj { % func => -
+    { { count 1 roll
+        count 1 sub { pop } repeat
+        ob /Obj get exch exec } errored pop 
+    } fork
+    exch pop waitprocess
+    modify-obj
+  } def
+
+  % Execute token with Externals on the dict stack, so externalized
+  % //&type_123 object references are resolved.
+  /tokein-obj {
+    ob /Obj get type /stringtype eq {
+      { clear Externals begin
+	  ob /Obj get remove-returns
+	  { { token { exch } { exit } ifelse
+	    } loop
+	  } errored {
+	    clear ob /Obj get
+	  } {
+	    count array astore cvx
+	  } ifelse
+	end
+      } fork waitprocess
+      kbd-select-object
+    } if
+  } def
+
+  /cvx-obj {
+    { ob /Obj get cvx } errored {pop} {
+%      replace-obj
+      kbd-select-object
+    } ifelse
+  } def
+
+  /cvn-obj {
+    { ob /Obj get cvn } errored {pop} {
+%      replace-obj
+      kbd-select-object
+    } ifelse
+  } def
+
+  /cvs-obj {
+    { ob /Obj get 256 string cvs } errored {pop} {
+%      replace-obj
+      kbd-select-object
+    } ifelse
+  } def
+
+  /tokeout-obj {
+    ob /Obj get tokeout 
+    kbd-select-object
+  } def
+
+  /cvlit-obj {
+    { ob /Obj get cvlit } errored {pop} {
+%      replace-obj
+      kbd-select-object
+    } ifelse
+  } def
+
+  /cvi-obj {
+    { ob /Obj get cvi } errored {pop} {
+%      replace-obj
+      kbd-select-object
+    } ifelse
+  } def
+
+  /cvr-obj {
+    { ob /Obj get cvr } errored {pop} {
+%      replace-obj
+      kbd-select-object
+    } ifelse
+  } def
+
+  /load&push-obj {
+    ob /Obj get load&push-it
+  } def
+
+  /load&push-it { %
+    [ exch cvlit {dup load} /errored cvx
+      { pop smart-name (%% ) (%Load: % is not defined!\n) printf }
+      { exch smart-name 1 index smart-name exch
+	(%% ) (%Load: % Push: %\n) printf }
+      /ifelse cvx ] cvx
+    execute-it
+  } def
+
+  /load-obj {
+    ob Shift /I /Obj ifelse get load-it
+  } def
+
+  /load-it { %
+    [ exch cvlit {dup load} /errored cvx
+      { pop smart-name (%% ) (%Load: % is not defined!\n) printf }
+      { exch smart-name 1 index smart-name exch
+        (%% ) (%Load: % Select: %\n) printf
+        select-object } /ifelse cvx ] cvx
+    execute-it
+  } def
+
+  /pointsize-obj { % point => -
+    dup /Default eq {
+      pop ob /Point undef
+    } {
+      ob exch /Point exch put
+    } ifelse
+    redo-layout
+  } def
+
+  /shrink-obj { % shrink => -
+    dup /Default eq {
+      pop ob /Shrink undef
+    } {
+      ob exch /Shrink exch put
+    } ifelse
+    redo-layout
+  } def
+
+  /update-obj {
+    % ...
+  } def
+
+  /open-obj { % levels => -
+    dup 0 eq { pop close-struct } { open-struct } ifelse
+  } def
+
+  /set-open-direction { % bool => -
+    { /Right {
+	ob /OpenToRight? true put
+      }
+      /Below {
+	ob /OpenToRight? false put
+      }
+      /Default {
+	ob /OpenToRight? undef
+      }
+    } case
+  } def
+
+  /open-right-obj { % levels => -
+    /Right set-open-direction open-obj
+  } def
+
+  /open-below-obj { % levels => -
+    /Below set-open-direction open-obj
+  } def
+
+  /set-show-fan { % bool => -
+    dup { 
+      true false { ob exch /ShowFan? exch put }
+      /Default { pop ob /ShowFan? undef }
+    } case
+  } def
+
+  /push-obj {
+    ob Shift /I /Obj ifelse get push-it
+  } def
+
+  /push-it {
+    [ exch [ exch ] 0 /get cvx
+      /dup cvx /smart-name cvx (%% ) (%Push: %\n) /printf cvx ] cvx
+    execute-it
+  } def
+
+  /begin-it {
+    [ exch [ exch ] 0 /get cvx
+      /dup cvx /smart-name cvx (%% ) (%Begin: %\n) /printf cvx 
+      /begin cvx /dstack cvx
+    ] cvx
+    execute-it
+  } def
+
+  /enter-it {
+    [ exch [ exch ] 0 /get cvx
+      /dup cvx /smart-name cvx (%% ) (%Enter: %\n) /printf cvx 
+      /enter cvx
+    ] cvx
+    execute-it
+  } def
+
+  /insert-before-obj {
+  } def
+
+  /insert-after-obj {
+  } def
+
+  /molecule-obj {
+    ob /Obj get start_visualizer
+  } def
+
+  % construct a reference to a piece of substructure relative to the 
+  % top level object
+  /reference-obj {
+    obs length 2 lt { {} } {
+      [ obs dup 1 exch length 1 sub getinterval {
+          /I get cvlit /get cvx
+        } forall
+      ] cvx kbd-select-object
+    } ifelse
+  } def
+
+  /exec-obj {
+    ob /Obj get Shift {[exch]cvx} if exec-it
+  } def
+
+  /exec-it { % obj => -
+    { [ exch cvlit /cvx cvx 
+        /dup cvx /smart-name cvx (%% ) (%Exec: %\n) /printf cvx
+        cvx /exec cvx ] cvx
+      execute-it
+    } fork pop pop pause
+  } def
+
+  /paste-obj {
+    selected-object
+    replace-obj
+  } def
+
+  /replace-obj { % obj => -
+    ob begin
+      replace-struct
+    end
+    Silent? not { redo-layout } if
+    ob DL eq StackI null ne and { % Tell processes if we changed its stack.
+      /ReplaceStack items StackI get send
+    } if
+  } def
+
+  /modify-obj { % obj => -
+    LayoutLock {
+      ob begin
+	gsave
+	  ItemCanvas setcanvas
+	  ObjectX ObjectY ObjectHeight add translate
+	  /erase-proc load cvx exec
+          C I 3 -1 roll put
+	  make-label change-label
+	grestore
+      end
+    } monitor
+    ob DL eq StackI null ne and { % Tell processes if we changed its stack.
+      /ReplaceStack items StackI get send
+    } if
+  } def
+
+  /make-label { % - => str
+    /Obj /C load /I load get def
+    % get default if not defined (don't use parent's)
+    currentdict /label-proc known {
+      /label-proc load 
+    } {
+      self /label-proc get
+    } ifelse
+    cvx exec
+  } def
+
+
+  % func is passed the object, and the object is replaced by 
+  % whatever's left on the top of stack.
+  /transform-obj { % func => -
+    LayoutLock {
+      ob begin
+	gsave
+	  ItemCanvas setcanvas
+	  ObjectX ObjectY ObjectHeight add translate
+	  /erase-proc load cvx exec
+          C I 2 copy get 4 -1 roll {errored pop} fork waitprocess
+	  exch pop exch pop put
+	  pop pop
+	  make-label change-label
+	grestore
+      end
+    } monitor
+    ob DL eq StackI null ne and { % Tell processes if we changed its stack.
+      /ReplaceStack items StackI get send
+    } if
+  } def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Moving and shaping
+
+  /just-reshape {
+% Core dumps X11/NeWS beta 1:
+    ItemCanvas null ne { ItemCanvas /Mapped false put } if
+
+    /ItemHeight exch store /ItemWidth exch store
+
+    ItemWidth 0 eq ItemHeight 0 eq or {
+      /DL null store
+    } if
+    ensure-DL
+
+    adjust-geometry
+
+    ItemWidth ItemHeight /reshape super send
+    gsave ItemCanvas setcanvas ItemFillColor fillcanvas grestore
+
+    ItemCanvas /Mapped true put
+  } def
+
+  /reshape { % x y w h => -
+    just-reshape
+    location move
+  } def
+
+  /just-move { % x y => -
+    /move super send
+  } def
+
+  /move { % x y => -
+    label-bbox /lh exch store /lw exch store % x y lx ly
+    2 index add /ly exch store % x y lx
+    2 index add /lx exch store % x y
+    ly 0 max /ClientHeight win send lh sub min ly sub add exch
+    lx 0 max /ClientWidth win send lw sub min lx sub add exch
+    cvi exch cvi exch /move super send
+    snaps-here? pop
+    Index ThisI eq {
+      /paint-hilite win send
+    } if
+    StackI null ne StackI Index ne and {
+      /MoveMe TellStack
+    } if
+  } def
+
+  /redo-layout {
+    gsave
+      ItemCanvas setcanvas
+      ObjectX ObjectY ObjectHeight add translate
+      perform-layout
+      redo-shape
+    grestore
+  } def
+
+  /redo-shape {
+    %location 10 10 just-reshape
+    location 10 10 reshape
+    damage-view
+  } def
+
+  /label-bbox { % x y w h
+    TabX TabY TabWidth TabHeight
+  } def
+
+  /tab-top { % - => y
+    location TabY add TabHeight add exch pop
+  } def
+
+  /tab-bottom { % - => y
+    location TabY add exch pop
+  } def
+
+  /label-rect { %  X Y w h
+    location TabY add exch TabX add exch TabWidth TabHeight
+  } def
+
+  /object-bbox { % x y w h
+    ObjectX ItemBorder sub  ObjectY ItemBorder sub % x y
+    ObjectWidth ItemBorder dup add add % w
+    ObjectHeight ItemBorder dup add add % h
+  } def
+
+  /ItemPath {
+    ItemRadius label-bbox rrectpath
+    ItemRadius object-bbox rrectpath
+  } def
+
+  /AdjustItemSize { % - => - [uses item context]
+      ObjectLoc {
+      /Right /Left /RightBelow /RightAbove /LeftBelow /LeftAbove {
+	  /ItemWidth ItemBorder 3 mul ItemGap add
+	      LabelWidth add ObjectWidth add store
+	  /ItemHeight ItemBorder 2 mul LabelHeight
+	      ObjectHeight max add store
+      }
+      /Top /Bottom /AboveLeft /AboveRight /BelowLeft /BelowRight {
+	  /ItemWidth ItemBorder 2 mul LabelWidth ObjectWidth max add store
+	  /ItemHeight ItemBorder 3 mul ItemGap add
+	      LabelHeight add ObjectHeight add store
+      }
+      } case
+  } def
+
+  /CalcObj&LabelXY { % - => - [uses item context]
+    ObjectLoc {
+      /RightAbove {
+	  /LabelX ItemBorder def /LabelY ItemBorder store
+	  /ObjectX ItemBorder dup add LabelWidth add ItemGap add store
+	  /ObjectY ItemHeight ObjectHeight sub 2 div store
+	  /TabX LabelX ItemBorder sub def /TabY LabelY ItemBorder sub store
+	  /TabWidth
+	    ItemBorder LabelWidth add ItemGap add ItemRadius dup add add store
+	  /TabHeight LabelHeight ItemBorder dup add add def }
+      /RightBelow /Right {
+	  /LabelX ItemBorder store
+	  /LabelY ItemHeight ItemBorder sub LabelHeight sub store
+	  /ObjectX ItemBorder dup add LabelWidth add ItemGap add store
+	  /ObjectY ItemHeight ObjectHeight sub 2 div store
+	  /TabX LabelX ItemBorder sub def /TabY LabelY ItemBorder sub store
+	  /TabWidth
+	    ItemBorder LabelWidth add ItemGap add ItemRadius dup add add store
+	  /TabHeight LabelHeight ItemBorder dup add add def }
+      /LeftAbove {
+	  /LabelX ItemBorder dup add  ItemGap add ObjectWidth add store
+	  /LabelY ItemBorder store
+	  /ObjectX ItemBorder store
+	  /ObjectY ItemHeight ObjectHeight sub 2 div store
+	  /TabX LabelX ItemGap sub ItemRadius dup add sub store
+	  /TabY LabelY ItemBorder sub store
+	  /TabWidth
+	    ItemRadius dup add ItemGap add LabelWidth add ItemBorder add store
+	  /TabHeight LabelHeight ItemBorder dup add add def }
+      /LeftBelow /Left {
+	  /LabelX ItemBorder dup add ItemGap add ObjectWidth add store
+	  /LabelY ItemHeight ItemBorder sub LabelHeight sub store
+	  /ObjectX ItemBorder store
+	  /ObjectY ItemHeight ObjectHeight sub 2 div store
+	  /TabX LabelX ItemGap sub ItemRadius dup add sub store
+	  /TabY LabelY ItemBorder sub store
+	  /TabWidth
+	    ItemRadius dup add ItemGap add LabelWidth add ItemBorder add store
+	  /TabHeight LabelHeight ItemBorder dup add add def }
+      /AboveRight /Top {
+	  /LabelX ItemBorder def /LabelY ItemBorder store
+	  /ObjectX ItemWidth ObjectWidth sub 2 div store
+	  /ObjectY ItemBorder dup add LabelHeight add ItemGap add store
+	  /TabX LabelX ItemBorder sub def /TabY LabelY ItemBorder sub store
+	  /TabWidth LabelWidth ItemBorder dup add add store
+	  /TabHeight
+	    ItemBorder LabelHeight add ItemGap add ItemRadius dup add add
+	  def }
+      /AboveLeft {
+	  /LabelX ItemWidth ItemBorder sub LabelWidth sub store
+	  /LabelY ItemBorder store
+	  /ObjectX ItemWidth ObjectWidth sub 2 div store
+	  /ObjectY ItemBorder dup add LabelHeight add ItemGap add store
+	  /TabX LabelX ItemBorder sub def /TabY LabelY ItemBorder sub store
+	  /TabWidth LabelWidth ItemBorder dup add add store
+	  /TabHeight
+	    ItemBorder LabelHeight add ItemGap add ItemRadius dup add add
+	  def }
+      /BelowRight /Bottom {
+	  /LabelX ItemBorder store
+	  /LabelY ItemBorder dup add ObjectHeight add ItemGap add store
+	  /ObjectX ItemWidth ObjectWidth sub 2 div store
+	  /ObjectY ItemBorder store
+	  /TabX LabelX ItemBorder sub store
+	  /TabY LabelY ItemGap sub ItemRadius dup add sub store
+	  /TabWidth LabelWidth ItemBorder dup add add store
+	  /TabHeight
+	    ItemRadius dup add ItemGap add LabelHeight add ItemBorder add
+	  def }
+      /BelowLeft {
+	  /LabelX ItemWidth ItemBorder sub LabelWidth sub store
+	  /LabelY ItemBorder dup add ObjectHeight add ItemGap add store
+	  /ObjectX ItemWidth ObjectWidth sub 2 div store
+	  /ObjectY ItemBorder store
+	  /TabX LabelX ItemBorder sub store
+	  /TabY LabelY ItemGap sub ItemRadius dup add sub store
+	  /TabWidth LabelWidth ItemBorder dup add add store
+	  /TabHeight
+	    ItemRadius dup add ItemGap add LabelHeight add ItemBorder add
+	  def }
+    } case
+    /PinX LabelX LabelWidth add 2 sub store
+  } def
+
+  /adjust-geometry {
+        /ItemLabel nice-item-label store
+        LabelSize /LabelHeight exch def /LabelWidth exch def
+        AdjustItemSize
+	CalcObj&LabelXY
+  } def
+
+  /nice-item-label {
+    Collection Index get 
+    smart-type
+    (% \267) sprintf 
+  } def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Display
+
+  /PaintItem {
+    LayoutLock {
+      ItemRadius label-bbox rrectpath
+      ItemFillColor setcolor fill
+      ItemFrame 0 gt {
+	  ItemFrame ItemRadius label-bbox rrectframe
+	  ItemBorderColor setcolor eofill
+      } if
+      ItemRadius object-bbox rrectpath
+      ItemFillColor setcolor fill
+      ItemFrame 0 gt {
+	  ItemFrame ItemRadius object-bbox rrectframe
+	  ItemBorderColor setcolor eofill
+      } if
+      ShowLabel
+      paint-struct
+    } monitor
+  } def
+
+  /paint-struct {
+    %{
+      gsave
+	ensure-DL
+	ItemTextColor setcolor
+	ObjectX ObjectY ObjectHeight add translate
+	DL draw-struct
+      grestore
+    %} fork waitprocess pop
+  } def
+
+  /damage-view {
+    gsave
+      %ItemParent setcanvas bbox rectpath extenddamage
+      paint
+    grestore
+  } def
+
+  % distillery display stubs
+  /_fill {fill} def
+  /_eofill {eofill} def
+  /_stroke {stroke} def
+  /_show {show} def
+  /_newpath {newpath} def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Accessers
+
+  /Collection {
+    ItemObject 0 get cvlit
+  } def
+
+  /Index {
+    ItemObject 1 get cvlit
+  } def
+
+  /array? { % obj => bool
+    type dup /arraytype eq exch /packedarraytype eq or
+  } def
+
+  /array-or-string-dict 5 dict def
+  array-or-string-dict begin
+    /arraytype dup def
+    /packedarraytype dup def
+    /stringtype dup def
+  end % array-or-string-dict
+
+  /array-or-string? { % obj => bool
+    type //array-or-string-dict exch known
+  } def
+
+  currentdict /array-or-string-dict undef
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Structure stuff
+
+  /do-search {
+    /it self store
+    DL begin Icon? end {
+      /obs [ DL ] store
+      /ob DL store
+    } {
+      gsave
+	ObjectX ObjectY ObjectHeight add translate
+	DL
+	CurrentEvent begin XLocation YLocation end
+	search-struct
+	/obs exch store
+	obs length 0 eq { null } {
+	  obs dup length 1 sub get
+	} ifelse
+	/ob exch store
+      grestore
+    } ifelse
+  } def
+
+% Return the path down the display list to the substructure enclosing (x,y).
+  /search-struct { % dict x y => [ dl1 dl2 ... dln ] 
+    { % keep return stack from overflowing
+      10 dict begin
+	/ssy exch def /ssx exch def
+	[ exch
+	  { do-search-struct
+	    % unsucessful search
+	    exit
+	  } loop % catch possible exit
+	  dup true eq { pop } if
+	]
+      end
+    } fork % dict x y process
+    4 1 roll pop pop pop
+    waitprocess
+  } def
+
+% This keeps overflowing the fucking execution stack in NeWS 1.1!
+  /do-search-struct { % dl => dl dl' dl'' dl''' ...
+    begin
+%gsave X Y W H rectpath 0 setgray 5 setrasteropcode fill grestore
+%pause pause
+%gsave X Y W H rectpath 0 setgray 5 setrasteropcode fill grestore
+      ssx X ge {
+        ssy Y ge {
+	  ssx X W add le {
+            ssy Y H add le {
+	      currentdict end % dl
+	      dup /Controls get % dl controls
+	      dup null eq { pop } {
+	        { do-search-struct } forall % dl .. dn mark | dl
+		dup true eq { exit } if % exit if something found 
+	      } ifelse % dl
+	      dup /Branches get % dl branches
+	      dup null eq { pop } {
+	        { do-search-struct } forall % dl ... dn mark | dl
+	        dup true eq { exit } if % exit if something found
+	      } ifelse
+	      % We were found, but none of our children, leave true on
+	      % top of stack to unwind search.
+	      true exit
+	    } if
+	  } if
+	} if
+      } if
+    end
+  } def
+
+  /do-search-struct { % dl => dl dl' dl'' dl''' ...
+    begin
+%gsave X Y W H rectpath 0 setgray 5 setrasteropcode fill grestore
+%pause pause
+%gsave X Y W H rectpath 0 setgray 5 setrasteropcode fill grestore
+      ssx X ge {
+        ssy Y ge {
+	  ssx X W add le {
+            ssy Y H add le {
+	      currentdict end % dl
+	      dup /Controls get % dl controls
+	      dup null eq { pop } {
+	        { do-search-struct } forall % dl .. dn mark | dl
+		dup true eq { exit } if % exit if something found 
+	      } ifelse % dl
+	      dup /Branches get % dl branches
+	      dup null eq { pop } {
+	        { do-search-struct } forall % dl ... dn mark | dl
+	        dup true eq { exit } if % exit if something found
+	      } ifelse
+	      % We were found, but none of our children, leave true on
+	      % top of stack to unwind search.
+	      true exit
+	    } if
+	  } if
+	} if
+      } if
+    end
+  } def
+
+  /close-struct {
+    DL /Icon? undef
+    ob /L 0 put
+    ob /Branches null put
+    ob /Controls null put
+    Silent? not { redo-layout } if
+  } def
+
+% TODO: Open up special editors on different object types.
+% Numberic keypad
+% Boolean toggle
+% Color sliders
+% Font finder
+% Canvas view
+% Visual graphics state editors
+% String editor
+% CyberSpace projection
+
+% Event's XLocation YLocation should be relative to the event's Canvas, or
+% framebuffer if null.
+
+  /use-parent-obj {
+    obs length 1 gt {
+      /obs obs 0 1 index length 1 sub getinterval store
+      /ob obs dup length 1 sub get store
+    } if
+  } def
+
+  /change-parent-obj { % func
+    use-parent-obj change-obj
+  } def
+
+  /make-button { % dl => dl
+    dup /label-proc /button-label put
+    dup /display-proc /display-button put
+  } def
+
+  /make-edit-button { % dl => dl
+    make-button
+    dup /click-proc /click-edit put 
+  } def
+
+  /make-magic-button { % dl => dl
+    make-button
+    dup /click-proc /click-magic put 
+  } def
+
+  /struct-editors 50 dict def
+  struct-editors begin
+
+% ------------------------------------------------------------------------
+
+    /step {
+      /Controls [ 
+	Controls null ne {
+	  Controls aload pop
+	} if
+        20 dict begin
+	  % Make fresh copies so user can change scalars
+	  /++ {Step add} def
+	  currentdict /++ cvx 0 grow-struct
+	  make-edit-button
+	  /-- {Step sub} def
+	  currentdict /-- cvx 0 grow-struct
+	  make-edit-button
+	  /Step 1 def
+	  currentdict /Step cvx 0 grow-struct
+	end
+      ] def
+      Silent? not { /redo-layout null self exch pop send } if
+    } def
+
+    /shift {
+      /Controls [ 
+	Controls null ne {
+	  Controls aload pop
+	} if
+        20 dict begin
+	  % Make fresh copies so user can change scalars
+	  (**) {Shift mul} def
+	  currentdict (**) cvn cvx 0 grow-struct
+	  make-edit-button
+	  (//) {Shift div} def
+	  currentdict (//) cvn cvx 0 grow-struct
+	  make-edit-button
+	  /Shift 10 def
+	  currentdict /Shift cvx 0 grow-struct
+	end
+      ] def
+      Silent? not { /redo-layout null self exch pop send } if
+    } def
+
+    /digit {
+      /Controls [ 
+	Controls null ne {
+	  Controls aload pop
+	} if
+        20 dict begin
+	  Controls null ne { Controls aload pop } if
+
+	  % Make fresh copies so user can change scalars
+
+	  0 1 9 {
+	    dup [ /floor load 10 /mul load 5 index /add load ] cvx def
+	    currentdict exch 0 grow-struct
+	    make-edit-button
+	  } for
+
+	  /Rubout [ 10 /div load /floor load ] cvx def
+	  currentdict /Rubout 0 grow-struct
+	  make-edit-button
+
+	  /Clear [ /pop load 0 ] cvx def
+	  currentdict /Clear 0 grow-struct
+	  make-edit-button
+
+ 	  /+- /neg load def
+ 	  currentdict /+- cvx 0 grow-struct
+	  make-edit-button
+	end
+      ] def
+      Silent? not { /redo-layout null self exch pop send } if
+    } def
+
+    /boolean {
+      /Controls [
+	Controls null ne {
+	  Controls aload pop
+	} if
+        20 dict begin
+	  Controls null ne { Control aload pop } if
+	  /True true def
+          currentdict /True 0 grow-struct
+	  make-edit-button
+	  /False false def
+	  currentdict /False 0 grow-struct
+	  make-edit-button
+	  /Not /not load def
+	  currentdict /Not 0 grow-struct
+	  make-edit-button
+	  /Random [/random cvx .5 /lt cvx] cvx def
+	  currentdict /Random 0 grow-struct
+	make-edit-button
+        end
+      ] def
+      Silent? not { /redo-layout null self exch pop send } if
+    } def
+
+    /element {
+      open-obj-branches
+      Silent? not { /redo-layout null self exch pop send } if
+    } def
+
+    /filter {
+      Branches null eq {
+	/Branches 
+	  C I 1 grow-struct
+	  1 index get def
+      } if
+
+      /Controls [
+	% XXX: Will this work?
+	Controls null ne {
+	  Controls aload pop
+	} if
+        20 dict begin
+
+	  /Recompute {
+	    ob begin
+	      /Obj /C load /I load get def
+	    end
+	    ContainerRef 0 ob /Obj get put
+	    ob /Branches [
+	      Container array-or-string? {
+	        IndexRef 0 0 put
+	      } if
+	      Container {
+		ObjectRef exch 0 exch put
+		Container array-or-string? {
+		  IndexRef 0 2 copy get 1 add put
+		} {
+		  IndexRef exch 0 exch put
+		} ifelse
+		mark false
+		/Filter load cvx { exec } errored { cleartomark } {
+		  dup type /booleantype ne { pop false } if
+		  { cleartomark Container Index 0 grow-struct }
+		  { cleartomark } ifelse
+		} ifelse
+	      } forall
+	    ] Order put
+	    ObjectRef 0 null put
+	    ContainerRef 0 null put
+	    IndexRef 0 null put
+            Silent? not { /redo-layout null self exch pop send } if
+	  } def
+	  currentdict /Recompute 0 grow-struct
+	  make-magic-button
+
+	  /ObjectRef [ null ] def
+	  /Object ObjectRef cvx def
+	  /ContainerRef [ null ] def
+	  /Container ContainerRef cvx def
+	  /IndexRef [ null ] def
+	  /Index IndexRef cvx def
+
+	  % Filters may call: Container Index Object
+	  /Filter % - => interesting?
+	    false
+	  def
+	  currentdict /Filter 0 grow-struct
+
+	  /Keys 100 dict def
+	  currentdict /Keys 1 grow-struct
+
+	  /Order [
+	    /Obj load array-or-string? /by-value /by-name ifelse
+	    /quicksort cvx
+	  ] cvx def
+	  currentdict /Order 0 grow-struct
+
+% 	  /View null def
+% 	  currentdict /View 0 grow-struct
+%           counttomark 1 sub /ViewIndex exch def
+
+      ] currentdict end 3 1 roll def
+
+      begin Recompute end
+    } def
+
+    /scroller {
+	Branches null eq {
+	  /Branches 
+	    C I 1 grow-struct
+	    1 index get def
+	} if
+
+%	currentdict /AllBranches known not {
+	  /AllBranches Branches def
+%	} if
+
+	/Controls [
+	  % XXX: Will this work?
+	  Controls null ne {
+	    Controls aload pop
+	  } if
+	  20 dict begin
+
+	    /Recompute {
+	      /Offset
+		Offset 
+		ob /Obj get length 1 sub min
+		0 max
+	      def
+	      ob /Branches
+		ob /AllBranches get Offset 1 index length 1 index sub Size min
+	        getinterval
+	      put
+	      /Scroll
+		(% : %..% of %, %) [
+		  ob /Str get
+		  Offset
+		  Offset ob /Branches get length add 1 sub
+		  ob /AllBranches get length
+		  2 index 1 index div
+		  100 mul round 5 string cvs (%) append
+		] sprintf
+	      def
+              Silent? not { /redo-layout null self exch pop send } if
+	    } def
+
+	    /Scroll (nothingness) def
+	    currentdict /Scroll 0 grow-struct
+
+% 	    /Top {
+% 	      /Offset 0 def
+% 	      Recompute
+% 	    } def
+% 	    currentdict /Top 0 grow-struct
+% 	    dup /click-proc /click-magic put 
+% 
+% 	    /Bottom {
+% 	      /Offset ob /Obj get length Size sub def
+% 	      Recompute
+% 	    } def
+% 	    currentdict /Bottom 0 grow-struct
+% 	    dup /click-proc /click-magic put 
+
+	    /Back {
+	      /Offset Offset Size sub def
+	      Recompute
+	    } def
+	    currentdict /Back 0 grow-struct
+	    make-magic-button
+
+	    /Next {
+	      /Offset Offset Size add def
+	      Recompute
+	    } def
+	    currentdict /Next 0 grow-struct
+	    make-magic-button
+
+	    /Offset 0 def
+%            currentdict /Offset 0 grow-struct
+
+	    /Size 10 def
+	    currentdict /Size 0 grow-struct
+
+	    Controls null ne {
+	      Controls aload pop
+	    } if
+
+	] currentdict end 3 1 roll def
+
+	begin Recompute end
+    } def
+
+    /user {
+      /Controls [
+	Controls null ne {
+	  Controls aload pop
+	} if
+        20 dict begin
+          /User {} def
+          currentdict /User 0 grow-struct
+	  make-edit-button
+	end
+      ] def
+      Silent? not { /redo-layout null self exch pop send } if
+    } def
+
+    % Pop open pointers to instances of this name on the dictionary stack.
+    /definitions {
+      /Controls [
+	Controls null ne {
+	  Controls aload pop
+	} if
+        mark
+	obs aload pop
+	{ dup mark eq { 
+	    pop
+	    /getdictstack dialog-item send
+	    exit
+	  } {
+	    dup /ClassEditor known {
+	      begin cleartomark /C load end % ClassEditorDict
+	      /ClassDicts get
+	      /getdictstack dialog-item send append
+	      exit
+	    } {
+	      pop
+	    } ifelse
+	  } ifelse
+	} loop
+	% Remove redundant dictionaries
+	100 dict begin
+	  dup {null def} forall
+	  [ exch { % dict
+	      currentdict 1 index known { 
+	        currentdict 1 index undef % dict
+	      } {
+	        pop %
+	      } ifelse
+	    } forall
+	  ]
+	end
+
+	{ dup ob /Obj get known {
+	    ob /Obj get 0 grow-struct
+	    dup /label-proc /reference-label put
+	  } { pop } ifelse
+	} forall
+      ] dup length 0 eq { pop pop } { def } ifelse
+      Silent? not { /redo-layout null self exch pop send } if
+    } def
+
+XNeWS? {
+    /class {
+      ob /C get ob /I get get dup /ParentDictArray known not {pop} {
+	/Controls [
+	  Controls null ne {
+	    Controls aload pop
+	  } if
+	  20 dict begin % ClassEditorDict
+	    /Obj ob /C get ob /I get get def
+	    /Instance? Obj /ClassName known not def
+	    /Class Obj Instance? { /ParentDictArray get } if def
+            /ClassDicts [ Class /ParentDictArray get aload pop 
+		          Class Instance? { Obj } if ] def
+	    /MethodDict 1000 dict def
+	    /ClassVarDict 1000 dict def
+
+	    /Name dup Obj send def
+	    currentdict /Name 0 grow-struct
+
+	    ClassDicts {
+	      { Class /InstanceVars get 2 index known not {
+		  dup xcheck 1 index array? and {
+		    MethodDict 2 index dup put
+		  } {
+		    ClassVarDict 2 index dup put
+		  } ifelse
+		} if
+		pop pop
+	      } forall
+	      pause pause
+	    } forall
+
+	    currentdict /ClassDicts 0 grow-struct
+
+	    Instance? not {
+	      /SubClasses dup Class send def
+	      currentdict /SubClasses 0 grow-struct
+	      pause pause
+	    } if
+
+	    /InstanceVars [
+	      Class /InstanceVars get { pop (%) sprintf } forall
+	    ] {gt} quicksort [ exch { cvn } forall ] def
+            currentdict /InstanceVars 0 grow-struct
+	    dup /ClassEditor true put
+	    pause pause
+
+	    /ClassVars [
+	      ClassVarDict { pop 80 string cvs } forall
+	    ] {gt} quicksort [ exch { cvn } forall ] def
+            currentdict /ClassVars 0 grow-struct
+	    dup /ClassEditor true put
+	    pause pause
+
+	    /Methods [
+	      MethodDict { pop 80 string cvs } forall
+	    ] {gt} quicksort [ exch { cvn } forall ] def
+            currentdict /Methods 0 grow-struct
+	    dup /ClassEditor true put
+	    pause pause
+
+	    /Obj null def
+	    /Class null def
+	    /MethodDict null def
+	    /ClassVarDict null def
+	  end % ClassEditorDict
+	] def
+	Silent? not { /redo-layout null self exch pop send } if
+      } ifelse
+    } def
+} {
+    /class {
+      ob /C get ob /I get get dup /ParentDict known not {pop} {
+	/Controls [
+	  Controls null ne {
+	    Controls aload pop
+	  } if
+	  20 dict begin
+	    /Obj ob /C get ob /I get get def
+	    /Instance? Obj /ClassName known not def
+	    /Class Obj Instance? { /ParentDict get } if def
+            /ClassDicts [ Obj /ParentDictArray get aload pop Obj ] def
+	    /MethodDict 1000 dict def
+	    /ClassVarDict 1000 dict def
+	    ClassDicts {
+	      { Class /InstanceVarDict get 2 index known not {
+		  dup xcheck 1 index array? and {
+		    MethodDict 2 index dup put
+		  } {
+		    ClassVarDict 2 index dup put
+		  } ifelse
+		} if
+		pop pop
+	      } forall
+	      pause pause
+	    } forall
+
+	    currentdict /ClassDicts 0 grow-struct
+
+	    Instance? not {
+	      /SubClasses [
+		/SubClasses Class send { (%) sprintf } forall
+	      ] {gt} quicksort [ 
+		exch { 
+		  cvn dup where { exch get } if
+		} forall 
+	      ] def
+	      currentdict /SubClasses 0 grow-struct
+	      pause pause
+	    } if
+
+	    /InstanceVars [
+	      Class /InstanceVarDict get { pop (%) sprintf } forall
+	    ] {gt} quicksort [ exch { cvn } forall ] def
+            currentdict /InstanceVars 0 grow-struct
+	    dup /ClassEditor true put
+	    pause pause
+
+	    /ClassVars [
+	      ClassVarDict { pop 80 string cvs } forall
+	    ] {gt} quicksort [ exch { cvn } forall ] def
+            currentdict /ClassVars 0 grow-struct
+	    dup /ClassEditor true put
+	    pause pause
+
+	    /Methods [
+	      MethodDict { pop 80 string cvs } forall
+	    ] {gt} quicksort [ exch { cvn } forall ] def
+            currentdict /Methods 0 grow-struct
+	    dup /ClassEditor true put
+	    pause pause
+
+	    /Obj null def
+	    /Class null def
+	    /MethodDict null def
+	    /ClassVarDict null def
+	  end
+	] def
+	Silent? not { /redo-layout null self exch pop send } if
+      } ifelse
+    } def
+} ifelse
+
+    /canvas {
+      ob /C get ob /I get get type /canvastype ne {pop} {
+	/Controls [
+	  Controls null ne {
+	    Controls aload pop
+	  } if
+	  10 dict begin
+
+	    /CanvasBBoxView ob /C get ob /I get get def
+	    currentdict /CanvasBBoxView 0 grow-struct
+	    dup begin
+	      /layout-proc /layout-canvasbbox def
+	      /display-proc /display-canvasbbox def
+	      /erase-proc /erase-nothing def
+	      /click-proc /click-dragcanvas def
+	      /transfer-proc /transfer-reparent def
+	    end
+
+% This needs to be fixed to work under X11/NeWS.
+% But it uses too much space anyway... Needs to be its own type of editor.
+% 	    /CanvasImageView ob /C get ob /I get get def
+% 	    currentdict /CanvasImageView 0 grow-struct
+% 	    dup begin
+% 	      /layout-proc /layout-canvasimage def
+% 	      /display-proc /display-canvasimage def
+% 	      /erase-proc /erase-nothing def
+% 	      /click-proc /click-dragimage def
+% 	      /transfer-proc /transfer-reparent def
+% 	    end
+% 
+% 	    /ViewX 0 def
+% 	    /ViewY 0 def
+% 
+% 	    CanvasImageView canvas-rect % x y w h
+% 	    4 2 roll pop pop % w h
+% 	    BigHeight min exch BigWidth min exch
+% 
+% 	    /ViewHeight exch def
+% 	    /ViewWidth exch def
+% 	    currentdict /ViewWidth 0 grow-struct
+% 	    currentdict /ViewHeight 0 grow-struct
+
+	    /Children [
+	      ob /C get ob /I get get /TopChild get {
+		dup null eq { pop exit } if
+		dup /CanvasBelow get
+	      } loop
+	    ] def
+	    currentdict /Children 0 grow-struct
+	  end
+	] def
+	Silent? not { /redo-layout null self exch pop send } if
+      } ifelse
+    } def
+
+% ------------------------------------------------------------------------
+
+  end % struct-editors
+
+  /open-editor { % name => -
+    struct-editors 1 index known not { pop nhh } {
+      gsave
+	DL /Icon? undef
+	ItemCanvas setcanvas
+	ObjectX ObjectY ObjectHeight add translate
+	ob begin
+	  struct-editors exch get exec
+	end
+      grestore
+    } ifelse
+  } def
+
+  /open-struct-editor { % - => -
+    gsave
+      DL /Icon? undef
+      ItemCanvas setcanvas
+      ObjectX ObjectY ObjectHeight add translate
+      ob begin
+	C I get dup type dup struct-editors exch known not { pop pop } {
+	  struct-editors exch get exec
+	} ifelse
+      end
+%      Silent? not { redo-layout } if
+    grestore
+  } def
+
+  /open-struct { % levels => -
+    gsave
+      DL /Icon? undef
+      ItemCanvas setcanvas
+      ObjectX ObjectY ObjectHeight add translate
+      ob begin
+	grow-substruct
+      end
+      Silent? not { redo-layout } if
+    grestore
+  } def
+
+  % (dl on dictstack)
+  /replace-struct { % obj => -
+    % Oh, lordy, lordy, lordy!
+    mark exch C I 3 -1 roll 
+    { put } errored { cleartomark } {
+      cleartomark
+      C I L grow-struct
+      begin
+	/Branches Branches
+%        /Controls Controls
+	/C dup load /I dup load % /L L
+	/Obj dup load /Str Str
+	/X X /Y Y /W W /H H
+	/Font Font
+     end
+      def  def def def def  def def  def def def  def % def
+    } ifelse
+  } def
+
+  % DL on dict stack
+  /grow-substruct { % l => -
+    /L exch def
+    /Branches
+      C I L grow-struct
+      1 index get def
+  } def
+
+  /composite-type-dict 30 dict def
+  composite-type-dict begin
+      { /arraytype /dicttype /canvastype /processtype /eventtype /fonttype
+        /stringtype % use special string editor
+% X11/NeWS:
+        /packedarraytype /colormapentrytype /environmenttype
+%        /colormaptype % X11/NeWS pre-fcs bug causes panic when we open these!
+	/visualtype /cursortype
+      } { true def } forall
+  end % composite-type-dict
+
+  /composite? { % obj => bool
+    type //composite-type-dict exch known
+  } def
+
+  /forbidden-dict 50 dict def
+  forbidden-dict begin
+    /Interests null def
+    /Process null def
+    /BuildChar null def
+    /Encoding null def
+    /WidthArray null def
+    /ParentDictArray null def
+    /ParentDict null def
+    /TopCanvas null def
+    /BottomCanvas null def
+    /TopChild null def
+    /CanvasAbove null def
+    /CanvasBelow null def
+    /Parent null def
+  end % forbidden-dict
+
+  /forbidden? {
+    forbidden-dict exch known Filter? and
+  } def
+
+  % Collection Index Levels => dict
+  /grow-struct {
+    /xcurs /xcurs_m ItemCanvas setstandardcursor
+    LayoutLock {
+      /hourg /hourg_m ItemCanvas setstandardcursor
+      do-grow-struct
+    } monitor
+    /xhair /xhair_m ItemCanvas setstandardcursor
+  } def
+
+  /object-label { % - => str
+    /Obj load
+%    short-name
+    currentdict DL eq {
+      short-name
+    } {
+      smart-name
+      I short-name ( : ) append exch append
+    } ifelse
+  } def
+
+  /button-label {
+    Branches null eq {
+      I 80 string cvs
+      % Insert spaces to make button easier to press, and so round 
+      % caps don't overlap label.
+      ( % ) sprintf
+    } {
+      object-label
+    } ifelse
+  } def
+
+  /reference-label { % - => str
+    /C load smart-name ( ) append
+    /I load short-name append ( : ) append
+    /Obj load smart-name append
+  } def
+
+  /do-grow-struct { % Container Index Levels => DL
+    pause
+    32 dict begin
+      /L exch def
+      cvlit /I exch def cvlit /C exch def
+      /Obj null def 
+      /Str make-label def % updates /Obj
+      /X 0 def
+      /Y 0 def
+      /W 0 def
+      /H 0 def
+      /StrY 0 def
+      /TipX null def
+      /TipY null def
+      L 0 gt {
+	I forbidden? not {
+	  /Obj load dup type /stringtype ne {
+	    composite?
+	  } {pop false} ifelse
+	} false ifelse
+      } false ifelse {
+	open-obj-branches
+	currentdict /Controls known not {
+          /Controls null def
+	} if
+      } {
+	/Branches null def
+        /Controls null def
+      } ifelse
+    currentdict end
+  } def
+
+  /open-obj-branches {
+    /Obj load dup array-or-string? {
+      /Branches exch [ exch
+	{ pop /Obj load counttomark 1 sub L 1 sub do-grow-struct } forall
+      ] def
+    } {
+      /Branches exch [ exch
+	{ pop /Obj load exch L 1 sub do-grow-struct } forall
+      ] Sort? {SortBy quicksort} if def
+    } ifelse
+  } def
+
+  % /SortBy default:
+  /by-name {
+    /Str get exch /Str get lt
+  } def
+
+  /by-value {
+    /Str get cvr exch /Str get cvr lt
+  } def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Layout
+
+  /perform-layout {  
+    /xcurs /xcurs_m ItemCanvas setstandardcursor
+    LayoutLock {
+     {
+      /hourg /hourg_m ItemCanvas setstandardcursor
+      /ItemLabel nice-item-label store
+      init-format DL do-layout
+      /ObjectHeight DL /H get store
+      adjust-geometry 
+     } fork waitprocess pop
+    } monitor
+    /xhair /xhair_m ItemCanvas setstandardcursor
+  } def
+
+  /init-format {
+    /Point StartPoint def
+    /x 0 def
+    /y 0 def
+    /ObjectWidth 0 def
+    /ObjectHeight 0 def
+  } def
+
+%  /LineHeight {
+%    Font fontheight 1 add
+%  } def
+
+  /do-layout { % dict => -
+    begin
+      /layout-proc load cvx exec
+    end
+    pause
+  } def
+
+%   /old-layout-struct { % - => -
+%       /Str make-label def
+%       /Obj load xcheck Point SmallPointSize gt and {
+%         /Font ItemXFont Point scalefont def
+%       } {
+%         /Font Point SmallPointSize le
+% 	ItemSFont ItemFont ifelse Point scalefont def
+%       } ifelse
+%       Font setfont
+%       /X x def
+%       /Y y def
+%       /W Str stringwidth pop LineGap add def
+%       Branches null eq { % Icon? or
+% 	/H LineHeight def
+%       } {
+% 	/x x W add store
+% 	Point
+% 	/Point Point Shrink mul store
+% 	Branches {
+% 	  do-layout
+% 	} forall
+% 	/Point exch store
+% 	/x x W sub store
+% 	0 0 % w h
+% 	Branches {
+% 	  begin
+% 	    exch W max
+% 	    exch H add
+% 	  end
+% 	} forall % W H
+% 	LineHeight max 1 max /H exch def
+% 	/TipX X W add LineGap sub def
+% 	/TipY Y H 2 div sub def
+% 	W add /W exch def
+%       } ifelse
+%       /Y Y H sub def
+%       /StrY Y Font fontdescent add H LineHeight sub 2 div add def
+%       /y Y store
+%       /ObjectWidth ObjectWidth x W add LineGap sub max store
+%   } def
+
+  % layout-proc
+  /layout-struct { % - => -
+      /Str make-label def
+      /Obj load xcheck Point SmallPointSize gt and {
+        /Font ItemXFont Point scalefont def
+	/LineHeight Font fontheight .5 add 1 max def
+      } {
+        /Font
+	  Point SmallPointSize le ItemSFont ItemFont ifelse 
+	  Point scalefont def
+	/LineHeight Font fontheight .5 add 1 max def
+      } ifelse
+      Font setfont
+      /X x def
+      /Y y def
+      /W Str stringwidth pop Pad dup add add def
+      /StrX X Pad add def
+      Branches null eq { % Icon? or
+	/H LineHeight def
+	/Y Y H sub def
+	/StrY Y Font fontdescent add H LineHeight sub 2 div add def
+        /y Y store
+      } {
+	OpenToRight? {
+	  /x x W add Pad add LineGap add store
+	  /y y Pad sub store
+	} {
+	  /x x SubStructureIndent add Pad add LineGap add store
+	  /y y LineHeight sub Pad sub store
+	} ifelse
+	Point
+	/Point Point Shrink mul store
+	Branches 
+	  /do-layout load
+	forall
+	/Point exch store
+	OpenToRight? {
+	  /x x W sub Pad sub LineGap sub store
+	} {
+	  /x x SubStructureIndent sub Pad sub LineGap sub store
+	} ifelse
+
+	0 % w
+	Branches {
+	  /W get max
+	} forall % W
+	Branches length 0 eq {
+	  0 % W H
+	  /TipY Y H 2 div sub def
+	} {
+	  Branches 0 get begin Y H add end % TopY
+	  Branches dup length 1 sub get /Y get % TopY BottomY
+	  2 copy add 2 div % TopY BottomY TipY
+	  /TipY exch def % TopY BottomY
+	  sub % W H
+	} ifelse
+	
+	OpenToRight? { % W H
+	  LineHeight max 0 max Pad dup add add /H exch def
+%	  LineHeight max 0 max /H exch def
+	  /TipX X W add Pad add def
+	  W add Pad add LineGap add
+	  /W exch def
+          /Y Y H sub Pad sub def
+          /StrY 
+	    Y Font fontdescent add H Pad sub LineHeight sub 2 div add Pad add 
+	  def
+          /y Y store
+	} { % W H
+	  1 max LineHeight add Pad dup add add /H exch def
+	  /TipX x SubStructureIndent add Pad add def
+	  SubStructureIndent add Pad add LineGap add W max Pad add 
+	  /W exch def
+	  /Y Y H sub def
+	  /StrY
+	    Y Font fontdescent add H LineHeight sub add 
+	  def
+	  /y Y store
+	} ifelse
+      } ifelse
+
+      Controls null ne {
+        /x x SubStructureIndent add store
+%        /x x LineGap 2 div add store
+	/y y Pad sub store % XXX?
+	Point
+	/Point Point Shrink mul store
+	Controls 
+	  /do-layout load
+	forall
+	/Point exch store
+%	/x x LineGap 2 div sub store
+	/x x SubStructureIndent sub store
+
+	0 % w
+	Controls {
+	  /W get max
+	} forall % W
+
+	Controls length 0 eq {
+	  0 % W H
+	} {
+	  Controls 0 get begin Y H add end % TopY
+	  Controls dup length 1 sub get /Y get % TopY BottomY
+	  sub % W H
+	} ifelse
+
+	/Y Y 2 index sub Pad dup add sub def
+%	/H exch H add def /W exch LineGap 2 div add W max def
+	/H exch H add Pad dup add add def
+	/W exch SubStructureIndent add Pad add W max def
+	/y Y store
+      } if
+
+      /ObjectWidth ObjectWidth x W add max store
+  } def
+
+  /canvas-rect { % can => w h
+    gsave 
+      setcanvas
+      clippath pathbbox points2rect
+    grestore
+  } def
+
+  % layout-proc
+  /layout-canvasbbox {
+      /Str make-label def
+      /Font ItemFont Point scalefont def
+      C I get dup type /canvastype ne { pop 1 1 } {
+	% size of parent or of self if null parent
+	dup /Parent get dup null ne { exch } if
+	pop canvas-rect % x y w h
+	4 2 roll pop pop % w h
+      } ifelse
+      /ParentH exch def /ParentW exch def
+      /LineHeight Point 5 mul 1 max def
+      /H LineHeight Pad dup add add def % why the extra pad???
+      /W LineHeight ParentH div ParentW mul Pad dup add add def
+      /X x def
+      /Y y H sub def
+      /y Y store
+      /ObjectWidth ObjectWidth x W add max store
+  } def
+
+  % layout-proc
+  /layout-canvasimage {
+      /Str make-label def
+      /Font ItemFont Point scalefont def
+%       C I get dup type /canvastype ne { pop 1 1 } {
+% 	% size of parent or of self if null parent
+% 	dup /Parent get dup null ne { exch } if
+% 	pop canvas-rect % x y w h
+% 	4 2 roll pop pop % w h
+%       } ifelse
+      /LineHeight Point 5 mul 1 max def
+      /H C /ViewHeight get Pad dup add add def
+      /W C /ViewWidth get Pad dup add add def
+      /X x def
+      /Y y H sub def
+      /y Y store
+      /ObjectWidth ObjectWidth x W add max store
+  } def
+
+  /transfer-reparent {
+    % if it's a canvas, and we're a canvas, reparent it into our canvas.
+    % XXX: TODO!
+  } def
+
+  /draw-struct { % dict => -
+    pause
+    begin
+      Icon? {
+	gsave
+          Font setfont
+          0 Font fontdescent IconH sub
+	  2 copy moveto
+          Str _show
+	  translate
+	  -2 ItemRadius
+	  Str stringbbox points2rect
+	  insetrrect rrectpath
+	  0 setlinewidth
+	  0 setgray
+	  _stroke
+	grestore
+      } {
+	gsave
+          % get default if not defined (don't use parent's)
+	  currentdict /display-proc known {
+	    /display-proc load 
+	  } {
+	    self /display-proc get
+	  } ifelse
+	  cvx exec
+	grestore
+      } ifelse
+    end
+  } def
+
+% The arcto's trigger a pathforall bug with still.ps ...
+  % display-proc
+  /bad-display-button {
+    _newpath
+    X  Y 1 add  moveto
+    X W add  Y 1 add % x1 y1
+    2 copy  H 2 div add % x1 y1 x2 y2
+    Pad arcto pop pop pop pop %
+    X W add  Y H add % x1 y1
+    X  Y H add % x1 y1 x2 y2
+    Pad arcto pop pop pop pop
+    X  Y H add lineto
+    _stroke
+    display-tree-struct
+  } def
+
+  % display-proc
+  /display-button {
+    _newpath
+    X  Y 1 add  moveto
+%    X  Y  moveto
+    W Pad sub 0 rlineto
+    Pad Pad rlineto
+%    0 H Pad dup add sub rlineto
+    0 H Pad dup add sub 1 sub rlineto
+    Pad neg Pad rlineto
+    Pad W sub 0 rlineto
+    _stroke
+    display-tree-struct
+  } def
+
+  /display-tree-struct {
+    show-obj
+    Branches null ne {
+      show-structure-lines
+      show-insides
+    } if
+    Controls null ne {
+      show-control-lines
+      show-controls
+    } if
+  } def
+
+  /display-canvasbbox {
+    X Pad add Y Pad add translate
+    W Pad dup add sub ParentW div
+    H Pad dup add sub ParentH div scale
+    _newpath
+    0 0 ParentW ParentH rectpath
+    .5 setgray _fill
+    C I get % can
+    dup type /canvastype eq { dup /Parent get null eq } true ifelse {
+      pop
+    } {
+      gsave
+	dup /Parent get setcanvas
+	dup getcanvaslocation
+      grestore
+      translate
+      canvas-rect % x y w h
+      rectpath %
+      0 setgray
+      _fill
+    } ifelse
+  } def
+
+  /display-canvasimage {
+    X Y translate
+    _newpath
+    0 0 W H rectpath
+    gsave .5 setgray _fill grestore
+    0 setgray _stroke
+    Pad Pad translate
+    0 0 W Pad dup add sub H Pad dup add sub rectpath
+    clip
+    _newpath
+    C I get % can
+    dup type /canvastype eq { dup /Parent get null eq } true ifelse {
+      pop
+    } {
+      gsave
+	dup canvas-rect % x y w h
+	C /ViewX get neg C /ViewY get neg translate
+	scale % x y
+	pop pop %
+	imagecanvas
+      grestore
+    } ifelse
+  } def
+
+  /show-obj {
+    Font setfont
+    StrX StrY moveto
+    Str _show
+  } def
+
+  % erase-proc
+  /erase-nothing { } def
+
+  % erase-proc
+  /erase-label {
+    gsave
+      Font setfont
+      StrX StrY translate
+      Str stringbbox points2rect % x y w h
+      exch Pad add exch % fudge the width
+      rectpath
+%      X Y W H rectpath
+      1 setgray fill
+    grestore
+  } def
+
+  /erase-lines {
+    Branches null ne {
+      Branches length 0 ne {
+        gsave
+	  newpath
+	  TipX 1 sub Y Branches 0 get /X get TipX sub 2 add H rectpath
+	  1 setgray fill
+        grestore
+      } if
+    } if
+  } def
+
+  /old-change-label { % str => -
+    gsave
+      Font setfont
+      Str stringwidth pop
+      exch /Str exch def
+      Str stringwidth pop
+      exch sub
+      dup 0 eq Branches null eq or { 
+        pop show-obj
+      } {
+        erase-lines
+        /TipX exch TipX add def
+	TipX
+	Branches 0 get /X get Pad 4 mul sub TipX lt {
+          /TipX TipX LineGap add def
+	  /redo-layout null self exch pop send
+	} {
+          show-structure-lines
+	  show-obj
+	} ifelse
+      } ifelse
+    grestore
+  } def
+
+  /change-label { % str => -
+    OpenToRight? { old-change-label } {
+      /Str exch def
+      show-obj
+    } ifelse
+  } def
+
+%   /show-structure-lines {
+%     TipX TipY
+%     Branches length 0 eq {
+%       2 copy moveto  Pad dup rlineto
+%       moveto Pad dup neg rlineto
+%       _stroke
+%     } {
+%       Branches 0 get % first
+%       begin
+% 	2 copy moveto
+% 	X Pad sub Y H add lineto
+% 	Pad 5 mul 0 rlineto
+% 	_stroke
+%       end
+%       ShowFan? {
+% 	Branches 0 1 index length 1 sub getinterval {
+% 	  begin
+% 	    2 copy moveto
+% 	    X Pad sub Y lineto
+% 	    Pad 2 mul 0 rlineto
+% 	    _stroke
+% 	  end
+% 	} forall
+%       } if
+%       Branches dup length 1 sub get begin
+% 	moveto
+% 	X Pad sub Y lineto
+% 	Pad 5 mul 0 rlineto
+% 	_stroke
+%       end
+%     } ifelse
+%     OpenToRight? not {
+%       TipX TipY moveto
+%       Pad neg 0 rlineto
+%       TipX Pad sub  StrY Font fontdescent sub lineto
+%       _stroke
+%     } if
+%   } def
+% 
+  /show-structure-lines {
+    Branches length 0 eq {
+      TipX TipY moveto  Pad 0 rlineto
+      _stroke
+    } {
+      C I get dup type /arraytype ne { pop } {
+	xcheck {
+	  % draw { }
+% TODO: Make braces!
+	  Branches 0 get begin Y H add end % TopY
+	  Branches dup length 1 sub get /Y get % TopY BottomY
+	  sub 2 div % FanHeight
+	  TipX LineGap add % FanHeight x
+	  TipY 2 index add % FanHeight x y
+	  moveto % FanHeight
+	  LineGap neg 1 index -2 div rlineto
+	  LineGap 4 div % FanHeight dx
+	  1 index -4 div % FanHeight dx dy
+	  rlineto % FanHeight
+
+	  TipX LineGap add % FanHeight x
+	  TipY 2 index sub % FanHeight x y
+	  moveto % FanHeight
+	  LineGap neg 1 index 2 div rlineto
+	  LineGap 4 div % FanHeight dx
+	  1 index 4 div % FanHeight dx dy
+	  rlineto % FanHeight
+	  pop %
+	  _stroke
+	} {
+	  % draw [ ]
+	  TipX LineGap add % x
+	  Branches 0 get begin Y H add end % x y
+	  moveto % 
+	  LineGap neg 0 rlineto
+	  TipX % x
+	  Branches dup length 1 sub get /Y get % x y
+	  lineto %
+	  LineGap 0 rlineto
+	  _stroke
+	} ifelse
+      } ifelse
+      TipX TipY % x y
+      Branches 0 get begin
+	2 copy moveto
+	X Y H add lineto
+	Pad 5 mul 0 rlineto
+	_stroke
+      end
+      ShowFan? {
+	Branches 0 1 index length 1 sub getinterval {
+	  begin
+	    2 copy moveto
+	    X Y lineto
+	    Pad 2 mul 0 rlineto
+	    _stroke
+	  end
+	} forall
+      } if
+      Branches dup length 1 sub get begin
+	moveto %
+	X Y lineto
+	Pad 5 mul 0 rlineto
+	_stroke
+      end
+    } ifelse
+    TipX TipY moveto
+    Pad neg 0 rlineto
+    OpenToRight? not {
+      TipX Pad sub  StrY Font fontdescent sub lineto
+    } if
+    _stroke
+  } def
+
+  /show-insides {
+    Branches {
+      draw-struct
+    } forall
+  } def
+
+  /show-control-lines {
+    Controls null ne {
+      Controls length 0 ne {
+	Controls dup length 1 sub get begin
+          X dup
+	  Y moveto
+	end
+	StrY Font fontdescent sub lineto
+	0 setgray
+	_stroke
+      } if
+    } if
+  } def
+
+  /show-controls {
+    Controls {
+      draw-struct
+    } forall
+  } def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Printing
+
+  /write-DL {
+    DL print-struct
+  } def
+
+  /print-struct {
+    { LayoutLock {
+
+	gsave
+	  ItemCanvas setcanvas
+	  erasepage
+%	  ObjectX ObjectY ObjectHeight add translate
+	  StillDict begin
+	    10 dict begin
+	      /_usefont? true def
+	      /_out? true def
+	      /_output_tx -30 def
+	      /_output_ty -30 def
+	      /_output_sx 1 def
+	      /_output_sy 1 def
+	      _stillbegin
+
+%		ItemRadius label-bbox rrectpath
+		label-bbox rectpath
+		ItemFillColor setcolor _fill
+		ItemFrame 0 gt {
+%		    ItemFrame ItemRadius label-bbox rrectframe
+		    ItemFrame label-bbox rectframe
+		    ItemBorderColor setcolor _eofill
+		} if
+%		ItemRadius object-bbox rrectpath
+		object-bbox rectpath
+		ItemFillColor setcolor _fill
+		ItemFrame 0 gt {
+%		    ItemFrame ItemRadius object-bbox rrectframe
+		    ItemFrame object-bbox rectframe
+		    ItemBorderColor setcolor _eofill
+		} if
+
+% ShowLabel:
+		ItemLabel ItemTextColor LabelX LabelY ItemLabelFont
+		gsave
+		  setfont translate setcolor
+		  0 0 moveto
+		  % Assuming a string Thing...
+		  0 currentfont fontdescent rmoveto _show
+		grestore
+
+		ItemTextColor setcolor
+		ObjectX ObjectY ObjectHeight add translate
+
+		0 setlinewidth
+		DL draw-struct
+	      _stillend
+	    end % 10 dict
+	  end % StillDict
+	grestore
+
+      } monitor
+
+    } fork waitprocess pop
+  } def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Stack stuff
+
+  /execute-it { % obj => -
+    /exec-and-update dialog-item send
+  } def
+
+  /TellStack { % message => -
+    createevent begin
+      /Name exch def
+      /ClientData Index def
+      /Action StackI def
+      /Canvas ItemParent def
+    currentdict end sendevent
+  } def
+
+  /pack {
+    StackI null ne {
+      /PackStack items StackI get send
+    } if
+  } def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Snap dragging
+
+  /pinned? { % y h => bool
+      location pop PinX add 3 1 roll % x y h
+      6 exch % x y w h
+      pin-rect rectsoverlap
+  } def
+
+  % items backgroundcolor => - (interactively move item)
+  /moveinteractive {
+      ItemBegin
+	10 dict begin
+	  /GA_constraint 0 def
+	  /GA_value /calc_GA_value load def
+	  currentcursorlocation
+	  /DY exch def /DX exch def
+	  ItemCanvas /Transparent get {
+	      fillcanvas					% items 
+	      /bbox self send				% items x y w h
+	      true dragcanvas currentcanvas mapcanvas
+
+	      % paint all items overlapping old item bbox & newly moved item
+	      % the mark ugly is just to avoid a local var dict; mainly
+	      % because of the self call above.
+	      mark 6 -1 roll {			% x y w h mark <k> item
+		  counttomark 2 eq {exch pop} if	% x y w h mark item
+		  exch pop			% x y w h item
+		  5 copy				% x y w h item x y w h item
+		  /bbox exch send rectsoverlap 1 index self eq or
+		      {/paint exch send} {pop} ifelse
+		  mark				% x y w h mark
+	      } forall
+	      5 {pop} repeat
+	  } {
+	      currentcanvas mapcanvas false dragcanvas
+% 	      true dragcanvas currentcanvas mapcanvas
+	      pop pop
+	  } ifelse
+	end
+      ItemEnd
+  } def
+
+  /SnapIn {
+    ThisI StackI ne {
+      StackI null ne {
+	/PopMe TellStack
+      } if
+      /StackI ThisI store
+      /PushMe TellStack
+    } if
+  } def
+
+  /SnapOut {
+    StackI null ne StackI Index ne and {
+      /PopMe TellStack
+      /StackI null store
+    } if
+  } def
+
+  /snaps-here? { % - => bool
+    ThisI null eq ThisI Index eq or {false} {
+      /pin-rect dialog-item send
+      label-rect
+      rectsoverlap dup {
+        SnapIn
+      } {
+	SnapOut
+      } ifelse
+    } ifelse
+  } def
+
+  /calc_GA_value {
+    StackI Index eq { 
+      currentcursorlocation pop % cx
+    } {
+      StackI null eq {
+	snaps-here? {
+	  location
+	  pop DX add % ix
+	} {
+	  currentcursorlocation pop % cx
+	} ifelse
+      } {
+	  location TabY add TabHeight
+	  /pinned? items StackI get send not {
+	      SnapOut
+	      pop currentcursorlocation pop % cx
+	  } { % ix
+	    { location pop PinX add } items StackI get send % ItemX PinX
+	    PinX sub % ItemX ItemGoal
+	    exch 1 index exch sub % ItemGoal ItemDelta
+	    currentcursorlocation pop % ItemGoal ItemDelta CurX'
+	    2 index exch sub % ItemGoal ItemDelta CurDelta
+	    DX add dup abs TabWidth gt {
+		SnapOut
+		pop pop pop currentcursorlocation pop DX sub
+	    } {
+	        1 index abs 1 index abs gt {exch} if % ItemGoal Close Far
+		pop % ItemGoal Close
+%	        .2 mul sub
+		sub
+	    } ifelse
+	    DX add
+	  } ifelse
+      } ifelse
+    } ifelse
+  } def
+
+  /NextPos { % - => x y
+    location % x y
+    label-bbox % X Y x y w h
+    exch pop add % X Y x y+h
+    3 -1 roll add % X x Y+y+h
+    exch 3 -1 roll add exch % X+x Y+y+h
+    exch PinX add exch
+  } def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Storage managment
+
+  /Free {
+    SnapOut
+    ItemCanvas /Retained false put
+    unmap
+    /DL null store
+%    /ItemObject [[null] 0] store
+    ItemLock {
+      /free-items [
+	free-items aload pop Index
+      ] store
+    } monitor
+  } def
+
+  /init-attributes {
+    { /ObjectWidth /DL /Shrink
+      /layout-proc /click-proc /transfer-proc /display-proc /erase-proc
+      /Point /OpenToRight? /ShowFan?}
+    { InstanceVarDict 1 index get store } forall
+    /ObjectLoc /Right store
+    self /StartPoint undef
+    adjust-geometry
+  } def
+
+  % obj => -
+  /Reuse {
+    Collection Index 3 -1 roll put
+    ItemCanvas /Retained true put
+    ItemCanvas canvastotop
+    init-attributes
+    %ensure-DL
+    %redo-layout
+  } def
+
+  /destroy {
+    ItemEventMgr null ne {
+      ItemEventMgr killprocess
+    } if
+    ItemCanvas /Retained false put
+    unmap
+  } def
+
+classend def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Pallets of useful functions
+
+% Pallets are meant to be pushed onto the stack, opened up, and used
+% like control panels by clicking on the functions. Double click the 
+% point button, or set the click-action to click-exec, and clicking 
+% the Adjust button. (After a few revolutions, the pallets will
+% automatically have click-exec actions, and the functions will look 
+% like buttons. (By virtue of a general purpose view-saving facility.))
+
+/Pallets 100 dict def
+
+Pallets begin
+
+  /Debug dictbegin
+
+    /break-exit { dbgexit dstack } def
+    /break-kill { dbgkill dstack } def
+    /break-list /dbglistbreaks load def
+    /break-enter { dbgenter dstack } def
+    /break-cont { dbgcontinue dstack } def
+    /break-copy&cont { dbgcopystack dbgcontinue dstack } def
+
+    /clear /clear load def
+    /enter-it { selected-object enter } def
+    /exit /exit load def
+
+
+    /fix-typo { % undefined (select correct spelling) => - 
+      userdict begin
+        dup cvlit [ selected-object (%) sprintf cvn cvx ] cvx def
+      end
+      exec
+    } def
+
+    /push-dictstack { currentprocess /DictionaryStack get } def
+    /push-execstack {DbgImplicitBreak DbgGetExecStack} def
+    /push-process { DbgImplicitBreak } def
+
+    /show-dictstack { dstack } def
+    /show-execstack /dbgwhere load def
+
+  dictend def
+
+  /Window 20 dict begin
+    /make-a-window! {
+	/win
+	  framebuffer /new DefaultWindow send
+	def
+	{ newprocessgroup
+	  /reshapefromuser win send
+          /map win send
+	} fork waitprocess pop
+        /can /ClientCanvas win send def
+	(%% The new window is called "win".\n) print
+        (%% Its ClientCanvas is called "can".\n) print
+	(%% Setting the currentcanvas to "can", ) print currentcanvas ==
+	can setcanvas
+    } def
+  dictend def
+
+  /Menu dictbegin
+    /dict-select {
+      selected-object dup type /dicttype ne { pop } {
+        [ exch 
+	  {
+	    1 index type /nametype eq {
+	      exch 
+	      40 string cvs
+	      exch
+	    } if
+	    [ exch [ exch ] 0 /get load /select-object cvx ] cvx
+	  } forall
+	] /new DefaultMenu send
+	dup /MenuButton AdjustButton put
+	dup /AdjustButton MenuButton put
+	gsave
+	  framebuffer setcanvas
+	  currentcursorlocation /showat 4 -1 roll send
+	grestore
+      } ifelse
+    } def
+  dictend def
+
+end % Pallets
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% StructItem Menu definitions
+
+/nhh {
+  gsave
+    framebuffer setcanvas
+    currentcursorlocation
+    [ (Nothing)(Happens)(Here!) ] popmsg pop
+  grestore
+} def
+
+XNeWS? {
+  /MakePointSizeThings { % - => ...things...
+    {1 3 5 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 28 30 32 34} 
+    {
+      [ exch dup 3 string cvs exch
+	{ dup SmallPointSize le ItemSFont ItemFont ifelse } StructItem send
+	exch scalefont ]
+    } forall
+  } def
+} {
+  /MakePointSizeThings { % - => ...things...
+    {1 2 4 6 8 10 12 14 16 18 20 22 24 28 32} {
+      [ exch dup 3 string cvs exch
+	{ dup SmallPointSize le ItemSFont ItemFont ifelse } StructItem send
+	exch scalefont ]
+    } forall
+  } def
+} ifelse
+
+/TabLocationMenu [
+  (LeftBelow) (LeftAbove) (AboveLeft) (AboveRight)
+  (RightAbove) (RightBelow) (BelowRight) (BelowLeft)
+] [
+  { currentkey cvn
+    {/ObjectLoc exch def location 10 10 reshape damage-view}
+    it send }
+] /new CyberMenu send store
+TabLocationMenu /PieInitialAngle 360 16 div put
+
+/TabClickMenu [
+  (click-transfer) (click-type)
+  (click-exec) (click-magic) (click-push) 
+  (click-step) (click-select) (click-edit)
+] [
+  {currentkey cvn {/click-proc exch def} it send}
+] /new CyberMenu send def
+
+/ClickMenu [
+  (click-transfer) (click-type)
+  (click-exec) (click-magic) (click-push) 
+  (click-step) (click-select) (click-edit)
+] [
+  {ob /click-proc currentkey cvn dup /null eq {pop undef} {put} ifelse}
+] /new CyberMenu send def
+
+/TabViewMenu [
+  [ MakePointSizeThings ] % point size
+  [ (true) (false) ] % fan
+  [ (0) (1) (2) (3) (4) (5) (6) (7) (8) ] % open
+  [ (/Below) (/Right) ] % direction
+  [ 10 5 200 { 100 div 10 string cvs } for ] % shrink
+  nullarray % ---
+  nullarray % ---
+  nullarray % click...
+] [
+  (point size)
+    {getmenuarg 0 get cvx exec {/StartPoint exch def redo-layout} it send}
+  (fan) { getmenuarg cvx exec {/ShowFan? exch def paint}
+		   it send }
+  (open) { getmenuarg cvi
+	     { DL null eq { pop } { 
+		 /ob DL store
+		 open-obj
+	       } ifelse 
+	     } it send }
+  (direction) { getmenuarg cvx exec /set-open-direction it send}
+  (shrink) { getmenuarg cvx exec
+	      1000 mul floor 1000 div % X11/NeWS .9499 bug
+   	    {/Shrink exch def redo-layout} 
+		      it send }
+  (---) {}
+  (---) {}
+  (click...) TabClickMenu
+] /new PulloutCyberMenu send def
+TabViewMenu /LabelMinRadius 35 put
+%TabViewMenu /PieInitialAngle 135 put
+
+/ViewMenu [
+  [ MakePointSizeThings (/Default) ] % point size
+  [ (true) (false) (/Default) ] % fan
+  [ (0) (1) (2) (3) (4) (5) (6) (7) (8) ] % open
+  [ (/Below) (/Right) (/Default) ] % direction
+  [ 10 5 200 { 100 div 10 string cvs } for (/Default) ] % shrink
+  nullarray % ---
+  nullarray % ---
+  nullarray % click...
+] [
+  (point size) {getmenuarg 0 get cvx exec /pointsize-obj it send}
+  (fan) {getmenuarg cvx exec {set-show-fan paint} it send}
+  (open) {getmenuarg cvi /open-obj it send}
+  (direction) {getmenuarg cvx exec {set-open-direction redo-layout}
+		 it send}
+  (shrink) { getmenuarg cvx exec
+              /shrink-obj it send}
+  (---) { }
+  (---) { }
+  (click...) ClickMenu
+] /new PulloutCyberMenu send def
+ViewMenu /LabelMinRadius 35 put
+%ViewMenu /PieInitialAngle 135 put
+
+/TabMenu [
+  (Layout) {/redo-layout it send}
+  (Tab...) TabLocationMenu
+  (Zap) {/Free it send}
+  (Paint) {/paint it send}
+  (Print) {/write-DL it send}
+  (View...) TabViewMenu
+] /new CyberMenu send store
+
+/ConvertMenu [
+  (tokein)	{ /tokein-obj it send }
+  (executable)	{ /cvx-obj it send }
+  (name)	{ /cvn-obj it send }
+  (string)	{ /cvs-obj it send }
+  (tokeout)	{ /tokeout-obj it send }
+  (literal)	{ /cvlit-obj it send }
+  (integer)	{ /cvi-obj it send }
+  (real)	{ /cvr-obj it send }
+] /new CyberMenu send def
+
+/SelectMenu [
+  (Pointer) { ob /C get ob /I get kbd-select-pointer }
+  (Index) { ob /I get kbd-select-object }
+  (Object) { ob /C get ob /I get get kbd-select-object }
+  (Container) { ob /C get kbd-select-object }
+] /new CyberMenu send def
+
+/OpenMenu [
+  nullarray
+  [ (1) (2) (3) (4) ]
+  [ (1) (2) (3) (4) ]
+  nullarray
+] [
+  (---) {}
+  (right) {getmenuarg cvi /open-right-obj it send}
+  (below) {getmenuarg cvi /open-below-obj it send}
+  (close) {0 /open-obj it send}
+] /new PulloutCyberMenu send def
+
+/GutsMenu [
+  (it: item) { it kbd-select-object }
+  (DL: item's DL) { /DL it send kbd-select-object }
+  (userdict) { userdict kbd-select-object }
+  (ob: DL object) { ob kbd-select-object }
+  (obs: DL path) { obs kbd-select-object }
+] /new CyberMenu send def
+
+/EtcMenu [
+  (molecule) { /molecule-obj it send }
+  (select...) SelectMenu
+%  (reference) { /reference-obj it send }
+  (load) { /load-obj it send }
+  (guts...) GutsMenu
+] /new CyberMenu send def
+
+/TypeFont /Screen findfont 12 scalefont def
+
+/StructMenu [ 
+  nullarray
+  [ [ { [ ob /Obj get type 30 string cvs
+	  0 1 index length 4 sub getinterval % chop "type"
+	  TypeFont
+	] exch pop dup type exec 
+      }
+    ]
+  ]
+  nullarray nullarray nullarray nullarray nullarray nullarray
+] [ % Note: depends on fixed getmenuarg
+  (push) {/push-obj it send}
+  (type...) /FigureTypeAction cvx
+%  (load) {/load-obj it send}
+  (open...) OpenMenu
+  (etc...) EtcMenu
+  (exec) {/exec-obj it send}
+  (convert...) ConvertMenu
+  (paste) {/paste-obj it send}
+  (view...) ViewMenu
+]
+/new PulloutCyberMenu send def
+{ /LabelMinRadius 25 def
+  /FigureTypeAction {
+    ob /Obj get type TypeActionDict 1 index known {
+      TypeActionDict exch get cvx exec
+    } {
+%      pop { /nhh it send }
+      OtherMenu
+    } ifelse
+  } def
+} StructMenu send
+
+/PalletMenu
+  [ Pallets { pop 100 string cvs } forall ] {lt} quicksort
+  [ { currentkey cvn { Pallets exch get push-it } dialog-item send } ]
+  /new CyberMenu send 
+def
+
+/CommandMenu [
+  (wet) {}
+  (paint) {}
+] /new CyberMenu send def
+
+/BreakMenu [
+  (userdict) { { clear countdictstack 2 sub { end } repeat 
+		 userdict /CyberUserdict dbgbreak } fork pop }
+  (stack) { { clear dialog-item 
+	      /CyberStack /dbgbreak dialog-item send } fork pop }
+  (window) { { clear win
+	       /CyberWindow /dbgbreak win send } fork pop }
+  (struct) { { clear items 0 get
+	       /CyberStruct /dbgbreak 2 index send } fork pop }
+] /new CyberMenu send def
+
+/DialogMenu [
+  nullarray
+  [ MakePointSizeThings ]
+  [(7) (11) (13) (15)]
+  nullarray
+  nullarray
+  nullarray
+] [
+  (dbgbreak...) BreakMenu
+  (object size) {StructItem /StartPoint getmenuarg 0 get cvi put}
+  (text size) {null getmenuarg cvi /changefont dialog-text send}
+  (pack stack) {/PackStack it send}
+  (reboot process) {/kbd-reboot dialog-item send}
+  (reset input) {/kbd-reset it send}
+%    (credits) { /display-credits win send }
+] /new PulloutCyberMenu send def
+
+/SelectionMenu [
+  (push) {{Collection Index get push-it} it send}
+  (load) {{Collection Index get load-it} it send}
+  (exec) {{Collection Index get exec-it} it send}
+%  (convert...) /ConvertMenu StructItem send
+  (convert...) ConvertMenu
+] /new CyberMenu send def
+
+/BackgroundMenu [
+  (Pallets...) PalletMenu
+  (Framebuffer) { /push-framebuffer-children dialog-item send }
+  (Canvases) { /push-selected-canvases dialog-item send }
+  (Windows) { /push-windows dialog-item send }
+  (Commands...) CommandMenu
+  (Processes) { /push-processes dialog-item send }
+  (Stack...) DialogMenu
+  (Object) { /push-object dialog-item send }
+] /new CyberMenu send def
+
+/Types {
+  nulltype  integertype  realtype  booleantype  colortype  marktype
+  operatortype  nametype  stringtype  shapetype  monitortype  
+  graphicsstatetype  cursortype  filetype  arraytype  dicttype
+  fonttype  canvastype  processtype  eventtype
+% X11/NeWS:
+  savetype packedarraytype colormapentrytype environmenttype
+  colormaptype pathtype visualtype vmtype
+} def
+
+/TypeActionDict 50 dict def
+TypeActionDict begin
+  /integertype /IntegerMenu def
+  /realtype /RealMenu def
+  /booleantype /BooleanMenu def
+  /colortype /ColorMenu def
+  /nametype /NameMenu def
+  /stringtype /StringMenu def
+  /graphicsstatetype /GraphicsstateMenu def
+  /arraytype /ArrayMenu def
+  /dicttype /DictMenu def
+  /fonttype /FontMenu def
+  /canvastype /CanvasMenu def
+  /processtype /ProcessMenu def
+  /eventtype /EventMenu def
+%  /filetype /FileMenu def
+%  /shapetype /ShapeMenu def
+%  /cursortype /CursorMenu def
+%  /monitortype /MonitorMenu def
+%  /operatortype /OperatorMenu def
+%  /nulltype /NullMenu def
+%  /marktype /MarkMenu def
+% X11/NeWS:
+%  /savetype /SaveMenu def
+  /packedarraytype /ArrayMenu def
+%   /colormapentrytype /ColormapentryMenu def
+%   /environmenttype /EnvironmentMenu def
+%   /colormaptype /ColormapMenu def
+%   /pathtype /PathMenu def
+%   /visualtype /VisualMenu def
+end % TypeActionDict
+
+% =======================================================================
+% Type menus
+
+/IntegerMenu [
+  (step editor) {/step /open-editor it send}
+  (shift editor) {/shift /open-editor it send}
+  (digit editor) {/digit /open-editor it send}
+  (user editor) {/user /open-editor it send}
+] /new CyberMenu send def
+
+/RealMenu IntegerMenu def
+% /RealMenu [
+%   (step editor) {/step /open-editor it send}
+%   (shift editor) {/shift /open-editor it send}
+%   (digit editor) {/digit /open-editor it send}
+%   (user editor) {/user /open-editor it send}
+% ] /new CyberMenu send def
+
+/BooleanMenu [
+  (true) {true /modify-obj it send}
+  (false) {false /modify-obj it send}
+  (not) {{not} /transform-obj it send}
+  (boolean editor) {/boolean /open-editor it send}
+  (user editor) {/user /open-editor it send}
+] /new CyberMenu send def
+
+/ColorMenu [
+  (user editor) {/user /open-editor it send}
+% put color pie menu here!
+] /new CyberMenu send def
+
+/NameMenu [
+  (definitions editor) {/definitions /open-editor it send}
+  (user editor) {/user /open-editor it send}
+% pop up menu of definitions?
+] /new CyberMenu send def
+
+/GraphicsstateMenu [
+  (user editor) {/user /open-editor it send}
+] /new CyberMenu send def
+
+/JuggleArrayMenu [
+  (pop) { /pop-array-obj it send } % to selection
+  % rotate array member or subinterval to top
+  (top) { /top-array-obj it send } 
+  % splice array member or unsplice subinterval
+  (splice) { /splice-array-obj it send } 
+  % rotate array member or subinterval to bottom
+  (bottom) { /bottom-array-obj it send }
+  (push) { /push-array-obj it send } % selected object
+  (append) { /append-to-array-obj it send } % selected array 
+  % selected array member or subinterval
+  (delete) { /delete-array-obj it send }
+  (prepend) { /prepend-to-array-obj it send } % selected array
+] /new CyberMenu send def
+
+/ArrayMenu [
+  (juggle...) JuggleArrayMenu
+  (element editor) {/element /open-editor it send}
+  (scroller) {/scroller /open-editor it send}
+  (filter editor) {/filter /open-editor it send}
+  (user editor) {/user /open-editor it send}
+] /new CyberMenu send def
+
+/StringMenu ArrayMenu def
+% /StringMenu [
+%   (array...) ArrayMenu
+%   (prepend) {nhh} % selected string
+%   (append) {nhh} % selected string
+%   (token) {nhh} % selected string
+%   (user editor) {/user /open-editor it send}
+% ] /new CyberMenu send def
+
+/DictMenu [
+  (def) { /def-in-dict-obj it send } % selected object
+  (undef) { /undef-in-dict-obj it send } % selected key (or pointer index)
+  (begin) { /begin-obj it send }
+  (enter) { /enter-obj it send }
+  (dbgbreak) { /break-obj it send }
+  (scroller) {/scroller /open-editor it send}
+  (filter editor) {/filter /open-editor it send}
+  (user editor) {/user /open-editor it send}
+  (class editor) {/class /open-editor it send}
+] /new CyberMenu send def
+
+/FontMenu [
+  (class editor) {/class /open-editor it send}
+  (user editor) {/user /open-editor it send}
+] /new CyberMenu send def
+
+/CanvasStateMenu [
+  (top) {ob /C get ob /I get get canvastotop}
+  (map) {ob /C get ob /I get get /Mapped true put}
+  (retain) {ob /C get ob /I get get /Retained true put}
+  (unmap) {ob /C get ob /I get get /Mapped false put}
+  (bottom) {ob /C get ob /I get get canvastobottom}
+  (opaque) {ob /C get ob /I get get /Transparent false put}
+  (unretain) {ob /C get ob /I get get /Retained false put}
+  (transparent) {ob /C get ob /I get get /Transparent true put}
+] /new CyberMenu send def
+
+/CanvasMenu [
+  (state...) CanvasStateMenu
+%  (manager) {nhh} % select /Interests 0 /Process
+%  (bbox) {nhh} % select [x y w h]
+%  (setcanvas) {nhh} % changes proc's gstate
+%  (zap) {nhh} % unretain & unmap whole tree
+  (class editor) {/class /open-editor it send}
+  (canvas editor) {/canvas /open-editor it send}
+  (scroller) {/canvas /open-editor it send}
+  (user editor) {/user /open-editor it send}
+] /new CyberMenu send def
+
+/ProcessMenu [
+% XXX: Implement these!!!
+%  (kill) {nhh}
+%  (kill group) {nhh}
+%  (suspend) {nhh}
+%  (resume) {nhh}
+%  (wait) {nhh} % select return value
+%  (userdict) {nhh} % select userdict
+  (class editor) {/class /open-editor it send}
+  (user editor) {/user /open-editor it send}
+] /new CyberMenu send def
+
+/EventMenu [
+% XXX: Implement these!!!
+%  (express) {nhh} % Does this make any sense in this context?
+%  (revoke) {nhh}
+%  (sendevent) {nhh}
+  (class editor) {/class /open-editor it send}
+  (user editor) {/user /open-editor it send}
+] /new CyberMenu send def
+
+% /FileMenu [
+%   (user editor) {/user /open-editor it send}
+% ] /new CyberMenu send def
+% 
+% /ShapeMenu [
+%   (user editor) {/user /open-editor it send}
+% ] /new CyberMenu send def
+% 
+% /CursorMenu [
+%   (user editor) {/user /open-editor it send}
+% ] /new CyberMenu send def
+% 
+% /MonitorMenu [
+%   (user editor) {/user /open-editor it send}
+% ] /new CyberMenu send def
+% 
+% /OperatorMenu [
+%   (user editor) {/user /open-editor it send}
+% ] /new CyberMenu send def
+% 
+% /NullMenu [
+%   (user editor) {/user /open-editor it send}
+% ] /new CyberMenu send def
+% 
+% /MarkMenu [
+%   (user editor) {/user /open-editor it send}
+% ] /new CyberMenu send def
+
+/OtherMenu [
+  (user editor) {/user /open-editor it send}
+] /new CyberMenu send def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% TextStructItem class definition
+
+/TextStructItem StructItem
+dictbegin
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Instance variables
+
+  /I null def
+  /MyStack null def
+  /MyProcess null def
+  /Scroller null def
+  /ScrollerWidth 18 def
+  /Notifier null def
+  /NotifierHeight 24 def
+  /SubItemGap 2 def
+  /SubItemMgr null def
+  /DeferedUpdateEvent null def
+  /UpdateDelay .5 60 div def
+  /PinHeight 0 def
+  /DropShadow 6 def
+dictend
+classbegin
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Class Variables
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Methods
+
+  /new {
+    /new super send begin
+      /MyStack [] def
+      /ItemLabel (Stack \267) def
+    currentdict end
+  } def
+
+  /push-selected-canvases {
+    gsave
+      fboverlay setcanvas
+      0 0 { moveto 20 20 rmoveto
+	    -40 -40 rlineto
+	    40 0 rmoveto
+	    -40 40 rlineto
+      } getanimated waitprocess aload pop
+      find_canvas
+      push-it
+    grestore
+  } def
+
+  /push-windows {
+    10 dict begin
+      /d 200 dict def
+      [d] 
+      { currentprocess
+        /ParentDict where { pop self } { currentdict } ifelse
+        put
+      } cvlit
+      append cvx
+      RootUserDict begin
+        AllWin
+      end % RootUserDict
+      10 { pause } repeat % Is this enough, or will 1 pause do it, or what?
+      d push-it
+    end % localdict
+  } def
+
+  XNeWS? {
+    /push-processes {
+      getprocesses push-it
+    } def
+  } {
+    /push-processes {
+      % How should we simulate this bugger in NeWS 1.1?
+      % getprocesses push-it
+      (You need NeWS/X!) push-it
+    } def
+  } ifelse
+
+  /push-object {
+    Object push-it % XXX: push opened object editor
+  } def
+
+  /push-framebuffer-children {
+    framebuffer push-it % XXX: push opened canvas hierarchy editor
+  } def
+
+  /kbd-reset {
+    /dialog-buf () store
+    /dialog-string () store
+    { psh-socket bytesavailable string readstring pop
+    } errored
+    {(\n%% Reset!\n) print} execute-it
+  } def
+
+  /shut-down {
+    { psh-socket (\ndbgstop\nquit\n) writestring
+      psh-socket flushfile
+    } errored pop
+    null null /DropDead TellMyProcess
+    1 60 div sleep
+  } def
+
+  /kbd-reboot {
+    { 
+      /dialog-buf () store
+      /dialog-string () store
+      [ () (%% Reboot!) () ] false /writeatcaret dialog-text send
+      shut-down
+      psh-socket null ne {
+        psh-socket status { psh-socket closefile } if
+      } if
+      /psh-socket null store
+      % I don't know why I have to do this, but it sure helps... (i hope)
+      items {
+%        { LayoutLock monitorlocked { /LayoutLock createmonitor def } if
+        { /LayoutLock createmonitor def
+	} exch send
+      } forall
+      ensure-DL
+%      { EventMgr null ne { EventMgr killprocess } if
+%        /EventMgr Interests forkeventmgr store
+%	KeyboardEventMgr null ne { KeyboardEventMgr killprocess } if
+%        /KeyboardEventMgr { KeyboardHandler } fork store
+%      } dialog-text send
+      start-event-mgrs
+    } fork pop
+  } def
+
+  /use-selected-process {
+    selected-object dup type /processtype eq {
+      set-process
+    } if
+  } def
+
+  /ObjectSize { % - => w h
+    % XXX bletch:
+    ObjectWidth 0 eq ObjectHeight 0 eq or {
+      /ObjectWidth
+        ItemBorder dup add ItemWidth 1 index sub % w
+        ScrollerWidth dup add SubItemGap add  max
+      store
+      /ObjectHeight
+        ItemHeight exch sub % w h
+        ScrollerWidth NotifierHeight add SubItemGap add  max
+      store
+    } if
+    ObjectWidth ObjectHeight
+  } def
+
+  /adjust-geometry {
+        LabelSize /LabelHeight exch def /LabelWidth exch def
+	ObjectSize /ObjectHeight exch def /ObjectWidth exch def
+        AdjustItemSize
+	CalcObj&LabelXY
+  } def
+
+  /replace-obj { % obj => -
+    Collection Index 2 index put
+    kbd-select-object
+  } def
+
+  /toggle-icon {} def
+
+  /show-tab-menu {
+    /it self store
+    CurrentEvent /showat DialogMenu send
+  } def
+
+  /show-struct-menu {
+    /it self store
+    /ob 20 dict store
+    ob begin
+      /C Collection def
+      /I Index def
+      /Obj Collection Index get def
+    end
+    CurrentEvent /showat SelectionMenu send
+  } def
+
+  /do-search {
+    /it self store
+    /ob null store
+  } def
+
+  /make-selection { % We ARE the selection.
+  } def
+
+  /pin-rect { % X Y w h
+    location exch PinX add 3 sub exch % x y
+    PinHeight 0 lt {
+      PinHeight add
+    } if
+    ItemHeight PinHeight abs add
+    6 exch
+  } def
+
+  /exec-and-update { % func => -
+    null /ExecIt TellMyProcess
+  } def
+
+  /TellMyProcess { % ClientData Action Name 
+    8 { % wait up to 4 seconds if no process
+      MyProcess null eq { .5 60 div sleep } { exit } ifelse
+    } repeat
+    MyProcess null eq {
+      pop pop pop
+      gsave framebuffer setcanvas
+        currentcursorlocation [(No process!)] popmsg pop
+      grestore
+    } {
+      createevent begin
+	/Name exch def
+	/Action exch def
+	/ClientData exch def
+	/Process MyProcess def
+      currentdict end sendevent
+    } ifelse
+  } def
+
+  /UpdateStack { % event => -
+    DeferedUpdateEvent null ne {
+      DeferedUpdateEvent recallevent
+    } if
+   /DeferedUpdateEvent CurrentEvent store
+   DeferedUpdateEvent begin
+     /Name /DeferedUpdate def
+     /TimeStamp currenttime UpdateDelay add def
+   end % event
+   DeferedUpdateEvent sendevent
+   pop
+  } def
+
+  /DeferedUpdate { % event => -
+    /DeferedUpdateEvent null store
+    dialog-promptlines 0 ne {
+      /getcaretpos dialog-text send
+      exch pop 1 exch  dialog-promptlines 1 sub 0 max sub
+      2 copy /movecaret dialog-text send
+      exch pop dialog-promptlines exch /deleteline dialog-text send
+    } if
+    [
+      dialog-string dialog-buf
+      CurrentEvent /ClientData get length
+      (NeWS[%]> %%) sprintf
+      { (\n) search { % chop string up at newlines
+	  exch pop exch
+        } {
+	  exit
+        } ifelse
+      } loop
+    ]
+    dup length /dialog-promptlines exch store
+    false /writeatcaret dialog-text send
+    pause
+    CurrentEvent /ClientData get
+    setoperandstack
+    pop
+  } def
+
+  /ProcessReady { % event => -
+    dup /ClientData get
+    exch /Action get
+    set-process
+  } def
+
+  /set-process { % stack process => -
+    /MyProcess exch def
+    setoperandstack
+    { currentprocess (%% ) (%Hello, my name is %!\n) printf } execute-it
+  } def
+
+  /SelectionChanged { % event => -
+    CurrentEvent /Action get /PrimarySelection eq {
+      CurrentEvent /ClientData get % selection
+      dup selection-type % selection type
+      dup /text eq { 
+	pop dissect-selection
+	Collection Index 2 index put
+	(text: %) exch [ exch ]
+      } { % selection type
+	(%: %) [ 4 2 roll % fmt mark selection type
+	  exch % fmt mark type selection
+	  dissect-selection
+	  Collection Index 2 index put
+	  smart-name % fmt mark type name
+	] 
+      } ifelse
+      sprintf
+      /printstring Notifier send
+    } if
+    pop
+  } def
+
+  /makestartinterests {
+    /makestartinterests super send
+    [ exch aload pop
+      /ProcessReady {/ProcessReady /Self GetFromCurrentEvent send}
+      null ItemCanvas eventmgrinterest
+      dup /Self self PutInEventMgrInterest
+      /UpdateStack {/UpdateStack /Self GetFromCurrentEvent send}
+      null ItemCanvas eventmgrinterest
+      dup /Self self PutInEventMgrInterest 
+      /DeferedUpdate {/DeferedUpdate /Self GetFromCurrentEvent send}
+      null ItemCanvas eventmgrinterest
+      dup /Self self PutInEventMgrInterest 
+      /SelectionChanged {/SelectionChanged /Self GetFromCurrentEvent send}
+      null null eventmgrinterest
+      dup /Self self PutInEventMgrInterest 
+      /PushMe {/DoPushMe /Self GetFromCurrentEvent send}
+      Index ItemParent eventmgrinterest
+      dup /Self self PutInEventMgrInterest 
+      /PopMe {/DoPopMe /Self GetFromCurrentEvent send}
+      Index ItemParent eventmgrinterest
+      dup /Self self PutInEventMgrInterest 
+      /MoveMe {/DoMoveMe /Self GetFromCurrentEvent send}
+      Index ItemParent eventmgrinterest
+      dup /Self self PutInEventMgrInterest 
+    ]
+  } def
+
+  /DoPushMe { % event => -
+      /ClientData get PushMe
+  } def
+
+  /DoPopMe { % event => -
+      /ClientData get PopMe
+  } def
+
+  /DoMoveMe { % event => -
+    ItemLock {
+      SortStack ReplaceStack
+    } monitor
+    pop
+  } def
+
+  /PushMe { % index => -
+    ItemLock {
+      /I exch def
+      /MyStack [
+	MyStack {
+	  dup I eq {pop} if
+	} forall
+	I
+      ] store
+      SortStack
+      getoperandstack
+      {Collection Index get} items I get send
+      smart-name (%% Push: ) exch append (\n) append
+      /ReplaceStack TellMyProcess
+    } monitor
+  } def
+
+  /PopMe { % index => -
+    ItemLock {
+      /I exch def
+      /MyStack [
+        MyStack {
+          dup I eq {pop} if
+        } forall
+      ] store
+      getoperandstack
+      {Collection Index get} items I get send
+      smart-name (%% Pop: ) exch append (\n) append
+      /ReplaceStack TellMyProcess
+    } monitor
+  } def
+
+  /ReplaceStack {
+    ItemLock {
+      getoperandstack
+      null
+      /ReplaceStack TellMyProcess
+    } monitor
+  } def
+
+  /SortStack {
+    ItemLock {
+      MyStack {
+	/tab-top exch items exch get send exch
+	/tab-top exch items exch get send
+	lt
+      } quicksort pop
+    } monitor
+  } def
+
+  % This code was designed to be rewritten!
+  % To do:
+  % Make the stack display premptable: Each pass it does one thing to make the
+  % display look more like MyStack. (bottom to top priority)
+  /SetStack { % stack => -
+    ItemLock {
+      ItemBegin 10 dict begin 
+	/NewStack exch def
+	/OldStack 200 dict def
+	MyStack {
+	  items 1 index get {Collection Index get} exch send
+	  OldStack 3 1 roll put
+	} forall
+	/MyStack [] store
+	NewStack { % new
+	  pause
+	  /I null def
+	  OldStack { % new ind old
+	    dup 3 index eq { % new ind old
+	      xcheck 2 index xcheck eq { % new ind
+		/I exch def exit % new
+	      } { pop } ifelse % new
+	    } { pop pop } ifelse % new
+	  } forall % new
+	  pause
+	  /I load null ne {
+	    pop %
+	    OldStack /I load undef
+	    /MyStack [
+	      MyStack aload pop /I load
+	    ] store
+	  } { % new
+	    /MyStack [
+	      MyStack aload length 3 add -1 roll % /MyStack [ ... new
+	      create-struct % /MyStack [ ... newind
+	    ] store %
+	  } ifelse
+	} forall
+	pause 
+	OldStack { % ind old
+	  pop % ind
+	  items exch get % item
+	  dup /StackI null put % XXX
+	  /Free exch send %
+	  pause
+	} forall
+	pause
+	/Y tab-top def
+	MyStack { % ind
+	  items exch get % item
+	  Y { % PrevTop
+	    dup tab-bottom exch sub % PrevTop below
+	    dup 0 lt {
+	      location 2 index sub just-move
+	      pause
+	    } if
+	    pop pop tab-top
+	  } 3 -1 roll send % NextTop
+	  /Y exch def %
+	} forall %
+	pin-rect % x y w h
+	exch pop add exch pop % PinTop
+	Y lt { % if we ran off the top of the stack, then pack it down.
+	  PackStack
+	} if
+	pause
+      ItemEnd end
+    } monitor
+  } def
+
+  /create-struct { % obj => i
+    ItemLock {
+     20 dict begin
+      /Obj exch def
+      NextStackPos
+      /NextY exch def /NextX exch def
+      free-items length 0 eq {
+	Stack SP /Obj load put
+	Stack SP {handle-click} can
+	  /new StructItem send
+	/It exch def
+	/items [
+	  items aload pop
+	  It
+	] store
+	/I SP def
+	/SP SP 1 add store
+	It /StackI Index put
+	createevent begin
+	  /Name /UpdateInterests def
+	  /Canvas ItemParent def
+	  /ClientData I def
+	currentdict end sendevent
+      } {
+	/I free-items dup length 1 sub get def
+	/It items I get def
+	/free-items free-items 0 1 index length 1 sub getinterval store
+	It /StackI Index put
+	/Obj load /Reuse It send
+      } ifelse
+      NextX NextY
+      { 2 copy 20 20 just-reshape
+	exch PinX sub exch just-move
+	map damage-view
+      } It send
+      I
+      pause pause
+     end
+    } monitor
+  } def
+
+  /getoperandstack {
+    % Don't use [ ... ] in case there are marks on the stack!!
+    MyStack {
+      {Collection Index get} exch items exch get send
+    } forall
+    MyStack length array astore
+  } def
+
+  /getdictstack { % - => dictstack
+    MyProcess null eq { nullarray } {
+      MyProcess /DictionaryStack get
+    } ifelse
+  } def
+
+  /PackStack {
+    10 dict begin
+      /Y tab-top def
+      MyStack {
+        items exch get
+	Y { % PrevTop
+	  dup tab-bottom exch sub % PrevTop below
+	  location 2 index sub just-move
+	  pause pause
+	  pop pop tab-top
+	} 3 -1 roll send
+	/Y exch def
+	pause pause
+      } forall
+    end
+    pause
+  } def
+
+  /NextStackPos { % - => x y
+    MyStack length 0 eq {
+      NextPos
+    } {
+      MyStack dup length 1 sub get items exch get
+      /NextPos exch send
+    } ifelse
+  } def
+
+  /setoperandstack {
+    SetStack
+  } def
+
+  /ClientExit {
+    CurrentEvent /KeyState get {
+      dup AdjustButton eq {
+	{
+	  ItemBegin
+	    /StackI Index store
+	    /ThisI Index store
+	    ItemCanvas setcanvas
+	    location TabY add TabHeight 2 div add exch PinX add exch
+	    ItemParent createoverlay setcanvas
+	    { 2 setlinewidth exch pop x0 exch lineto }
+	    getanimated waitprocess aload pop % x y
+	    exch pop location exch pop sub
+	    dup 0 gt {ItemHeight sub 0 max} if
+	    /PinHeight exch store
+	    /paint-hilite win send
+	  ItemEnd
+	} fork pop pop exit
+      } if
+    } forall
+    StopItem
+  } def
+
+  /paint-struct {
+    gsave
+      ensure-DL
+      /paint Scroller send
+      /paint Notifier send
+      dialog-can setcanvas
+      /fixdamage dialog-text send
+    grestore
+  } def
+
+  /DrawHilite {
+    gsave can setcanvas
+      location CanvasYFudge add translate
+      ItemRadius object-bbox
+      4 -1 roll DropShadow add
+      4 -1 roll DropShadow sub
+      4 2 roll
+      rrectpath
+      .5 setgray fill
+%      -3 ItemRadius label-bbox insetrrect rrectpath
+      2 setlinewidth 0 setgray stroke
+      PinHeight 0 ne {
+	1 setlinecap
+	2 setlinewidth
+	0 setgray
+	PinX 0 dup PinHeight add min 6 sub moveto
+	0 ItemHeight PinHeight abs add 12 add rlineto
+	stroke
+
+	1 setlinecap
+	6 setlinewidth
+	0 setgray
+
+	PinX 0 dup PinHeight add min moveto
+	0 ItemHeight PinHeight abs add rlineto
+
+	gsave stroke grestore
+	2 setlinewidth
+	1 setgray
+	stroke
+      } if
+    grestore
+  } def
+
+  /reshapefromuser {
+  } def
+
+  /reshape {
+    /reshape super send
+    gsave
+%      ensure-DL
+      ItemCanvas setcanvas
+      ObjectX ScrollerWidth add SubItemGap add ObjectY translate
+      0 0
+      ObjectWidth ScrollerWidth sub SubItemGap sub
+      ObjectHeight NotifierHeight sub SubItemGap sub
+      rectpath dialog-can reshapecanvas
+      dialog-can /Mapped true put
+      /reshape dialog-text send
+
+      ItemCanvas setcanvas
+      { [ 1 0  1 TextHeight div  dup CanHeight floor 1 sub mul  null ] }
+      dialog-text send
+      /setrange Scroller send
+      ObjectX ObjectY
+      ScrollerWidth ObjectHeight NotifierHeight sub SubItemGap sub
+      /reshape Scroller send
+      /paint Scroller send
+
+      ObjectX ObjectY ObjectHeight add NotifierHeight sub
+      ObjectWidth NotifierHeight
+      { /ObjectX 0 def /ObjectY 0 def
+	reshape } Notifier send
+      /paint Notifier send
+
+      SubItemMgr null eq {
+	/SubItemMgr 
+	  dictbegin
+	    /Scroller Scroller def
+	    /Notifier Notifier def
+	  dictend forkitems
+	store
+      } if
+    grestore
+  } def
+
+  /ensure-DL {
+    dialog-text null eq {
+      /dialog-can ItemCanvas newcanvas store
+%dialog-can /Transparent false put
+%dialog-can /Retained true put
+%dialog-can /Parent get dup /Transparent false put /Retained true put
+      /dialog-text 200 dialog-can /new TextCanvas send store
+      { /KeyDict 200 dict def
+        KeyDict begin
+
+	  127 { (erase character) comment % Rubout
+	    dialog-string length 0 ne {
+	      getcaretpos
+	      exch dup 1 gt {
+		1 sub exch
+		movecaret
+		getcaretpos
+		1 3 1 roll deletestring
+		/dialog-string dialog-string dup length 1 sub
+		  0 max 0 exch getinterval store
+	      } if
+	    } if
+	  } def
+	  8 127 load def % Backspace
+
+	  23 { (erase word) comment % ^W
+	    0
+	    { dialog-string length 1 index sub % i
+	      dup 0 le { pop exit } if
+	      1 sub dialog-string exch get
+	      DelimDict exch known 1 index 0 ne and {
+		  exit
+	      } if
+	      1 add
+	    } loop
+	    dup 0 eq { pop } {
+	      dup
+	      getcaretpos exch 2 index sub exch
+	      2 copy movecaret
+	      deletestring
+	      /dialog-string dialog-string dup length 4 -1 roll sub
+	      0 max 0 exch getinterval store
+	    } ifelse
+	  } def
+
+	  24 { (erase line) comment % ^X
+	    getcaretpos
+	    exch dialog-string length sub 1 max exch
+	    2 copy
+	    movecaret
+	    dialog-string length 3 1 roll
+	    deletestring
+	    /dialog-string () store
+	  } def
+	  21 24 load def % ^U
+
+	  13 { (exec line) comment % Return
+	    [ () () ] false writeatcaret
+	    dialog-string /dialog-enter dialog-item send
+	    /dialog-string () store
+	    /dialog-promptlines 
+	      0 dialog-buf {
+	        (\n) search {
+		  pop pop exch 1 add exch
+		} { 
+		  pop exit
+		} ifelse
+	      } loop
+	      1 add
+	    store
+	  } def
+
+	  10 { (select line) comment % Newline
+	    [ () () ] false writeatcaret
+	    dialog-string kbd-select-object
+	    /dialog-string () store
+	    prompt
+	  } def
+
+	  10 128 add { (input line) comment % Meta-Newline
+	    [ () () ] false writeatcaret
+	    dialog-string /dialog-newline dialog-item send
+	    /dialog-string () store
+	    prompt
+	  } def
+
+	  19 { (insert selection) comment % ^S
+	    selected-object (%) sprintf
+	    [ 1 index ] false writeatcaret
+	    /dialog-string exch dialog-string exch append store
+	  } def
+
+	  12 { (load) comment % ^L
+	    { (%% load\n) print
+	      load
+	    } execute-it
+	  } def
+
+	  20 { (exchange) comment % ^T
+	    { (%% exch\n) print
+	      exch
+	    } execute-it
+	  } def
+
+	  11 { (stack to selection) comment % ^K
+	    { (%% Stack to selection\n) print
+	      count 0 ne { select-object } if
+	    } /execute-it dialog-item send
+	  } def
+
+	  25 { (selection to stack) comment % ^Y
+	    { (%% Selection to stack\n) print
+	      selected-object
+	    } /execute-it dialog-item send
+	  } def
+
+	  /FunctionR3 { (execute selection) comment
+	    selected-object
+	    % Since 'token' doesn't recognize \r's as ending comments,
+	    % if the selection has \r's in it, make a copy with \r's
+	    % mapped to \n's.
+	    dup type /stringtype eq {
+	      dup remove-returns exch 1 index ne {
+		kbd-select-object
+	      } if
+	    } if
+	    { selected-object cvx
+	      dup (%) sprintf
+	      (\n) search { exch pop exch pop ( ...) append} if
+	      (%% ) (%Execute selection %\n) printf
+	      exec
+	    } /execute-it dialog-item send
+	  } def
+	  (x) 0 get 128 add /FunctionR3 load def % Meta-x
+	  (X) 0 get 128 add /FunctionR3 load def % Meta-X
+
+	  3 { (reset input) comment % ^C
+	      /kbd-reset dialog-item send
+	  } def
+
+	  255 { (reboot process) comment % Meta-Delete
+	      Control {
+	        [ () (Hey! This ain't no stinkin' MS-DOS!!!) () ] 
+		false writeatcaret
+	      } if
+	      /kbd-reboot dialog-item send
+	  } def
+	  31 128 add 255 load def
+
+	  /FunctionR9 { (page up) comment
+	    /ScrollPageForward /FakeScroll dialog-scroll send
+	  } def
+	  (v) 0 get 128 add /FunctionR9 load def % Meta-v
+	  (V) 0 get 128 add /FunctionR9 load def % Meta-V
+
+	  /FunctionR15 { (page down) comment
+	    /ScrollPageBackward /FakeScroll dialog-scroll send
+	  } def
+	  22 /FunctionR15 load def % ^V
+
+	  /FunctionR7 { (scroll up) comment
+	    /ScrollLineForward /FakeScroll dialog-scroll send
+	  } def
+	  (z) 0 get 128 add /FunctionR7 load def % Meta-z
+	  (Z) 0 get 128 add /FunctionR7 load def % Meta-Z
+
+	  /FunctionR13 { (scroll down) comment
+	    /ScrollLineBackward /FakeScroll dialog-scroll send
+	  } def
+	  26 /FunctionR13 load def % ^Z
+
+	  /FunctionR11 { (scroll to bottom) comment
+	    1 /ScrollTo dialog-scroll send
+	  } def
+	  (>) 0 get 128 add /FunctionR11 load def %  Meta->
+	  (.) 0 get 128 add /FunctionR11 load def %  Meta-.
+
+	  /FunctionF10 { (help) comment % Alternate
+	    [ () (Key Bindings:) ()] false writeatcaret
+	    [ KeyDict {
+		comment-string exch key-name
+		(%: %) sprintf
+		pause pause
+	      } forall ]
+	    {gt} quicksort
+	    { [ exch () ] false writeatcaret
+	      pause pause pause } forall
+	    prompt
+	  } def
+	  (?) 0 get 128 add /FunctionF10 load def % Meta-?
+	  (/) 0 get 128 add /FunctionF10 load def % Meta-/
+
+	  /FunctionR1 { (describe key) comment
+	    [ () (Describe key: ) ] false writeatcaret
+	    /DescribingKey? true store
+	  } def
+	  (k) 0 get 128 add /FunctionR1 load def % Meta-k
+	  (K) 0 get 128 add /FunctionR1 load def % Meta-K
+
+	  /FunctionR2 { (bind selection to key) comment
+	    [ () selected-object smart-type (Bind selection %) sprintf
+	      (to key: ) ]
+	    false writeatcaret
+	    /BindingKey? true store
+	  } def
+	  (b) 0 get 128 add /FunctionR2 load def % Meta-b
+	  (B) 0 get 128 add /FunctionR2 load def % Meta-B
+
+	  /FunctionL9 { (find completions) comment
+	    [ dialog-string {
+	        DelimDict 1 index known { cleartomark mark } if
+	      } forall
+	    ] cvas
+	    dup length 0 eq { pop } {
+	      kbd-select-object
+	      { selected-object
+	        (%% Finding completions of ") print dup print (":\n) print
+	        currentprocess /DictionaryStack get
+		20 dict begin
+		  /DS exch def
+		  /pat exch def
+		  /found null def
+		  /complete null def
+% X11/NeWS pre fcs gives rangecheck errors when we try to cvs something
+% into a string it's too long for...
+%		  /str pat length string def
+		  /wholestr 256 string def
+		  /str wholestr 0 pat length getinterval def
+		  DS length 1 sub  -1  0 { /i exch def
+		    DS i get {
+		      /val exch def
+%		      dup str cvs pat ne { pop } {
+		      dup wholestr cvs pop str pat ne { pop } {
+		        found null eq {
+			  /found 1 index 256 string cvs def
+		          /complete found def
+			} {
+			  /found 1 index 256 string cvs def
+			  found length complete length lt {
+			    /complete found def
+			  } {
+			    0 complete {
+			      found 2 index get ne {
+				/complete complete 0 3 index getinterval store
+				exit
+			      } if
+ 			      1 add
+			    } forall
+			    pop
+			  } ifelse
+			} ifelse
+			/val load smart-name exch i (%: /%    %\n) printf
+		      } ifelse
+		    } forall
+		    pause pause
+		  } for
+		  pause pause pause
+		  complete null eq { () } {
+		    complete pat length 1 index length 1 index sub
+		    getinterval
+		  } ifelse
+		  createevent begin
+		    /Name /InsertValue def
+		    /Action exch def
+		    /Canvas
+		      % Fails with more than one interest!
+%		      currentprocess /Interests get 0 get % event
+		      currentprocess /Interests get
+		      % the first interest expressed is the last on the list
+		      dup length 1 sub get % event
+		      /ClientData get /ViewCanvas get % can
+		      /Parent get % clientcanvas has keyboard interests!
+		    def
+		  currentdict end sendevent
+		  complete null ne { complete select-object } if
+		end
+	      } execute-it
+	    } ifelse
+	  } def
+	  27 128 add /FunctionL9 load def
+
+	  27 { (complete) comment % Escape
+	    [ dialog-string {
+	        DelimDict 1 index known { cleartomark mark } if
+	      } forall
+	    ] cvas
+	    dup length 0 eq { pop } {
+	      kbd-select-object
+	      { selected-object
+	        currentprocess /DictionaryStack get
+		20 dict begin
+		  /DS exch def
+		  /pat exch def
+		  /found null def
+		  /complete null def
+% X11/NeWS pre fcs gives rangecheck errors when we try to cvs something
+% into a string it's too long for...
+%		  /str pat length string def
+		  /wholestr 256 string def
+		  /str wholestr 0 pat length getinterval def
+		  DS length 1 sub  -1  0 { /i exch def
+		    DS i get {
+		      /val exch def
+%		      dup str cvs pat ne { pop } {
+		      dup wholestr cvs pop str pat ne { pop } {
+		        found null eq {
+			  /found 1 index 256 string cvs def
+		          /complete found def
+			} {
+			  /found 1 index 256 string cvs def
+			  found length complete length lt {
+			    /complete found def
+			  } {
+			    0 complete {
+			      found 2 index get ne {
+				/complete complete 0 3 index getinterval store
+				exit
+			      } if
+			      1 add
+			    } forall
+			    pop
+			  } ifelse
+			} ifelse
+			pop
+		      } ifelse
+		    } forall
+		    pause
+		  } for
+		  pause
+		  complete null ne {
+		    complete pat length 1 index length 1 index sub
+		    getinterval
+		    createevent begin
+		      /Name /InsertValue def
+		      /Action exch def
+		      /Canvas
+			currentprocess /Interests get 0 get % event
+			/ClientData get /ViewCanvas get % can
+			/Parent get % clientcanvas has keyboard interests!
+		      def
+		    currentdict end sendevent
+		    complete null ne { complete select-object } if
+		  } if
+		end
+	      } execute-it
+	    } ifelse
+	  } def
+
+	  4 { (completions) comment % ^D
+	    [ dialog-string {
+	        DelimDict 1 index known { cleartomark mark } if
+	      } forall
+	    ] cvas
+	    dup length 0 eq { pop } {
+	      kbd-select-object
+	      { selected-object
+	        (%% Completions of ") print dup print (":\n) print
+	        currentprocess /DictionaryStack get
+		20 dict begin
+		  /DS exch def
+		  /pat exch def
+		  /found null def
+		  /complete null def
+% X11/NeWS pre fcs gives rangecheck errors when we try to cvs something
+% into a string it's too long for...
+%		  /str pat length string def
+		  /wholestr 256 string def
+		  /str wholestr 0 pat length getinterval def
+		  DS length 1 sub  -1  0 { /i exch def
+		    DS i get {
+		      /val exch def
+%		      dup str cvs pat ne { pop } {
+		      dup wholestr cvs pop str pat ne { pop } {
+		        found null eq {
+			  /found 1 index 256 string cvs def
+		          /complete found def
+			} {
+			  /found 1 index 256 string cvs def
+			  found length complete length lt {
+			    /complete found def
+			  } {
+			    0 complete {
+			      found 2 index get ne {
+				/complete complete 0 3 index getinterval store
+				exit
+			      } if
+			      1 add
+			    } forall
+			    pop
+			  } ifelse
+			} ifelse
+			(% ) printf
+		      } ifelse
+		    } forall
+		    pause
+		  } for
+		  (\n) printf
+		  pause pause
+		  complete null ne {
+		    complete pat length 1 index length 1 index sub
+		    getinterval
+		    select-object
+		  } if
+		end
+	      } execute-it
+	    } ifelse
+	  } def
+
+	end % KeyDict
+
+	/DelimDict 50 dict def
+	DelimDict begin
+	  0 1 32 { dup def } for
+	  (%/()<>[]{}) { dup def } forall
+	end
+
+        /typein {
+	  [1 index] false writeatcaret
+	  /dialog-string exch dialog-string exch append store
+        } def
+
+        /DescribingKey? false def
+        /BindingKey? false def
+	/key 0 def
+
+	/KeyHitCallback { % event =>
+	    dup update-shifts
+	    /Name get
+	    dup type /integertype eq {
+%	      Meta {128 add} if
+	      Meta {128 or} if
+	    } {
+	      (%) sprintf % X11/NeWS pre fcs bug: /foo cvn => typecheck error!
+	      Meta { (Meta%) sprintf } if
+	      Shift { (Shift%) sprintf } if
+	      Control { (Control%) sprintf } if
+	      cvn
+	    } ifelse
+	    /key exch def
+	    BindingKey? DescribingKey? or {
+	      BindingKey? {
+	        selected-object
+		KeyDict key known {
+		  KeyDict key get
+		} { null } ifelse
+		kbd-select-object
+		dup null eq {
+		  pop KeyDict key undef
+		} {
+	          KeyDict exch key exch put
+		} ifelse
+	      } if
+	      [ ()
+		KeyDict key known {
+		  KeyDict key get comment-string
+		} {
+		  key type /integertype eq (self insert) (unbound) ifelse
+		} ifelse
+		key key-name
+		(%: %) sprintf
+		()
+	      ] false writeatcaret
+	      /BindingKey? false store
+	      /DescribingKey? false store
+	      prompt
+	    } {
+	      KeyDict key known {
+		{ KeyDict key get cvx exec } fork pop
+		pause
+	      } {
+		key type /integertype eq {
+		  key cvis typein
+		} {
+		  % beep
+		} ifelse
+	      } ifelse
+	    } ifelse
+	} def
+
+	/s null def
+	/skip 0 def
+	/newlines 0 def
+	/i 0 def
+	/a null def
+	/pre null def
+	/lastnl 0 def
+
+	/InsertValueCallback { % string => -
+	    /skip dialog-string length store
+	    /s exch dialog-string exch append store
+	    /newlines 0 store
+	    /lastnl null store
+	    0 1 s length 1 sub {
+	      /i exch store
+	      s i get 13 eq { s i 10 put } if
+	      s i get 10 eq {
+		/newlines newlines 1 add store
+		/lastnl i store
+		pause
+	      } if
+	    } for
+	    lastnl null ne {
+	      s 0 lastnl 1 add getinterval
+	      /dialog-enter dialog-item send
+	      pause pause pause
+	      /dialog-string
+		s lastnl 1 add 1 index length 1 index sub
+		getinterval
+	      store
+	      pause
+	    } if
+	    /s s skip 1 index length 1 index sub
+	       getinterval store
+	    /a newlines 1 add array store
+	    0 1 newlines 1 sub {
+	      pause
+	      /i exch store
+	      s (\n) search pop
+	      /pre exch store
+	      pop
+	      /s exch store
+	      a i pre put
+	    } for
+
+	    /dialog-string dialog-string s append store
+
+	    a newlines s put
+	    a false writeatcaret
+
+	    /dialog-promptlines 
+	      newlines 1 add % dialog-string length 0 eq { 1 add } if
+	    store
+	} def
+
+% XXXX: Here be the start of the trouble.
+
+	/KeyboardHandler { % - => -
+	  % --- Handler for keyboard, InsertValue, and Deselect events
+	  /KeyboardInterest can addkbdinterests def
+	  % X11/NeWS pre fcs: Now I don't get any key events at all when the
+	  % meta keys is held down. I used to get 0..127, and I was looking
+	  % for /Meta in the event KeyStates and or'ing in the 128 by hand,
+	  % but it stopped working, so now I have to do this...
+	  XNeWS? { % We want meta keys 128..255 as well as 0..127
+%	    KeyboardInterest 0 get revokeinterest % is this necessary?
+	    256 dict begin
+	      KeyboardInterest 0 get /Name get currentdict copy
+	      128 1 255 {
+		dup def
+	      } for
+	      KeyboardInterest 0 get /Name currentdict put
+	    end
+%	    KeyboardInterest 0 get expressinterest % is this necessary?
+	  } if
+	  /MoreInterests [
+	    can addselectioninterests aload pop
+	    revokeinterest % Get rid of mouse interests
+%	    can addfunctionstringsinterest
+	    can addfunctionnamesinterest
+	    dup /Action 1 dict begin
+	      /DownTransition dup def
+	      currentdict
+	    end
+	    put % only want down transitions!
+	  ] def
+	  /dialog-proc currentprocess store
+	  { awaitevent dup /Name get {
+	      /DeSelect {
+		dup /Action get /PrimarySelection eq { 
+		   false DrawSelection
+		   /SelectionPath null store 
+		} if
+		/Action get /InputFocus eq {
+		  InactivateCaret
+		} if
+	      }
+	      /RestoreFocus { 
+		pop ReactivateCaret
+	      }
+	      /InsertValue { 
+		/Action get InsertValueCallback
+	      }
+	      /Ignore {
+		pop
+	      }
+	      /Default {
+		KeyHitCallback
+	      }
+	    } case
+	  } loop
+	} def
+
+	/destroy { % - => - 
+	  /Scroller null store
+	  /Notifier null store
+	  KeyboardInterest null ne {
+	    { KeyboardInterest can revokekbdinterests } errored pop
+	    MoreInterests {
+	      { revokeinterest } errored pop
+	    } forall
+	  } if
+	  KeyboardEventMgr null ne { % added! -deh
+	    KeyboardEventMgr killprocess
+	  } if
+	  EventMgr null ne {
+	    EventMgr killprocess
+	  } if
+	  DelayedMoveProc null ne { % added! -deh
+	    DelayedMoveProc killprocess
+	  } if
+	  MouseDragEventMgr null ne {
+	    MouseDragEventMgr killprocess
+	  } if
+	} def
+
+	/CaretBlinkTime 3 def
+        /CaretDutyCycle	0.95		def % Percentage on
+
+	% This doesn't work:
+	/FontHeight 12 def
+	/FontName FontName def
+
+	[ () (%% Ready!) () ] false writeatcaret
+
+	oncaret
+      } dialog-text send
+
+      /Scroller
+        [1 0 .005 .05 null] 1 {} ItemCanvas /new NeWSScrollbar send
+      def
+
+      /dialog-scroll Scroller store
+
+      {
+	/NotifyUser {
+	  null ItemValue /moveviewport dialog-text send
+	} def
+
+	/ClientDrag {
+	  DoScroll null ItemValue /moveviewport dialog-text send
+	} def
+
+	/FakeScroll { % motion => -
+	  ItemBegin
+	    /ScrollMotion exch def
+	    DoScroll
+	    EraseBox PaintBox
+	    NotifyUser
+	  ItemEnd
+	} def
+
+	/ScrollTo { % val => -
+	  ItemBegin
+	    /ItemValue exch def
+	    EraseBox PaintBox
+	    NotifyUser
+	  ItemEnd
+	} def
+
+      } Scroller send
+
+      /Notifier
+        (Selected:) () /Right {} ItemCanvas /new MessageItem send
+      def
+
+      {
+	/LabelFont /Courier findfont 20 scalefont def
+	/ItemFont /Courier-Bold findfont 20 scalefont def
+	/ItemFrame 1 def
+      } Notifier send
+    } if
+
+  } def
+
+  /dialog-newline { % str => -
+    psh-socket exch writestring
+    psh-socket 10 write 
+    psh-socket flushfile
+  } def
+
+%   /dialog-enter { % str => -
+%     /dialog-buf exch dialog-buf (%%\n) sprintf remove-returns store
+%     { dialog-buf
+%       { token } errored {
+% 	[(%% Syntax error!)] false /writeatcaret dialog-text send
+% 	kbd-reset exit
+%       } {
+% 	{ exch /dialog-buf exch store
+% 	  [ exch ] cvx execute-it
+% 	} {
+% 	  dialog-buf ( _FOO_) append token { % Ignore white space
+% 	    exch pop /_FOO_ eq {
+% 	      /dialog-buf () store
+% 	      prompt
+% 	    } if
+% 	  } if
+% 	  exit
+% 	} ifelse
+%       } ifelse
+%       pause
+%     } loop
+%   } def
+
+  /dialog-enter { % str => -
+    dialog-newline
+  } def
+
+  /destroy {
+    shut-down
+    SubItemMgr null ne {
+      SubItemMgr killprocess
+      /SubItemMgr null store
+    } if
+    dialog-text null ne {
+%      {{destroy} errored pop} dialog-text send
+      dialog-can /Retained false put
+      /destroy dialog-text send
+      /dialog-text null store
+      /dialog-can null store
+    } if
+    MyProcess type /processtype eq {
+      pause pause pause % maybe it will kill itsself
+      MyProcess killprocessgroup
+    } if
+    /MyProcess null store
+    /DeferedUpdateEvent null store
+    /Stack null store
+    /Pallets null store
+    /destroy super send
+  } def
+
+classend def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Nasty userdict variables
+
+/dialog-text null def
+/dialog-can null def
+/dialog-proc null def
+/dialog-string () def
+/dialog-buf () def
+/dialog-promptlines 0 def
+/dialog-item null def
+/dialog-scroll null def
+
+(NEWSSERVER) getenv
+(;) search pop
+(.) search pop pop pop
+/socket-port exch def
+pop
+/socket-host exch def
+/socket-file (%socketc) socket-port append socket-host append def
+/psh-socket null def
+
+/SP 0 def
+/Stack 256 array def
+Stack 0 {By Don Hopkins (don@brillig.umd.edu)} put
+Stack 1 (Nothing!) put
+
+/ThisI null def
+
+/it null def
+/ob null def
+/obs null def
+
+/FillColor 1 1 1 rgbcolor def
+
+/ItemLock createmonitor def
+
+/items [] def
+/free-items [] def
+
+/Meta false def
+/Control false def
+/Shift false def
+
+/win null def
+/can null def
+
+/slidemgr null def
+/itemmgr null def
+/incoming null def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Item managment
+
+/createitems {
+  ItemLock {
+    /items [
+      Stack 0 {handle-click} can
+	/new StructItem send
+      200 400 0 0 /reshape 5 index send
+      Stack 1 {} can
+	/new TextStructItem send
+      { /ObjectWidth 600 def
+        /ObjectHeight 200 def
+        30 20 0 0 reshape
+      } 1 index send
+    ] def
+    /SP items length store
+    /dialog-item items 1 get store
+    {/PinHeight 600 def /StackI 1 def} dialog-item send
+    /ThisI 1 store
+  } monitor
+} def
+
+/slideitem { % items fillcolor item => -
+  ItemLock {
+    gsave
+%      dup 4 1 roll		% item items fillcolor item
+      {ItemCanvas canvastotop
+       moveinteractive location move} exch send	% item
+    grestore
+  } monitor
+} def
+
+/update-slide-interests { % event => -
+  CurrentEvent /ClientData get % Index
+  items exch get % item
+  dup /ItemCanvas get	% item can
+  MiddleMouseButton [/pop cvx items FillColor	% item can name [ dict color
+  6 -1 roll /slideitem cvx] cvx	% can name proc
+  DownTransition 			% can name proc action
+  4 -1 roll eventmgrinterest		% interest
+  expressinterest
+  pop
+} def
+
+/update-start-interests { % event => -
+  CurrentEvent /ClientData get % Index
+  items exch get % item
+  mark
+  [/makestartinterests 3 index send aload pop]
+  {dup xcheck {exec} {expressinterest} ifelse} forall
+  cleartomark % event mark
+  pop pop %
+} def
+
+/transfer-to-deck { % event => -
+  gsave
+    can setcanvas
+    selected-object
+    ItemLock {
+       20 dict begin
+	/Obj exch def
+	currentcursorlocation
+	/NextY exch def /NextX exch def
+	free-items length 0 eq {
+	  Stack SP /Obj load put
+	  Stack SP {handle-click} can
+	    /new StructItem send
+	  /It exch def
+	  /items [
+	    items aload pop
+	    It
+	  ] store
+	  /I SP def
+	  /SP SP 1 add store
+	  It /StackI null put
+	  createevent begin
+	    /Name /UpdateInterests def
+	    /Canvas can def
+	    /ClientData I def
+	  currentdict end sendevent
+	} {
+	  /I free-items dup length 1 sub get def
+	  /It items I get def
+	  /free-items free-items 0 1 index length 1 sub getinterval store
+	  It /StackI null put
+	  /Obj load /Reuse It send
+	} ifelse
+	NextX NextY
+	{ 2 copy 20 20 just-reshape
+	  exch PinX sub exch move
+	  map damage-view
+	} It send
+	pause pause
+       end
+    } monitor
+  grestore
+  pop
+} def
+
+/start-event-mgrs {
+% Create event manager to slide around the items.
+% Create a bunch of interests to move the items.
+% Note we actually create toe call-back proc to have the arguments we need.
+% The proc looks like: {items color "thisitem" slideitem}.
+% We could also have used the interest's clientdata dict.
+    slidemgr null ne {slidemgr killprocess} if
+% { %XXX
+%     /slidemgr [
+% 	items { % key item
+% 	    dup /ItemCanvas get	% item can
+% 	    MiddleMouseButton [items FillColor	% item can name mark dict color
+% 	    6 -1 roll /slideitem cvx] cvx	% can name proc
+% 	    DownTransition 			% can name proc action
+% 	    4 -1 roll eventmgrinterest		% interest
+% 	} forall
+%         /UpdateInterests /update-slide-interests
+%         null can eventmgrinterest
+%     ] forkeventmgr store
+% } pop %XXX
+    itemmgr null ne {itemmgr killprocess} if
+    /itemmgr [
+      items iteminterests aload pop 
+      /UpdateInterests /update-start-interests
+      null can eventmgrinterest
+      /DoTransfer /transfer-to-deck
+      null can eventmgrinterest
+    ] forkeventmgr store
+
+    { % send to dialog-item
+      psh-socket null eq {
+
+	MyProcess null ne { MyProcess killprocessgroup } if
+	/MyProcess null store
+	incoming null ne { incoming killprocess } if
+	/incoming null store
+
+	systemdict /_ViewCanvas ItemCanvas put
+
+	/psh-socket { socket-file (r) file } errored {
+	  { newprocessgroup
+	    framebuffer setcanvas
+	    500 500 [(Could not establish connection)] popmsg pop
+	  } fork pause pause pop
+	  currentprocess killprocessgroup
+	} if store
+
+% 	/incoming {
+% 	  { { psh-socket CanWidth string readline false eq {
+% 		[() (Lost it!) ()] false writeatcaret
+%   %	      1 60 div sleep
+%   %	      /kbd-reboot dialog-item send
+% 		/incoming null store
+% 		currentprocess killprocess
+% 	      } if
+% 	      dialog-promptlines 0 ne {
+% 		getcaretpos  exch pop 1 exch  dialog-promptlines sub 1 add
+% 		dup dialog-promptlines exch deleteline
+% 		movecaret
+% 		/dialog-promptlines 0 store
+% 	      } if
+% 	      [ exch ()
+% 	      ] false writeatcaret
+% 	      psh-socket bytesavailable 0 eq { prompt } if
+% 	    } loop
+% 	  } dialog-text send
+% 	} fork store
+
+	/incoming {
+	  { { psh-socket CanWidth string readline false eq {
+		[() (Lost it!) ()]
+		false writeatcaret
+  %	      1 60 div sleep
+  %	      /kbd-reboot dialog-item send
+		/incoming null store
+		currentprocess killprocess
+	      } if
+	      [ exch ()
+	      ] false writeatcaret
+%	      psh-socket bytesavailable 0 eq { prompt } if
+	    } loop
+	  } dialog-text send
+	} fork store
+
+	psh-socket
+%  (systemdict/dbgstart known not{(NeWS/debug.ps)run}if dbgstart\n_ReadyProcess\n)
+        (executive\n_ReadyProcess\n) % X11/NeWS pre fcs
+	writestring
+	psh-socket flushfile
+      } if
+    }  dialog-item send
+} def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Window class definition
+
+/DeckWindow DefaultWindow 
+dictbegin
+  /FrameLabel (CyberSpace Deck) def
+  /IconLabel (CyberSpace Deck) def
+  /IconImage /galaxy def
+dictend
+classbegin
+  /dragframe? true def
+
+  /PaintClient {
+    paint-hilite
+    items paintitems
+  } def
+
+  /paint-hilite {
+    ClientCanvas setcanvas
+    erasepage
+    /DrawHilite dialog-item send
+  } def
+
+  /ClientMenu BackgroundMenu def
+
+  /display-credits {
+    gsave
+      framebuffer setcanvas
+      currentcursorlocation
+      [ (CyberSpace Deck:)
+	(  by Don Hopkins)
+	(----------------)
+	(Code stolen from:)
+	(  Josh Siegel)
+	(  Don Woods)
+      ] popmsg pop
+    grestore
+  } def
+
+  /DestroyClient {
+   {
+    newprocessgroup
+    FrameCanvas /Mapped false put
+    FrameCanvas /Retained false put
+    ClientCanvas /Retained false put
+    itemmgr type /processtype eq { itemmgr killprocess } if
+    slidemgr type /processtype eq { slidemgr killprocess } if
+    items null ne {
+      items
+      /items null store
+      {
+	  /destroy exch send
+      } forall
+    } if
+    /_ViewCanvas null store
+    /PrimarySelection clearselection % XXX?
+    /DestroyClient super send
+   } fork pop
+  } def
+classend def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Create objects
+
+/win framebuffer /new DeckWindow send def	% Create a window
+
+%0 0 900 900 /reshape win send
+/reshapefromuser win send
+/can win /ClientCanvas get def
+
+% BOO HISS
+can /Parent get /Retained true put
+createitems
+
+% /reshapefromuser win send
+/map win send
+start-event-mgrs
+
+breakpoint % so we can catch stdout from psh

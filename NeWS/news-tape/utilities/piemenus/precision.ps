@@ -1,0 +1,136 @@
+% Precision pie menu class
+% Copyright (C) 1988 by Don Hopkins
+
+/PrecisionPieMenu PieMenu
+dictbegin
+  /HiLiteWithArrow? false def
+  /CursorDistance null def
+  /CursorDirection null def
+  /ExitDirection null def
+  /PrecisionScale .001 def
+  /TrackFont /Courier-Bold findfont 16 scalefont def
+dictend
+classbegin
+    /DragProc {
+	ChildMenu null eq {
+          MenuGSave
+	    PieRadius dup translate
+	    CurrentEvent begin
+	      XLocation DeltaX add
+	      YLocation DeltaY add
+	    end
+	    SetMenuValue
+
+	    MenuValue PaintedValue ne {
+	        PaintMenuValue
+            } if
+
+	    fboverlay setcanvas
+	    overlayerase
+	    erasepage
+	    MenuX PieRadius add MouseXDelta sub
+	    MenuY PieRadius add MouseYDelta sub translate
+	    PieDistance NumbRadius gt {
+	      gsave
+		TrackFont setfont
+		NumbRadius neg TrackFont fontheight 2 div neg moveto
+		PieDirection round
+		(xxxxxxxx) cvs show
+
+	        PieDirection rotate
+	        0 setgray
+	        newpath
+	        NumbRadius 0 moveto
+	        PieDistance 0 lineto
+	        stroke
+		ExitDirection null ne {
+		  ExitDirection PieDirection sub rotate
+		} if
+	        PieDistance 5 moveto
+	        PieDistance 10 add 0 lineto
+	        PieDistance -5 lineto 
+	        closepath
+	        fill
+	      grestore
+	    } if
+	    ExitDirection null ne {
+	      PieDirection rotate
+	      PieDistance 0 moveto
+	      CursorDistance 0 .5 controlpoint
+
+	      CursorDirection PieDirection sub rotate
+
+	      CursorDistance 0 lineto
+	      stroke
+	    } if
+          grestore
+	} if
+    } def
+
+    /popdown {
+      gsave
+        fboverlay setcanvas
+	erasepage
+      grestore
+      /popdown super send
+    } def
+
+    /SetMenuValue { % x y => - (Sets /MenuValue)
+        /CursorDistance
+	  2 index cvr dup mul 2 index cvr dup mul add sqrt def
+	exch atan /CursorDirection exch def
+
+	CursorDistance PieRadius gt {
+	  ExitDirection null eq {
+	    /ExitDirection CursorDirection def
+	  } if
+	  /ExitDelta
+	    CursorDirection ExitDirection sub	% ed delta
+	    dup 180 gt {360 sub} if
+	    dup -180 le {360 add} if
+	  def
+	  /PieDistance PieRadius def
+	  /PieDirection
+	    CursorDistance PieRadius sub
+	    dup mul
+	    PrecisionScale mul
+	    1 add
+	    1 exch div
+	    ExitDelta mul
+	    ExitDirection add
+	    NormalAngle
+	  def
+	} {
+	  /PieDistance CursorDistance def
+	  /PieDirection CursorDirection def
+	  /ExitDirection null def
+	} ifelse
+
+	/MenuValue
+	  PieDistance NumbRadius le
+% It could be that when the cursor is out past the menu radius,
+% nothing is selected. But I don't do it that way, because it wins
+% to be able to get arbitrarily more precision by moving out further.
+%	  PieDistance PieRadius gt or
+	  { null }
+	  { PieSliceWidth 2 div  PieInitialAngle
+	    Clockwise { add PieDirection sub } { sub PieDirection add } ifelse
+	    NormalAngle
+	    PieSliceWidth idiv } ifelse
+	def
+    } def
+
+classend def
+
+/menu
+[( 0)(45)(90)(135)(180)(225)(270)(315)]
+[{(Direction: %\n) [PieDirection round] dbgprintf}]
+/new PrecisionPieMenu send def
+menu /PieInitialAngle 0 put
+menu /Clockwise false put
+menu /SliceWedges false put
+
+/win framebuffer /new DefaultWindow send def
+{/ClientMenu menu def} win send
+/reshapefromuser win send
+/map win send

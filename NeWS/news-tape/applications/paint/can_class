@@ -1,0 +1,287 @@
+% -------- Canvas class and associated utilities --------------
+   systemdict /candict known not {
+      systemdict /candict dictbegin
+%
+    /errfile (%stdout) (w) file def
+    /errstr 80 string def
+    /eout {errfile exch writestring} def
+    /dictprt {
+     {exch errstr cvs (  ) append exch errstr cvs (\n) append
+      append eout}forall (\n) eout
+     } def
+%
+	/setshade {
+	   dup type /colortype eq {setcolor} {setgray} ifelse
+	} def
+%
+	/fillcanvas {
+	   setshade clippath fill
+	} def
+%
+	/insetrect { 10 dict begin
+	   [ /h /w /y /x /delta] {exch def} forall
+	   x delta add y delta add w delta dup add sub h delta dup add sub
+	end
+	} def
+%
+	/rectpath {
+	   4 2 roll moveto
+	   dup 0 exch rlineto exch 0 rlineto neg 0 exch rlineto closepath
+	} def
+%
+	/ovalpath {
+	   matrix currentmatrix 5 1 roll
+	   4 2 roll translate scale
+	   .5 .5 translate 0 0 .5 0 360 arc closepath
+	   setmatrix
+	} def
+%
+	/starpath {
+	   matrix currentmatrix 5 1 roll
+	   4 2 roll translate scale
+	   .2 0 moveto .5 1 lineto .8 0 lineto
+	   0 .65 lineto 1 .65 lineto closepath
+	   setmatrix
+	} def
+%
+	/pathcanvas {
+        10 dict begin
+	   gsave
+	   cvx [/path /parent /h /w /y /x] {exch def} forall
+	   /can parent newcanvas def
+
+	   parent setcanvas
+	   x y translate 0 0 w h path
+
+	   can reshapecanvas
+	   can /Mapped true put
+	   can
+	   grestore
+        end
+	} def
+%
+	/rectcanvas { {rectpath} pathcanvas } def
+	/ovalcanvas { {ovalpath} pathcanvas } def
+	/starcanvas { {starpath} pathcanvas } def
+%
+	/interact {
+	20 dict begin
+	   /startup? exch def
+	   /proc exch cvx def
+
+	   currentcursorlocation /y0 exch def /x0 exch def
+	   /x x0 def /y y0 def
+	   /callproc {/x XLocation store /y YLocation store proc} def
+
+	   MakeInteractInterests
+	   { startup?
+		{[StartInterest]}
+		{proc [TrackInterest StopInterest]} ifelse
+	     {expressinterest} forall
+	     {  awaitevent begin
+		   Interest /ClientData get exec
+	        end
+	     } loop
+	   } fork waitprocess
+	end
+	} def
+%
+	/MakeInteractInterests {
+	   /StartInterest createevent dup begin
+		/Name [ /LeftMouseButton
+			/RightMouseButton
+			/MiddleMouseButton ] def
+		/Action	/DownTransition def
+		/ClientData {
+		   /x0 XLocation store /y0 YLocation store
+		   StopInterest /Name Name put
+		   TrackInterest expressinterest
+		   StopInterest expressinterest
+		   callproc
+		} def
+	   end def
+	   /TrackInterest createevent dup begin
+		/Name /MouseDragged def
+		/ClientData {callproc} def
+	   end def
+	   /StopInterest createevent dup begin
+		/Action /UpTransition def
+		/ClientData {callproc exit} def
+	   end def
+	} def
+%
+	/calcbbox { x0 x min y0 y min x x0 sub abs y y0 sub abs } def
+	/getbbox {
+	   gsave
+	   3 -1 roll createoverlay setcanvas
+	   {	erasepage calcbbox
+		4 index cvx exec stroke
+		Action /UpTransition eq {
+		   erasepage [calcbbox]
+		} if
+	   } exch interact
+	   exch pop
+	   grestore
+	} def
+%
+	/canvasfromuser {
+	   2 copy true getbbox aload pop
+	   6 -2 roll pathcanvas
+	} def
+%
+%	/slidecanvas {
+%	   gsave
+%	   1 index /Parent get setcanvas
+%	   {gsave dup setcanvas x y movecanvas grestore} exch interact
+%	   pop pop
+%	   grestore
+%	} def
+%
+	/slidecanvas {
+	   gsave
+	   exch dup /Parent get setcanvas
+	   dup getcanvaslocation
+	   {   gsave 2 index setcanvas
+	       x x0 sub 2 index add
+	       y y0 sub 2 index add movecanvas
+	       grestore
+	   } 5 -1 roll interact
+	   pop pop pop pop
+	   grestore
+	} def
+%
+	/Canvas Object [/TheCanvas /EventMgr /Height /Width]
+	classbegin
+	   /FillColor	1 1 1 rgbcolor def
+	   /EdgeColor	.5 .5 .5 rgbcolor def
+	   /EdgeSize	8 def
+
+	   /new {
+		/new super send begin
+		   /TheCanvas exch newcanvas store
+		   currentdict
+		end
+	   } def
+
+	   /path {rectpath} def
+
+	   /reshape {
+	   gsave
+		TheCanvas /Parent get setcanvas
+		/Height exch def /Width exch def translate
+		0 0 Width Height /path self send
+		TheCanvas reshapecanvas
+	   grestore
+	   } def
+
+	   /reshapefromuser {
+		TheCanvas /Parent get /path true getbbox
+		aload pop /reshape self send
+	   } def
+
+	   /paint {
+	   gsave
+		TheCanvas setcanvas
+		EdgeColor fillcanvas FillColor setcolor
+		EdgeSize 0 0 Width Height
+		insetrect /path self send
+		fill
+	   grestore
+	   } def
+
+
+	   /fix {
+	   gsave
+		TheCanvas setcanvas
+		damagepath clipcanvas
+		/paint self send
+		newpath clipcanvas
+	   grestore
+	   } def
+
+	   /map {
+		EventMgr null eq {/fork self send} if
+		TheCanvas /Mapped true put
+	   } def
+
+	   /fork {
+		/EventMgr [
+		   PointButton {TheCanvas canvastotop}
+		   /DownTransition TheCanvas eventmgrinterest
+
+		   AdjustButton {TheCanvas false slidecanvas}
+		   /DownTransition TheCanvas eventmgrinterest
+
+		   MenuButton {reshapefromuser}
+		   /DownTransition TheCanvas eventmgrinterest
+
+		   /Damaged {/fix self send}
+		   null TheCanvas eventmgrinterest
+		] forkeventmgr def
+	   } def
+
+	classend def
+% -----------------------
+	/canvasdemo {
+	   /can framebuffer /new Canvas send def
+	   /reshapefromuser can send
+	   /map can send
+	} def
+%
+	/ovalframe {
+	   4 copy ovalpath
+	   insetrect ovalpath
+	} def
+%
+	/OvalWindow LiteWindow []
+	classbegin
+	   /Border 16 def
+	   /FrameFillColor .75 .75 .75 rgbcolor def
+
+	   /ShapeFrameCanvas {
+	   	gsave
+		ParentCanvas setcanvas
+		FrameX FrameY translate
+		0 0 FrameWidth FrameHeight ovalpath
+		FrameCanvas reshapecanvas
+		grestore
+	   } def
+
+	   /PaintFrame {
+		FrameFillColor fillcanvas PaintFocus
+	   } def
+
+	   /PaintFocus {
+		gsave
+		FrameCanvas setcanvas
+		KeyFocus? {0} {FrameFillColor} ifelse setshade
+		2 0 0 FrameWidth FrameHeight ovalframe eofill
+		grestore
+	   } def
+
+	   /ShapeClientCanvas {
+	      ClientCanvas null ne {
+		gsave
+		FrameCanvas setcanvas
+		Border 0 0 FrameWidth FrameHeight insetrect
+		4 2 roll translate 0 0 4 2 roll ovalpath
+		ClientCanvas reshapecanvas
+		grestore
+	      } if
+	   } def
+
+	classend def
+%
+	/roundwindemo {
+	/win framebuffer /new OvalWindow send def
+	{   /IconImage /hello_world def
+	    /PaintClient {1 fillcanvas} def
+	} win send
+	/reshapefromuser win send
+	/map win send
+	} def
+%
+      dictend put       % installs candict in systemdict
+    } if
+%
+%

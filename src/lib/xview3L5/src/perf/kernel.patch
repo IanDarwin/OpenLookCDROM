@@ -1,0 +1,159 @@
+--- linux-pl12/fs/proc/array.c.orig	Mon Aug  9 20:02:29 1993
++++ linux-pl12/fs/proc/array.c	Mon Aug 16 20:54:36 1993
+@@ -11,6 +11,7 @@
+ #include <linux/errno.h>
+ #include <linux/sched.h>
+ #include <linux/kernel.h>
++#include <linux/kernel_stat.h>
+ #include <linux/tty.h>
+ 
+ #include <asm/segment.h>
+@@ -63,6 +64,30 @@
+ 		i.totalswap, i.totalswap-i.freeswap, i.freeswap);
+ }
+ 
++static int get_kstat(char * buffer)
++{
++	return sprintf(buffer,"cpu  %u,%u,%u,%u\ndisk %u,%u,%u,%u\npage %u,%u\nswap %u,%u\nintr %u\npack %u,%u\nerr  %u,%u\ncoll %u\nctxt %u\n",
++		kstat.cpu_user,
++		kstat.cpu_nice,
++		kstat.cpu_system,
++		jiffies - (kstat.cpu_user+kstat.cpu_nice+kstat.cpu_system),
++		kstat.dk_drive[0],
++		kstat.dk_drive[1],
++		kstat.dk_drive[2],
++		kstat.dk_drive[3],
++		kstat.pgpgin,
++		kstat.pgpgout,
++		kstat.pswpin,
++		kstat.pswpout,
++		kstat.interrupts,
++		kstat.ipackets,
++		kstat.opackets,
++		kstat.ierrors,
++		kstat.oerrors,
++		kstat.collisions,
++		kstat.context_swtch);
++}
++
+ static int get_version(char * buffer)
+ {
+ 	extern char *linux_banner;
+@@ -344,6 +369,9 @@
+ 			length = get_malloc(page);
+ 			break;
+ #endif
++		case 14:
++			length = get_kstat(page);
++			break;
+ 		default:
+ 			free_page((unsigned long) page);
+ 			return -EBADF;
+--- linux-pl12/fs/proc/root.c.orig	Tue Jul 13 00:09:24 1993
++++ linux-pl12/fs/proc/root.c	Mon Aug 16 20:55:25 1993
+@@ -64,6 +64,7 @@
+ #ifdef CONFIG_DEBUG_MALLOC
+ 	{13,6,"malloc" },
+ #endif
++	{14,4,"stat" },
+ };
+ 
+ #define NR_ROOT_DIRENTRY ((sizeof (root_dir))/(sizeof (root_dir[0])))
+--- linux-pl12/kernel/blk_drv/ll_rw_blk.c.orig	Mon Aug 16 23:25:51 1993
++++ linux-pl12/kernel/blk_drv/ll_rw_blk.c	Tue Aug 17 00:06:59 1993
+@@ -9,6 +9,7 @@
+  */
+ #include <linux/sched.h>
+ #include <linux/kernel.h>
++#include <linux/kernel_stat.h>
+ #include <linux/errno.h>
+ #include <linux/string.h>
+ #include <linux/config.h>
+@@ -355,6 +356,15 @@
+ 	  if (bh[i]) {
+ 	    bh[i]->b_req = 1;
+ 	    make_request(major, rw, bh[i]);
++	    /*
++	     * Actually we want to count requests on a per disk basis somewhere
++	     * else. Here we'd like to count total blocks. But it is too late 
++	     * at night, now, to keep things apart.  (jnweiger@uni-erlangen.de)
++	     */
++	    if (rw == READ || rw == READA)
++	    	kstat.pgpgin++;
++	    else
++	    	kstat.pgpgout++;
+ 	}
+ 	if(plugged){
+ 	  cli();
+--- linux-pl12/kernel/sched.c.orig	Mon Aug  9 20:02:32 1993
++++ linux-pl12/kernel/sched.c	Mon Aug 16 23:23:46 1993
+@@ -16,6 +16,7 @@
+ #include <linux/sched.h>
+ #include <linux/timer.h>
+ #include <linux/kernel.h>
++#include <linux/kernel_stat.h>
+ #include <linux/sys.h>
+ #include <linux/fdreg.h>
+ #include <linux/errno.h>
+@@ -71,6 +72,9 @@
+ 
+ long user_stack [ PAGE_SIZE>>2 ] ;
+ 
++struct kernel_stat kstat =
++	{ 0, 0, 0, { 0, 0, 0, 0 }, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
++
+ struct {
+ 	long * a;
+ 	short b;
+@@ -157,6 +161,9 @@
+ 		for_each_task(p)
+ 			p->counter = (p->counter >> 1) + p->priority;
+ 	}
++	if(current != next)
++		kstat.context_swtch++;
++
+ 	switch_to(next);
+ }
+ 
+@@ -361,6 +368,12 @@
+ 	calc_load();
+ 	if ((VM_MASK & regs->eflags) || (3 & regs->cs)) {
+ 		current->utime++;
++		if(current != task[0]) {
++			if(current->priority != 15)
++				kstat.cpu_nice++;
++			else
++				kstat.cpu_user++;
++		}
+ 		/* Update ITIMER_VIRT for current task if not in a system call */
+ 		if (current->it_virt_value && !(--current->it_virt_value)) {
+ 			current->it_virt_value = current->it_virt_incr;
+@@ -368,6 +381,8 @@
+ 		}
+ 	} else {
+ 		current->stime++;
++		if(current != task[0])
++			kstat.cpu_system++;
+ #ifdef CONFIG_PROFILE
+ 		if (prof_buffer && current != task[0]) {
+ 			unsigned long eip = regs->eip;
+--- linux-pl12/mm/swap.c.orig	Mon Aug 16 23:27:08 1993
++++ linux-pl12/mm/swap.c	Mon Aug 16 22:02:51 1993
+@@ -13,6 +13,7 @@
+ #include <linux/sched.h>
+ #include <linux/head.h>
+ #include <linux/kernel.h>
++#include <linux/kernel_stat.h>
+ #include <linux/errno.h>
+ #include <linux/string.h>
+ #include <linux/stat.h>
+@@ -77,6 +78,10 @@
+ 	}
+ 	while (set_bit(offset,p->swap_lockmap))
+ 		sleep_on(&lock_queue);
++	if (rw == READ)
++		kstat.pswpin++;
++	else
++		kstat.pswpout++;
+ 	if (p->swap_device) {
+ 		ll_rw_page(rw,p->swap_device,offset,buf);

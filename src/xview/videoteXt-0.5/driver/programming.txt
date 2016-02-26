@@ -1,0 +1,203 @@
+============================================================================
+Loadable Videotext-Device-Driver V1.4 for Linux      (C) 1994-95 Martin Buck
+============================================================================
+
+
+This document is intended for people who want to write their own videotext-
+decoders using this device driver.
+
+
+OVERVIEW
+--------
+
+The functions this driver offers are a bit unusual, since there are only
+three of them: open(), close() and ioctl(). You can't read() from or write()
+to this driver, also lseek() is not possible. Instead I decided to handle
+all communication with the driver by ioctls, since the standard model of a
+stream of data isn't very suitable for a videotext-decoder.
+
+Accessing the driver is easy: First you have to call open() with "/dev/vtx"
+as filename. If open() succeeds, it returns a valid file-descriptor,
+otherwise it will return -1. In this case, you can check 'errno' to find out
+what went wrong:
+ENODEV   Tells you that either the loadable module hasn't been loaded or
+         that the major- or minor-number of your device special file is
+         wrong (the major-number must match the one defined in the Makefile,
+         the minor-number must be 0, since only one vtx-interface is
+         supported).
+EBUSY    The driver is busy. Only one program may use the driver at once.
+         This error may also occur, if the vtx-chipset isn't ready (this
+         can't happen if you use the c't- or VTX2000-interface).
+EIO      Communication with vtx-chipset failed. This normally shouldn't
+         happen. If it does happen, you first should try to recompile the
+         driver with 'VTX_CHIPSET_IS_DAMN_SLOW' defined. If this doesn't
+         help, you probably have a hardware problem.
+
+If open() succeeded, you can use the ioctls described below to access the
+driver. You should call close() if you don't need the device any longer,
+otherwise it will be closed when your program terminates.
+
+
+IOCTLs
+------
+
+As I mentioned earlier, all communication with the driver is handled with
+ioctl()-calls. ioctl() needs three arguments: first, the filedescriptor you
+got when you opened the device; second, the command you want to execute (these
+commands are #defined in <linux/vtx.h> and are described below); the third
+argument is a pointer to a 'vtx_info_t' or 'vtx_pagereq_t' structure, where
+further data will be passed to and returned from the driver. These
+structures are also defined in <linux/vtx.h>.
+
+The following ioctl-commands are implemented in version 1.2:
+VTXIOCGETINFO   With this command you can get information about the driver
+                and the capabilities of the videotext-chipset. You have to
+                pass a pointer to an empty 'vtx_info_t' structure when calling
+                this function. The driver will fill in all values and
+                return.
+                
+                'version_major' and 'version_minor' are the major- and minor
+                versions of the driver. YOU REALLY SHOULD CHECK THESE BEFORE
+                DOING ANYTHING ELSE, because if the driver's major-version
+                is different from the major-version of the driver you
+                compiled your program for, there have been incompatible
+                changes and your program must be recompiled.  This is also
+                true if you get the right major-version, but the
+                minor-version of the current driver is smaller than the
+                minor-version of the driver you compiled your program for.
+                
+                'numpages' is the number of pages, the vtx-chipset can
+                search for simultaneously. You shouldn't rely on this being
+                equal to four, since some day another chipset may be
+                supported which can search for more/fewer pages at once.
+                
+                'cct_type' is a symbolic constant which tells you the type
+                of vtx-chipset the driver is connected to. Currently, only
+                '0' for SAA5243 and '1' for SAA5246 are possible. You should
+                check this value, if your program relies on certain special
+                features of a particular chipset (this is not recommended).
+                
+                This command will always succeed.
+                
+VTXIOCCLRPAGE   This command clears a page-buffer in the vtx-chipset. You
+                have to pass a pointer to a 'vtx_pagereq_t' structure. The
+                'pgbuf'-member must be set according to the buffer you want
+                to clear . All other struct-members are ignored.
+                
+                If the command succeeds, it returns 0. If it returns -1,
+                'errno' may be either EIO (see above) or EINVAL ('pgbuf' is
+                out of range). After executing this command, you should wait
+                about 30ms, since the chipset needs some time to clear the
+                whole page.
+
+VTXIOCCLRFOUND  This command clears the bits which indicate that a page was
+                found in the given buffer. This is useful if you want to
+                check if a page has been retransmitted without clearing the
+                buffer. You have to pass a pointer to a 'vtx_pagereq_t'
+                structure. The 'pgbuf'-member must be set according to the
+                buffer whose status-bits you want to clear (the valid range
+                is 0 to numpages - 1). All other struct-members are ignored.
+                
+                The return-values are the same as with 'VTXIOCCLRPAGE'.
+
+VTXIOCPAGEREQ   This command tells the chipset to start searching for a
+                certain page. You have to pass a pointer to a
+                'vtx_pagereq_t' structure. The following members must be
+                set:
+                
+                'pagemask' tells, which members of the struct should be
+                ignored. To search for one page, you should set this to
+                'PGMASK_PAGE' and write the (hexadecimal) number of the page
+                in the 'page'-member. 'hour' and 'minute' are ignored in
+                this case. You also can search for a special hour (which is
+                normally used as the number of the subpage to search for) by
+                setting 'pagemask' to 'PGMASK_HOUR'. The 'PGMASK_...' values
+                can be or'ed to search for a special combination of page-
+                number/hour/minute. You can search for a page with only some
+                matching digits by using 'PG_UNIT', 'HR_UNIT' an so on. The
+                values in 'page', 'hour' and 'minute' are ignored, if the
+                corresponding bits in 'pgmask' aren't set. If the
+                corresponding bits are set, the valid range for 'page' is 0
+                to 0x899 (pages from 0 to 0xff are equal to 0x800 to 0x8ff),
+                for 'hour' 0 to 0x3f' and for 'minute' 0 to 0x7f.
+                
+                The 'pgbuf'-member must be set according to the number of
+                the buffer where the page should be stored (the valid range
+                is 0 to numpages - 1). 
+
+                The return-values are the same as with 'VTXIOCCLRPAGE'.
+
+VTXIOCGETSTAT   This command returns the status-information for a certain
+                page-buffer. You have to pass a pointer to a 'vtx_pagereq_t'
+                structure with the 'pgbuf'-member set to the buffer's number
+                (the valid range is 0 to numpages - 1). You also have to
+                pass a pointer to an empty 'vtx_pageinfo_t' structure in
+                'buffer'. The requested values will be stored in this
+                structure. The meanings of these values are defined in the
+                videotext-standard and are explained in <linux/vtx.h>.
+                
+                The return-values are the same as with 'VTXIOCCLRPAGE'.
+                
+VTXIOCGETPAGE   This command stores the contents of a page-buffer in an
+                array. You have to pass a pointer to a 'vtx_pagereq_t'
+                structure with the 'pgbuf'-member set to the buffer's number
+                (the valid range is 0 to numpages - 1). You also have to
+                pass a pointer to an empty array of 'byte_t's in 'buffer'. 
+                This array must be big enough to store 'end' - 'start' + 1
+                bytes. 'start' is the offset of the first character to
+                receive, 'end' is the offset of the last one. The character
+                in the upper left corner is at offset 0, the character in
+                the lower right corner is at offset 959 ('VTX_PAGESIZE' -
+                1).
+
+                The return-values are the same as with 'VTXIOCCLRPAGE'.
+
+VTXIOCSTOPDAU   This command stops a data acquisition unit. You have to pass
+                a pointer to a 'vtx_pagereq_t' structure with the 'pgbuf'-
+                member set to the DAU's number.
+
+                The return-values are the same as with 'VTXIOCCLRPAGE'.
+
+VTXIOCPUTPAGE   This command writes a page to the vtx-chipset & displays it
+                on the TV-screen (if the correct display-mode is set). You
+                have to pass a pointer to a 'vtx_pagereq_t' structure with a
+                pointer to the page-data in the 'buffer'-member. You also
+                have to set the 'start'- & 'end'-members like with
+                VTXIOCGETPAGE.
+
+                The return-values are the same as with 'VTXIOCCLRPAGE'.
+
+VTXIOCSETDISP   This command sets the mode for displaying pages on the
+                TV-screen. You have to pass a pointer to a 'vtx_pagereq_t'
+                structure with the display-mode in the 'data'-member. Valid
+                display-modes are DISPOFF (no VTX-display at all), DISPNORM
+                (all pages displayed with opaque background), DISPTRANS (no
+                background at all; text is transparent) and DISPINS (regions
+                with box-attribute are transparent). You man add
+                INTERLACE_OFFSET to any of these values to force interlace
+                in all display-modes.
+
+                The return-values are the same as with 'VTXIOCCLRPAGE'.
+
+VTXIOCPUTSTAT   This command sets the status-bits for the page currently
+                displayed on TV. You have to pass a pointer to a
+                'vtx_pageinfo_t' structure. But beware: Most values don't
+                make sense when displaying a page on TV, so they will be
+                ignored.
+
+                The return-values are the same as with 'VTXIOCCLRPAGE'.
+
+
+MISC
+----
+
+As you may have noticed, it's not very convenient to deal with all those
+ioctls, so I suggest to use the routines that come with my videotext-
+decoder (files cct.{c,h}). The functions defined there can use all the
+features the driver offers, but using them is easier than direct ioctl-
+calls.
+
+
+If you have questions or suggestions, feel free to mail me.
+
+Martin Buck  <martin.buck@student.uni-ulm.de>

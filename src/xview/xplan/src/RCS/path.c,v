@@ -1,0 +1,490 @@
+head	1.8;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.8
+date	92.12.13.00.50.38;	author malingka;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	92.12.11.15.45.50;	author lacey;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	92.12.10.09.05.40;	author malingka;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	92.12.09.23.12.59;	author malingka;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	92.12.09.17.38.22;	author malingka;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	92.12.09.06.10.14;	author malingka;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	92.12.09.04.07.44;	author malingka;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	92.12.09.03.58.32;	author malingka;	state Exp;
+branches;
+next	;
+
+
+desc
+@Critical path.
+@
+
+
+1.8
+log
+@final revision
+@
+text
+@/* FILE path.c *********************************************
+
+   DESCRIPTION OF CONTENTS
+
+   Critical path function
+
+************************************************************/
+
+#include <stdio.h>
+#include "db.h"
+
+/*--------------------------------------------------------------- 
+  the use this variable is the same as the use of curr_late_date
+  in date-calc.c 
+  --------------------------------------------------------------*/
+static unsigned
+  curr_critical_date; 
+
+
+/* FUNCTION print_critical ***********************************
+
+   PURPOSE
+
+   Print all tasks that belong to the critical path.
+
+   SAMPLE CALL
+
+   print_critical();
+
+   AUTHOR/AUDITOR/TESTER
+   
+   Author.... Richard C. Malingkas (rcm), 8 Dec 1992
+   Auditor... 
+   Tester.... Richard C. Malingkas (rcm), 8 Dec 1992
+
+   MODIFICATIONS (most recent to least)
+
+**********************************************************/
+
+print_critical() {
+
+  struct task_list *t1;  /* temporary pointers */
+  struct task_node *t2;
+
+  t1 = get_main_task_list();
+  if (t1 != NULL) {   /* process only if the task list exist */
+    printf("Printing critical path .....\n");
+    for(t2 = t1->head; t2 !=NULL; t2 = t2->next) {
+      /* if this task belongs to the critical path, print it to the screen */
+      if (t2->data->critical_path == true) 
+	printf("critical task : %s\n", t2->data->name);
+    }
+    printf("done! \n");
+  }
+}  /* end of print_critical() */
+    
+  
+/* FUNCTION calc_critical ***********************************
+
+   PURPOSE
+
+   Mark all nodes/tasks that belong to the critical path
+
+   SAMPLE CALL
+
+   calc_critical();
+
+   INPUTS
+
+   pointer --- A pointer to a task node
+
+   AUTHOR/AUDITOR/TESTER
+   
+   Author.... Richard C. Malingkas (rcm), 8 Dec 1992
+   Auditor... 
+   Tester.... Richard C. Malingkas (rcm), 8 Dec 1992 
+
+   MODIFICATIONS (most recent to least)
+
+**********************************************************/
+
+calc_critical() {
+  
+  struct task_list       /* temporary pointers */
+    *temp_task_list,
+    *temp;
+  struct task_node 
+    *temp_task_node,
+    *parent;
+  unsigned prev_critical_date;
+
+  curr_critical_date = prev_critical_date = 0;   /* initialize */
+  init_dates(2);
+  
+  calc_early_date(); /* calculate the earliest start date for the last task */
+  
+  temp_task_list = get_main_task_list();
+  if (temp_task_list != NULL) {  /* process only if the task list exist */
+    temp_task_node = temp_task_list->tail;  /* start from the last task */
+    if (temp_task_node != NULL) {
+
+      /* store initial values for critical date of the last task */
+      temp_task_node->data->critical_date = curr_critical_date = 
+	prev_critical_date = temp_task_node->data->earliest_end_date;
+      
+      curr_critical_date -= temp_task_node->data->duration; /* updating ... */
+      temp = temp_task_node->data->dependencies;
+      if (temp != NULL)  /* for every parent node ... */
+	for(parent = temp->head; parent != NULL; parent = parent->next)
+	  visit_critical(parent);   /* process each parent task/node */
+    }
+    else {
+      printf("Task node is not exist\n") ;
+      return;
+    }
+  }
+  else {
+    printf("Task list is not exist\n");
+    return;
+  }
+  /*-------------------------------------------------------------------
+    Definition : Critical path is the longest path in the task list.
+    A task belongs to a critical path if its earliest end date coincides
+    with the critical date. 
+    -------------------------------------------------------------------*/ 
+  for(parent = temp_task_list->head; parent !=NULL; parent = parent->next) {
+    if(parent->data->critical_date == parent->data->earliest_end_date)
+      parent->data->critical_path = true;
+  }
+}  /* end calc_critical() */
+
+
+/* FUNCTION visit_critical ***********************************
+
+   PURPOSE
+
+   Recursive function that will traverse the task list
+   and calculate the latest start dates, with the following
+   condition applied to the last task:
+   critical_date = latest_start_date, 
+
+   SAMPLE CALL
+
+   visit_critical(pointer);
+
+   INPUTS
+
+   pointer --- A pointer to a task node
+
+   AUTHOR/AUDITOR/TESTER
+   
+   Author.... Richard C. Malingkas (rcm), 8 Dec 1992
+   Auditor... 
+   Tester.... Richard C. Malingkas (rcm), 8 Dec 1992
+
+   MODIFICATIONS (most recent to least)
+
+**********************************************************/
+
+visit_critical(struct task_node *pointer) {
+
+  struct task_list *temp;   /* temporary variables */
+  struct task_node *parent;
+  int i;
+  unsigned prev_critical_date;
+
+  /*--------------------------------------------------------------------- 
+    Calculate a new critical date only if the caritical date
+    stored in the database is greater than the one calculated from
+    this path.
+  ----------------------------------------------------------------------*/
+  if (curr_critical_date < pointer->data->critical_date) { 
+    /*-----------------------------------------------------------------------
+      The curr_critical_date variable will contain the latest end dates
+      for parent nodes of a given child node. Suppose that the latest end 
+      date of a node is X, and the duration is D. Then, the latest end 
+      dates of any of its parents would be X-D.
+    ----------------------------------------------------------------------*/ 
+    pointer->data->critical_date = prev_critical_date = curr_critical_date;
+  
+    curr_critical_date -= pointer->data->duration; /* update critical date */ 
+
+    temp = pointer->data->dependencies;
+    if (temp != NULL)   /* check whether there is any dependencies */
+      /* for each parent node ... */
+      for(parent = temp->head; parent != NULL; parent = parent->next) 
+	visit_critical(parent);   /* process each parent node/task */
+  }
+  /*----------------------------------------------------------------------- 
+    Before exiting the function, set curr_critical_date to its previous value,
+    meaning that curr_critical_date now contains the latest end date of
+    the parent node.
+  -------------------------------------------------------------------------*/
+  curr_critical_date = prev_critical_date;
+
+}  /* end visit_critical() */
+
+
+@
+
+
+1.7
+log
+@The file we did our final demo with.
+@
+text
+@d12 4
+d17 1
+a17 1
+  curr_critical_date;
+d20 20
+a39 1
+/*======= DEBUG FUNCTION ==========*/
+d42 1
+a42 1
+  struct task_list *t1;
+d46 2
+a47 2
+  if (t1 != NULL) {
+/*printf("DEBUG -- printing critical path ... \n");*/
+d49 1
+d51 1
+a51 2
+	;
+/*	printf("critical task : %s\n", t2->data->name);*/
+d53 1
+d55 1
+a55 2
+/*printf("DEBUG -- done! \n");*/
+}
+d76 1
+a76 1
+   Tester.... 
+d84 1
+a84 1
+  struct task_list
+a91 2
+/*printf ("Finding critical path \n");*/
+
+d110 1
+a110 1
+	  visit_critical(parent);
+d121 5
+a127 3
+/*
+       && ((parent->data->latest_end_date - parent->data->earliest_start_date) 
+       == parent->data->duration)) */  /* checking for critical path */
+a129 3
+#if 0
+  print_critical();
+#endif
+d154 1
+a154 1
+   Tester.... 
+d162 1
+a162 1
+  struct task_list *temp;
+d181 1
+a181 1
+    curr_critical_date -= pointer->data->duration; /* update the critical date */ 
+d187 1
+a187 1
+	visit_critical(parent);
+d197 2
+@
+
+
+1.6
+log
+@print statement.
+@
+text
+@d24 1
+a24 1
+printf("DEBUG -- printing critical path ... \n");
+d26 3
+a28 2
+      if (t2->data->critical_path == true)
+	printf("critical task : %s\n", t2->data->name);
+d31 1
+a31 1
+printf("DEBUG -- done! \n");
+d69 1
+a69 1
+printf ("Finding critical path \n");
+@
+
+
+1.5
+log
+@finish critical path ... only tested w/ several cases though.
+@
+text
+@d106 1
+a106 1
+#if 1
+@
+
+
+1.4
+log
+@modify the test that determine the critical path.
+@
+text
+@d24 1
+a24 1
+printf("DEBUG -- printing critical path\n");
+d30 1
+d158 1
+a158 1
+    prev_critical_date = curr_critical_date;
+d160 1
+a160 3
+    /* update the critical date */ 
+    curr_critical_date -= pointer->data->duration;
+    pointer->data->critical_date = curr_critical_date;
+@
+
+
+1.3
+log
+@*** empty log message ***
+@
+text
+@d13 1
+a13 2
+  curr_critical_date,
+  prev_critical_date;
+d24 1
+d65 1
+d81 1
+a81 1
+	prev_critical_date = temp_task_node->data->earliest_start_date;
+d99 2
+a100 1
+    if((parent->data->earliest_start_date == parent->data->latest_start_date)
+d102 2
+a103 2
+       == parent->data->duration))   /* definition of critical path */
+       parent->data->critical_path = true;
+d143 2
+a144 1
+ 
+@
+
+
+1.2
+log
+@*** empty log message ***
+@
+text
+@a15 1
+/* FUNCTION init_critical_path ******************************
+d17 2
+a18 1
+   PURPOSE
+d20 2
+a21 1
+   Initialize critical_path to false.
+d23 9
+a31 15
+   SAMPLE CALL
+
+   init_critical_path()
+
+   AUTHOR/AUDITOR/TESTER
+   
+   Author.... Richard C. Malingkas (rcm), 8 Dec 1992
+   Auditor... 
+   Tester.... 
+
+   MODIFICATIONS (most recent to least)
+
+**********************************************************/
+
+init_critical_path() {
+a32 11
+  struct task_list *pointer;
+  struct task_node *node;
+
+  pointer = get_main_task_list();
+  
+  for(node = pointer->head; node != NULL; node = node->next) 
+    node->data->critical_path = false;
+
+}  /* end init_critical_path */
+
+
+d66 2
+a67 1
+  
+d88 4
+a91 1
+    else printf("Task node is not exist\n") ;
+d93 13
+a105 2
+  else printf("Task list is not exist\n");
+
+d155 2
+a156 3
+    pointer->data->critical_date = pointer->data->critical_date -
+      pointer->data->duration;
+    /* update the latest end date */ 
+d158 2
+d173 1
+a173 1
+}  /* end visit_late_date() */
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d97 1
+a97 1
+      curr_critical_path -= temp_task_node->data->duration; /* updating ... */
+d159 1
+a159 1
+    curr_late_end -= pointer->data->duration;
+d164 1
+a164 1
+	visit_late_date(parent);
+d167 2
+a168 2
+    Before exiting the function, set curr_late_end to its previous value,
+    meaning that curr_late_end now contains the latest end date of
+d171 1
+a171 1
+  curr_late_end = prev_late_end;
+@

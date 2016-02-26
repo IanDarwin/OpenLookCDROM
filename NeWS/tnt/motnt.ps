@@ -1,0 +1,287 @@
+% From: spitzak@gree.Eng.Sun.COM (Bill Spitzak)
+% Newsgroups: comp.windows.news
+% Subject: Re: Just a thought....
+% Date: 8 Apr 1993 02:07:36 GMT
+% Organization: Sun Microsystems, Inc.
+% Lines: 273
+% Distribution: world
+% Message-ID: <ls7278INN4ni@appserv.Eng.Sun.COM>
+% References: <1993Apr6.215306.3333@sq.sq.com>
+% Reply-To: spitzak@gree.Eng.Sun.COM
+% NNTP-Posting-Host: gree
+% 
+% > But maybe with Sun dumping the OPEN LOOK UI [tm] and moving to Motif it isn't
+% > worth is.  A Motif-based TNT anyone? :-(
+% 
+% Cut here and do "psh -i motnt.ps".  Then pick refresh.
+% 
+% Note: this is a hack not in any way supported by Sun.  Also please notice that
+% it took me about 1 hour to do it, compared to the 30 or so man-years that Sun
+% expects to put into other toolkits.  Actually, it would probably take about
+% ten days to do it "for real" and patch all of tnt.
+
+% motnt.ps: Patch for TNT created by Bill Spitzak
+%
+%	spitzak@gree.eng.sun.com
+%
+%
+
+ClassWindow begin
+
+    /BorderEdge		8 def	% the resize edge
+    /ReshapeSize	{BorderEdge HeaderHeight 2 add add} def
+    /WInset		BorderEdge def
+    /EInset		BorderEdge def
+    /MaxDepressed?	false def
+
+    /HeaderHeight {LabelFont fontscale 1.25 mul round} def
+
+    /MenuButtonRect {
+	WInset 1 sub
+	/size self send exch pop NInset sub 1 add
+	ReshapeSize 2 index sub
+	NInset BorderEdge sub
+    } def
+
+    /MaxRect {
+	/size self send
+	NInset sub 1 add exch ReshapeSize sub exch
+	ReshapeSize EInset sub 1 add
+	NInset BorderEdge sub
+    } def
+
+    /CloseRect {
+	MaxRect
+	4 -1 roll	% get X
+	2 index sub	% offset by width
+	4 1 roll
+    } def
+
+    /HeadRect {
+	CloseRect
+	4 -1 roll	% y W h X
+	ReshapeSize sub % y W h w
+	exch 3 -1 roll pop % y w h
+	ReshapeSize 4 1 roll % x y w h
+    } def
+
+    /SetSelectionRepaintingClip nullproc def
+
+% Painting:
+
+    /PaintEdge { % x y w h down? => -
+	5 copy {BG0} {BG3} ifelse setcolor BotRightPath stroke
+	{BG3} {BG0} ifelse setcolor TopLeftPath stroke
+    } def
+
+    /PaintBorder { % - => -
+	.5 .5 /size self send 1 sub exch 1 sub exch false PaintEdge
+	1.5 1.5 /size self send 3 sub exch 3 sub exch false PaintEdge
+
+	WInset 1.5 sub BorderEdge 1.5 sub
+	/size self send
+	exch EInset sub 3 index sub 1.5 add
+	exch BorderEdge sub 2 index sub 1.5 add
+	true PaintEdge
+
+	WInset .5 sub BorderEdge .5 sub
+	/size self send
+	exch EInset sub 3 index sub .5 add
+	exch NInset sub 2 index sub .5 add
+	true PaintEdge
+    } def
+
+    /ChiselLine { % x y dx dy => -
+	3D? {BG3 BG0} {2DFG dup} ifelse /_PaintLine self send
+    } def
+
+    /CH {	% x y w - chisel horizontal line
+	1 sub 3 -1 roll .5 add 3 1 roll
+	BG0 setcolor
+	2 index 2 index .5 sub moveto dup 0 rlineto stroke
+	BG3 setcolor
+	3 1 roll .5 add moveto 0 rlineto stroke
+    } def
+
+    /CV {	% x y h - chisel horizontal line
+	1 sub exch .5 add exch
+	BG0 setcolor
+	2 index .5 add 2 index moveto 0 1 index rlineto stroke
+	BG3 setcolor
+	3 1 roll exch .5 sub exch moveto 0 exch rlineto stroke
+    } def
+
+    /PaintReshapes { % also paints close and maximize boxes
+	/opened? self send Reshape? and {
+	    /size self send
+	    2 copy ReshapeSize sub exch ReshapeSize sub exch
+	    4 2 roll
+	    BorderEdge sub 1 add exch BorderEdge sub 1 add exch
+	    BorderEdge 2 sub			% X Y x y d
+	    1 ReshapeSize 2 index CH % left bottom
+	    1 4 index 2 index CH	% left top
+	    2 index ReshapeSize 2 index CH % right bottom
+	    2 index 4 index 2 index CH % right top
+	    ReshapeSize 1 2 index CV % bottom left
+	    4 index 1 2 index CV % bottom right
+	    ReshapeSize 2 index 2 index CV % top left
+	    4 index 2 index 2 index CV % top right
+	    pop pop pop pop pop
+	} if
+    } def
+
+    /PaintAReshape nullproc def
+
+    /PaintSelected nullproc def
+
+    /PaintHeader { % erase? => -
+	.5 HeadRect insetrect false 6 -1 roll {Paint3DBox}{PaintEdge} ifelse
+	Focus?   {/PaintFocus self send} if
+	false /PaintLabel self send
+	false /PaintMenuButton self send
+	Pin?     {Pinned? CloseOrPinDepressed? xor /PaintPin self send} if
+	Close?   {CloseOrPinDepressed? /PaintClose self send} if
+	MaxDepressed? /PaintMax self send
+	/PaintState self send
+    } def
+
+    /PaintLabel { % erase? => -
+	/label self send
+	1 HeadRect insetrect
+	gsave % for clip
+	    4 copy rectpath clip		% ? di x y w h
+	    6 -1 roll {
+		LabelBackgroundColor setcolor clippath fill
+	    } if				% di x y w h
+	    LabelFont setfont
+	    LabelForegroundColor setcolor
+	    4 index DisplayItemSize		% di x y w h dw dh
+	    xysub 1 add 2 div truncate		% di x y x' y'
+	    exch 2.2 div 0 max exch		% di x y x' y'
+	    xyadd moveto			% di
+	    DisplayItemPaint			% -
+	grestore
+    } def
+
+    /PaintState { % - => -
+	VisualState /Active ne {
+	    1 /HeadRect self send insetrect
+	    VisualState /Inactive eq {
+		BackgroundColor setcolor
+		StippleRect
+	    }{
+		LabelForegroundColor setcolor
+		Gray12Stipple 5 1 roll //rectpath StipplePath
+	    } ifelse
+	} if
+    } def
+
+    /PaintFocus nullproc def
+
+    /LabelForegroundColor {ForegroundColor} def
+
+    /LabelBackgroundColor {BackgroundColor} def
+
+    /PaintMenuButton { % down? => -
+	.5 MenuButtonRect insetrect 4 copy 9 -1 roll PaintEdge
+	exch 10 sub 2 div exch 3 sub 2 div xyadd
+	10 3 false PaintEdge
+    } def
+
+    /PaintClose { % down? => -
+	.5 CloseRect insetrect 4 copy 9 -1 roll PaintEdge
+	exch 3 sub 2 div exch 3 sub 2 div xyadd
+	3 3 false PaintEdge
+    } def
+
+    /PaintMax { % down? => -
+	.5 MaxRect insetrect 4 copy 9 -1 roll PaintEdge
+	exch 9 sub 2 div exch 9 sub 2 div xyadd
+	9 9 false PaintEdge
+    } def
+
+    /MaxStart { % event => -
+	/MaxMotion self send
+    } def
+
+    /MaxMotion { % event => -
+	gsave /setdrawable self send
+	    InMaxArea? MaxDepressed? ne {
+		/MaxDepressed? MaxDepressed? not promote
+		MaxDepressed? PaintMax
+	    } if
+	grestore
+    } def
+
+    /MaxStop { % event => -
+	MaxDepressed?
+	/MaxDepressed? unpromote
+	{/ZoomFromUser self send}{pop} ifelse
+    } def
+
+    /MaxCancel { % event => -
+	pop
+	MaxDepressed?
+	/MaxDepressed? unpromote {
+	    gsave /setdrawable self send
+	    false PaintMax
+	    grestore
+	} if
+    } def
+
+    /InMaxArea? { % event => bool
+	begin XLocation YLocation end		% X Y
+	MaxRect pointinrect?			% bool
+    } def
+
+    /TrackStart { % event => false | [/label...] true | /name true
+	gsave /setdrawable self send
+%	    dup /TrackStart super send		% ev <trackarg> bool
+%	    {					% ev trackarg
+%		exch pop true			% trackarg true
+%	    }{					% ev
+		/WindowTracking? true promote
+		dup /Name get PointButton eq {
+		    dup InReshapeArea? Reshape? and /opened? self send and {
+			/BBoxStart /BBoxMotion /BBoxStop /BBoxCancel
+		    }{
+			dup InCloseArea? Close? Pin? or and {
+			    /CloseStart /CloseMotion /CloseStop /CloseCancel
+			}{
+			    dup InMaxArea? {
+				/MaxStart /MaxMotion /MaxStop /MaxCancel
+			    }{
+			    /ClickCount TrackService send 1 gt {
+				/NullNotifyProc /NullNotifyProc
+				/HandleDoubleClick /NullNotifyProc
+			    }{
+				/MoveStart /MoveMotion /MoveStop /MoveCancel
+			    } ifelse } ifelse
+			} ifelse
+		    } ifelse
+		}{
+		    /NullNotifyProc /NullNotifyProc
+		    /HandleSingleClick /NullNotifyProc
+		} ifelse
+		TrackDict begin
+		    /Cancel exch def
+		    /Stop exch def /Motion exch def
+		end
+		% execute the /Start procedure
+		[ 3 1 roll self] /sendmanager eventmgr send
+		[/TrackStop /TrackMotion /TrackShift] true
+%	    } ifelse
+	grestore
+    } def
+
+% force selected state off all the time:
+    /SetSelected { % bool => -
+	/Selected? unpromote
+	pop
+    } def
+
+end
+%% THE END %%
+
+
+

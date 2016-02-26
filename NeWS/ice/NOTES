@@ -1,0 +1,104 @@
+This document is intended as an aid to programmers interested in
+examining the internal structure of ice for the purpose of maintaining
+or enhancing the software. It does not describe either the use or
+installation of ice, which are fully detailed in the manual page
+and README file.
+
+
+(1) Data Structures and Programming Style
+
+ice is written in C++ but does not use many of its features other
+than a simple class hierarchy for its graphical objects. The top-level
+class is the Grobj (this is actually a subclass of Dlnk, the doubly-linked
+list class contained in the libldgoc++ class library). External PostScript
+documents and Sun rasterfiles are described by the Psdoc and Raster
+classes, respectively. Internal graphical PostScript-based objects are
+subclasses of the Intobj class -- these include the Text, Vector, Curve,
+Marker, Rectangle, Polygon and Axis classes. All of the graphical objects
+described above are maintained on the list pointed to by 'grobjs'.
+
+Another Grobj subclass is the Composite class. Composite objects are
+aggregates of objects which are members of the other Grobj classes, and are
+maintained upon a separate list pointed to by 'cmpobjs'. (Their member
+objects, however, are still maintained on the grobjs list.)
+
+The Path class is another important Dlnk subclass that is used to
+describe a PostScript path. ice uses these Path objects for clipping
+as well as for displaying Text objects in completely arbitrary ways.
+
+Nearly all of the code specific to a particlar class is grouped into a
+small set of files whose names are prefixed by the class name. For instance,
+the Curve class code is contained in the files
+
+	Curve.h			class definition
+	Curve.cc		all non-inline class member functions
+	CurveIns.cc		insertion and deletion code
+	CurveAttr.cc		attribute editing code
+	CurveTr.cc		positional translation code
+	CurveMv.cc		endpoint and control point move code
+	CurveCp.cc		copy code
+
+If you wish to create a new graphical object class, you must
+
+	Create additional global data objects to provide the user
+	interface, such as an attributes panel and a set of menus.
+	Look at the existing code in init.cc for examples of how
+	this is done.
+
+	Create a group of files analogous to the Curve* source files
+	listed above to handle all operations particular to the class.
+	At a minimum, these operations must include object insertion,
+	deletion, attribute editing, positional translation and copying.
+	Class attributes which are common to other classes (e.g., foreground
+	color, line width, etc.) should be able to inherit the global
+	default values for those attributes where appropriate. In most
+	cases it will be easiest to start by copying outright all such
+	class-specific files of an existing class which is similar to
+	the new class.
+
+	Search through all existing non-class-specific source files
+	for references to the class-specific code of the various object
+	classes, and create analogous code for the new class where
+	appropriate. These files will all have names beginning with
+	lower-case letters, e.g., init.cc, event.cc, select.cc, etc.
+
+	Search through all of the Composite*.cc files for references to
+	the class-specific code of the various atomic object classes, and
+	create analogous code for the new class where appropriate.
+
+It might be a useful enhancement to rewrite as much class-specific code
+as possible which currently appears in the non-class-specific and
+Composite*.cc source files as virtual functions which are coded inside the
+<Class>.cc files. This would make adding new classes easier.
+
+
+(2) Potential Maintenance Problems
+
+Sorry to make this confession, but since ice is using two distinct
+underlying window system interfaces (NeWS for PostScript imaging, and X11
+for raster imaging, transient draws like rubber-banding, etc., and input
+event handling), it's basically a big accident waiting to happen.
+
+One crucial issue is establishing which NeWS canvas corresponds to the
+X11 pixmap that is being used for the object rendering. This is done in
+the news_setcanvas() function in icecps.cps. This has already broken
+once (when switching from OpenWindows 1.0 to 2.0), and should be the first
+place to look if ice ever again seems to be completely useless after a
+system upgrade.
+
+Another potential problem area is the news_traperrors() routine in
+icecps.cps. This function is used to encapsulate all PostScript rendering
+commands (from both external Psdoc objects and internal Intobj objects) to
+make sure that somebody's bad PostScript code doesn't cause ice to crash.
+It also attempts to return the operand and dictionary stacks to their
+original state if the encapsulated code leaves stuff lying around. It's very
+simpleminded about this latter issue, as it merely checks the number of objects
+on these stacks, not the objects themselves. This code is unfortunately even
+more important than it is hard to understand!
+
+ice would probably be a much more portable and robust program if its
+PostScript rendering was redone using the X11 Display PostScript extension.
+(Unfortunately this was not available, at least for free, at the time
+the program was written.) This would remove all of the dependencies on
+various peculiarities of Sun's NeWS interface, and would make the program
+usable on a much wider variety of platforms.

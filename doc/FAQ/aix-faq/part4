@@ -1,0 +1,1574 @@
+From: jwarring@aol.net (Jeff Warrington)
+Newsgroups: comp.unix.aix,comp.answers,news.answers
+Subject: AIX Frequently Asked Questions (Part 4 of 4)
+Date: 13 May 1995 05:18:43 GMT
+Organization: America Online, Inc.
+Approved: news-answers-request@MIT.EDU
+Expires: 28 Jun 95 01:23:45 GMT
+Message-ID: <4033@aol.net>
+Reply-To: jwarring@aol.net
+Summary: This posting contains AIX Frequently Asked Questions 2.07 - 7
+         and their answers.  AIX is IBM's version of Unix.
+Keywords: AIX RS/6000 questions answers
+
+Archive-name: aix-faq/part4
+Last-modified: May 12, 1995
+Version: 4.30
+
+
+Frequently Asked Questions about AIX and the IBM RS/6000 Section 4
+__________________________________________________________________
+
+2.07: What's with malloc()?
+ 
+malloc() uses a late allocation algorithm based on 4.3 BSD's malloc()
+for speed.  This lets you allocate very large sparse memory spaces,
+since the pages are not actually allocated until they are touched for
+the first time.  Unfortunately, it doesn't die gracefully in the face of
+loss of available memory.  See the "Paging Space Overview" under
+InfoExplorer, and see the notes on the linker in this document for an
+example of an ungraceful death.
+
+If you want your program to get notified when running out of memory, you
+should handle the SIGDANGER signal.  The default is to ignore it. 
+SIGDANGER is sent to all processes when paging space gets low, and if
+paging space gets even lower, processes with the highest paging space
+usage are sent the SIGKILL signal.
+
+malloc() is substantially different in 3.2, allocating memory more
+tightly.  If you have problems running re-compiled programs on 3.2,
+try running them with MALLOCTYPE=3.1.
+
+Early Page Space Allocation (EPSA) added to AIX 3.2: see
+/usr/lpp/bos/README.PSALLOC - IX38211 / U422496 Allows setting of
+early allocation (vs. default late allocation) on a per-process basis.
+
+
+2.07+ Why does it take so long to compile "hello world" with xlc?
+
+Some systems have experianced delays of more than 60 seconds in
+compiling "#include <stdio.h> int main () {printf ("Hello world");}"
+The problem is with the license manager contact IBM to make sure
+you've got the latest PTF.
+
+
+2.08: Why does xlc complain about 'extern char *strcpy()'
+
+The header <string.h> has a strcpy macro that expands strcpy(x,y) to
+__strcpy(x,y), and the latter is then used by the compiler to generate
+inline code for strcpy.  Because of the macro, your extern declaration
+contains an invalid macro expansion.  The real cure is to remove your
+extern declaration but adding -U__STR__ to your xlc will also do the trick.
+
+
+2.09: Why do I get 'Parameter list cannot contain fewer ....'
+
+This is the same as above.
+
+
+2.10: Why does xlc complain about '(sometype *)somepointer = something'
+
+Software that is developed using gcc may have this construct. However,
+standard C does not permit casts to be lvalues, so you will need to
+change the cast and move it to the right side of the assignment. If you
+compile with 'cc', removing the cast completely will give you a warning,
+'xlc' will give you an error (provided somepointer and something are of
+different types - but else, why would the cast be there in the first place?)
+
+
+2.11: Some more common errors
+
+Here are a few other common errors with xlc:
+
+305 |     switch((((np)->navigation_type) ? (*((np)->navigation_type)) :
+      ((void *)0)))
+      .a...........  
+a - 1506-226: (S) The second and third operands of the conditional
+operator must be of the same type.
+
+The reason for this is that xlc defines NULL as (void *)0, and it does
+not allow two different types as the second and third operand of ?:. 
+The second argument above is not a pointer and the code used NULL
+incorrectly as a scalar. NULL is a nil pointer constant in ANSI C and
+in some traditional compilers.
+
+You should change NULL in the third argument above to an integer 0.
+
+
+2.12: Can the compiler generate assembler code?
+
+Starting with version 1.3 of xlc and xlf the -S option will generate a
+.s assembly code file prior to optimization. The option -qlist will
+generate a human readable one in a .lst file.
+
+There is also a disassembler in /usr/lpp/xlc/bin/dis include with the
+1.3 version of xlc (and in /usr/lpp/xlC/bin/dis with the 2.1 version
+of xlC) that will disassemble existing object or executable files.
+
+
+2.13: Curses
+
+Curses based applications should be linked with -lcurses and _not_ with
+-ltermlib. It has also been reported that some problems with curses are
+avoided if your application is compiled with -DNLS.
+
+Peter Jeffe <peter@ski.austin.ibm.com> also notes:
+
+>the escape sequences for cursor and function keys are *sometimes*
+>treated as several characters: eg. the getch() - call does not return
+>KEY_UP but 'ESC [ C.'
+
+You're correct in your analysis: this has to do with the timing of the
+escape sequence as it arrives from the net. There is an environment
+variable called ESCDELAY that can change the fudge factor used to decide
+when an escape is just an escape. The default value is 500; boosting
+this a bit should solve your problems.
+
+Christopher Carlyle O'Callaghan <asdfjkl@wam.umd.edu> has more comments
+concerning extended curses:
+
+1) The sample program in User Interface Programming Concepts, page 7-13
+   is WRONG. Here is the correct use of panes and panels.
+
+#include <cur01.h>
+#include <cur05.h>
+
+main()
+{
+PANE *A, *B, *C, *D, *E, *F, *G, *H;
+PANEL *P;
+
+initscr();
+
+A = ecbpns (24, 79, NULL, NULL, 0, 2500, Pdivszp, Pbordry, NULL, NULL);
+D = ecbpns (24, 79, NULL, NULL, 0, 0,    Pdivszf, Pbordry, NULL, NULL);
+E = ecbpns (24, 79, D,    NULL, 0, 0,    Pdivszf, Pbordry, NULL, NULL);
+B = ecbpns (24, 79, A, D, Pdivtyh, 3000, Pdivszp, Pbordry, NULL, NULL);
+F = ecbpns (24, 79, NULL, NULL, 0, 0,    Pdivszf, Pbordry, NULL, NULL);
+G = ecbpns (24, 79, F,    NULL, 0, 5000, Pdivszp, Pbordry, NULL, NULL);
+H = ecbpns (24, 79, G,    NULL, 0, 3000, Pdivszp, Pbordry, NULL, NULL);
+C = ecbpns (24, 79, B, F, Pdivtyh, 0, Pdivszf, Pbordry, NULL, NULL);
+P = ecbpls (24, 79, 0, 0, "MAIN PANEL", Pdivtyv, Pbordry, A);
+
+ecdvpl (P);
+ecdfpl (P, FALSE);
+ecshpl (P); 
+ecrfpl (P);
+endwin();
+}
+
+2) DO NOT include <curses.h> and any other <cur0x.h> file together.
+   You will get a bunch of redefined statements.
+
+3) There is CURSES and EXTENDED CURSES. Use only one or the other. If the
+   manual says that they're backwards compatible or some other indication 
+   that you can use CURSES routines with EXTENDED, don't believe it. To 
+   use CURSES you need to include <curses.h> and you can't (see above).
+
+4) If you use -lcur and -lcurses in the same link command, you will get
+   Memory fault (core dump) error. You CANNOT use both of them at the same
+   time. -lcur is for extended curses, -lcurses is for regular curses.
+
+5) When creating PANEs, when you supply a value (other than 0) for the
+   'ds' parameter and use Pdivszf value for the 'du' parameter, the 'ds'
+   will be ignored (the sample program on page 7-13 in User Interface
+   Programming Concepts is wrong.) For reasons as yet undetermined,
+   Pdivszc doesn't seem to work (or at least I can't figure out how to
+   use it.)
+
+6) If you're running into bugs and can't figure out what is happening,
+   try the following:
+   include -qextchk -g in your compile line
+	-qextchk will check to make sure you're passing the right number of
+  	 parameters to the functions
+	-g enables debug
+
+7) Do not use 80 as the number of columns if you want to use the whole
+   screen. The lower right corner will get erased.  Use 79 instead.
+
+8) If you create a panel, you must create at least 1 pane, otherwise you
+   will get a Memory fault (core dump).
+
+9) When creating a panel, if you don't have a border around it, any title
+   you want will not show up.
+
+10) to make the screen scroll down:
+    wmove (win, 0, 0);
+    winsertln (win)
+
+11) delwin(win) doesn't work in EXTENDED WINDOWS
+
+    To make it appear as if a window is deleted, you need to do the following:
+    for every window that you want to appear on the screen
+	touchwin(win)
+	wrefresh(win)
+
+    you must make sure that you do it in the exact same order as you put
+    them on the screen (i.e., if you called newwin with A, then C, then B,
+    then you must do the loop with A, then C, then B, otherwise you won't
+    get the same screen back).  The best thing to do is to put them into
+    an array and keep track of the last window index.
+
+12) mvwin(win, line, col) implies that it is only used for viewports and
+    subwindows. It can also be used for the actual windows themselves.
+
+13) If you specify the attribute of a window using wcolorout(win), any
+    subsequent calls to chgat(numchars, mode) or any of its relatives
+    will not work. (or at least they get very picky.)
+
+
+2.14: How do I speed up linking
+
+Please refer to sections 2.03 and 2.06 above.
+
+From: losecco@undpdk.hep.nd.edu (John LoSecco) and
+      hook@chaco.aix.dfw.ibm.com (Gary R. Hook)
+
+>From oahu.cern.ch in /pub/aix3 you can get a wrapper for the existing
+linker called tld which can reduce link times with large libraries by
+factors of 3 to 4.
+
+
+2.15: What is deadbeef?
+
+When running the debugger (dbx), you may have wondered what the
+'deadbeef' is you occasionally see in registers.  Do note, that
+0xdeadbeef is a hexadecimal number that also happens to be some kind
+of word (the RS/6000 was built in Texas!), and this hexadecimal number
+is simply put into unused registers at some time, probably during
+program startup.
+
+
+2.17: How do I make an export list from a library archive?
+From: d.dennerline@bull.com (Dave Dennerline)
+
+This script will only extract the "export"able names and should be
+useful in starting the shared library creation process. The user must
+determine which names should be included in the import and export lists.
+It's only been tested on a few library archives.
+
+#!/bin/ksh
+#
+# mkexps - make export list
+# This program creates an export list by combining all the "." and normal names
+# into one list. 
+#
+if [[ "$#" -ne 1 ]]
+then
+    print "Usage: mkexps ArchiveFile"
+    exit -2
+fi
+if [[ ! -f $1 ]] 
+then
+    print "mkexps: Cannot open file \"$1\""
+    exit -1
+fi
+dump -g $1 | awk '
+BEGIN {
+        top = 1
+}    
+/^[ ]*[0-9][0-9]*/ {
+    if ( (n = index( $2, "." )) > 0 ) {
+        export_array[ top++ ] = substr( $2, n+1, length( $2 ))
+    }
+    else {
+	export_array[ top++ ] = $2
+    }
+}
+
+END {
+    for ( i = 1; i < top; i++ )
+    {
+	print export_array[ i ]
+    }
+
+}' | sort | uniq
+
+
+2.18 Building imake, makedepend
+From: crow@austin.ibm.com (David L. Crow)
+
+    You need X11dev.src release 1.2.3.0 (ie the R5 release).  
+     Unless you have an R5 release of AIXwindows, there is no xmkmf.
+  These are the steps that I use to make imake, makedepend and all
+  of it's config files, and then install them in the working tree
+  (ie not the Xamples) for daily use:
+  
+      cd /usr/lpp/X11/Xamples
+      make Makefile
+      make SUBDIRS="config util" Makefiles
+      make SUBDIRS="config util" linklibs
+      make SUBDIRS="config util" depend
+      make SUBDIRS="config util" 
+      make SUBDIRS="config util" install
+      
+  Then redo the steps everytime you apply an X11 update.
+
+
+2.19: How can tell what shared libraries a binary is linked with?
+
+Use "dump -H <execfilename>" and see if anything other than /unix is
+listed in the loader section (at the bottom).  The first example is
+/bin/sh (statically linked) and the second example is
+/usr/local/bin/bash (shared).
+
+INDEX  PATH                          BASE                MEMBER              
+0      /usr/lib:/lib                                                         
+1      /                             unix                                    
+
+INDEX  PATH                          BASE                MEMBER              
+0      ./lib/readline/:./lib/glob/:/usr/lib:/lib               
+1                                    libc.a              shr.o               
+2                                    libcurses.a         shr.o               
+
+
+2.20: Can I get a PTF for my C/C++ compiler from the net?
+
+Unfortunately, the compiler group does not release PTFs.  You have to
+call IBM and ask for the latest tape.
+
+
+2.21: Why does "install"ing software I got from the net fail?
+
+Note that the RS/6000 has two install programs, one with System V flavor
+in the default PATH (/etc/install with links from /usr/bin and /usr/usg),
+and one with BSD behavior in /usr/ucb/install.
+
+----------------------------------------------------
+3.00: Fortran and other compilers
+
+This section covers all compilers other than C/C++.  On Fortran, there
+seem to have been some problems with floating point handling, in
+particular floating exceptions.
+
+
+3.01: I have problems mixing Fortran and C code, why?
+
+A few routines (such as getenv, signal, and system) exist in both the
+Fortran and C libraries but with different parameters. In the recent
+past, if you have a mixed program that calls getenv from both C and
+Fortran code, you have to link them carefully by specifying the correct
+library first on your command line. This is no longer needed starting
+with version 1.5 of the compilers.
+
+
+3.02: How do I statically bind Fortran libraries and dynamically
+      bind C libraries?
+From: amaranth@vela.acs.oakland.edu (Paul Amaranth)
+
+[ Editor's note: Part of this is also discussed above under the C compiler
+  section, but I felt it was so valuable that I have left it all in. 
+  I've done some minor editing, mostly typographical. ]
+
+The linker and binder are rather versatile programs, but it is not
+always clear how to make them do what you want them to.  In particular,
+there are times when you do not want to use shared libraries, but
+rather, staticly bind the required routines into your object.  Or, you
+may need to use two versions of the same routine (eg, Fortran & C).  Here
+are the results of my recent experiments.  I would like to thank Daniel
+Premer and Brad Hollowbush, my SE, for hints.  Any mistakes or omissions
+are my own and I have tended to interchange the terms "linker" and
+"binder".  These experiments were performed on AIX 3.1.2.  Most of this
+should be applicable to later upgrades of 3.1.
+
+1)  I have some C programs, I want to bind in the runtime routines.  How
+    do I do this? [Mentioned in section 2.04 of this article as well, ed.]
+
+    You can put the -bnso binder command on the link line.  You should
+    also include the -bI:/lib/syscalls.exp control argument:
+      
+      $ cc *.o -bnso -bI:/lib/syscalls.exp -o foo
+
+    This will magically do everything you need.  Note that this will bind
+    _all_ required routines in.  The -bI argument tells the linker that
+    these entry points will be resolved dynamically at runtime (these are
+    system calls).  If you omit this you will get lots of unresolved 
+    reference messages.
+
+2)  I want to statically bind in the Fortran runtime so a) my customers 
+    do not need to buy it and b) I don't have to worry about the runtime
+    changing on a new release.  Can I use the two binder arguments in
+    1) to do this?
+
+    You should be able to do so, but, at least under 3002, if you do
+    you will get a linker error referencing getenv.  In addition, there
+    are a number of potential conflicts between Fortran and C routines.
+    The easy way just does not work.  See the section on
+    2 stage linking for C and Fortran on how to do this.  The getenv
+    problem is a mess, see the section on Comments & Caveats for more.
+
+3)  I have a mixture of C and Fortran routines, how can I make sure
+    that the C routines reference the C getenv, while the Fortran routines
+    reference the Fortran getenv (which has different parameters and, if
+    called mistakenly by a C routine results in a segmentation fault)?
+
+    From Mike Heath (mike@pencom.com):
+
+    Use -brename:symbol1,symbol2 when pre-linking the modules from one
+    of the languages. It does not matter which one you choose.
+
+4)  I have C and Fortran routines.  I want to bind in the xlf library, while
+    letting the rest of the libraries be shared.  How do I do this?
+
+    You need to do a 2 stage link.  In the first stage, you bind in the
+    xlf library routines, creating an intermediate object file.  The
+    second stage resolves the remaining references to the shared libraries.
+
+    This is a general technique that allows you to bind in specific system
+    routines, while still referencing the standard shared libraries.
+
+    Specifically, use this command to bind the xlf libraries to the Fortran
+    objects:
+
+       $ ld -bh:4 -T512 -H512 <your objects> -o intermediat.o \
+         -bnso -bI:/lib/syscalls.exp -berok -lxlf -bexport:/usr/lib/libg.exp \
+         -lg -bexport:<your export file>
+
+    The argument -bexport:<your export file> specifies a file with the
+    name of all entry points that are to be visible outside the intermediate 
+    module.  Put one entrypoint name on a line.  The -bI:/lib/libg.exp line 
+    is required for proper functioning of the program.  The -berok argument 
+    tells the binder that it is ok to have unresolved references, at least 
+    at this time (you would think -r would work here, but it doesn't seem to).  
+    The -bnso argument causes the required modules to be imported
+    into the object.  The -lxlf, of course, is the xlf library.
+
+    Then, bind the intermediate object with the other shared libraries in
+    the normal fashion:
+
+       $ ld -bh:4 -T512 -H512 <C or other modules> intermediate.o \
+         /lib/crt0.o -lm -lc
+
+    Note the absence of -berok.  After this link, all references should
+    be resolved (unless you're doing a multistage link and making another
+    intermediate).
+
+    NOTE THE ORDER OF MODULES.  This is extremely important if, for example,
+    you had a subroutine named "load" in your Fortran stuff.  Putting the
+    C libraries before the intermediate module would make the C "load"
+    the operable definition, rather than the Fortran version EVEN THOUGH 
+    THE FORTRAN MODULE HAS ALREADY BEEN THROUGH A LINK AND ALL REFERENCES 
+    TO THE SYMBOL ARE CONTAINED IN THE FORTRAN MODULE.  This can
+    be extremely difficult to find (trust me on this one :-)  Is this
+    a bug, a feature, or what?
+    
+    [As mentioned in section 2.03 of this article, it is a feature that you
+    can replace individual objects in linked files, ed.]
+
+    The result will be a slightly larger object than normal.  (I say slightly
+    because mine went up 5%, but then it's a 2 MB object :-)
+
+
+Comments & Caveats:
+
+   From the documentation the -r argument to the linker should do what
+   -berok does.  It does not.  Very strange results come from using the
+   -r argument.  I have not been able to make -r work in a sensible manner
+   (even for intermediate links which is what it is supposed to be for).
+
+       Note from Mike Heath (mike@pencom.com):
+
+       'ld -r' is essentially shorthand for 'ld -berok -bnogc -bnoglink'.
+       Certainly, using -berok with an export file (so garbage collection
+       can be done) is preferable to ld -r, but the latter is easier.
+
+   When binding an intermediate module, use an export file to define the
+   entry points you want visible in the later link.  If you don't do this,
+   you'll get the dreaded "unresolved reference" error.  Import files name
+   entry points that will be dynamically resolved (and possibly where).
+
+   If you are in doubt about what parameters or libraries to link, use the
+   -v arg when linking and modify the exec call that shows up into 
+   an ld command.  Some thought about the libraries will usually yield an
+   idea of when to use what.  If you don't know what an argument is for,
+   leave it in.  It's there for a purpose (even if you don't understand it).
+
+   Watch the order of external definitions (ie, libraries) when more than
+   one version of a routine may show up, eg "load".  The first one defined
+   on the ld command line is the winner.  
+
+   The getenv (and system and signal) problem is a problem that started out
+   minor, got somewhat worse in 3003 and, eventually will be correctly fixed.
+   Basically, you should extract the 3002 version of these three routines
+   from xlf.a before doing the update and save them away, then link these
+   routines in if you use these Fortran system services.  
+
+
+3.03: How do I check if a number is NaN?
+From: sdl@glasnost.austin.ibm.com (Stephen Linam)
+
+NaN is "Not a Number".  It arises because the RISC System/6000 uses
+IEEE floating point arithmetic.
+
+To determine if a variable is a NaN you can make use of the property
+that a NaN does not compare equal to anything, including itself.
+Thus, for real variable X, use
+
+	IF (X .NE. X) THEN	! this will be true if X is NaN
+
+Floating point operations which cause exceptions (such as an overflow)
+cause status bits to be set in the Floating Point Status and Control
+Register (FPSCR).  There is a Fortran interface to query the FPSCR, and
+it is described in the XLF Fortran manuals -- I don't have the manuals
+right here, but look for FPGETS and FPSETS.
+
+The IBM manual "Risc System/6000 Hardware Technical Reference - General
+Information" (SA23-2643) describes what floating point exceptions can
+occur and which bits are set in the FPSCR as a result of those exceptions.
+
+
+3.04: Some info sources on IEEE floating point
+
+1. ANSI/IEEE STD 754-1985 (IEEE Standard for Binary Floating-Point
+   Arithmetic) and ANSI/IEEE STD 854-1987 (IEEE Standard for
+   Radix-Independent Floating-Point Arithmetic), both available from IEEE. 
+
+2. David Goldberg, "What Every Computer Scientist Should Know About
+   Floating-Point Arithmetic", ACM Computing Surveys, Vol. 23, No. 1,
+   March 1991, pp. 5-48.
+
+____________________________________________________________________________
+4.00: GNU and Public Domain software
+
+GNU software comes from the Free Software Foundation and various other
+sources. A number of ftp sites archive them. Read the GNU license for 
+rules on distributing their software.
+
+Lots of useful public domain software have been and continue to be ported
+to the RS/6000. See below for ftp or download information.
+
+
+4.01: How do I find sources?
+From: jik@GZA.COM (Jonathan Kamens)
+
+There is a newsgroup devoted to posting about how to get a certain
+source.  One is strongly urged to follow the guidelines in the article
+How_to_find_sources(READ_THIS_BEFORE_POSTING), available via anonymous
+ftp from rtfm.mit.edu
+
+/pub/usenet/comp.sources.wanted/H_t_f_s_(R_T_B_P)
+
+Note: You should try to use hostnames rather than ip addresses since
+they are much less likely to change.
+
+Also available from mail-server@rtfm.mit.edu by sending a mail
+message containing:
+
+send usenet/comp.sources.wanted/H_t_f_s_(R_T_B_P)
+
+Send a message containing "help" to get general information about the
+mail server.
+
+If you don't find what you were looking for by following these
+guidelines, you can post a message to comp.sources.wanted.
+
+
+4.02: Are there any ftp sites?
+
+Below are some ftp sites that are supposed to have RS/6000 specific
+software.  I haven't verified all the entries.
+
+US sites:
+<URL:ftp://aixpdslib.seas.ucla.edu/pub/>		128.97.2.211
+<URL:ftp://aix.boulder.ibm.com/>		
+<URL:ftp://software.watson.ibm.com/>
+
+European sites:
+<URL:ftp://nic.funet.fi/pub/unix/AIX/RS6000/>		128.214.6.100
+<URL:ftp://iacrs1.unibe.ch/pub/>			130.92.11.3
+<URL:ftp://ftp.zrz.TU-Berlin.DE/pub/aix/>		130.149.4.50
+<URL:ftp://ftp-aix.polytechnique.fr/pub/binaries/rios/>	129.104.3.60
+<URL:ftp://ftp.uni-stuttgart.de/sw/rs_aix32/>		129.69.8.13
+
+The first one is dedicated to software running on AIX.  It might not
+always be the latest versions of the software, but it has been ported
+to AIX (normally AIX version 3 only).  Please use the European sites
+very sparingly.  They are primarily to serve people in Europe and most
+of the software can be found in the US sites originally.
+
+The remaining sites are simply ones that archie indicated contained
+AIX related materials.
+
+<URL:ftp://ibminet.awdpa.ibm.com/>	#IBM announcements, oem hardware
+<URL:ftp://cac.toronto.ibm.com/>	#marketing-info
+<URL:ftp://ftp.egr.duke.edu/>
+<URL:ftp://straylight.acs.ncsu.edu/>
+<URL:ftp://alpha.gnu.ai.mit.edu/rs6000>
+<URL:ftp://ftp.uni-stuttgart.de/sw/rs_aix32/>
+<URL:ftp://iacrs2.unibe.ch/pub/aix/>
+<URL:ftp://ftp.u.washington.edu/pub/RS6000/>
+<URL:ftp://aixive.unb.ca/>
+<URL:ftp://ftp.ans.net/pub/misc/>
+<URL:ftp://uvaarpa.virginia.edu/pub/misc/>
+<URL:ftp://ux1.cts.eiu.edu/pub/rs6000/>
+<URL:ftp://ftp.bsc.nopub/Src/>
+<URL:ftp://ftp-aix.polytechnique.fr/pub/binaries/rios/>
+<URL:ftp://aix1.segi.ulg.ac.be/pub/aix/>
+<URL:ftp://byron.u.washington.edu/pub/aix/>
+<URL:ftp://cunixf.cc.columbia.edu/aix/>
+<URL:ftp://files1zrz.zrz.tu-berlin.de/pub/aix/>
+<URL:ftp://ftp.rz.uni-augsburg.de/pub/aix/>
+<URL:ftp://fyvie.cs.wisc.edu/pub/aix/>
+<URL:ftp://solaria.cc.gatech.edu/pub/aix/>
+<URL:ftp://spot.colorado.edu/aix/>
+<URL:ftp://swdsrv.edvz.univie.ac.at/unix/systems/aix/>
+<URL:ftp://switek.uni-muenster.de/pub/aix/>
+<URL:ftp://wuarchive.wustl.edu/systems/aix/>
+<URL:ftp://cs.nyu.edu/pub/AIX/>
+<URL:ftp://karazm.math.uh.edu/pub/AIX/>
+<URL:ftp://minnie.zdv.uni-mainz.de/pub0/pub/AIX/>
+<URL:ftp://oersted.ltf.dth.dk/pub/AIX/>
+<URL:ftp://rs3.hrz.th-darmstadt.de/pub/incoming/AIX/>
+<URL:ftp://aeneas.mit.edu/pub/rs6000/>
+<URL:ftp://cameron.egr.duke.edu/rs6000/>
+<URL:ftp://ifi.informatik.uni-stuttgart.de/pub/rs6000/>
+<URL:ftp://metropolis.super.org/pub/rs6000/>
+<URL:ftp://ramses.cs.cornell.edu/pub/rs6000/>
+<URL:ftp://server.uga.edu/pub/rs6000/>
+<URL:ftp://uvaarpa.virginia.edu/pub/rs6000/>
+<URL:ftp://wayback.cs.cornell.edu/pub/rs6000/>
+<URL:ftp://alice.fmi.uni-passau.de/pub/RS6000/>
+<URL:ftp://byron.u.washington.edu/pub/aix/RS6000/>
+<URL:ftp://milton.u.washington.edu/pub/RS6000/>
+<URL:ftp://pascal.math.yale.edu/pub/RS6000/>
+<URL:ftp://uxc.cso.uiuc.edu/pub/RS6000/>
+
+4.03: Why does "install"ing software I got from the net fail?
+
+This answer was moved to section 2.21
+
+
+4.04: GNU Emacs
+
+If you get a segmentation fault in GNU EMACS 19.* during hilit19 use,
+you can set locale to C (export LC_ALL=C) to get around the AIX bug.
+
+Version 18.57 of GNU Emacs started to have RS/6000 support.  Use
+s-aix3-2.h for AIX 3.2. Emacs is going through rapid changes recently.
+Current release is 19.x.
+
+Emacs will core-dump if it is stripped, so don't strip when you install
+it.  You can edit a copy of the Makefile in src replacing all 'install -s' 
+with /usr/ucb/install.
+
+
+4.05: gcc/gdb
+
+GNU C version 2.0 and later supports the RS/6000, and compiles straight
+out of the box.  You may, however, experience that compiling it requires
+large amounts of paging space.
+
+Compiling gcc and gdb requires a patch to the 'as' assembler.  Call
+IBM software support and request patch for apar IX26107 (U409205).
+
+gcc has undergone many changes lately and the current version is 2.5.x.
+gdb is at 4.1x.
+
+If your machine crashed when trying to run gdb 4.7, call software support
+and request ptf U412815.
+
+
+4.06: GNU Ghostscript 
+
+The PostScript interpreter GNU Ghostscript Version 2.3 and later supports
+the RS/6000 and can be found on various ftp sites. Current version is 2.6.1.
+
+Compile time problems:
+  Compile idict.c and zstack.c _without_ optimization, add the following
+  to the Makefile:
+
+  idict.o: idict.c
+        $(CC) -c idict.c
+
+  zstack.o: zstack.c
+        $(CC) -c zstack.c
+
+Run time problems:
+  Running ghostview-1.5 with ghostscript-2.6.1, I get 
+   gs: Malformed ghostview color property.
+  Solution: replace buggy version of ghostscript-2.6.1 X11 driver
+  with at least 2.6.1pl4 
+
+4.07  TeX - Document processing
+
+TeX can be retrieved via ftp from ftp.uni-stuttgart.de.
+Be sure to use a recent C compiler (01.02.0000.0013) and you can compile
+with optimization.
+
+
+4.08  Perl - Scripting language
+
+Current version is 4.035 and compiling with cc should give no problems. 
+If you use bsdcc, do not use perl's builtin malloc(), edit config.H to
+'#define HAS_SYMLINK', and you should be on your way.  Bill Wohler tells
+me that perl will run without editing config.H and with cc as well.  So
+just say no to use perl's malloc().
+
+Doug Sewell <DOUG@YSUB.YSU.EDU> adds:
+
+In addition to not using the perl-provided malloc, when asked if you
+want to edit config.sh, change 'cppstdin' from the wrapper-program
+to '/lib/cpp'.
+
+The perl wrapper name is compiled into perl, and requires that you keep
+that file in the source directory, even if you blow away the rest of
+the source.  /lib/cpp will do the job by itself.  I suspect this will
+be fixed in perl 4.0pl11 Configure script.
+
+Also, beware if you have gdbm installed per the instructions in the FAQ.
+Gdbm is compiled with bsdcc; perl (as I installed it, anyway) was built
+with cc, so I used the IBM-provided ndbm routines.
+
+
+4.09: X-Windows
+
+IBM has two releases of 3.2.3. The base version has X11R4 and Motif 1.1
+and the extended version has X11R5 as AIXwindows 1.2.3.
+
+AIXwindows version 1.2.0 (X11rte 1.2.0) is X11R4 with Motif 1.1
+AIXwindows version 1.2.3 (X11rte 1.2.3) is X11R5 with Motif 1.1
+X11rte.motif1.2 1.2.3 is Motif 1.2 and requires AIXwindows 1.2.3
+
+
+4.10  Bash - /bin/ksh alternative from FSF
+
+Bash is an alternative to ksh and is availible from prep.ai.mit.edu
+and places that mirror the GNU software.  /etc/security/login.cfg
+needs to be modified if this will be used as a default shell.
+
+
+4.11: Elm
+
+A very nice replacement for mail. Elm should be pretty straightforward,
+the only thing to remember is to link with -lcurses as the only
+curses/termlib library. You may also run into the problem listed under
+point 2.13 above.
+
+
+4.12: Oberon 2.2
+
+From: afx@muc.ibm.de (Andreas Siegert)
+
+Oberon is Wirth's follow on to Modula-2, but is not compatible. A free
+version of Modula-3 is available from DEC/Olivetti at
+gatekeeper.dec.com. This is not a Modula-2 replacement but a new
+language. There are currently two M2 compilers for the 6000 that I
+know of. One from Edinburgh Portable Compilers, +44 31 225 6262 (UK)
+and the other from Gardens Point is availible through A+L in
+Switzerland (+41 65 520311) or Real Time Associates in the UK
+(info@rtal.demon.co.uk).
+
+Oberon can be obtained via anonymous ftp from neptune.inf.ethz.ch
+(129.132.101.33) under the directory Oberon/RS6000 or gatekeeper.dec.com
+(16.1.0.2).
+
+
+4.13  Kermit - Communications 
+
+Get it from watsun.cc.columbia.edu (128.59.39.2), kermit/bin/cku189.tar.Z.
+Uncompress, untar, and "make rs6000", and it works.
+
+
+4.14: Gnu dbm
+From: doug@cc.ysu.edu (Doug Sewell)
+
+Here's the fixes for RS/6000's:
+
+apply this to testgdbm.c:
+158c158
+<   char opt;
+---
+>   int opt;
+166c166
+<   while ((opt = getopt (argc, argv, "rn")) != -1)
+---
+>   while ((opt = getopt (argc, argv, "rn")) != EOF)
+
+Apply this to systems.h:
+111a112,114
+> #ifdef RS6000
+> #pragma alloca
+> #else
+112a116
+> #endif
+
+To compile, edit the Makefile.  Set CC to bsdcc (see /usr/lpp/bos/bsdport
+if you don't have 'bsdcc' on your system) and set CFLAGS to -DRS6000 and
+whatever options (-g, -O) you prefer.  Don't define SYSV.
+
+
+4.15  tcsh - /bin/ksh alternative
+From: cordes@athos.cs.ua.edu (David Cordes)
+
+tcsh is available from tesla.ee.cornell.edu (pub/tcsh-6.00 directory)
+Compiles with no problems. You must edit /etc/security/login.cfg to
+permit users to change to this shell (chsh), adding the path where the
+shell is installed (in my case, /usr/local/bin/tcsh).
+
+From: "A. Bryan Curnutt" <bryan@Stoner.COM>
+
+Under AIX 3.2.5, you need to modify the "config.h" file, changing
+    #define BSDSIGS
+to
+    #undef BSDSIGS
+
+
+4.16: Kyoto Common Lisp
+
+The sources are available from cli.com. The kcl package is the needed
+base; also retrieve the latest akcl distribution. akcl provides a
+front-end that "ports" the original kcl to a number of different
+platforms. The port to the 6000 worked with no problems. However, you
+must be root for make to work properly with some memory protection
+routines.
+
+
+4.17  Tcl/Tk - X-Windows scripting
+
+Current versions: Tcl 7.3, Tk 3.6. Available from sprite.berkeley.edu or
+harbor.ecn.purdue.edu.
+
+
+4.18: Expect
+From: Doug Sewell <DOUG@YSUB.YSU.EDU>
+   
+To build the command-interpreter version, you must have the tcl library
+built successfully. The expect library doesn't require tcl.  Note:
+Expect and its library are built with bsdcc, so applications using
+the library probably also need to be developed with bsdcc.
+
+I ftp'd expect from ftp.cme.nist.gov.
+
+You need to change several lines in the makefile.  First you need
+to customize source and target directories and files:
+#
+TCLHDIR = /usr/include
+TCLLIB = -ltcl
+MANDIR = /usr/man/manl               (local man-pages)
+MANEXT = l
+BINDIR = /u/local/bin
+LIBDIR = /usr/lib
+HDIR = /usr/include
+...
+Next set the compiler, switches, and configuration options:
+#
+CC = bsdcc
+CFLAGS = -O
+...
+PTY_TYPE = bsd
+...
+INTERACT_TYPE = select
+...
+Then you need to make these changes about line 90 or so:
+comment out CFLAGS = $(CLFLAGS)
+un-comment these lines:
+CFLAGS = $(CLFLAGS) $(CPPFLAGS)
+LFLAGS = ($CLFLAGS)
+
+Then run 'make'.
+
+You can't run some of the examples without modification (host name,
+etc).  I don't remember if I ran all of them or not, but I ran enough
+that I was satisfied it worked.
+
+
+4.19: Public domain software on CD
+From: mbeckman@mbeckman.mbeckman.com (Mel Beckman)
+
+The Prime Time Freeware CD collection is a package of two CD's and docs
+containing over THREE GIGABYTES of compressed Unix software. It costs $69
+>from Prime Time Freeware, 415-112 N. Mary Ave., Suite 50, Sunnyvale, CA
+94086. Phone 408-738-4832 voice, 408-738-2050 fax. No internet orders as
+far as I can tell.
+
+I've extracted and compiled a number of the packages, and all have worked
+flawlessly so far on my 220. Everything from programming languages to 3D
+solid modeling is in this bonanza!
+
+Ed: The O'Reilly book, Unix Power Tools, also contains a CD-ROM with lots
+of useful programs compiled for the RS/6000, among other platforms.
+
+
+4.20: Andrew Toolkit
+
+From: Gary Keim <gk5g+@andrew.cmu.edu>
+
+The Andrew Toolkit Consortium of Carnegie Mellon University's School of
+Computer Science has released new versions of the Andrew User
+Environment, Andrew Toolkit, and Andrew Message System.
+
+The Andrew User Environment (AUE) is an integrated set of applications
+beginning with a 'generic object' editor, ez, a help system, a system
+monitoring tool (console), an editor-based shell interface (typescript),
+and support for printing multi-media documents. 
+
+The Andrew Toolkit (ATK) is a portable user-interface toolkit that runs
+under X11. It provides a dynamically-loadable object-oriented
+environment wherein objects can be embedded in one another. Thus, one
+could edit text that, in addition to containing multiple fonts, contains
+embedded raster images, spreadsheets, drawing editors, equations, simple
+animations, etc. These embedded objects can also be nested.
+
+The Andrew Message System (AMS) provides a multi-media interface to mail
+and bulletin-boards. AMS supports several mail management strategies
+and implements many advanced features including authentication, return
+receipts, automatic sorting of mail, vote collection and tabulation,
+enclosures, audit trails of related messages, and subscription
+management. It has interfaces that support ttys, personal computers, 
+and workstations.
+
+Release 5.1 of Andrew contains many bug fixes and updates. There is now
+support for the new Internet MIME (Multipurpose Internet Mail Extensions)
+standards for multipart, and multimedia mail. For more information on
+MIME, please see the CHANGES files in the ftp directory on
+emsworth.andrew.cmu.edu.
+
+This release can be obtained as follows. The sources are available via
+anonymous ftp from export.lcs.mit.edu (18.30.0.238) in the
+./contrib/andrew tree. For details, see ./contrib/andrew/README.
+
+PATCH for AIX3.2: A patch to the AUIS 5.1 sources can be ftp'ed from
+emsworth.andrew.cmu.edu (128.2.45.40) in ./aixpatch. For those without
+internet access, a 3.5" diskette can be ordered for a nominal fee of $10
+by sending, or faxing, a purchase order to the Consortium address below.
+
+Andrew, as well as a variety of other CMU software, can also be ftp'ed
+>from emsworth.andrew.cmu.edu (128.2.30.62). Those with AFS access look
+at /afs/andrew.cmu.edu/itc/sm/releases/X.V11R5/ftp.
+
+Remote Andrew Demo Service 
+
+This network service allows you to run Andrew Toolkit applications
+without obtaining or compiling the Andrew software. You need a host
+machine running X11 on the Internet. A simple "finger" command will let
+you experience ATK applications firsthand. You'll be able to compose
+multimedia documents, navigate through the interactive Andrew Tour, and
+use the Andrew Message System to browse through CMU's three thousand
+bulletin boards and newsgroups.
+
+To use the Remote Andrew Demo service, run the following command:
+
+    finger help@atk.itc.cmu.edu 
+
+The service will give you further instructions.
+
+Information Sources
+
+Your bug reports are welcome; kindly send them to
+info-andrew-bugs@andrew.cmu.edu and we will periodically post a status
+report to the mailing list info-andrew@andrew.cmu.edu. To be added to
+the mailing list or make other requests, send mail to
+info-andrew-request@andrew.cmu.edu.
+
+We also distribute the following related materials:
+
+ATK and AMS sources and binaries on CDROM. Binaries are available
+for the following system types: 
+
+        	IBM RiscSystem/6000 
+		Sun SparcStation 
+		HP 700 Series 
+		DECstation 
+
+ATK and AMS sources on QIC and Iotamat tapes Hardcopies of the
+documentation for ATK and AMS. Introductory video tape: Welcome to
+Andrew: An Overview of the Andrew System. Technical video tape: The
+Andrew Project: A Session at the Winter 1988 Usenix Conference.
+
+More information about these materials is available from:
+
+    Information Requests
+    Andrew Toolkit Consortium
+    Carnegie Mellon University
+    4910 Forbes Avenue, UCC 214
+    Pittsburgh, PA 15213-3890
+    USA
+    phone: +1-412-268-6710
+    fax: +1-412-621-8081
+    info-andrew-request@andrew.cmu.edu
+
+There is also a netnews distribution list, comp.soft-sys.andrew, which
+is identical to the info-andrew list except that it does not support the
+multi-media capabilities of info-andrew.
+
+
+4.21: sudo
+
+The most recent of sudo is cu-sudo v1.3.1 patchlevel 2
+(cu-sudo.v1.3.1pl2.tar.Z).  It support AIX 3.x.  cu-sudo is maintained
+by Todd Miller <millert@cs.colorado.edu>.
+
+
+4.22: Flexfax/HylaFax and other fax software
+
+From: Christian Zahl <czahl@cs.tu-berlin.de>
+
+Sam Leffler has released a new version of FlexFax called HylaFax.  It
+is availible from <URL:ftp://sgi.com:/sgi/fax/>. Version 2.2.1
+supported many types of Class 1/2 fax modems and several UNIX systems
+including AIX 3.2.3 or greater.  There is also a fax modem review
+document at the same site as sgi.com:/pub/fax/bakeoff. The FlexFax
+related files on sgi.com are replicated on ftp.bsc.no as well.
+
+From: michael@hal6000.thp.Uni-Duisburg.DE (Michael Staats)
+
+We're using mgetty+sendfax for the basic modem I/O, I wrote a printer
+backend for the modem so that users can send faxes as easy as they print
+postscript. I also wrote a little X interface composer to generate a
+fax form that makes sending faxes very easy. You can find these
+programs at hal6000.thp.Uni-Duisburg.DE under /pub/source.
+
+program				comment
+
+mgetty+sendfax-0.14.tar.gz	basic modem I/O, needs hacking for AIX
+X11/xform-1.1.tar.gz	     	small and simple X interface composer
+				with an example fax form. Needs
+				libxview.a incl. headers.
+faxiobe.tar.gz			fax backend, needs configuring for
+				your local site
+
+If you need a binary version of libxview.a and the headers you'll find
+them under /pub/binaries/AIX-3-2/lxview.tar.gz.
+
+
+4.23  lsof - LiSt Open Files
+From: abe@vic.cc.purdue.edu (Vic Abell)
+
+Q. How can I determine the files that a process has opened?
+Q. How can I locate the process that is using a specific network address?
+Q. How can I locate the processes that have files open on a file system?
+
+A. Use lsof (LiSt Open Files).
+
+Lsof is available via anonymous ftp from vic.cc.purdue.edu
+(128.210.15.16) in pub/lsofVVVtar.Z where VVV is the version number,
+currently 229.
+
+
+4.24  popper - POP3 mail daemon
+
+The POP server is available via anonymous ftp from 
+ftp.qualcomm.com:/quest/unix/servers/popper
+  The makefile supports AIX
+ftp.CC.Berkeley.EDU (128.32.136.9, 128.32.206.12).
+  There are two versions in the pub directory: a compressed tar file
+  popper-version.tar.Z and a Macintosh StuffIt archive in BinHex format
+  called MacPOP.sit.hqx.
+
+Problems building some versions of popper can sometimes be resolved by
+compiling with bsdcc or -D_BSD.
+
+
+4.26: mpeg link errors version 2.0
+posted by (Nathan Lane) nathan@seldon.foundation.tricon.com 
+
+.XShmCreateImage
+.XShmDetach
+.XShmAttach
+.XShmGetEventBase
+.XShmPutImage
+.XShmQueryExtension
+
+... are for the Shared Memory extension of the X server.
+You can either choose to build it with shared memory or without.  I
+always do it without the performance increase is not really
+incredible, except on something like a 2x0 machine with the local bus
+graphics adapter.  Just take out "DSH_MEM" in the CFLAGS in the
+makefile for mpeg_play.  There is more information about shared memory
+link errors in section 1.513.
+
+Also, in the module "video.c" for mpeg_play it will complain about not
+having enough memory to fully optimize one of the loops.  You can get
+around that by specificying "qmaxmem=8000" in your cflags line, BUT,
+the extra optimization does little good in my tests.
+
+
+4.27: NNTP, INN
+
+Link errors compiling nntp may occur because your machine lacks the
+"patch" command.  Patch can be obtained from GNU repositories
+
+
+4.28: Zmodem - File transfer
+
+RZSZ is Chuck Forsberg's script for Z-modem. It is available by ftp at
+<URL:ftp://oak.oakland.edu/pub/unix-c/xyzmodem/rzdsz.tar.Z> or
+directly from Forsberg at Omen Technology BBS at 503-621-3746.
+
+Hints:
+0. Build with "make posix"
+1. Use rlogin, not telnet
+2. Set the system to be transparent, I use "terminal download" 
+3. Ensure hardware flow-control
+
+4.29: Patch - automated file updates
+
+AIX 3.2.5 does not ship with patch, a utility to apply the differences
+between two files to make them identical.  This tool is often used to
+update source code.
+
+<URL:ftp://ftp.x.org/pub/R6untarred/xc/util/patch/>
+<URL:ftp://prep.ai.mit.edu/pub/gnu/patch-2.1.tar.gz>
+
+
+4.30: XNTP - network time protocol, synchronizes clocks
+
+louie.udel.edu:/pub/ntp
+
+______________________________________________________________________________
+5.00: Third party products
+
+[ Ed.: Entries in this section are edited to prevent them from looking
+  like advertising. Prices given may be obsolete. Companies mentioned
+  are for reference only and are not endorsed in any fashion. ]
+
+
+5.02: Disk/Tape/SCSI
+From: anonymous
+
+- Most SCSI disk drives work (IBM resells Maxtor, tested Wren 6&7 myself);
+  use osdisk when configuring (other SCSI disk).
+
+- Exabyte: Unfortunately only the ones IBM sells are working.
+  A few other tape drives will work; 
+  use ostape when configuring (other SCSI tape).
+
+- STK 3480 "Summit": Works with Microcode Version 5.2b
+
+
+From: bell@hops.larc.nasa.gov (John Bell)
+               
+In summary, third party tape drives work fine with the RS/6000 unless 
+you want to boot from them. This is because IBM drives have 'extended 
+tape marks', which IBM claims are needed because the standard marks 
+between files stored on the 8mm tape are unreliable. These extended 
+marks are used when building boot tapes, so when the RS/6000 boots, it 
+searches for an IBM tape drive and refuses to boot without it.
+
+From: jrogers@wang.com (John Rogers)
+
+On booting with non-IBM SCSI tape drives: I haven't tried it myself but
+someone offered:
+
+Turn machine on with key in secure position.
+Wait until LED shows 200 and 8mm tape has stopped loading.
+Turn key to service position.
+
+
+From: amelcuk@gibbs.clarku.edu (Andrew Mel'cuk)
+
+The IBM DAT is cheap and works.  If you get all the patches beforehand
+(U407435, U410140) and remember to buy special "Media Recognition
+System" tapes (Maxell, available from APS 800.443.4461 or IBM #21F8758)
+the drive can even be a pleasure to use.  You can also flip a DIP switch
+on the drive to enable using any computer grade DAT tapes (read the
+hardware service manual).
+
+Other DAT drives also work.  I have tried the Archive Python (works) and
+experimented extensively with the Archive TurboDAT.  The TurboDAT is a
+very fast compression unit, is not finicky with tapes and doesn't
+require the many patches that the IBM 7206 does.  Works fine with the
+base AIX 3.2 'ost' driver.
+
+
+From: pack@acd.ucar.edu (Daniel Packman)
+
+>>You can boot off of several different brands of non-IBM Exabytes.
+>>At least TTI and Contemporary Cybernetics have done rather complete
+>>jobs of emulating genuine IBM products.
+
+A model that has worked for us from early AIX 3.1 through 3.2 is a TTI
+CTS 8210.  This is the old low density drive.  The newer 8510 is dual
+density (2.2gig and 5gig).  Twelve dip switches on the back control the
+SCSI address and set up the emulation mode.  These drives have a very
+useful set of lights for read-outs (eg, soft error rate, tape remaining,
+tape motion, etc.).
+
+
+5.03: Memory
+
+I got a flyer from Nordisk Computer Services (Portland 503-598-0111, 
+Seattle 206-242-7777).  Some sample prices:
+
+      16 MB Upgrade Kit   $  990
+      32 MB Upgrade Kit   $1,700
+      64 MB Upgrade Kit   $3,300
+
+5xx machines have 8 memory slots, 3x0s have 2, and 3x5s have only one.
+You need to add memory in pairs for the 5xx machines excepting the 520.
+
+Models 220, 230 and 250 can use "PS/2" style SIMM memory.  All have 8
+SIMM sockets.  60ns or better is needed for the 250, 70ns should be OK
+in the 220 and 230.  The 220 and 230 are limited to 64MB of memory,
+the 250 is limited to 256MB.
+
+
+5.04: Others
+From: anonymous
+       
+IBM RISC System/6000 Interface Products
+
+National Instruments Corporation markets a family of instrumentation
+interface products for the IBM RISC System/6000 workstation family.  The
+interface family consists of three products that give the RISC
+System/6000 connectivity to the standards of VMEbus, VXIbus and GPIB. 
+For more information, contact National Instruments Corporation,
+512-794-0100 or 1-800-433-3488.
+
+
+5.05: C++ compilers
+
+Several C++ compilers are available. You can choose from Glockenspiel,
+Greenhills, IBM's xlC (sold seperatly :), and GNU's g++. Glockenspiel
+may now be part of Computer Associates. Comeau Computing
+(718-945-0009) offers Comeau C++ 3.0 with Templates. For a full
+development environment there's ObjectCenter's C++ (formerly Saber
+C++).
+
+
+5.06: Memory leak detectors
+
+IBM's xlC comes with a product called the HeapView debugger that can
+trace memory problems in C and C++ code.
+
+SENTINEL has full memory access debugging capabilities including detection 
+of memory leaks.  Contact info@vti.com (800) 296-3000 (703) 430-9247.
+
+Insight from ParaSoft (818) 792-9941.
+There is also a debug_malloc posted in one of the comp.sources groups.
+
+From: d.dennerline@bull.com (Dave Dennerline)
+  Purify from Pure software (408) 720-1600.
+  TestCenter from Centerline (800) 669-2687.
+Purify and TestCenter are not availible for the RS/6000 :(
+
+
+5.07: PPP
+
+PPP does not come with AIX 3.2.x (only SLIP) and there isn't a version
+availible for anonymous ftp.  PPP for AIX is availible for $ from
+Morningstar (sales@morningstar.com or marketing@morningstar.com) (800)
+558-7872.
+
+
+5.08: Graphics adapters
+
+Abstract Technologies Inc. (Austin TX, 512-441-4040, info@abstract.com)
+has several high performance graphics adapters for the RS/6000.
+1600x1200, 24-bit true-color, and low cost 1024x768 adapters are
+available.  Retail prices are between US$1000-2000.
+
+
+5.09: Training Courses
+
+Email training@skilldyn.com with "help" in the body of the message for
+information about how to receive a list course descriptions for AIX*
+and/or UNIX* courses offered by Skill Dynamics.
+
+5.10: Hardware Vendors
+
+New & Used RS6000s, peripherals
+Core Systems Inc, 1605 12th Ave Seattle WA 98122 
+(800) 329-2449  fax: (206) 329-3799
+<URL:http://www.corsys.com/homeworld>
+
+______________________________________________________________________________
+6.00: Miscellaneous other stuff
+
+6.01: Can I get support by e-mail?
+
+According to kwedar@vnet.IBM.COM AIXServ is no longer free and that
+"mail -s'AIX Program Services' aixsupt@aix.boulder.ibm.com" is your
+best bet for no-fee support.  The rest of this information may be
+outdated and will be removed if it is confirmed.
+
+AIXServ is a service tool that allows users on internet and usenet to
+report problems via unix mail. AIXServ is free. To receive instructions 
+on using AIXServ, send a note with "Subject: package" to one of the
+following e-mail addresses:
+
+	Usenet:     uunet.UU.NET!aixserv!aixbugs
+	Internet:   aixbugs@austin.ibm.com     (transactions request)
+                    services@austin.ibm.com    (administrivia)
+                    aasc@austin.ibm.com        (test cases under 100KB)
+
+Using AIXServ, customers have the ability to 1) open new problem reports,
+2) update existing problem records, and 3) request a status update on an
+existing problem record. Currently this service is available to United
+States customers only.
+
+Canada:
+
+Gary Tomic mentioned that Canadian customers can get support from their
+BBS, cac.toronto.ibm.com at 142.77.253.16.
+
+Germany:
+
+Thomas Braunbeck reported that German customers with ESS (extended
+software service) contracts can get support by e-mail too. They can 
+obtain information by sending mail with Subject: help to 
+aixcall@aixserv.mainz.ibm.de.
+
+Various flavors of service offerings are available. Contact your IBM rep
+for details.
+
+
+6.02: List of useful faxes
+
+You can get some informative faxes by dialing IBM's Faxserver at
+1-800-IBM-4FAX. If you're calling for the first time, push 3 then 2 to
+request a list of RS/6000 related faxes.
+
+document number                       Title
+---------------  -----------------------------------------------------
+     1453        Recovering from LED 518 in AIX 3.2
+     1457        Recovering from LED 552 in AIX 3.1 and 3.2
+     1461        Alternative Problem Reporting Methods
+     1470        Recovering from LED 223/229, 225/229, 233/235, 221/229, or 221
+     1537        How to Get AIX Support
+     1719        Performance Analyzer/6000
+     1721        Recovering from LED 553 in AIX 3.1 and 3.2
+     1746        Recovering from LED 551 in AIX 3.1 and 3.2
+     1755        Recovering Volume Groups
+     1802        Repairing File Systems with fsck in AIX 3.1 and 3.2
+     1803        How to Take a System Dump
+     1804        Setting Up a Modem With the RS/6000
+     1845        Using iptrace to Track Remote Print Jobs
+     1867        Clearing the Queuing System
+     1895        Removing/Replacing a Fixed Disk
+     1896        Tape Drive Densities and Special Files
+     1897        Tips on mksysb for AIX 3.2
+     1909        UUCP (BNU) Helpful Information
+     1910        Synchronizing Disk Names
+     1988        Recovering from LED 201 in AIX 3.1 and 3.2
+     1989        Recovering from LED 727 in AIX 3.2
+     1991        Recovering from LED c31 in AIX 3.1 and 3.2
+     2079        AIX 3.2.4
+     2121        AIX 3.2.4 Installation Tips
+     2267        How to reduce /usr in AIX 3.2
+     2443        Man pages for AIX 3.2
+     2446        How to set up sar
+     2447        How to reduce /tmp
+     2448        Installing a 5 GB tape drive
+     2462        Bosboot diskettes
+     2465        How to remove ptfs from the ODM
+
+6.03: IBM's gopher, WWW, aftp presence (as of 6/10/94)
+Thanks to Ronald S. Woan <woan@austin.ibm.com>
+
+aix.boulder.ibm.com		(FixDist ptfs)
+software.watson.ibm.com		(rlogin fixes & more)
+gopher.ibmlink.ibm.com		(anonouncements & press releases)
+www.austin.ibm.com		(software, hardware, service & support)
+
+General IBM information like product announcements and press releases
+are available through World Wide Web at <URL:http://www.ibm.com/>
+
+Specific information on the RISC System/6000 product line and AIX
+(highlights include marketing information, technology White Papers and
+the POWER 2 technology book online before it hits the presses,
+searchable APAR database and AIX support FAX tips online so you don't
+have to type in all those scripts) is available at
+<URL:http://www.austin.ibm.com/>
+
+
+6.04: Some RS232 hints
+From: graeme@ccu1.aukuni.ac.nz, sactoh0.SAC.CA.US!jak
+
+Q: How do you connect a terminal to the RS232 tty ports when not using
+   the standard IBM cable & terminal transposer?
+A: 1- Connect pins 2->3, 3->2, 7->7 on the DB25's
+   2- On the computer side, most of the time cross 6->20 (DSR, DTR).
+      Some equipment may require connecting 6, 8, and 20 (DSR, DCD, DTR).
+
+Also, pin 1 (FG) should be a bare metal wire and the cable should be
+shielded with a connection all the way through. Most people don't run
+pin 1 because pins 1 & 7 (SG) are jumpered on many equipment.
+
+When booting from diskettes, the port speed is always 9600 baud.  If you
+use SMIT to set a higher speed (38400 is nice) for normal use, remember
+to reset your terminal before booting.
+
+Q: How do you connect a printer to the RS232 tty ports
+A: 1- Connect pins 2->3, 3->2, 7->7 on the DB25's
+   2- On the computer side, loop pins 4->5 (CTS & RTS)
+
+
+6.05  What publications are available for AIX and RS/6000?
+
+The following are free just for the asking:
+
+RS/Magazine
+   P.O. Box 3272
+   Lowell, MA 01853-9876
+   e-mail: aknowles@expert.com (Anne Knowles, editor)
+
+AIXpert
+   IBM Corporation
+   Mail Stop 36
+   472 Wheelers Farms Road
+   Milford, CT 06460
+   FAX: (203) 783-7669
+
+RiSc World
+   P.O. Box 399
+   Cedar Park, TX 78613
+   FAX: (512) 331-3900
+   Usenet: {cs.utexas.edu,execu,texbell}!pcinews!rsworld
+
+These manuals should be available from your favorite IBM office.
+ 
+SC23-2204-02  Problem Solving Guide
+SC23-2365-01  Performance Monitoring and Tuning Guide for AIX 3.2
+SA23-2629-07  Service Request Number Cross Reference, Ver 2.2
+SA23-2631-05  Diagnostic Programs: Operator Guide
+SA23-2632-05  Diagnostic Programs: Service Guide
+SA23-2643-01  Hardware Technical Reference: General Information
+SA23-2646-01  Hardware Technical Reference: Options and Devices
+
+Computer bookstores often carry many of the following:
+
+"Power RISC System/6000: Concepts, Facilities, Architecture", Chakravarty  
+         McGraw-Hill ISBN 0070110476
+"PowerPC: Concepts, Facilities, Architecture", Chakravarty/Cannon  
+         McGraw-Hill ISBN 0070111928
+"The Advanced Programmer's Guide to AIX 3.x", Colledge 
+         McGraw-Hill ISBN 007707663X
+"AIX Companion" , Cohn    
+         Prentice-Hall ISBN 0132912201
+"AIX for RS/6000: System & Administration Guide", DeRoest 
+         McGraw-Hill ISBN 0070364397
+"A Guide to AIX 3.2", Franklin
+         Metro-Info Systems 05/1993
+"IBM RS6000 AIX System Administration", Hollicker
+         Prentice-Hall ISBN 0134526163
+"IBM RISC SYSTEM/6000 - A Business Perspective", Hoskins
+         John Wiley & Sons ISBN 0471599352
+"The Advanced Programmer's Guide to AIX 3.x", Phil Colledge
+	McGraw-Hill, 1994, ISBN: 0-07-707663-x
+
+
+6.06: Some acronyms
+
+APAR - authorized program analysis report
+BOS  - Basic Operating System
+DCR  - design change request
+LPP  - Licensed Program Product
+ODM  - Object Database Manager
+PRPQ - programming request for price quotation
+PTF  - Program Temporary Fix
+SMIT - System Management Interface Tool
+
+
+6.07: How do I get this by mailserver or ftp?
+
+Since the articles are crossposted to news.answers, any archive
+carrying that newsgroup will also have these articles.  In particular,
+try ftp'ing to rtfm.mit.edu and checking the directory
+pub/usenet/news.answers. This FAQ is archived as "aix-faq/part[123]".
+
+The FAQ is also availible via email using the address
+mail-server@rtfm.MIT.edu two examples of how you might use this from a
+UNIX prompt follow:
+
+echo help | mail mail-server@rtfm.MIT.edu
+echo send usenet/news.answers/aix-faq/part1 | mail mail-server@rtfm.MIT.edu
+
+
+6.08: Hypertext version of the FAQ
+
+United States:
+  <URL:http://www.cis.ohio-state.edu/hypertext/faq/usenet/aix-faq/top.html>
+  <URL:http://www.chem.emory.edu/>
+New Zeland:
+  <URL:http://www.abstract.co.nz/aix-faq/faq.html>
+France:
+  <URL:http://www-resus.univ-mrs.fr/Us/CS/RS6k/>
+Canada:
+  <URL:http://auk.uwaterloo.ca/aixgroup/aix-faq>
+
+
+6.09: Where can I send suggestions for tools?
+
+If you have any suggestions or comments about tools, whether currently or 
+desirable to be in AIX, send a note to aix_tool_ideas@austin.ibm.com.
+
+
+6.10: Comp.unix.aix archive availible on the WWW
+
+Michael Staats & Fred Hucht have informed me that a 
+searchable archive of comp.unix.aix is availible at: 
+<URL:http://www.thp.Uni-Duisburg.DE:/cuaix/cuaix.html>
+
+
+_____________________________________________________________________________
+7.00: Contributors
+
+The following persons have contributed to this list.  If you want to
+contribute anonymously, just let me know - but do tell me who you are.
+I apologise if I missed out anyone.
+
+Thank you all, this would definitely not be the same without _your_ input.
+
+Luis Basto			<basto@cactus.org>
+Rudy Chukran			<chukran@austin.VNET.IBM.COM>
+Christopher Carlyle O'Callaghan	<asdfjkl@wam.umd.edu>
+Poul-Henning Kamp		<phk@data.fls.dk>
+Richard Wendland                <richard@praxis.co.uk>
+Ge van Geldorp			<ge@dutlru2.tudelft.nl>
+Chris Jacobsen			<jacobsen@sbhep2.phy.sunysb.edu>
+Peter Jeffe			<peter@ski.austin.ibm.com>
+Jean-Francois Panisset		<panisset@thunder.mcrcim.mcgill.edu>
+John Cary			<cary@boulder.colorado.edu>
+Vijay Debbad			<vijay@ingres.com>
+Dick Karpinski			<dick@ccnext.ucsf.edu>
+Konrad Haedener			<haedener@iac.unibe.ch>
+Doug Sewell			<DOUG@YSUB.YSU.EDU>
+David Cordes			<cordes@athos.cs.ua.edu>
+Graeme Moffat			<g.moffat@aukuni.ac.nz>
+Andrew Pierce			<pierce@claven.cambridge.ibm.com>
+Stephen Linam			<sdl@glasnost.austin.ibm.com>
+Jerome Park			<jerome%aixserv@uunet.UU.NET>
+Konrad Haedener			<haedener@iacrs1.unibe.ch> 
+Steve Roseman			<lusgr@chili.CC.Lehigh.Edu>
+John Burton			<burton@asdsun.larc.nasa.gov>
+Thierry Forveille		<FORVEILL@FRGAG51.BITNET>
+Joubert Berger			<afc-tci!joubert>
+Minh Tran-Le			<tranle@intellicorp.com>
+Paul Amaranth			<amaranth@vela.acs.oakland.edu>
+Mark Whetzel			<markw@airgun.wg.waii.com>
+Daniel Packman			<pack@acd.ucar.edu>
+Ken Bowman			<bowman@uiatma.atmos.uiuc.edu>
+Cary E. Burnette		<kerm@mcnc.org>
+Christophe Wolfhugel		<wolf@grasp1.univ-lyon1.fr>
+Leonard B. Tropiano		<lenny@aixwiz.austin.ibm.com>
+Bill Wohler			<wohler@newt.com>
+James Salter			<jsalter@ibmpa.awdpa.ibm.com>
+Witold Jan Owoc			<witold@enme.ucalgary.ca>
+Marc Kwiatkowski		<marc@ultra.com>
+Ronald S. Woan			<woan@austin.ibm.com>
+Mijan Huq			<huq@hagar.ph.utexas.edu>
+Herbert van den Bergh		<hbergh@nl.oracle.com>
+Michael Stefanik		<mike@bria.UUCP>
+John F. Haugh			<jfh@rpp386.cactus.org>
+Ed Kubaitis			<ejk@ux2.cso.uiuc.edu>
+Jaime Vazquez			<jaime@austin.vnet.ibm.com>
+Bjorn Engsig			<bengsig@oracle.com>
+Frank Kraemer 			<kraemerf@franvm3.VNET.IBM.COM>
+Andreas Siegert                 <afx@muc.ibm.de>
+Thomas Braunbeck                <braunbec@aixserv.mainz.ibm.de>
+Marc Pawliger			<marc@sti.com>
+Mel Beckman			<mbeckman@mbeckman.mbeckman.com >
+Ole Holm Nielsen		<Ole.H.Nielsen@fysik.dtu.dk>
+David Dennerline		<d.dennerline@bull.com>
+_____________________________________________________________________________
+
+Opinions expressed here have nothing to do with IBM or my employer 
+infact most of these opinions are borrowed from other people :)
+
+All trademarks are the property of their respective owners.
+
+-- 
+Jeff Warrington
+jwarring@aol.net
+

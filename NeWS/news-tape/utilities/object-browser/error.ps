@@ -1,0 +1,71 @@
+%! /usr/NeWS/bin/psh
+
+% NeWS error handler using the object browser (NeWS1.1)
+%
+% Jeremy Huxtable
+%
+% Mon Jul 25 17:36:06 BST 1988
+
+% This file implements a NeWS error handler which allow you to actually
+% read your error messages before they shoot of the top of your terminal
+% emulator. When an error occurs, the error handler creates a dictionary
+% containing useful information about the error and the current process
+% and pops up a browser onto it.
+% Thus when you get an error, instead of 546 lines of fast-moving text,
+% you get a neat little window and can admire the error at your leisure.
+% As well as this, you can of course follow all the links in the dictionary
+% and find just where the error occurred.  If you are lucky, you might be
+% able to break all the cyclic references to things and get rid of all
+% those dead windows that tend to pile up during protracted debugging
+% sessions.
+
+% Bugs and missing features:
+%       - There should be an execution stack browser thet lets you
+%         see the execution stack in full, with the current operator
+%         in bold print or something.
+%       - I can't get this to load if I put it in my "user.ps" - I
+%         get an error executing "acceptconnection" (interrupted
+%         system call)!.
+
+systemdict begin
+
+% Change this path name to your own:-
+systemdict /Browser known not { (ps/lib/browser.ps) run } if
+
+/MyErrorDict dictbegin
+    StandardErrorNames { {MyErrorHandler} def } forall
+dictend def
+
+/MyErrorHandler {
+    % Must be careful with manipulating the stacks here, as otherwise
+    % our private stuff will appear in the browser!
+    /errordict OldErrorDict store
+    pop % Get rid of the "offending command" from stack
+    % create a dictionary of useful info. Note that we must get the
+    % process' stacks now as otherwise they disappear when the "killprocess"
+    % is done.
+    currentprocess /DictionaryStack get
+    7 dict begin
+	/DictionaryStack exch def
+	currentprocess /OperandStack get /OperandStack exch def
+	/ExecutionStack
+	    currentprocess /ExecutionStack get
+	    0 1 index length 4 sub getinterval
+	def % Remove this error handler from exec stack
+	/Interests currentprocess /Interests get def
+	/Error $error /errorname get def
+	/Executing $error /command get def
+	/Process currentprocess def
+	currentdict
+    end
+    50 600 (Error) 4 3 roll
+    framebuffer start_browser
+    /errordict MyErrorDict store
+    currentprocess killprocess
+} def
+
+/OldErrorDict systemdict /errordict known {errordict} {null} ifelse def
+/errordict MyErrorDict def
+
+end
+% End of error handler code.

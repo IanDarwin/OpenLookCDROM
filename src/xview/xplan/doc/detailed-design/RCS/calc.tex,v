@@ -1,0 +1,849 @@
+head	1.11;
+access;
+symbols;
+locks; strict;
+comment	@% @;
+
+
+1.11
+date	92.10.28.10.16.20;	author malingka;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	92.10.28.07.43.59;	author lacey;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	92.10.28.07.42.26;	author lacey;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	92.10.28.07.37.33;	author lacey;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	92.10.28.07.20.55;	author malingka;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	92.10.28.07.11.14;	author malingka;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	92.10.27.21.01.51;	author malingka;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	92.10.27.20.21.16;	author lacey;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	92.10.27.20.00.13;	author malingka;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	92.10.27.00.21.10;	author lacey;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	92.10.25.18.45.57;	author lacey;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.11
+log
+@*** empty log message ***
+@
+text
+@%*****************************************************************************
+% Remember, you need to be as detailed as possible in the description
+% of the modules in order to facilitate the coding task. Do not leave any 
+% room for ambiguity.
+%*****************************************************************************
+%
+% For each module and major submodule complete the following
+% section and subsections
+%
+\subsection{General Calculations Module}
+
+This module will check for dependency loop and generate the formatting info
+for PERT chart.
+
+% 
+% Include a data flow diagram for this module
+%
+\subsubsection{Data Flow Diagram}
+
+Figure ~\ref{calc:all:dfd} on page~\pageref{calc:all:dfd} presents the
+flow of data throughout this module.
+
+\begin{figure}
+\centering
+\centerline{\psfig{figure=calc_alldfd.ps,width=3in}}
+\caption[Data Flow Diagram for General Calculation Module]{Data flow diagram 
+for General Calculation Module.}
+\label{calc:all:dfd}
+\end{figure}
+
+%
+% Include a Structure Chart for this module
+%
+\subsubsection{Structure Chart}
+
+To gain some insight into the calling structure of this module, refer
+to Figure \ref{calc:all:sc} on page \pageref{calc:all:sc}.
+
+\begin{figure}
+\centering
+\centerline{\psfig{figure=calc_allsc.ps,width=6in}}
+\caption[Structure Chart for General Calculations Module]{Structure
+chart for General Calculations Module.}
+\label{calc:all:sc}
+\end{figure}
+
+%
+% Include a processing narrative for this module
+%
+\subsubsection{Narrative}
+
+This module will do all the calculation for checking the dependency loop and 
+calculate the position of each task on the PERT chart. \\
+
+Procedure {\bf traverse-task-list()} will act as a driver for this module. It will
+first call {\bf get-first-task()} from the database module to get a pointer to
+the beginning of the task list. It will then call a recursive function 
+{\bf visit-task()} which will traverse (depth-first-search) the task network.
+While visiting each node (or task), {\bf visit-task()} will do some calculations
+such as : 
+\begin{itemize}
+	\item {\em Determine the position of the node (or task) in the PERT chart.} \\
+		This is done by dividing the PERT screen into grids, much like a
+		spreadsheet, with rows and columns. The row and column is represented
+		as ordered pair row-column. For example, 1-2 refers to first row and
+		second column. Each PERT box (or task) will be placed inside a grid. 
+		Some processings are done also to make sure that the boxes won't be
+		displayed overlapped.
+	\item {\em Checking whether a node is visited more than it should, which means 
+		that a dependency loop exists.} \\
+		This is done by comparing the number of visits to a node (or task) with
+		the number of predecessors (or dependents). 
+	\item {\em Mark each node so that a critical path (the longest path through
+		the task list) can be found by traversing the task list backwards.} \\
+		Each time a path is traversed, we increment a {\em counter}. The path 
+		which contains a consecutive number from 1 to {\em counter} is the
+		longest path, which is also the critical path.
+\end{itemize}
+
+%
+% Include a PDL pseudocode description for this module
+%
+\subsubsection{PDL Description}
+
+\begin{verbatim}
+TYPE x-coord IS INTEGER;
+TYPE y-coord IS INTEGER;
+TYPE counter IS INTEGER;
+TYPE loop-found IS BOOLEAN;
+\end{verbatim}
+
+\begin{verbatim}
+PROCEDURE traverse-task-list;
+
+  TYPE pointer IS PTR TO TASKLIST;
+
+  CALL get-first-task PROCEDURE WITH pointer;
+  loop-found := FALSE;
+  CALL visit-task PROCEDURE WITH pointer;
+
+END traverse-task-list
+\end{verbatim}
+
+\begin{verbatim}
+PROCEDURE visit-task;
+INTERFACE pointer;
+
+  TYPE pointer IS PTR TO TASKLIST;
+
+  IF loop-found = FALSE
+     THEN BEGIN
+        IF pointer->number-of-visit > 0 
+           THEN BEGIN
+                y-coord := y-coord + 1;
+                RETURN
+                END
+           ELSE BEGIN
+                counter := counter + 1;
+                x-coord := x-coord + 1;
+                pointer->y-pert := y-coord;
+
+                IF counter > pointer->number-of-dependents
+                   THEN BEGIN
+                        loop-found := TRUE;
+                        display error message that a loop was found;
+                        RETURN
+                        END
+                   ELSE skip
+                ENDIF
+                
+                IF x-coord > pointer->x-pert
+                   THEN pointer->x-pert := x-coord;
+                   ELSE skip
+                ENDIF
+                END (ELSE)
+                
+                DO FOR each dependent xyz in dependency list
+                   CALL visit-task PROCEDURE WITH PTR to xyz;
+                ENDFOR
+
+                IF dependent list = NIL
+                   THEN y-coord := y-coord + 1;
+                ELSE skip
+                ENDIF
+
+                counter := counter - 1;
+                x-coord := x-coord - 1;
+                pointer->number-of-visit = 1; 
+        ENDIF
+     ELSE skip
+  ENDIF
+END visit-task
+\end{verbatim}
+
+%
+% Include a description of the interfaces for this module.
+% This should include a list of data elements passed between
+% modules.  The data elements described here should either be
+% described in the next subsection or in the relevant owner's
+% data dictionary
+%
+\subsubsection{Internal Interfaces}
+
+As mentioned above, procedure {\bf traverse-task-list()} will call two other
+functions : {\bf get-first-task()} which will return a pointer to the beginning of
+the task list, and {\bf visit-task()} which will accept the pointer returned by
+{\bf get-first-task()}.
+
+%
+% Include a data dictionary for this module.  The format should be:
+%  
+% Name: (this is the name of the data item)
+% Aliases: (this is a list of aliases, if any)
+% Where Used/ How Used: (this is a paired list of where the item is
+%     used and how it is used
+% Description: (this is a demarco description of the data item)
+%
+\subsubsection{Data Dictionary}
+
+\begin{enumerate}
+\item 
+\begin{description}
+\item[Name:] x-coord, y-coord
+\item[Where/How Used:] x-coord and y-coord are global variables that are used to 
+determine the current position of a task box in a PERT chart. They are used by 
+{\bf visit-task()}.
+\item[Description:] x-coord = y-coord = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] counter
+\item[Where/How Used:] This is a global variable used by {\bf visit-task()} which
+is used to keep track the number of times a node is visited. 
+\item[Description:] counter = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] loop-found
+\item[Where/How Used:] This is a boolean global variable used by {\bf visit-task()}.
+When a dependency loop is found, loop-found is set to {\em true} so that 
+{\bf visit-task()} will terminate all the recursive calls.
+\item[Description:] loop-found = [true | false]
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] pointer
+\item[Where/How Used:] This is a pointer to the beginning of the task list. It is
+passed by {\bf get-first-task()} and is transferred by {\bf traverse-task-list()}
+to {\bf visit-task()}.
+\item[Description:] pointer = *pointer to task list*
+\end{description}
+
+\end{enumerate}
+
+%*****************************************************************************
+% Remember, you need to be as detailed as possible in the description
+% of the modules in order to facilitate the coding task. Do not leave any 
+% room for ambiguity.
+%*****************************************************************************
+%
+% For each module and major submodule complete the following
+% section and subsections
+%
+\subsection{Gantt Calculation Module}
+
+This module will calculate the position of the bars on the Gantt chart.
+
+% 
+% Include a data flow diagram for this module
+%
+\subsubsection{Data Flow Diagram}
+
+Figure~\ref{calc:gantt:dfd} on page~\pageref{calc:gantt:dfd} presents the
+flow of data throughout this module.
+
+\begin{figure}
+\centering
+\centerline{\psfig{figure=calc_ganttdfd.ps,width=3in}}
+\caption[Data Flow Diagram for Gantt Calculation Module]{Data
+flow diagram for Gantt Calculation Module.}
+\label{calc:gantt:dfd}
+\end{figure}
+
+%
+% Include a Structure Chart for this module
+%
+\subsubsection{Structure Chart}
+
+To gain some insight into the calling structure of this module, refer
+to Figure \ref{calc:gantt:sc} on page \pageref{calc:gantt:sc}.
+
+\begin{figure}
+\centering
+\centerline{\psfig{figure=calc_ganttsc.ps,width=6in}}
+\caption[Structure Chart for Gantt Calculation Module]{Structure
+chart for Gantt Calculation Module.}
+\label{calc:gantt:sc}
+\end{figure}
+
+%
+% Include a processing narrative for this module
+%
+\subsubsection{Narrative}
+
+This modules consists of two procedures, one being a recursive function.
+Procedure {\bf calculate-gantt()} will first call {\bf get-first-task()} to
+get the pointer to the beginning of task list. It will then call the recursive
+function {\bf gantt-visit()} and pass the pointer as parameter. Function 
+{\bf gantt-visit()} will traverse the task list using a modified depth-first-search 
+method. Instead of traversing all the way to the leaf nodes, {\bf gantt-visit()} will
+{\em back up} each time it reach a node ,say node A, that have more than one 
+predecessors. It can only pass node A if all the predecessors of A have been visited.
+This will ensure that tasks are processed in a head to tail manner, so that the
+Gantt bars are calculated in semi-chronological order.
+
+%
+% Include a PDL pseudocode description for this module
+%
+\subsubsection{PDL Description}
+
+\begin{verbatim}
+TYPE date-length IS INTEGER;
+TYPE reference-point IS INTEGER;
+TYPE first-date IS INTEGER;
+TYPE y-down IS INTEGER;
+\end{verbatim}
+
+
+\begin{verbatim}
+PROCEDURE calculate-gantt;
+
+  CALL get-first-task PROCEDURE WITH pointer;
+  CALL gantt-visit PROCEDURE WITH pointer;
+
+END calculate-gantt
+\end{verbatim}
+
+\begin{verbatim}
+PROCEDURE gantt-visit;
+INTERFACE pointer;
+
+  pointer->number-of-visits := pointer->number-of-visits + 1;
+  
+  IF pointer->number-of-visits > pointer->number-of-dependents
+     THEN BEGIN
+          pointer->x-gantt = reference-point + pointer->planned-start-date -
+                             first-date;
+          y-down := y-down + 1;
+          pointer->y-gantt := y-down;
+          pointer->length := date-length * pointer->duration;
+          
+          DO FOR each dependent q in the task-list
+             CALL gantt-visit PROCEDURE WITH PTR to q;
+          END
+     ELSE skip
+  ENDIF
+END gantt-visit
+\end{verbatim}
+
+%
+% Include a description of the interfaces for this module.
+% This should include a list of data elements passed between
+% modules.  The data elements described here should either be
+% described in the next subsection or in the relevant owner's
+% data dictionary
+%
+\subsubsection{Internal Interfaces}
+
+Procedure {\bf calculate-gantt()} will behave as a driver. It calls 
+{\bf get-first-task()} to get the pointer to the beginning of task list, and 
+calls {\bf visit-gantt()} to calculate the Gantt bars' position and length.
+
+%
+% Include a data dictionary for this module.  The format should be:
+%  
+% Name: (this is the name of the data item)
+% Aliases: (this is a list of aliases, if any)
+% Where Used/ How Used: (this is a paired list of where the item is
+%     used and how it is used
+% Description: (this is a demarco description of the data item)
+%
+\subsubsection{Data Dictionary}
+
+\begin{enumerate}
+
+\item
+\begin{description}
+\item[Name:] date-length
+\item[Where/How Used:] This is a global variable that will store the length of
+each day in the Gantt chart. It is used by {\bf visit-gantt()} to calculate the
+length of the bar for a given task.
+\item[Description:] date-length = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] reference-point
+\item[Where/How Used:] This is a global variable that denotes the starting point
+on the Gantt chart where the dates are displayed. It is used in {\bf visit-gantt()}
+to calculate the starting position of each bar on the chart.
+\item[Description:] reference-point = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] first-date
+\item[Where/How Used:] This is a global variable which contains the planned start
+date of the first task. It is used in {\bf visit-gantt()} to calculate the starting 
+position of each bar on the chart.
+\item[Description:] first-date = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] y-down
+\item[Where/How Used:] This is a global variable that will store the y coordinate
+offset of a bar in Gantt chart. This is used in {\bf visit-gantt()}. Each time a task 
+is processed, {\bf visit-gantt()} will increment the offset by one, therefore
+the next task (or subtask) will be displayed underneath the current task.
+\item[Description:] y-down = *integer range 0..MAXINT*
+\end{description}
+
+\item
+\begin{description}
+\item[Name:] pointer
+\item[Where/How Used:] This is a pointer to the beginning of the task list. It is
+passed by {\bf get-first-task()} and is transferred by {\bf calculate-gantt()}
+to {\bf visit-gantt()}.
+\item[Description:] pointer = *pointer to task list*
+\end{description}
+
+\end{enumerate}
+@
+
+
+1.10
+log
+@*** empty log message ***
+@
+text
+@d25 1
+a25 1
+\centerline{\psfig{figure=calc_alldfd.ps,width=6in}}
+d59 1
+a59 1
+While visiting each node (or task), {\bf visit-task()} will do some calculation
+d67 1
+a67 1
+		Some processing are done also to make sure that the boxes won't be
+d241 1
+a241 1
+\centerline{\psfig{figure=calc_ganttdfd.ps,width=6in}}
+@
+
+
+1.9
+log
+@*** empty log message ***
+@
+text
+@d216 2
+d346 2
+@
+
+
+1.8
+log
+@*** empty log message ***
+@
+text
+@d25 1
+a25 1
+\centerline{\psfig{figure=calc-alldfd.ps,width=6in}}
+d41 1
+a41 1
+\centerline{\psfig{figure=calc-allsc.ps,width=6in}}
+d239 1
+a239 1
+\centerline{\psfig{figure=calc-ganttdfd.ps,width=6in}}
+d255 1
+a255 1
+\centerline{\psfig{figure=calc-ganttsc.ps,width=6in}}
+d390 2
+@
+
+
+1.7
+log
+@spell checking.
+@
+text
+@d25 1
+a25 1
+\centerline{\psfig{figure=calc_alldfd.ps,width=6in}}
+d41 1
+a41 1
+\centerline{\psfig{figure=calc_allsc.ps,width=6in}}
+d55 2
+a56 2
+Procedure {\bf traverse_task_list()} will act as a driver for this module. It will
+first call {\bf get_first_task()} from the database module to get a pointer to
+d58 2
+a59 2
+{\bf visit_task()} which will traverse (depth-first-search) the task network.
+While visiting each node (or task), {\bf visit_task()} will do some calculation
+d86 2
+a87 2
+TYPE x_coord IS INTEGER;
+TYPE y_coord IS INTEGER;
+d89 1
+a89 1
+TYPE loop_found IS BOOLEAN;
+d93 1
+a93 1
+PROCEDURE traverse_task_list;
+d97 3
+a99 3
+  CALL get_first_task PROCEDURE WITH pointer;
+  loop_found := FALSE;
+  CALL visit_task PROCEDURE WITH pointer;
+d101 1
+a101 1
+END traverse_task_list
+d105 1
+a105 1
+PROCEDURE visit_task;
+d110 1
+a110 1
+  IF loop_found = FALSE
+d112 1
+a112 1
+        IF pointer->number_of_visit > 0 
+d114 1
+a114 1
+                y_coord := y_coord + 1;
+d119 2
+a120 2
+                x_coord := x_coord + 1;
+                pointer->y_pert := y_coord;
+d122 1
+a122 1
+                IF counter > pointer->number_of_dependents
+d124 1
+a124 1
+                        loop_found := TRUE;
+d131 2
+a132 2
+                IF x_coord > pointer->x_pert
+                   THEN pointer->x_pert := x_coord;
+d138 1
+a138 1
+                   CALL visit_task PROCEDURE WITH PTR to xyz;
+d142 1
+a142 1
+                   THEN y_coord := y_coord + 1;
+d147 2
+a148 2
+                x_coord := x_coord - 1;
+                pointer->number_of_visit = 1; 
+d152 1
+a152 1
+END visit_task
+d164 4
+a167 4
+As mentioned above, procedure {\bf traverse_task_list()} will call two other
+functions : {\bf get_first_task()} which will return a pointer to the beginning of
+the task list, and {\bf visit_task()} which will accept the pointer returned by
+{\bf get_first_task()}.
+d183 2
+a184 2
+\item[Name:] x_coord, y_coord
+\item[Where/How Used:] x_coord and y_coord are global variables that are used to 
+d186 2
+a187 2
+{\bf visit_task()}.
+\item[Description:] x_coord = y_coord = *integer range 0..MAXINT*
+d193 1
+a193 1
+\item[Where/How Used:] This is a global variable used by {\bf visit_task()} which
+d200 5
+a204 5
+\item[Name:] loop_found
+\item[Where/How Used:] This is a boolean global variable used by {\bf visit_task()}.
+When a dependency loop is found, loop_found is set to {\em true} so that 
+{\bf visit_task()} will terminate all the recursive calls.
+\item[Description:] loop_found = [true | false]
+d211 2
+a212 2
+passed by {\bf get_first_task()} and is transferred by {\bf traverse_task_list()}
+to {\bf visit_task()}.
+d239 1
+a239 1
+\centerline{\psfig{figure=calc_ganttdfd.ps,width=6in}}
+d255 1
+a255 1
+\centerline{\psfig{figure=calc_ganttsc.ps,width=6in}}
+d267 1
+a267 1
+Procedure {\bf calculate_gantt()} will first call {\bf get_first_task()} to
+d269 3
+a271 3
+function {\bf gantt_visit()} and pass the pointer as parameter. Function 
+{\bf gantt_visit()} will traverse the task list using a modified depth-first-search 
+method. Instead of traversing all the way to the leaf nodes, {\bf gantt_visit()} will
+d283 4
+a286 4
+TYPE date_length IS INTEGER;
+TYPE reference_point IS INTEGER;
+TYPE first_date IS INTEGER;
+TYPE y_down IS INTEGER;
+d291 1
+a291 1
+PROCEDURE calculate_gantt;
+d293 2
+a294 2
+  CALL get_first_task PROCEDURE WITH pointer;
+  CALL gantt_visit PROCEDURE WITH pointer;
+d296 1
+a296 1
+END calculate_gantt
+d300 1
+a300 1
+PROCEDURE gantt_visit;
+d303 1
+a303 1
+  pointer->number_of_visits := pointer->number_of_visits + 1;
+d305 1
+a305 1
+  IF pointer->number_of_visits > pointer->number_of_dependents
+d307 5
+a311 5
+          pointer->x_gantt = reference_point + pointer->planned_start_date -
+                             first_date;
+          y_down := y_down + 1;
+          pointer->y_gantt := y_down;
+          pointer->length := date_length * pointer->duration;
+d313 2
+a314 2
+          DO FOR each dependent q in the task_list
+             CALL gantt_visit PROCEDURE WITH PTR to q;
+d318 1
+a318 1
+END gantt_visit
+d330 3
+a332 3
+Procedure {\bf calculate_gantt()} will behave as a driver. It calls 
+{\bf get_first_task()} to get the pointer to the beginning of task list, and 
+calls {\bf visit_gantt()} to calculate the Gantt bars' position and length.
+d347 1
+a347 1
+\item[Name:] date_length
+d349 1
+a349 1
+each day in the Gantt chart. It is used by {\bf visit_gantt()} to calculate the
+d351 1
+a351 1
+\item[Description:] date_length = *integer range 0..MAXINT*
+d356 1
+a356 1
+\item[Name:] reference_point
+d358 1
+a358 1
+on the Gantt chart where the dates are displayed. It is used in {\bf visit_gantt()}
+d360 1
+a360 1
+\item[Description:] reference_point = *integer range 0..MAXINT*
+d365 1
+a365 1
+\item[Name:] first_date
+d367 1
+a367 1
+date of the first task. It is used in {\bf visit_gantt()} to calculate the starting 
+d369 1
+a369 1
+\item[Description:] first_date = *integer range 0..MAXINT*
+d374 1
+a374 1
+\item[Name:] y_down
+d376 2
+a377 2
+offset of a bar in Gantt chart. This is used in {\bf visit_gantt()}. Each time a task 
+is processed, {\bf visit_gantt()} will increment the offset by one, therefore
+d379 1
+a379 1
+\item[Description:] y_down = *integer range 0..MAXINT*
+d386 2
+a387 2
+passed by {\bf get_first_task()} and is transferred by {\bf calculate_gantt()}
+to {\bf visit_gantt()}.
+@
+
+
+1.6
+log
+@finished General Calc & Gantt module
+
+@
+text
+@d58 2
+a59 2
+{bf visit_task()} which will traverse (depth-first-search) the task network.
+While visiting each node (or task), {bf visit_task()} will do some calculation
+@
+
+
+1.5
+log
+@finished visit-task()
+@
+text
+@d10 1
+a10 1
+\subsection{Calculations Module}
+d12 3
+d20 11
+d36 11
+d52 28
+d86 2
+a87 2
+TYPE x-coord IS INTEGER;
+TYPE y-coord IS INTEGER;
+d89 1
+a89 1
+TYPE loop-found IS BOOLEAN;
+d93 1
+a93 1
+PROCEDURE traverse-task-list;
+d97 3
+a99 3
+  CALL get-first-task PROCEDURE WITH pointer;
+  loop-found := FALSE;
+  CALL visit-task PROCEDURE WITH pointer;
+d101 1
+a101 1
+END traverse-task-list
+d105 1
+a105 1
+PROCEDURE visit-task;
+d108 3
+a110 1
+  IF loop-found = FALSE
+d114 1
+a114 1
+                y-coord := y-coord + 1;
+d119 2
+a120 2
+                x-coord := x-coord + 1;
+                pointer->y-pert := y-coord;
+d124 1
+a124 1
+                        loop-found := TRUE;
+d131 2
+a132 2
+                IF x-coord > pointer->x-pert
+                   THEN pointer->x-pert := x-coord;
+d138 1
+a138 1
+                   CALL visit-task PROCEDURE WITH PTR to xyz;
+d140 9
+d152 1
+d155 8
+a162 3
+% --- commented out because they cause error (mml)
+%\begin{verbatim}
+%\end{verbatim}
+d164 5
+d170 152
+d330 4
+d345 8
+d354 36
+@
+
+
+1.4
+log
+@Commented out a couple lines that were causing an error.
+@
+text
+@d82 3
+a84 1
+
+@
+
+
+1.3
+log
+@finish part of PDL.
+@
+text
+@d88 4
+a91 2
+\begin{verbatim}
+\end{verbatim}
+@
+
+
+1.2
+log
+@list
+@
+text
+@d32 58
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d10 1
+a10 1
+\subsection{Graphical User Interface}
+@

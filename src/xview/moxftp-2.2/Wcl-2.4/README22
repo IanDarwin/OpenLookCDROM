@@ -1,0 +1,283 @@
+SccsID: @(#) README 1.9 92/06/10 06:09:50
+
+Widget Creation Library Version 2.02 Distribution
+------------------------------------------------
+
+The distribution contains files which make up the Widget Creation
+Library (Wcl or libWc.a), and resource interpreters and utility
+libraries (which include Table widgets) for each of the following
+widget sets: Athena, Cornell, Motif, and OpenLook.
+
+Wcl is completely widget set independent.  It provides mechanisms to
+allow an entire user interface to be specified in resource files.
+Basically, this amounts to providing new resources for specifying the
+types of the widgets and the widget heirarchy.  In addition, Wcl
+provides several callbacks and action functions which many programs
+need.
+
+See README20 for general information about Wcl version 2.
+
+New Features of Wcl 2.01
+------------------------
+
+XmpTable and XpTable	- Can force all children to shrink.
+
+New Features of Wcl 2.02
+------------------------
+
+Methods			- Callbacks can now also be methods.  Also,
+			  dynamic binding of methods and callbacks are
+			  now cleanly supported.
+Resource Visibility	- New resources are provided which provide
+			  visibility of the resource database at
+			  template load time and at widget creation time.
+XmpTable and XpTable	- minor bug fixes: fully dynamic tables now size
+			  simple children correctly.
+XmpChangeNavigationType	- Callback, action, and procedure, no arguments.
+			  Invokes _XmChangeNavigationType() to set the
+			  tab group in the same way that Motif dialogs
+			  set tab groups.
+New Callbacks		- WcSameSize( child, child [, child ...] ) makes
+			  all the named widgets the same size.  Useful
+			  for custom dialogs and complex layouts.
+
+Resources Used by Wcl 2.02
+--------------------------
+
+Wcl fetches three different groups of resources from the Xrm resource
+database:  Library Wide resources, Pre-Creation widget instance
+resources, and Post-Creation widget instance resources.  Each of these
+groups are discussed below.
+
+
+Library Wide Resources
+----------------------
+
+These resources are fetched once when the Wcl library is initialized
+(before any widgets are created by Wcl).  They provide attributes for
+Wcl, and control some of the behavior of Wcl.
+
+   wclResFiles:			List of resource files to load which
+				describe the complete user interface.
+   wclErrorDatabaseFile:	Full path name of the file which
+				contains overrides for Wcl library
+				warning and error messages.
+   wclWidgetResourceFiles:	Reserved for future enhancement.
+   wclTemplateFiles:		(requires X11R5)  List of template files
+				which can provide resources which can be
+				applied to widgets before they are
+				created.  Name of the file is the name
+				of the template.
+   wclTraceTemplateDef:		(requires X11R5)  If True, this causes
+				template resource specifications to be
+				printed to stderr as the template files
+				are read by Wcl.  Defaults to False.
+   wclDynamicLibs:		(requires SVR4 or SunOS)  Full path names
+				of dynamic libraries which can then be more
+				conveniently named using -lName syntax by
+				WcDynamicCallback or WcDynamicAction.
+
+Pre-Creation Resources for Widget Instances
+-------------------------------------------
+
+All of these resources are fetched given the name of a widget which is
+to be created.  Wcl cannot reliably detect the widget class until after
+a widget is created, hence these resources must be specified for a
+widget instance name, NOT for a widget class name.
+
+   wcPreCreateDumpResources:	(requires X11R5)  Dump all resources which 
+				apply to the widget (before a templates is
+				applied and) before the widget is created.
+   wcTemplate:			(requires X11R5)  Name of template to apply
+				to widget.  
+   wcTraceTemplate:		(requires X11R5) Dump to stderr all template
+				resources as they are applied to the resource
+				database.
+   wcPostTemplateDumpResources:	(requires X11R5)  Dump all resources which
+				apply to the widget after a template has
+				been sucessfully applied to the widget, but
+				still before the widget is created.
+   wcCreate:			Name of widget class, widget class pointer,
+				or widget constructor function.
+
+(for backward compatibility these are also supported)
+
+   WcNwcClassName:		Name of widget class.
+   WcNwcClass:			Name of widget class pointer.
+   WcNwcConstructor:		Name of widget constructor function.
+
+
+Post-Creation Resources for Widget Instances
+--------------------------------------------
+
+All of these resources are fetched after the widget is created, so a
+widget class name may be used (*XmPushButton.wcTrace: True).  Also,
+since some constructor functions may introduce additional widgets into
+the widget heirarchy, you may need to put an `*' before the widget
+instance name.  Some of the constructors which introduce such
+additional widgets are XmCreatePulldownMenu, XmCreatePopupMenu,
+XmCreateWarningDialog, and many others.
+
+For example:
+
+	*foo.wcPopups:	warning
+
+	*foo.warning.wcCreate:	XmCreateWarningDialog
+	*foo*warning.wcTrace:	True
+
+Note that the wcCreate resource is a pre-creation resource, and so does
+not need the `*' between "foo" and "warning" yet the wcTrace resource
+is a post-creation resource, and the constructor used does introduce a
+dialog shell widget between "foo" and "warning" hence the need for the
+`*' between "foo" and "warning".
+
+   wcTrace:		Trace widget creation to stderr: prints the widget
+			instance heirarchy from root and the class name:
+			i.e., the type of the created widget.
+   wcPostCreateDumpResources:
+			(requires X11R5)  Dump all resources which apply to
+			a widget.  Since the widget has been created, both
+			instance specific and widget class applicable
+			resources will be seen.  The resources printed will
+			be all those which could have been fetched by Wcl
+			and by the widget itself when it was created.
+   wcCallback:		Callbacks invoked after the widget instance is
+			created and before any popup or normal children are
+			created.
+   wcPopups:		Popup widgets to be created.  Any widget can have
+			popup children.  Popup children are created before
+			normal children.
+   wcAfterPopups:	Callbacks invoked if a widget has popup children,
+			after the popup children have been created.
+   wcChildren:		Normal widget children to be created.  Only Composite
+			widgets can have normal children, Primitive widgets
+			cannot.
+   wcAfterChildren:	Callbacks invoked if a widget has normal children, 
+			after the normal children are created.
+   wcAfterManageChildren:
+			Callbacks invoked if a widget has normal children, 
+			after the normal children are created and any which
+			have their wcManaged resource set to be True (even
+			if no children have their wcManaged resource True).
+   wcManaged:		Defaults to True.  This resource only applies to
+			normal children, not to popup children.  If True,
+			the widget is managed after it is created.
+
+
+Methods
+-------
+
+This is really cool stuff, IMHO.  The basic idea is there is a 1:1
+mapping between some widget in the interface and some object
+implemented by the application.  Such objects generally have attributes
+and methods.  Attributes map to things like text or label widgets,
+methods are invoked by buttons, menus, and action procedures fired from
+various widgets.  Therefore, it is generally useful to be able to
+ascend a widget tree to find an object of a specified class which is
+then passed as an argument to the callback procedure.
+
+Objects commonly have components (you C++ people may be struggling
+under the bizarre and less useful concept of "multiple inheritance").
+Therefore, it is often useful to have several different objects of
+different types which are represented by widgets in the tree above some
+"primitive" widget.
+
+For example, take a hypothetical text editor.  It has
+paragraph objects, font style objects, and documents.  A dialog 
+exists for setting and displaying paragraph attributes, another for
+font style attributes, and another for setting entire document
+attributes (file name, permissions, print format, etc).  Buttons on the
+paragraph dialog usually invoke methods on paragraph objects, but may
+also invoke methods on the entire document, or even all font styles
+used by a paragraph.  To support this, Wcl allows the following:
+
+  *parDialog.ok:  Paragraph::Update(), Font::Update(), Document::Update()
+
+Wcl then goes up the tree to find the paragraph which is CURRENTLY
+related to the dialog.  Note that there may be multiple object classes,
+and these may be found mapped to any widget ancestor.  Also, note that
+is is possible and very typical to change the instance which is
+represented by a given widget tree dynamically.  For example, the
+specific paragraph object mapped to a paragraph dialog probably should
+change whenever the insertion point moves to a new paragraph.  The
+application must tell Wcl which object is the current object of a given
+class.  Wcl provides the new procedures WcAttachThisToWidget() and
+WcDetachThisFromWidget() to enable the application to attach and detach
+objects (arbitrary pointers) to widgets, and to tell Wcl the name of
+the class to which these pointers belong.
+
+If the application wants to use a different scheme to map widgets to
+object instances, it can change the function used by Wcl to find objects
+using the new Wcl function WcSetFindObjectFunc().
+
+This requires Wcl to do some late binding.  It must find the object at
+invocation time, and it also waits until the first invocation to find the
+method address.  This allows the application to distribute the callback
+name registration more conveniently.
+
+On SVR4 and SunOS derived systems, the methods can be truly dynamically
+bound.  You can specifify the libraries to find object methods in like
+this:
+
+*wclDynamicLibraries:	/usr/lib/Doc/libPar.so /usr/lib/Doc/libSS.so \
+			/usr/home/david/Whiz-Bang/libDoc.so
+
+For non-method ("old-fashioned") callbacks and for methods, you can now
+do this:
+
+  *parDialog.ok:  -lPar::UpdateCB() -lDoc::Document::Update()
+
+This tells Wcl to dynamically link the library .../libPar.so to get the
+function with the name UpdateCB, and to dynamically link the library
+.../libDoc.so to get the method Document::Update().  Note you may freely
+mix these styles.
+
+Old-fashioned callbacks are still called with the identical clientData
+as in earlier releases of Wcl.  Methods are called with a special
+struct which contains the object, and registration time client data,
+AND the characters within parens.  Note that Wcl can unambiguously tell
+if a method or an old-fashioned callback is to be invoked by the
+syntax:  if there is no "::" then it is an old-fashioned callback.  If
+it starts with "-l" then it requires dynamic linking the first time.  If
+it starts with a <class-name>:: then its a new-fangled method.
+
+
+Build Instructions
+
+------------------
+
+See README_BUILD for detailed instructions on how to build the
+distribution.
+
+If you are using imake, you MUST look at Wc.tmpl and make the necessary
+edits.  The distribution provides several versions of this file,
+probably NONE are exactly what you need:
+
+ Wc.tmpl	My machine, an IPX with X11R5, Motif, OpenLook widgets,
+		and debugged Xt library with memory tracing enabled.
+
+ Wc.tmpl.irix	Should work as-is on Irix (Silicon Graphics) machines with
+		SGI X (R4) and Motif installations.
+
+
+If you are using make, you MUST look at WcMake1.tmpl and WcMake2.tmpl.
+Again, a couple of different versions of these files are provided, but
+you almost certainly must do something to make it build on your
+platform.
+
+ WcMake1.tmpl	These work on my machine
+ WcMake2.tmpl
+
+ WcMake1.svr4	These work on SVR4 machines with X11R4 and Motif 1.1.
+ WcMake2.svr4
+
+ WcMake1.sco	These work on SCO Open Desk Top machines.  Whew!
+ WcMake2.sco
+
+------------------------------------------------------------
+David E. Smyth                David.Smyth@sniap.mchp.sni.de
+Object/X Researcher           david@ap542.uucp
+Esprit Research               david%ap542@ztivax.siemens.com
+Funding provided by: Siemens Nixdorf Informationssysteme AG
+                     AP 154, Carl-Wery-Str 22, Munich 83 Germany
+

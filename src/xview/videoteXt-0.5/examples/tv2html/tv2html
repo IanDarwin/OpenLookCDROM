@@ -1,0 +1,198 @@
+#!/bin/bash
+
+[ $1 ] && TV2HTML_DIR=$1
+if [ ! -d "$TV2HTML_DIR" ]; then
+  echo 'Usage: tv2html <directory>' >&2
+  exit 1
+fi
+
+echo This is tv2html, started on `date`
+
+[ -d $TV2HTML_DIR/html ] && rm -fr $TV2HTML_DIR/html
+mkdir $TV2HTML_DIR/html
+idx=$TV2HTML_DIR/html/TV.html
+									# Title for station-index
+echo '<HTML>
+<HEAD>
+<TITLE>Fernsehprogramme</TITLE>
+<LINK REV="made" HREF="mailto:'$TV2HTML_MAIL'">
+</HEAD>
+
+<BODY>
+<H1>Fernsehprogramme</H1>
+<UL>' > $idx
+
+for db in $TV2HTML_DIR/*.db; do
+  station=`basename $db .db`
+  station_name=`echo $station | sed -e 's/_/ /g'`
+  echo processing $station_name
+
+  if [ $station != "All_stations" ]; then			# Entry for station-index
+    echo '<LI><A HREF="'$station'_idx.html">'"$station_name"'</A>' >> $idx
+  fi
+
+  mv $db $db.tmp						# Remove old entries from database
+  date '+%y%m%d {TODAY}' >> $db.tmp
+  sort $db.tmp | uniq | gawk '
+    { if (dump && $0 != "") print }
+    /^...... {TODAY}$/ { dump = 1 }
+  ' > $db
+  rm -f $db.tmp
+
+  gawk -v "station=$station" -v "dir=$TV2HTML_DIR/html" -v "mail=$TV2HTML_MAIL" -v "maint=$TV2HTML_MAINT" -v "home=$TV2HTML_HOMEURL" '
+
+    function fmtdate(datestr,   daystr, cmd, dow) {	# Returns formatted date (with weekday)
+      split("Sonntag Montag Dienstag Mittwoch Donnerstag Freitag Samstag", daystr, " ")
+
+      cmd = "date \"-d " substr(datestr, 3, 2) "/" substr(datestr, 5, 2) "/" substr(datestr, 1, 2) "\" \"+%w\""
+      cmd | getline dow
+      close(cmd)
+      return daystr[dow + 1] ", " substr(date, 5, 2) "." substr(date, 3, 2) "." substr(date, 1, 2)
+    }
+
+    BEGIN {
+      all_stations = 0
+      if (station == "All_stations") {
+        all_stations = 1
+      }
+      station_name = station
+      gsub(/_/, " ", station_name)
+      idxfile= dir "/" station "_idx.html"
+      print "<HTML>\n<HEAD>" > idxfile					# Title for date-index
+      if (all_stations) {
+        print "<TITLE>TV-Gesamtübersicht</TITLE>" > idxfile
+      } else {
+        print "<TITLE>" station_name "-Fernsehprogramm</TITLE>" > idxfile
+      }
+      print "<LINK REV=\"made\" HREF=\"mailto:" mail "\">" > idxfile
+      print "</HEAD>\n\n<BODY>" > idxfile
+      if (all_stations) {
+        printf "<H1>TV-Gesamtübersicht</H1>\n<UL>\n<LI>" > idxfile
+      } else {
+        printf "<H1>" station_name "-Fernsehprogramm</H1>\n<UL>\n<LI>" > idxfile
+      }
+      print "<A HREF=\"" station "_today.html\">Heute</A><P>\n" > idxfile
+    }
+
+    { 
+      gsub(/«UT»/, "<IMG SRC=\"untertitel.gif\" ALT=\"[UNTERTITEL]\">", $0)
+      gsub(/«BB»/, "<IMG SRC=\"breitbild.gif\" ALT=\"[BREITBILD]\">", $0)
+      gsub(/«ZK»/, "<IMG SRC=\"zweikanal.gif\" ALT=\"[ZWEIKANAL]\">", $0)
+      linecount = split($0, line, "~")
+      if (line[1] != date) {
+        if (outfile != "") {						# Footer for program-page
+          print "</PRE>\n<HR><I><A HREF=\"" home "\">" maint "</A>/tv2html, " strftime("%d.%m.%y, %H:%M") "</I>\n</BODY>\n</HTML>" > outfile
+          close(outfile)
+        }
+        date = line[1]
+        outfile = dir "/" station date ".html"
+        print "<HTML>\n<HEAD>" > outfile				# Title for program-page
+        if (all_stations) {
+          printf "<TITLE>TV-Gesamtübersicht" > outfile
+        } else {
+          printf "<TITLE>" station_name "-Fernsehprogramm" > outfile
+        }
+        print " für " fmtdate(date) "</TITLE>" > outfile
+        print "<LINK REV=\"made\" HREF=\"mailto:" mail "\">" > outfile
+        print "</HEAD>\n\n<BODY>" > outfile
+        if (all_stations) {
+          printf "<H1>TV-Gesamtübersicht" > outfile
+        } else {
+          printf "<H1>" station_name "-Fernsehprogramm" > outfile
+        }
+        print " für " fmtdate(date) "</H1>" > outfile
+        if (all_stations) {
+          print "<PRE>\n       <I>VPS   Sender</I>" > outfile
+        } else {
+          print "<PRE>\n       VPS" > outfile
+        }
+									# Entry for date-index
+        print "<LI><A HREF=\"" station date ".html\">" fmtdate(date) "</A>" > idxfile
+      }
+      printf substr(line[2], 1, 2) "." substr(line[2], 3, 2) "  " > outfile
+      if (line[2] != line[3]) {						# Entry for program-page
+        if (line[3] == "2500") {
+          printf "----  " > outfile
+        } else {
+          printf line[3] "  " > outfile
+        }
+      } else {
+        printf "      " > outfile
+      }
+      if (all_stations) {
+        gsub(/_/, " ", line[4])
+        printf line[4] substr("          ", 1, 10 - length(line[4])) > outfile
+      }
+      print line[5] > outfile
+      for (entry = 6; entry <= linecount; entry++) {
+        if (all_stations) {
+          printf "          " > outfile
+        }
+        print "             " line[entry] > outfile
+      }
+    }
+
+    END {
+      if (outfile == "") {					# Message if no data is available
+        outfile = dir "/" station "_today.html"
+        print "<HTML>\n<HEAD>" > outfile
+        print "<TITLE>Kein Programm vorhanden</TITLE>" > outfile
+        print "<LINK REV=\"made\" HREF=\"mailto:" mail "\">" > outfile
+        print "</HEAD>\n\n<BODY>" > outfile
+        print "Für diesen Sender ist zur Zeit leider kein Fernsehprogramm verfügbar." > outfile
+      } else {							# Footer for last program-page
+        print "</PRE>\n<B>Achtung:</B> Diese Seite ist evtl. noch nicht vollständig." >  outfile
+        print "Sie wird beim nächsten Update ergänzt." > outfile
+      }
+      print "<HR><I><A HREF=\"" home "\">" maint "</A>/tv2html, " strftime("%d.%m.%y, %H:%M") "</I>\n</BODY>\n</HTML>" > outfile
+								# Footer for index-page
+      print "</UL>\n<HR><I><A HREF=\"" home "\">" maint "</A>/tv2html, " strftime("%d.%m.%y, %H:%M") "</I>\n</BODY>\n</HTML>" > idxfile
+    }
+  ' $db
+
+  if ! [ -f $TV2HTML_DIR/html/${station}_today.html ]; then
+    ln -sf $station`date "+%y%m%d"`.html $TV2HTML_DIR/html/${station}_today.html
+  fi
+done
+								# Footer for index-page
+echo '<P>
+<LI><A HREF="All_stations_idx.html">Gesamtübersicht über alle Sender</A>
+</UL><P>
+
+<H3>Andere WWW-Seiten mit Fernseh- und Radioprogrammen</H3>
+<UL>
+<LI><A HREF="http://www-dw.gmd.de/deutsch/index.html">Deutsche Welle</A>
+<LI><A HREF="http://www.sat1.de/programm/programm.html">Sat.1</A>
+</UL>
+
+</P>
+<H3>Zeichenerklärung</H3>
+<IMG SRC="zweikanal.gif" ALT="[ZWEIKANAL]"> : Zweikanalton<BR>
+<IMG SRC="untertitel.gif" ALT="[UNTERTITEL]"> : Untertitel<BR>
+<IMG SRC="breitbild.gif" ALT="[BREITBILD]"> : Breitbild 16:9 (PALplus)<BR>
+<P>
+<H3>Technische Informationen</H3>
+Diese Programmübersichten werden automatisch aus dem Videotext der entsprechenden
+Fernsehanstalten ins HTML-Format konvertiert. Dabei können (und werden) sich immer
+Fehler einschleichen. Deshalb gibt es für die Richtigkeit der hier angebotenen
+Informationen <I>keine Garantie</I>. Wenn also jemand den Musikantenstadl verpaßt,
+weil die Anfangszeit hier falsch angegeben war, dann hat er <I>Pech gehabt</I>.
+<BR>
+Im Gegensatz zu normalen Fernsehzeitschriften fängt ein Tag bei mir übrigens um
+0.00 Uhr an und hört um 24.00 Uhr auf. 
+<P>
+Das Angebot wird nach und nach erweitert; allerdings verwendet jeder Sender sein
+eigenes, zu den anderen inkompatibles Format. Deshalb muß mein Konverter für jeden
+Sender extra angepaßt werden, was natürlich etwas dauert. Die Kommerzsender haben
+bei mir dabei eine ziemlich niedrige Priorität.
+<P>
+Die Konvertierung der Videotextseiten geschieht auf einem Rechner, der unter
+<A HREF="http://www-i2.informatik.rwth-aachen.de/arnd/lx_wwwsites.html">Linux</A> läuft. Dazu verwende ich meinen selbstgeschriebenen
+<A HREF="http://wwwuser.rz.uni-ulm.de/~s_buck/VideoteXt.html">Videotextdecoder</A>.
+<HR><I><A HREF="'$TV2HTML_HOMEURL'">'$TV2HTML_MAINT'</A>/tv2html, '`date "+%d.%m.%y, %H:%M"`'</I>
+</BODY>
+</HTML>
+' >> $idx
+
+cp *.gif $TV2HTML_DIR/html
+chmod -R a=rX,u+w $TV2HTML_DIR/html

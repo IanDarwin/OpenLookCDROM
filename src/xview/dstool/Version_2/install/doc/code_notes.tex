@@ -1,0 +1,337 @@
+
+
+\documentstyle{article}
+\title{Notes on Dstool Code }
+\author{Allen Back}
+%\date{}
+
+\begin{document}
+%\large{
+
+\maketitle
+
+
+The purpose of this note is to help people find their
+way through the code and various problems they may run into. 
+Most of this goes back to the original Version 1.x - but  has been
+updated to Version 2.0.
+
+\section{Documentation}
+
+For use of DsTool, the Tutorial and Users manuals are the best 
+places to go. The Reference manual also has very useful sections. 
+In particular the portion on
+``Creating Custom User Applications'' is really a basic guide to how almost all
+of the window related code is structured.
+
+These are all available by anonymous ftp from cam.cornell.edu. For Version
+2.0, the postscript forms will be easier than in Version 1.1
+for people to read. They are viewable under ghostscript (gs).
+
+\section{Locations}
+
+Here are some subdirectories of \$DSTOOL and what they contain:
+\begin{description}
+
+
+  \item[src/include] Contains most non-windows related headers in the 
+	system. A prime place to look for the typedef's which appear 
+	throughout the	code. 
+
+  \item[site\_specific] Important files here are lib\_incl.mk
+  and *targets*.mk which are included in most make files. Lib\_incl.mk,
+  for example,  is the place one would indicate the debug option
+  ``-g'' for compilation. The different *target*.mk files reflect
+  the different categories of targets which appear in various Makefiles,
+  and the fact that some versions of Make have trouble with empty targets.
+
+  \item[bin] In addition to the dstool binary, scripts for
+  installing dstool (install\_dstool) and installing a user 
+  dstool configuration (install\_dsuser) are here.
+
+  \item[colormaps] The content and use of the different colormaps
+  contained in here are contained in the twoD view window
+  section of the users manual.
+
+  \item[src/windows] Core windows related code. Each panel typically
+   has a subdirectory here.
+
+  \item[src/main] Code involved with the startup of DsTool.
+
+  \item[contrib] Place for contributed panels. In version 2.0,
+  the data browser, parser, porbit, oned, geomview, continuation,
+  auto interface, and locbif panels are here.
+
+  \item[src/complib] Basic routines relating to
+  numerical integration and iteration. The top level files
+  traj\_mem\_orbit.c and compute\_orbit.c contain routines
+  primarily relating to packaging integration requests while
+  the INTEGRATION subdirectory contains the routines which
+  encapsulate the middle level logic required for integration
+  tasks. (For example, ode\_stop.c and last\_step.c have most of the 
+  code relating to event stopping; ode\_poincare.c is for
+  Poincare sections.) The ALGORITHMS subdirectory has individual
+  files for each numerical integration algorithm ( Runge-Kutta,
+  Bulirsch-Stoer, etc. ) installed in the system. The ITERATION
+  subdirectory contains files relating to discrete flows.
+
+  \item[src/fixptlib] Code for finding equilibrium
+  points, periodic points of maps, and one dimensional stable or
+  unstable manifolds.
+
+  \item[src/eigenlib] A number of standard linear 
+  algebra routines. 
+
+  \item[doc] Documentation. Many of the contrib directories
+  contain their own documentation subdirectories.
+
+  \item[man] Man pages. One might add this directory to one's
+  MANPATH environment variable.
+
+\end{description}
+
+\section{Typical Panels}
+
+As described in Chapter 3 of the Reference Manual, panels are very
+uniform. Most have a:
+\begin{itemize}
+	\item {\bf Menu Handler} To respond to a selection of the panel on
+	a menu.
+	\item {\bf Open } routine to actually open the panel.
+	\item {\bf Field\_Manager} to build model specific panel fields
+	and setup the panel for a new model. This routine is called
+	for each panel whenever a new model is loaded.
+	\item {\bf Data\_Refresh} routine to update the panel
+	with information from the postmaster.
+	\item {\bf Read\_Window} routine to update the postmaster
+	with entries from the window.
+\end{itemize}
+
+\section{Postmaster Calls}
+
+The postmaster is an object manager which holds most state information
+about DsTool. Ordinarily, when a panel  collects some information
+which may be of interest to other components of the system, it
+stores this information in a postmaster field. And routines know that
+postmaster queries are the normal way to find out what has been
+setup in the system thusfar.
+
+
+The syntax of the Version 1 postmaster resembles that of the xview
+routines xv\_get and xv\_set in that one call can affect multiple entries,
+and in the use of a terminating NULL to indicate the end of the 
+last command.
+The version 2.0 postmaster is string based and implemented as
+a hash table. Collisions are handled by linear chaining.
+There are both ``categories'' and ``elements''. Each element must
+belong to a category. 
+
+Most panels have postmaster initialization
+routines which create and initialize suitable postmaster fields.
+In Version 2.0, window and computation related code are firmly separated
+so computation related initialization routines do not appear in
+windows code. For example, the selected panel interacts  with postmaster 
+fields defined in src/main/selected.c. Some panels, especially in contrib
+directories have ``\_install'' routines which take care of this. 
+
+When a new model is loaded, each panel has a field\_manager routine which
+is called. A field\_manager can call a postmaster ``\_reset'' routine to
+update the relevant fields for the new model. Certain core panels
+always present in DsTool list their postmaster routines in 
+src/main/user\_install.c and src/main/sys\_install.c, where they are
+automatically called at the right time. But because of the desire
+to be modular in deciding which panels are compiled into a particular
+user DsTool, most contrib panels have to call postmaster initialization
+and reset routines directly.
+
+The postmaster routines are thrown off by surprise references to 
+uninitialized key strings. So care is required to avoid these.
+The Boolean function pm\_entry\_exists in src/postmaster/pm\_access.c
+can be used to check whether or not a field has already been created.
+
+Pointers returned by the postmaster should in general be viewed as owned
+by the postmaster, and not modified by the user. Some postmaster
+entries allocate memory internally to store values. In such cases, the
+postmaster INIT call does this memory allocation.
+
+So that ``pm(GET,...)'' calls can return any type of information, the 
+function pm is declared to return a (void *) pointer. This pointer can be
+cast to the type of the field. The routine pm\_type of 
+src/postmaster/pm\_utils.c can be used if necessary (e.g. in saveload routines)
+to determine the type of a postmaster field.
+
+The basic data types supported by the postmaster are:
+\begin{itemize}
+	\item INT - an integer.
+	\item INT\_LIST - a list of integers.
+	\item DBL - a double precision floating point number.
+	\item DBL\_LIST a list of double precision floating point numbers.
+	\item STRNG - a string. (Some routines have trouble with strings containing imbedded blanks.)
+	\item STRNG\_LIST - a list of strings. 
+	\item ADDRS - typically a C routine.
+	\item MEMRY - the address of a memory object.
+	\item FNCT - a pointer to a function which can be invoked without arguments.
+\end{itemize}
+
+The basic postmaster operations are:
+\begin{itemize}
+	\item PUT - set a value.
+	\item GET - retrieve a value.
+	\item INIT - initialize, allocate memory if necessary.
+	\item CLEAR
+	\item PUT\_LIST - store a list of values.
+	\item GET\_LIST - retrieve a list of values.
+	\item CREATE\_OBJ - create a category.
+	\item RM\_OBJ - remove an object.
+	\item CREATE\_ELEM - create an element.
+	\item RM\_ELEM - remove an element.
+	\item PUT\_SAVABLE - PUT and adjust the savable field of an entry.
+	\item GET\_SAVABLE - GET and access the savable field of an entry.
+	\item EXEC - execute a function call.
+\end{itemize}
+
+The {\em savable} field of a postmaster entry is used by the saveload
+routines to decide when that entry is to be saved.
+
+\subsection{Typical GET Calls}
+\begin{description}
+	\item[INT] - int n\_varb =  *((int *) pm( GET, "Model.Varb\_Dim", NULL ));
+	\item[INT\_LIST] - * ((int *) pm(GET, "Flow.Varb\_Events", i, NULL));
+	\item[DBL] - double step\_size = *((double *) pm( GET, "Flow.Stepsize", NULL));
+	\item[DBL\_LIST] double ith\_value = *((double *) pm( GET, "Selected.Varb\_Ic", i, NULL));
+	\item[STRNG] - char name[MAX\_LEN\_VARB\_NAME]; pm(GET, "Model.Name", name, NULL);
+	\item[STRNG\_LIST] -   char ith\_name[MAX\_LEN\_VARB\_NAME]; pm( GET, "Model.Varb\_Names", i, ith\_name , NULL);
+	\item[ADDRS] - int (*aux\_f)(); aux\_f = (void *) pm( GET, "Model.Aux\_Function", NULL );
+	\item[MEMRY] - (memory) pm(GET, "Memory.Traj", NULL)
+\end{description}
+
+\subsection{Typical GET\_LIST Calls}
+\begin{description}
+	\item[INT\_LIST] - int *sc;   sc = ivector(0,max-1); pm(GET\_LIST, "Flow.Funct\_Events", 0, n\_funct-1, sc, NULL);
+	\item[DBL\_LIST] -   double  *scv;   scv = dvector(0,max-1); pm(GET\_LIST, "Flow.Funct\_Event\_Values", 0, n\_funct-1, scv, NULL);
+	\item[STRNG\_LIST] -   
+\end{description}
+
+
+\subsection{Typical PUT Calls}
+\begin{description}
+	\item[INT] -   pm (PUT, "Defaults.Symbol\_Index", sym, NULL);
+	\item[INT\_LIST] -       pm(PUT, "Defaults.Varb\_Min", i, atof(strng),NULL);
+	\item[DBL] - pm (PUT, "Flow.Diverg\_Cutoff", atof(strng), NULL);
+	\item[DBL\_LIST] - pm(PUT, "Selected.Varb\_Ic", i, atof(value),NULL); 
+	\item[STRNG] - pm(PUT,  "Model.Name", DS\_Sel[n].DS\_Name, NULL);
+	\item[STRNG\_LIST] - 
+	\item[ADDRS] - pm(PUT,"Model.Initialization", DS\_Sel[n].ds\_init, NULL);
+	\item[MEMRY] - 
+	\item[FNCT] -  pm(PUT, ``Model.Load'', load\_model, NULL);
+\end{description}
+
+\subsection{Typical PUT\_LIST Calls}
+\begin{description}
+	\item[INT\_LIST] - pm(PUT\_LIST, "Flow.Varb\_Events", 0, n\_varb-1, sc, NULL);
+	\item[DBL\_LIST] -   pm(PUT\_LIST, "Flow.Varb\_Event\_Values", 0, n\_varb-1, scv, NULL);
+	\item[STRNG\_LIST] -   
+\end{description}
+
+
+\subsection{Typical INIT Calls}
+\begin{description}
+	\item[INT] -
+	\item[INT\_LIST] - pm(INIT,"Flow.Varb\_Events" , dim, NULL);
+	\item[DBL] - 
+	\item[DBL\_LIST] - pm(INIT,"Selected.Varb\_Ic" , dim, NULL);
+	\item[STRNG] - pm(INIT, "Model.Name", MAX\_LEN\_DS\_TITLE,NULL);
+	\item[STRNG\_LIST] -
+	\item[ADDRS] - pm(INIT,``Model.Initialization'',NULL);
+	\item[MEMRY] - 
+	\item[FNCT] - pm(INIT,``Model.Load'',NULL);
+\end{description}
+
+\subsection{Typical CREATE\_OBJ Calls}
+
+pm(CREATE\_OBJ, ``Selected'',NULL);
+
+\subsection{Typical CREATE\_ELEM Calls}
+\begin{description}
+	\item[INT] - pm(CREATE\_ELEM, ``Model.Varb\_Dim'', INT, NULL);
+	\item[INT\_LIST] - pm(CREATE\_ELEM, "Flow.Varb\_Events",INT\_LIST,NULL);
+	\item[DBL] - pm(CREATE\_ELEM, "Flow.Stepsize",INT\_LIST,NULL);
+	\item[DBL\_LIST] - pm(CREATE\_ELEM,"Selected.Varb\_Ic",DBL\_LIST,NULL);
+	\item[STRNG] - pm(CREATE\_ELEM, ``Model.Name'',STRNG, NULL);
+	\item[STRNG\_LIST] - pm(CREATE\_ELEM, ``Model.Varb\_Names'',STRNG\_LIST , NULL);
+	\item[ADDRS] - pm(CREATE\_ELEM, ``Model.DfDx'',ADDRS, NULL);
+	\item[MEMRY] - 
+	\item[FNCT] - pm(CREATE\_ELEM,"Flow.Forwards",FNCT,NULL);
+\end{description}
+
+\subsection{Typical EXEC Calls}
+
+A typical call is pm(EXEC, "Flow.Continue", NULL);
+
+Below is a list of postmaster elements containing functions which may be 
+called via pm(EXEC, ...).
+
+\begin{itemize}
+\item {\bf Flow} Object: "Flow.Forwards", "Flow.Backwards", "Flow.Continue",  "Flow.Clear\_Last", "Flow.Clear\_All",   "Flow.Load\_Int",  "Flow.Load\_Iter".
+\item {\bf Selected} Object: "Selected.Copy".
+\item {\bf Mult} Object:     "Mult.Forwards", "Mult.Backwards", "Mult.Continue",  "Mult.Load", "Mult.Copy".
+\item {\bf Control} Object:   "Control.Dump\_PM", "Control.Dump\_PMHash",
+  "Control.Sys\_Reset", "Control.User\_Reset".
+\item {\bf Load} Object:   "Load.If\_New\_Model\_Fnct",
+\item {\bf Model} Object:   "Model.Load''.
+\item {\bf Cur\_Memory} Object:       "Cur\_Memory.Init\_Header\_Fcn",     "Cur\_Memory.Load\_Object\_Fcn".
+\item {\bf Fixed} Object:   "Fixed.Find\_Fixpts", "Fixed.1dman",
+  "Fixed.Clear\_Points", "Fixed.Clear\_Mans".
+\item {\bf Win} Object:       "Win.Open\_Current".
+    "Win.Close\_Current"
+\item {\bf TwoD\_Win} Object:     "TwoD\_Win.Open\_Current", "TwoD\_Win.Close\_Current", "TwoD\_Win.Open\_Corresponding",     "TwoD\_Win.Update\_Current".
+\end{itemize}
+
+\section{Memory Objects}
+
+At the moment dstool memory objects are basically bundles of
+sequential data objects. Each memory object  maintains
+records (separate for read and for write access) of current position 
+within the object.
+
+The file src/include/memory.h is the most fudamental one here and documents
+access to the memory object. The reference manual covers the contents of
+this file very thoroughly. The actual memory data structure is private
+and contained in the file src/memory/mem\_defs.h. 
+
+\section{General Computational Resources Available}
+
+Basic vector operations are in the file 
+src/computation/complib/ITERATION/blas.c and are
+briefly documented in src/include/blas.h. 
+
+The directory src/computation/eigenlib contains linear algebra 
+routines including:
+
+\begin{description}
+
+  \item[rg] Eigenvectors of a real general matrix.
+
+  \item[ludcmp] LU decomposition. 
+
+  \item[lubksb] LU back substitution.
+
+\end{description}
+
+There are many other computational routines present, but 
+their use often requires greater familiarity with DsTool conventions.
+
+\section{Program Startup}
+
+Program initialization and argument processing begins in the file
+\$DSTOOL/src/main/main.c. Depending on mode, the program then goes into a 
+loop either waiting for X events,  Tcl commands, or PVM 
+network requests.
+
+
+\section{Developing New Code}
+
+See the Reference Manual for information on this.
+
+%}%end large
+\end{document}

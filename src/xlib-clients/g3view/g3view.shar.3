@@ -1,0 +1,1074 @@
+From sq.com!ian@sq.uucp Fri Feb  3 21:17 EST 1995
+From: fdc@cliwe.ping.de (Frank D. Cringle)
+Subject: g3view - an X11 fax viewer, V1.0, Part03/03
+Date: Tue, 31 Jan 1995 21:45:07 GMT
+Content-Length: 29330
+Content-Type: text
+X-Lines: 1064
+Status: RO
+
+Submitted-by: fdc@cliwe.ping.de
+Archive-name: g3view-1.0/part03
+
+---- Cut Here and feed the following to sh ----
+#!/bin/sh
+# This is part 03 of g3view-1.0
+# ============= g3view.c ==============
+if test -f 'g3view.c' -a X"$1" != X"-c"; then
+	echo 'x - skipping g3view.c (File already exists)'
+else
+echo 'x - extracting g3view.c (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'g3view.c' &&
+/* Program to view G3-fax files on an X-window screen
+X   Copyright (C) 1990, 1995  Frank D. Cringle.
+X
+This file is part of g3view - an X11 fax viewer
+X     
+g3view is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation; either version 2 of the License, or (at your
+option) any later version.
+X     
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+General Public License for more details.
+X     
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. */
+X
+#include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#ifdef _HAVE_MMAP
+#include <sys/mman.h>
+#endif
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <X11/keysym.h>
+#include <X11/keysymdef.h>
+#include <X11/cursorfont.h>
+#include "g3.h"
+X
+/* expand a full image */
+extern int G3expand(struct G3desc *dp, XImage *Image, int iflag);
+/* count lines in image */
+extern int G3count(struct G3desc *dp);
+X
+/* getopt declarations */
+extern int getopt(int, char *const *, const char *);
+extern char *optarg;
+extern int optind, opterr, optopt;
+X
+/* forward declarations */
+static void SetupDisplay(int argc, char **argv, struct G3desc *dp);
+static void ShowLoop(struct G3desc *dp);
+static XImage *MakeImage(struct G3desc *dp);
+static XImage *ZoomImage(XImage *Big, XImage *Small);
+static void FlipImage(XImage *xi);
+static XImage *RotImage(XImage *Image);
+X
+/* X variables */
+static Display *Disp;
+static Window Win;
+static int Default_Screen;
+static GC PaintGC;
+static Cursor WorkCursor;
+static Cursor ReadyCursor;
+X
+/* size of window manager decorations */
+#define WM_TOPBORDER	25
+#define WM_BORDER	6
+X
+char *ProgName, *BaseName;
+int lflag = 0;		/* landscape */
+int uflag = 0;		/* upside down */
+int iflag = 0;		/* inverted image */
+int zfactor = 0;	/* zoom factor */
+int verbose = 0;
+X
+int userh = 0;		/* user's height value */
+int userw = 0;		/* user' width value */
+X
+#define	FAXMAGIC	"\000PC Research, Inc\000\000\000\000\000\000"
+X
+/* get data file into memory */
+static int
+getfile(char *Name, struct G3desc *dp)
+{
+X    int fd;
+X    struct stat sbuf;
+X
+X    if ((fd = open(Name, O_RDONLY, 0)) < 0)
+X	return -1;
+X    if (fstat(fd, &sbuf) != 0) {
+X	close(fd);
+X	return -1;
+X    }
+X
+X    dp->Size = sbuf.st_size;
+#ifdef _HAVE_MMAP
+X    if ((dp->Data = mmap(NULL, dp->Size, PROT_READ,
+X		 MAP_PRIVATE|MAP_NORESERVE, fd, 0)) == (BYTE *)-1) {
+X	close(fd);
+X	return -1;
+X    }
+#else
+X    dp->Data = (BYTE *) xmalloc((size_t) dp->Size);
+X    if (read(fd, (char *) dp->Data, (unsigned) sbuf.st_size) !=
+X	(int) sbuf.st_size) {
+X	close(fd);
+X	errno = EIO;
+X	return -1;
+X    }
+#endif
+X    close(fd);
+X
+X    if (memcmp(dp->Data, FAXMAGIC, sizeof(FAXMAGIC)) == 0) {
+X	/* handle ghostscript / PC Research fax file */
+X	if (dp->Data[24] != 1 || dp->Data[25] != 0)
+X	    printf("%s: only first page of multipage file will be shown\n",
+X		   ProgName);
+X	dp->Vres = dp->Data[29];
+X	dp->Data += 64;
+X	dp->Size -= 64;
+X    }
+X
+X    if ((BaseName = strrchr(Name, '/')) == NULL)
+X	BaseName = Name;
+X    else
+X	BaseName++;
+X    if (dp->Vres < 0)
+X	dp->Vres = !(BaseName[0] == 'f' && BaseName[1] == 'n');
+X    if (dp->xpix == 0)
+X	dp->xpix = 1728;
+X    if (dp->ypix == 0)
+X	dp->ypix = G3count(dp);
+X    return 0;
+}
+X
+/* OK, OK - this is a dreadful hack.  But it adequately distinguishes
+X   modern big- and little- endian hosts.  We only need this to set the
+X   byte order in XImage structures */
+union { BITS32 i; BYTE b[4]; } bo;
+#define ByteOrder	bo.b[3];
+X
+static char Usage[] =
+"usage: %s <flags> file\n"
+"\t-f\tfine resolution (default unless filename begins with 'fn')\n"
+"\t-n\tnormal resolution\n"
+"\t-h\theight (number of fax lines)\n"
+"\t-w\twidth (dots per fax line)\n"
+"\t-l\tturn image 90 degrees (landscape mode)\n"
+"\t-u\tturn image upside down\n"
+"\t-i\tinvert (black/white)\n"
+"\t-v\tverbose messages\n"
+"\t-z\tinitial zoom factor\n";
+X
+X
+int
+main(int argc, char **argv)
+{
+X    int c;
+X    int err = 0;
+X    struct G3desc Desc;
+X
+X    bo.i = 1;
+X    Desc.ypix = 0;
+X    Desc.xpix = 0;
+X    Desc.Vres = -1;
+X    opterr = 0;			/* suppress getopt error message */
+X
+X    if ((ProgName = strrchr(argv[0], '/')) == NULL)
+X	ProgName = argv[0];
+X    else
+X	ProgName++;
+X    while ((c = getopt(argc, argv, "fh:ilnuvw:z:")) != -1)
+X	switch(c) {
+X	case 'f':		/* fine resolution */
+X	    Desc.Vres = 1;
+X	    break;
+X	case 'h':		/* user thinks this is the height */
+X	    Desc.ypix = atoi(optarg);
+X	    break;
+X	case 'i':		/* invert black/white */
+X	    iflag = 1;
+X	    break;
+X	case 'l':		/* landscape */
+X	    lflag = 1;
+X	    break;
+X	case 'n':		/* normal resolution */
+X	    Desc.Vres = 0;
+X	    break;
+X	case 'u':		/* upside down */
+X	    uflag = 1;
+X	    break;
+X	case 'v':		/* verbose messages */
+X	    verbose = 1;
+X	    break;
+X	case 'w':		/* user thinks this is the width */
+X	    Desc.xpix = atoi(optarg);
+X	    break;
+X	case 'z':		/* zoom factor */
+X	    c = atoi(optarg);
+X	    if (c <= 0)
+X		c = 1;
+X	    for (zfactor = 1; c > 1; c >>= 1)
+X		zfactor <<= 1;	/* constrain to a power of 2 */
+X	    break;
+X	default:
+X	    err++;
+X	    break;
+X	}
+X    if (err || optind != argc - 1) {
+X	(void) fprintf(stderr, Usage, ProgName);
+X	exit(1);
+X    }
+X
+X    if (getfile(argv[optind], &Desc) != 0) {
+X	perror(argv[optind]);
+X	exit(1);
+X    }
+X
+X    if (verbose)
+X	printf("%s:\n\theight = %d\n\twidth = %d\n\tresolution = %s\n",
+X	       argv[optind], Desc.ypix, Desc.xpix, Desc.Vres ? "fine" : "normal");
+X
+X    SetupDisplay(argc, argv, &Desc);
+X    ShowLoop(&Desc);
+X    return 0;
+}
+X
+/* Figure out the zoom factor needed to fit the fax on the available display */
+static void
+SetupDisplay(int argc, char **argv, struct G3desc *dp)
+{
+X    int Height, Width;
+X    XSetWindowAttributes Attr;
+X    XSizeHints Hints;
+X    int faxh = dp->Vres ? dp->ypix : dp->ypix*2;
+X    int faxw = dp->xpix;
+X
+X    if (lflag) {
+X	faxw = faxh;
+X	faxh = dp->xpix;
+X    }
+X    if ((Disp = XOpenDisplay((char *) NULL)) == NULL) {
+X	fprintf(stderr, "%s: can't open display %s\n",
+X		ProgName, XDisplayName((char *) NULL));
+X	exit(1);
+X    }
+X    Default_Screen = XDefaultScreen(Disp);
+X    Height = XDisplayHeight(Disp, Default_Screen) - WM_TOPBORDER - WM_BORDER;
+X    Width = XDisplayWidth(Disp, Default_Screen) - 2 * WM_BORDER;
+X
+X    if (zfactor == 0)
+X	for (zfactor = 1;
+X	     faxw / zfactor > Width - 2 ||
+X	     faxh / zfactor > Height - 2;
+X	     zfactor *= 2)
+X	    ;
+X    Attr.background_pixel = WhitePixel(Disp, Default_Screen);
+X    Attr.border_pixel = BlackPixel(Disp, Default_Screen);
+X
+X    Hints.flags = PPosition|PSize|PMinSize|PMaxSize;
+X    Hints.width = Hints.min_width = Hints.max_width = faxw / zfactor;
+X    Hints.height = Hints.min_height = Hints.max_height = faxh / zfactor;
+X    Hints.x = (Width - Hints.width) / 2;
+X    Hints.y = (Height - Hints.height) / 2;
+X
+X    Win = XCreateWindow(Disp, RootWindow(Disp, Default_Screen),
+X			Hints.x, Hints.y, Hints.width, Hints.height,
+X			1, 0, InputOutput, CopyFromParent,
+X			CWBackPixel|CWBorderPixel, &Attr);
+X    
+X    XSetStandardProperties(Disp, Win, BaseName, ProgName,
+X			   None, argv, argc, &Hints);
+X
+X    PaintGC = XCreateGC(Disp, Win, 0L, (XGCValues *) NULL);
+X    XSetForeground(Disp, PaintGC, BlackPixel(Disp, Default_Screen));
+X    XSetBackground(Disp, PaintGC, WhitePixel(Disp, Default_Screen));
+X    XSetFunction(Disp, PaintGC, GXcopy);
+X    WorkCursor = XCreateFontCursor(Disp, XC_watch);
+X    ReadyCursor = XCreateFontCursor(Disp, XC_plus);
+X    
+X    XMapRaised(Disp, Win);
+X    XSelectInput(Disp, Win,  ExposureMask | StructureNotifyMask
+X		 | ButtonPressMask | KeyPressMask);
+}
+X
+X
+#define MAXZOOM	10
+X
+static void
+ShowLoop(struct G3desc *dp)
+{
+X    XEvent Event;
+X    int x = 0, ox = 0;		/* x, old x */
+X    int y = 0, oy = 0;		/* y, old y */
+X    int oz, Resize = 0;		/* old zoom, window size changed */
+X    int WinWidth, WinHeight;
+X    int MaxX, MaxY, i;
+X    XImage *Image, *Images[MAXZOOM];
+X    XSizeHints Hints;
+X    unsigned int Junk;
+#ifdef _HAVE_XSETWMPROTOCOLS
+X    Atom wm_delete_window = XInternAtom(Disp, "WM_DELETE_WINDOW", False);
+#endif
+X
+X    XDefineCursor(Disp, Win, WorkCursor);
+X    XFlush(Disp);
+X    for (oz = 0; oz < MAXZOOM; oz++)
+X	Images[oz] = NULL;
+X    Image = Images[0] = MakeImage(dp);
+X    if (uflag)
+X	FlipImage(Image);
+X    if (lflag) {
+X	Images[0] = RotImage(Image);
+X	XDestroyImage(Image);
+X    }
+X    for (oz = 0; oz < MAXZOOM && zfactor > (1 << oz); oz++)
+X	Images[oz+1] = ZoomImage(Images[oz], NULL);
+X    Image = Images[oz];
+X    if (!XGetGeometry(Disp, Win, (Window *) &Junk, &x, &y,
+X		      &WinWidth, &WinHeight, &Junk, &Junk)) {
+X	fprintf(stderr, "%s: can't get window geometry\n", ProgName);
+X	exit(1);
+X    }
+#ifdef _HAVE_XSETWMPROTOCOLS
+X    (void) XSetWMProtocols(Disp, Win, &wm_delete_window, 1);
+#endif
+X    ox = x; oy = y;
+X    MaxX = Image->width - WinWidth;
+X    MaxY = Image->height - WinHeight;
+X    XDefineCursor(Disp, Win, ReadyCursor);
+X
+X    for (;;) {
+X	XNextEvent(Disp, &Event);
+X	switch(Event.type) {
+X	case MappingNotify:
+X	    XRefreshKeyboardMapping((XMappingEvent *)(&Event));
+X	    break;
+#ifdef _HAVE_XSETWMPROTOCOLS
+X	case ClientMessage:
+X	    if (Event.xclient.data.l[0] == wm_delete_window) {
+X		XCloseDisplay(Disp);
+X		exit(1);
+X	    }
+X	    break;
+#endif
+X	case Expose:
+X	    XPutImage(Disp, Win, PaintGC, Image,
+X		      Event.xexpose.x + x,
+X		      Event.xexpose.y + y,
+X		      Event.xexpose.x,
+X		      Event.xexpose.y,
+X		      Event.xexpose.width,
+X		      Event.xexpose.height);
+X	    break;
+X	case ConfigureNotify:
+X	    WinWidth = Event.xconfigure.width;
+X	    WinHeight = Event.xconfigure.height;
+X	    MaxX = Image->width - WinWidth;
+X	    MaxY = Image->height - WinHeight;
+X	    if (Resize == 2) {
+X		XPutImage(Disp, Win, PaintGC, Image,
+X			  x, y, 0, 0, WinWidth, WinHeight);
+X		Resize = 0;
+X	    }
+X	    break;
+X	case KeyPress:
+X	    switch(XKeycodeToKeysym(Disp, Event.xkey.keycode, 0)) {
+X	    case XK_Up:
+X		y -= WinHeight / 2;
+X		break;
+X	    case XK_Down:
+X		y += WinHeight / 2;
+X		break;
+X	    case XK_Left:
+X		x -= WinWidth / 2;
+X		break;
+X	    case XK_Right:
+X		x += WinWidth / 2;
+X		break;
+X	    case XK_Home:
+X		x = 0;
+X		y = 0;
+X		break;
+X	    case XK_End:
+X		x = MaxX;
+X		y = MaxY;
+X		break;
+X	    case XK_l:
+X		XDefineCursor(Disp, Win, WorkCursor);
+X		XFlush(Disp);
+X		Image = RotImage(Images[0]);
+X		for (i = 0; Images[i]; i++) {
+X		    XDestroyImage(Images[i]);
+X		    Images[i] = NULL;
+X		}
+X		Images[0] = Image;
+X		for (i = 1; i <= oz; i++)
+X		    Images[i] = ZoomImage(Images[i-1], Images[i]);
+X		Image = Images[oz];
+X		Resize = 1;
+X		XDefineCursor(Disp, Win, ReadyCursor);
+X		break;
+X	    case XK_u:
+X		XDefineCursor(Disp, Win, WorkCursor);
+X		XFlush(Disp);
+X		FlipImage(Images[0]);
+X		for (i = 1; Images[i]; i++)
+X		    Images[i] = ZoomImage(Images[i-1], Images[i]);
+X		XPutImage(Disp, Win, PaintGC, Image,
+X			  x, y, 0, 0, WinWidth, WinHeight);
+X		XDefineCursor(Disp, Win, ReadyCursor);
+X		break;
+X	    case XK_q:
+X		XCloseDisplay(Disp);
+X		exit(0);
+X	    }
+X	    break;
+X	case ButtonPress:
+X	    switch (Event.xbutton.button) {
+X	    case Button1:
+X		if (oz > 0) {
+X		    Image = Images[--oz];
+X		    zfactor >>= 1;
+X		    Resize = 1;
+X		}
+X		break;
+X	    case Button2:
+X		x = Event.xbutton.x * Image->width / WinWidth - WinWidth / 2;
+X		y = Event.xbutton.y * Image->height / WinHeight - WinHeight / 2;
+X		break;
+X	    case Button3:
+X		if (oz < MAXZOOM && Image->width >= 64 && zfactor < 32) {
+X		    Image = Images[++oz];
+X		    zfactor <<= 1;
+X		    Resize = 1;
+X		}
+X		break;
+X	    }
+X	    if (Image == NULL) {
+X		int i;
+X		for (i = oz; i && (Images[i] == NULL); i--)
+X		    ;
+X		for (; i != oz; i++)
+X		    Images[i+1] = ZoomImage(Images[i], NULL);
+X		Image = Images[oz];
+X	    }
+X	    break;
+X	}
+X	if (Resize == 1) {
+X	    int dw = XDisplayWidth(Disp, Default_Screen) - 2 * WM_BORDER;
+X	    int dh = XDisplayHeight(Disp, Default_Screen) - WM_TOPBORDER - WM_BORDER;
+X	    MaxX = Image->width - WinWidth;
+X	    MaxY = Image->height - WinHeight;
+X	    if (!(WinWidth >= dw && Image->width >= dw &&
+X		  WinHeight >= dh && Image->height >= dh)) {
+X		int nx = (dw - Image->width) / 2;
+X		int ny = (dh - Image->height) / 2;
+X		if (nx < 0) nx = 0;
+X		if (ny < 0) ny = 0;
+X		if (dw > Image->width)
+X		    dw = Image->width;
+X		if (dh > Image->height)
+X		    dh = Image->height;
+X		XMoveResizeWindow(Disp, Win, nx, ny, dw, dh);
+X		Hints.flags = PPosition|PSize|PMinSize|PMaxSize;
+X		Hints.x = nx;
+X		Hints.y = ny;
+X		Hints.width = Hints.min_width = Hints.max_width = dw;
+X		Hints.height = Hints.min_height = Hints.max_height = dh;
+X		XSetNormalHints(Disp, Win, &Hints);
+X		Resize++;
+X	    }
+X	}
+X	if (x > MaxX)
+X	    x = MaxX;
+X	if (x < 0)
+X	    x = 0;
+X	if (y > MaxY)
+X	    y = MaxY;
+X	if (y < 0)
+X	    y = 0;
+X	if (x != ox || y != oy || Resize == 1) {
+X	    XPutImage(Disp, Win, PaintGC, Image,
+X		      x, y, 0, 0, WinWidth, WinHeight);
+X	    ox = x;
+X	    oy = y;
+X	    Resize = 0;
+X	}
+X    }
+}
+X
+X
+static XImage *
+MakeImage(struct G3desc *dp)
+{
+X    XImage *Image;
+X    int w, h;
+X
+X    w = dp->xpix;
+X    h = dp->Vres ? dp->ypix : 2*dp->ypix;
+X    if ((Image = XCreateImage(Disp, DefaultVisual(Disp, Default_Screen),
+X			      1, XYBitmap, 0,
+X			      xmalloc(((w + 31) & ~31) * h / 8),
+X			      w, h, 32, 0)) == NULL) {
+X	fprintf(stderr, "%s: insufficient memory\n", ProgName);
+X	exit(1);
+X    }
+X    Image->byte_order = ByteOrder; /* Client byte order */
+X    Image->bitmap_bit_order = 1; /* MSBFirst */
+X    if (!G3expand(dp, Image, iflag))
+X	if (verbose) fprintf(stderr, "Expansion error\n");
+X    return Image;
+}
+X
+static char Z[] = {		/* 2 to 1 zoom table */
+X    0, 0, 1, 1, 0, 0, 1, 1,
+X    2, 2, 3, 3, 2, 2, 3, 3,
+X    0, 0, 1, 1, 0, 0, 1, 1,
+X    2, 2, 3, 3, 2, 2, 3, 3,
+X    4, 4, 5, 5, 4, 4, 5, 5,
+X    6, 6, 7, 7, 6, 6, 7, 7,
+X    4, 4, 5, 5, 4, 4, 5, 5,
+X    6, 6, 7, 7, 6, 6, 7, 7,
+X    0, 0, 1, 1, 0, 0, 1, 1,
+X    2, 2, 3, 3, 2, 2, 3, 3,
+X    0, 0, 1, 1, 0, 0, 1, 1,
+X    2, 2, 3, 3, 2, 2, 3, 3,
+X    4, 4, 5, 5, 4, 4, 5, 5,
+X    6, 6, 7, 7, 6, 6, 7, 7,
+X    4, 4, 5, 5, 4, 4, 5, 5,
+X    6, 6, 7, 7, 6, 6, 7, 7,
+X    8, 8, 9, 9, 8, 8, 9, 9,
+X    10, 10, 11, 11, 10, 10, 11, 11,
+X    8, 8, 9, 9, 8, 8, 9, 9,
+X    10, 10, 11, 11, 10, 10, 11, 11,
+X    12, 12, 13, 13, 12, 12, 13, 13,
+X    14, 14, 15, 15, 14, 14, 15, 15,
+X    12, 12, 13, 13, 12, 12, 13, 13,
+X    14, 14, 15, 15, 14, 14, 15, 15,
+X    8, 8, 9, 9, 8, 8, 9, 9,
+X    10, 10, 11, 11, 10, 10, 11, 11,
+X    8, 8, 9, 9, 8, 8, 9, 9,
+X    10, 10, 11, 11, 10, 10, 11, 11,
+X    12, 12, 13, 13, 12, 12, 13, 13,
+X    14, 14, 15, 15, 14, 14, 15, 15,
+X    12, 12, 13, 13, 12, 12, 13, 13,
+X    14, 14, 15, 15, 14, 14, 15, 15
+};
+X
+X
+static XImage *
+ZoomImage(XImage *Big, XImage *Small)
+{
+X    BYTE *pb, *ps;
+X    int w, h;
+X    int i, j;
+X
+X    XDefineCursor(Disp, Win, WorkCursor);
+X    XFlush(Disp);
+X    w = (Big->width+1) / 2;
+X    h = (Big->height+1) / 2;
+X    if (Small == NULL) {
+X	if ((Small = XCreateImage(Disp, DefaultVisual(Disp, Default_Screen),
+X				  1, XYBitmap, 0,
+X				  xmalloc(((w + 31) & ~31) * h / 8),
+X				  w, h, 32, 0)) == NULL) {
+X	    fprintf(stderr, "%s: insufficient memory\n", ProgName);
+X	    exit(1);
+X	}
+X    }
+X    Small->xoffset = (Big->xoffset+1)/2;
+X    Small->byte_order = Big->byte_order;
+X    Small->bitmap_bit_order = Big->bitmap_bit_order;
+X    for (i = 0; i < Big->height; i += 2) {
+X	pb = (BYTE *) Big->data + i * Big->bytes_per_line;
+X	ps = (BYTE *) Small->data + i * Small->bytes_per_line / 2;
+X	if (Small->bitmap_bit_order)
+X	    for (j = 0; j < Small->bytes_per_line; j += 4) {
+X		*ps++ = (Z[pb[0]] << 4) | (Z[pb[1]]);
+X		*ps++ = (Z[pb[2]] << 4) | (Z[pb[3]]);
+X		*ps++ = (Z[pb[4]] << 4) | (Z[pb[5]]);
+X		*ps++ = (Z[pb[6]] << 4) | (Z[pb[7]]);
+X		pb += 8;
+X	    }
+X	else
+X	    for (j = 0; j < Small->bytes_per_line; j += 4) {
+X		*ps++ = (Z[pb[4]] << 4) | (Z[pb[5]]);
+X		*ps++ = (Z[pb[6]] << 4) | (Z[pb[7]]);
+X		*ps++ = (Z[pb[0]] << 4) | (Z[pb[1]]);
+X		*ps++ = (Z[pb[2]] << 4) | (Z[pb[3]]);
+X		pb += 8;
+X	    }
+X    }
+X    XDefineCursor(Disp, Win, ReadyCursor);
+X    return Small;
+}
+X
+static void
+FlipImage(XImage *Image)
+{
+X    BITS32 *p1 = (BITS32 *) Image->data;
+X    BITS32 *p2 = (BITS32 *) (Image->data + Image->height *
+X			     Image->bytes_per_line - 4);
+X
+X    /* the first shall be last ... */
+X    while (p1 < p2) {
+X	BITS32 t = *p1;
+X	*p1++ = *p2;
+X	*p2-- = t;
+X    }
+X
+X    /* let the server twiddle the bits */
+X    Image->bitmap_bit_order ^= 1;
+X    Image->xoffset = 32 - (Image->width & 31) - Image->xoffset;
+X    Image->xoffset &= 31;
+}
+X
+static XImage *
+RotImage(XImage *Image)
+{
+X    XImage *New;
+X    int w = Image->height;
+X    int h = Image->width;
+X    int i, j;
+X
+X    if ((New = XCreateImage(Disp, DefaultVisual(Disp, Default_Screen),
+X			    1, XYBitmap, 0,
+X			    xmalloc(((w + 31) & ~31) * h / 8),
+X			    w, h, 32, 0)) == NULL) {
+X	fprintf(stderr, "%s: insufficient memory\n", ProgName);
+X	exit(1);
+X    }
+X    New->byte_order = ByteOrder; /* Client byte order */
+X    New->bitmap_bit_order = 1;	/* MSBFirst */
+X    for (i = h - 1; i >= 0; i--) {
+X	int bitnum = (h+Image->xoffset-1-i)&31;
+X	BITS32 tbit = 1 << (Image->bitmap_bit_order ? (31 - bitnum) : bitnum);
+X	BITS32 *tp = (BITS32 *) Image->data + (h+Image->xoffset-1-i)/32;
+X	for (j = 0; j < w; j += 32) {
+X	    BITS32 t = 0;
+X	    BITS32 sbit;
+X	    for (sbit = 0x80000000; sbit; sbit >>= 1) {
+X		if (tbit & *tp)
+X		    t |= sbit;
+X		tp += Image->bytes_per_line/4;
+X	    }
+X	    *(BITS32 *) (New->data+i*New->bytes_per_line+j/8) = t;
+X	}
+X    }
+X    return New;
+}
+X
+char *
+xmalloc(unsigned int size)
+{
+X    char *p;
+X
+X    if ((p = malloc(size)) == NULL) {
+X	fprintf(stderr, "%s: not enough memory (%u needed)\n",
+X		ProgName, size);
+X	exit(1);
+X    }
+X    return p;
+}
+SHAR_EOF
+chmod 0660 g3view.c ||
+echo 'restore of g3view.c failed'
+Wc_c="`wc -c < 'g3view.c'`"
+test 17523 -eq "$Wc_c" ||
+	echo 'g3view.c: original size 17523, current size' "$Wc_c"
+fi
+# ============= gentab.c ==============
+if test -f 'gentab.c' -a X"$1" != X"-c"; then
+	echo 'x - skipping gentab.c (File already exists)'
+else
+echo 'x - extracting gentab.c (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'gentab.c' &&
+/* Generate g3 fax expansion tables
+X   Copyright (C) 1990, 1995  Frank D. Cringle.
+X
+This file is part of g3view - an X11 fax viewer
+X     
+g3view is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation; either version 2 of the License, or (at your
+option) any later version.
+X     
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+General Public License for more details.
+X     
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA. */
+X
+#include <stdio.h>
+#include "g3.h"
+X
+/* Copyright 1990 by Frank D. Cringle, all rights reserved */
+X
+struct Table {
+X    char *Bits;
+X    unsigned char s;
+X    pixnum Param;
+};
+X
+struct Table TabW[] = {
+/* Table 2: Terminating White Codes */
+{"00110101",		S_TermW,	0},
+{"000111",		S_TermW,	1},
+{"0111",		S_TermW,	2},
+{"1000",		S_TermW,	3},
+{"1011",		S_TermW,	4},
+{"1100",		S_TermW,	5},
+{"1110",		S_TermW,	6},
+{"1111",		S_TermW,	7},
+{"10011",		S_TermW,	8},
+{"10100",		S_TermW,	9},
+{"00111",		S_TermW,	10},
+{"01000",		S_TermW,	11},
+{"001000",		S_TermW,	12},
+{"000011",		S_TermW,	13},
+{"110100",		S_TermW,	14},
+{"110101",		S_TermW,	15},
+{"101010",		S_TermW,	16},
+{"101011",		S_TermW,	17},
+{"0100111",		S_TermW,	18},
+{"0001100",		S_TermW,	19},
+{"0001000",		S_TermW,	20},
+{"0010111",		S_TermW,	21},
+{"0000011",		S_TermW,	22},
+{"0000100",		S_TermW,	23},
+{"0101000",		S_TermW,	24},
+{"0101011",		S_TermW,	25},
+{"0010011",		S_TermW,	26},
+{"0100100",		S_TermW,	27},
+{"0011000",		S_TermW,	28},
+{"00000010",		S_TermW,	29},
+{"00000011",		S_TermW,	30},
+{"00011010",		S_TermW,	31},
+{"00011011",		S_TermW,	32},
+{"00010010",		S_TermW,	33},
+{"00010011",		S_TermW,	34},
+{"00010100",		S_TermW,	35},
+{"00010101",		S_TermW,	36},
+{"00010110",		S_TermW,	37},
+{"00010111",		S_TermW,	38},
+{"00101000",		S_TermW,	39},
+{"00101001",		S_TermW,	40},
+{"00101010",		S_TermW,	41},
+{"00101011",		S_TermW,	42},
+{"00101100",		S_TermW,	43},
+{"00101101",		S_TermW,	44},
+{"00000100",		S_TermW,	45},
+{"00000101",		S_TermW,	46},
+{"00001010",		S_TermW,	47},
+{"00001011",		S_TermW,	48},
+{"01010010",		S_TermW,	49},
+{"01010011",		S_TermW,	50},
+{"01010100",		S_TermW,	51},
+{"01010101",		S_TermW,	52},
+{"00100100",		S_TermW,	53},
+{"00100101",		S_TermW,	54},
+{"01011000",		S_TermW,	55},
+{"01011001",		S_TermW,	56},
+{"01011010",		S_TermW,	57},
+{"01011011",		S_TermW,	58},
+{"01001010",		S_TermW,	59},
+{"01001011",		S_TermW,	60},
+{"00110010",		S_TermW,	61},
+{"00110011",		S_TermW,	62},
+{"00110100",		S_TermW,	63},
+{"00000000000",		S_EOL,		0},
+/* Table 3: Make-up White Codes */
+{"11011",		S_MakeUpW,	64},
+{"10010",		S_MakeUpW,	128},
+{"010111",		S_MakeUpW,	192},
+{"0110111",		S_MakeUpW,	256},
+{"00110110",		S_MakeUpW,	320},
+{"00110111",		S_MakeUpW,	384},
+{"01100100",		S_MakeUpW,	448},
+{"01100101",		S_MakeUpW,	512},
+{"01101000",		S_MakeUpW,	576},
+{"01100111",		S_MakeUpW,	640},
+{"011001100",		S_MakeUpW,	704},
+{"011001101",		S_MakeUpW,	768},
+{"011010010",		S_MakeUpW,	832},
+{"011010011",		S_MakeUpW,	896},
+{"011010100",		S_MakeUpW,	960},
+{"011010101",		S_MakeUpW,	1024},
+{"011010110",		S_MakeUpW,	1088},
+{"011010111",		S_MakeUpW,	1152},
+{"011011000",		S_MakeUpW,	1216},
+{"011011001",		S_MakeUpW,	1280},
+{"011011010",		S_MakeUpW,	1344},
+{"011011011",		S_MakeUpW,	1408},
+{"010011000",		S_MakeUpW,	1472},
+{"010011001",		S_MakeUpW,	1536},
+{"010011010",		S_MakeUpW,	1600},
+{"011000",		S_MakeUpW,	1664},
+{"010011011",		S_MakeUpW,	1728},
+/* Table ?: General Make-up Codes */
+{"00000001000",		S_MakeUp,	1792},
+{"00000001100",		S_MakeUp,	1856},
+{"00000001101",		S_MakeUp,	1920},
+{"000000010010",	S_MakeUp,	1984},
+{"000000010011",	S_MakeUp,	2048},
+{"000000010100",	S_MakeUp,	2112,},
+{"000000010101",	S_MakeUp,	2176},
+{"000000010110",	S_MakeUp,	2240},
+{"000000010111",	S_MakeUp,	2304},
+{"000000011100",	S_MakeUp,	2368},
+{"000000011101",	S_MakeUp,	2432},
+{"000000011110",	S_MakeUp,	2496},
+{"000000011111",	S_MakeUp,	2560},
+{NULL,			0,		0}};
+X
+struct Table TabB[] = {
+/* Table 2: Terminating Black Codes */
+{"0000110111",		S_TermB,	0},
+{"010",			S_TermB,	1},
+{"11",			S_TermB,	2},
+{"10",			S_TermB,	3},
+{"011",			S_TermB,	4},
+{"0011",		S_TermB,	5},
+{"0010",		S_TermB,	6},
+{"00011",		S_TermB,	7},
+{"000101",		S_TermB,	8},
+{"000100",		S_TermB,	9},
+{"0000100",		S_TermB,	10},
+{"0000101",		S_TermB,	11},
+{"0000111",		S_TermB,	12},
+{"00000100",		S_TermB,	13},
+{"00000111",		S_TermB,	14},
+{"000011000",		S_TermB,	15},
+{"0000010111",		S_TermB,	16},
+{"0000011000",		S_TermB,	17},
+{"0000001000",		S_TermB,	18},
+{"00001100111",		S_TermB,	19},
+{"00001101000",		S_TermB,	20},
+{"00001101100",		S_TermB,	21},
+{"00000110111",		S_TermB,	22},
+{"00000101000",		S_TermB,	23},
+{"00000010111",		S_TermB,	24},
+{"00000011000",		S_TermB,	25},
+{"000011001010",	S_TermB,	26},
+{"000011001011",	S_TermB,	27},
+{"000011001100",	S_TermB,	28},
+{"000011001101",	S_TermB,	29},
+{"000001101000",	S_TermB,	30},
+{"000001101001",	S_TermB,	31},
+{"000001101010",	S_TermB,	32},
+{"000001101011",	S_TermB,	33},
+{"000011010010",	S_TermB,	34},
+{"000011010011",	S_TermB,	35},
+{"000011010100",	S_TermB,	36},
+{"000011010101",	S_TermB,	37},
+{"000011010110",	S_TermB,	38},
+{"000011010111",	S_TermB,	39},
+{"000001101100",	S_TermB,	40},
+{"000001101101",	S_TermB,	41},
+{"000011011010",	S_TermB,	42},
+{"000011011011",	S_TermB,	43},
+{"000001010100",	S_TermB,	44},
+{"000001010101",	S_TermB,	45},
+{"000001010110",	S_TermB,	46},
+{"000001010111",	S_TermB,	47},
+{"000001100100",	S_TermB,	48},
+{"000001100101",	S_TermB,	49},
+{"000001010010",	S_TermB,	50},
+{"000001010011",	S_TermB,	51},
+{"000000100100",	S_TermB,	52},
+{"000000110111",	S_TermB,	53},
+{"000000111000",	S_TermB,	54},
+{"000000100111",	S_TermB,	55},
+{"000000101000",	S_TermB,	56},
+{"000001011000",	S_TermB,	57},
+{"000001011001",	S_TermB,	58},
+{"000000101011",	S_TermB,	59},
+{"000000101100",	S_TermB,	60},
+{"000001011010",	S_TermB,	61},
+{"000001100110",	S_TermB,	62},
+{"000001100111",	S_TermB,	63},
+{"00000000000",		S_EOL,		0},
+/* Table 3: Make-up Black Codes */
+{"0000001111",		S_MakeUpB,	64},
+{"000011001000",	S_MakeUpB,	128},
+{"000011001001",	S_MakeUpB,	192},
+{"000001011011",	S_MakeUpB,	256},
+{"000000110011",	S_MakeUpB,	320},
+{"000000110100",	S_MakeUpB,	384},
+{"000000110101",	S_MakeUpB,	448},
+{"0000001101100",	S_MakeUpB,	512},
+{"0000001101101",	S_MakeUpB,	576},
+{"0000001001010",	S_MakeUpB,	640},
+{"0000001001011",	S_MakeUpB,	704},
+{"0000001001100",	S_MakeUpB,	768},
+{"0000001001101",	S_MakeUpB,	832},
+{"0000001110010",	S_MakeUpB,	896},
+{"0000001110011",	S_MakeUpB,	960},
+{"0000001110100",	S_MakeUpB,	1024},
+{"0000001110101",	S_MakeUpB,	1088},
+{"0000001110110",	S_MakeUpB,	1152},
+{"0000001110111",	S_MakeUpB,	1216},
+{"0000001010010",	S_MakeUpB,	1280},
+{"0000001010011",	S_MakeUpB,	1344},
+{"0000001010100",	S_MakeUpB,	1408},
+{"0000001010101",	S_MakeUpB,	1472},
+{"0000001011010",	S_MakeUpB,	1536},
+{"0000001011011",	S_MakeUpB,	1600},
+{"0000001100100",	S_MakeUpB,	1664},
+{"0000001100101",	S_MakeUpB,	1728},
+/* Table ?: General Make-up Codes */
+{"00000001000",		S_MakeUp,	1792},
+{"00000001100",		S_MakeUp,	1856},
+{"00000001101",		S_MakeUp,	1920},
+{"000000010010",	S_MakeUp,	1984},
+{"000000010011",	S_MakeUp,	2048},
+{"000000010100",	S_MakeUp,	2112,},
+{"000000010101",	S_MakeUp,	2176},
+{"000000010110",	S_MakeUp,	2240},
+{"000000010111",	S_MakeUp,	2304},
+{"000000011100",	S_MakeUp,	2368},
+{"000000011101",	S_MakeUp,	2432},
+{"000000011110",	S_MakeUp,	2496},
+{"000000011111",	S_MakeUp,	2560},
+{NULL,			0,		0}};
+X
+#define MAXENT	8192
+X
+struct tabent Proto[MAXENT];
+X
+static void DumpProto(char *t, int n);
+static int MakeProto(char *Name, struct Table *t);
+X
+extern void exit(int);
+extern int strlen(const char *);
+X
+int
+main(int argc, char **argv)
+{
+X    int n;
+X
+X    puts("/* This file was generated by gentab.c");
+X    puts("   Make changes there, not here */\n");
+X    puts("#include \"g3.h\"\n");
+X    n = MakeProto("TabW", TabW);
+X    DumpProto("WhiteTable", n);
+X    n = MakeProto("TabB", TabB);
+X    DumpProto("BlackTable", n);
+X    return 0;
+}
+X
+static int
+MakeProto(char *Name, struct Table *t)
+{
+X    struct Table *t1;
+X    int w = 0;
+X    int n;
+X
+X    for (n = 0; n < MAXENT; n++) {
+X	Proto[n].State = S_Null;
+X	Proto[n].Width = 0;
+X	Proto[n].Param = 0;
+X    }
+X    for (t1 = t; t1->Bits; t1++)
+X	if ((n = strlen(t1->Bits)) > w)
+X	    w = n;
+X    n = (1 << w);
+X    if (n > MAXENT) {
+X	fprintf(stderr, "Prototype table %s too small (need %d entries)\n", Name, n);
+X	exit(1);
+X    }
+X    for (t1 = t; t1->Bits; t1++) {
+X	int i = 1;
+X	int v = 0;
+X	int len = strlen(t1->Bits);
+#ifdef REVERSE
+X	/* see comment about REVERSE in g3expand.c */
+X	char *p = t1->Bits + len;
+X	while (--p >= t1->Bits) {
+X	    if (*p != '0' && *p != '1') {
+X		fprintf(stderr, "Illegal binary digit %c in entry %d of table %s\n",
+X			*p, t1 - t, Name);
+X		exit(1);
+X	    }
+X	    v = (v << 1) + *p - '0';
+X	    i <<= 1;
+X	}
+X	while (v < n) {
+X	    if (Proto[v].State != S_Null) {
+X		fprintf(stderr, "Entry multiply defined in table %s: %d\n", Name, t1 - t);
+X		exit(1);
+X	    }
+X	    Proto[v].State = t1->s;
+X	    Proto[v].Width = len;
+X	    Proto[v].Param = t1->Param;
+X	    v += i;
+X	}
+#else
+X	char *p;
+X	i = 1 << (w-1);
+X	for (p = t1->Bits; *p; p++) {
+X	    if (*p != '0' && *p != '1') {
+X		fprintf(stderr, "Illegal binary digit %c in entry %d of table %s\n",
+X			*p, t1 - t, Name);
+X		exit(1);
+X	    }
+X	    if (*p - '0')
+X		v |= i;
+X	    i >>= 1;
+X	}
+X	for (i = 1 << (w - len); i; i--, v++) {
+X	    if (Proto[v].State != S_Null) {
+X		fprintf(stderr, "Entry multiply defined in table %s: %d\n", Name, t1 - t);
+X		exit(1);
+X	    }
+X	    Proto[v].State = t1->s;
+X	    Proto[v].Width = len;
+X	    Proto[v].Param = t1->Param;
+X	}
+#endif
+X    }
+X    return n;
+}
+X
+static void
+DumpProto(char *t, int n)
+{
+X    int i, j;
+X    struct tabent *p = Proto;
+X
+X    printf("struct tabent %s[] = {\n", t);
+X    for (i = 0; i < n; i++, p++) {
+X	printf("{%d, %d, %d},	/* ", p->State, p->Width, p->Param);
+X	for (j = n>>1; j; j >>= 1)
+X	    fputs(j & i ? "1" : "0", stdout);
+X	puts(" */");
+X    }
+X    puts("};\n");
+}
+SHAR_EOF
+chmod 0660 gentab.c ||
+echo 'restore of gentab.c failed'
+Wc_c="`wc -c < 'gentab.c'`"
+test 10125 -eq "$Wc_c" ||
+	echo 'gentab.c: original size 10125, current size' "$Wc_c"
+fi
+exit 0
+-- 
+Frank Cringle			| fdc@cliwe.ping.de
+Phone +49 2304 45565		|
+
+

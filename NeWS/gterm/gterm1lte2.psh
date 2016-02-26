@@ -1,0 +1,1819 @@
+%
+% WARNING: This file has been hacked badly, it no longer works on any
+%	   NeWS server except  OpenWindows 2.0 / tNt 1.0 -||ugh
+%
+%  I added a custom parser for psterm termcaps, which gives
+%  gterm about the same speed as xterm (at least on a Sun 3/50) and seems
+%  to be at lease 2/3 faster then old psterm on A/UX.
+%
+%  Current Bugs: 91/3/24
+%	No word, line or paragraph selection
+%	MiniTerm Icon / Static Icon Need to ignore keyboard input
+%	Cant reach into a NDE, X or XVIEW app to get/give the slecetion
+%	C side needs to detect failure of the .gtermrc code
+%	Add StaticIcon and MiniTermIcon flags that get passed into the ps side
+%	? Forgets to un-highlight selections sometimes ?
+%	Something is still fryed with the icon, with a collered background
+%		you can see that its moved over to the left..
+%	? Color columner selection inverting gives just a white block
+%	? Clipping bug with overlaycanavs on colordisplays ?
+%	color servers seems to have lots of bugs with the FIRST gterm
+%		that comes up, overlaycanvas bugs mostly
+%	Sometimes an old cursor gets left in a emacs status line
+%	On first one startup in OW2 sometime the selectoin does not work
+%		iconifying and re-opening the window fixes.
+%	LiteWindows bug:
+%		Menu sticks up in gterm: Workaround:  Goto the stuck up menu,
+%		bring up the X root menu and put it up.  Now first hold down
+%		the left (point) mouse button on the pin (getting ready to let
+%		it up, then hold down the menu (right) mouse button( the X 
+%		root menu should go away), now let go the left mouse botton,
+%		hopefuly freeing the stuck gterm menu button.
+%  Fixed Bugs:
+%	C side eating vast ammounts of CPU
+%	Clear screen needs to be speeded up
+%	Sun4: Every other gterm -bg has ioerr problems workaround:gterm -fg &
+%	Things like /bin/csh sporaticly evaporate just after being started up
+%	No Audio Bell
+%	Columner selectoins missing
+%	Selection outline missing at left and top
+%	No C side code for static icons
+%	Seprate MiniTerm Icon and Static Icon toggles
+%	MiniTerm Icon Canvas can dissaperrs!,caused by resize|fontchange
+%	The icon clear wipes the ediges of the icon
+%	get MiniTerm * in menu right
+%	gterm is just using show, disabling X&Y Kludges
+%	  the was I fixed this was to add a translate to the resetscale
+%	  function, which gets called at the beging of displaying the icon!
+%	Screen size calculations and get off for large fonts, (> 48pts)
+%		top of frame box gets erased, this happens when the window
+%		size gets larger then the screen!
+%	Extra white space in the X dim. makeing window wider, scaled only?
+%	Decneders on scaled fonts can get cliped, and leave garbage.
+%	  seems that these fonts have characters that have different
+%	  baselines, maybe when repainted sepratley?
+%	Problem with the very first gterm to come up not going away
+%		Problem not fixed, just hidden
+%  Gripes:
+%	Using some fonts (7x14) the whole current line gets redraw each char
+%		Turns out this is because the font claims to be non-fixed width
+%		This is a font machinery bug
+%		see this by setting textcolor to a {random random random...}
+%		Repaints each line every charcter (full window)
+%	Fixed fonts *sometimes* scale... *&%^&* WHY How can one tell?
+%	Fixed fonts can have ONLY their spaceings change when the point size
+%	  changes
+%	Italic fonts leave their boxes (go to a LARGE point value to see)
+%	There is no programitic way to tell which fonts will scale, or are
+%		fixed with or will rotate.
+%	Why does the Icon ReDisplay tree wipe the pixel to the left of the text
+%  Questions:
+%	Is it right that the .gtermrc comes from the server machine?
+%	Should the client check the timestamp on .gtermrc and reload?
+%
+% This file is a product of Sun Microsystems, Inc. and is provided for
+% unrestricted use provided that this legend is included on all tape
+% media and as a part of the software program in whole or part.
+% Users may copy, modify or distribute this file at will.
+% 
+% THIS FILE IS PROVIDED AS IS WITH NO WARRANTIES OF ANY KIND INCLUDING THE
+% WARRANTIES OF DESIGN, MERCHANTIBILITY AND FITNESS FOR A PARTICULAR
+% PURPOSE, OR ARISING FROM A COURSE OF DEALING, USAGE OR TRADE PRACTICE.
+% 
+% This file is provided with no support and without any obligation on the
+% part of Sun Microsystems, Inc. to assist in its use, correction,
+% modification or enhancement.
+% 
+% SUN MICROSYSTEMS, INC. SHALL HAVE NO LIABILITY WITH RESPECT TO THE
+% INFRINGEMENT OF COPYRIGHTS, TRADE SECRETS OR ANY PATENTS BY THIS FILE
+% OR ANY PART THEREOF.
+% 
+% In no event will Sun Microsystems, Inc. be liable for any lost revenue
+% or profits or other special, indirect and consequential damages, even
+% if Sun has been advised of the possibility of such damages.
+% 
+% Sun Microsystems, Inc.
+% 2550 Garcia Avenue
+% Mountain View, California  94043
+%
+% Modifications to the original Sun Microsystems, Inc. source code
+% made by the Grasshopper Group are in the Public Domain.
+%
+% Extensions to this file by Eric Messick of the Grasshopper Group.
+% Even more extennsions by Hugh Daniel of the Grasshopper Group.
+%
+% Grasshopper Group
+% 210 Clayton St
+% San Francisco, CA 94117
+%
+%
+%
+% Based on: "@(#)psterm.ps 1.0 88/06/09 SMI
+% "@(#)$Header: /it/grass/gterm/RCS/gterm1lte2.psh,v 1.15 1991/04/23 06:52:05 hugh Grass2 $
+%
+% Copyright (c) 1985 by Sun Microsystems, Inc.
+%/
+
+% This bit of gymnastics is to get around the fact that Sun mesed up
+% the protocal and did not change the port number... bright of them folks...
+69 42 count 0 gt { dup 42 eq { pop pop } if } if
+
+% Name this process on NeWER NeWS's
+currentprocess /ProcessName known { 
+	currentprocess /ProcessName (gTerm initialzer) put
+} if
+
+/hourg /hourg_m framebuffer setstandardcursor
+pause
+
+systemdict begin
+	/GTermDict_1 150 dict def
+end
+
+GTermDict_1 begin
+
+	/Toolkit		(lte2)	def
+		% user customization of these items can be done in ~/.gtermrc
+
+	/DefaultTerminalFont	/Screen	def
+	/DefaultFontSize	12	def
+	/DefaultLines		24	def
+	/DefaultCols		80	def
+	/DefaultCursorColor	ColorDisplay?
+			{.75 .75 .75 rgbcolor}{0 0 0 rgbcolor} ifelse def
+
+	/morefontmenulength	100	def
+
+	/EdgeLeft		1	def % space inside frame to leave white
+	/EdgeRight		1	def
+	/EdgeTop		1	def
+	/EdgeBottom		1	def
+
+	/ScrollbarWidth		16	def
+	/ScrollBarMinBoxSize	14	def
+			% minimum height of scroll bar box
+	/Shrink_To_Cols_Lines	true	def
+			% contract window to nearest integral size
+
+	/DefaultSimpleShow	true	def
+			% false means monospace variable spaced fonts
+	/DefaultFastRepaint	true	def
+			% false means paint every screen, even if
+			%  we're in the middle of painting a screen
+	/DefaultUseCopyArea	true	def
+			% set to false on silicon graphics
+			% where reading pixels is expensive
+
+	/smallest_font 1 def
+			% when font size is calculated, start here
+
+	/next_font_size { 1 add } def
+			% and increment by doing this
+
+	/IconXKludge		0	def
+	/IconYKludge		0	def
+	% Move TEXT in the icon over by IconLeftFudge
+	/IconLeftFudge		1	def
+	/IconRightFudge		1	def
+	% translate contents of icon by this much
+
+		% customization beyond this point is not recommended
+
+	/RePaintCode		(\200a) def
+	/BeginSelectionCode	(\200b) def
+	/ExtendSelectionCode	(\200c) def
+	/EndSelectionCode	(\200d) def
+	/AutoMarginToggleCode	(\200e) def
+	/PageModeToggleCode	(\200f) def
+	/LineColCode		(\200g) def
+	/FixedFontCode		(\200h) def
+	/VariableFontCode	(\200i) def
+	/BeginRectSelectionCode	(\200j) def
+	/BeginRectExtendCode	(\200k) def
+	/ScrollBarCode		(\200l) def
+	/ScrollLengthCode	(\200m) def
+	/EndOfRefreshCode	(\200n) def
+	/FastRepaintCode	(\200o) def
+	/UseCopyAreaCode	(\200p) def
+	/SuppressUpdatesCode	(\200q) def
+
+	/seekTextSelection { %stack: - => string true or - => falsen
+		/PrimarySelection getselection {
+			% If null selection ignore
+			{ dup null eq }
+				{pop false}
+			% Newer Style OL selections
+			{ dup /SelectionContents known}
+				{
+					dup /SelectionContents get
+					type (            ) cvs
+					(stringtype) eq 
+						{/SelectionContents get true}
+						{false}
+					ifelse
+			        }
+			% Old style LiteUI
+			{ dup /ContentsAscii known}
+				{/ContentsAscii get true}
+			% Old style in new enviorment
+			{ dup /SelInfo known}
+				{
+					/SelInfo get dup
+					/ContentsAscii known
+				 		{/ContentsAscii get true}
+				 		{pop false}
+					ifelse
+				}
+			% Default Case
+			{ pop true }
+				{ false }
+		} cond
+	} def
+
+	/PrimarySelection	1 def
+
+	/fontkey {findfont 14 scalefont false printermatchfont} def
+	/longstring 256 string def
+
+		/LineColMenu [
+			(24 x 80)		{ 24 80 ChangeLineCol }
+			( 8 x 80)		{ 8 80 ChangeLineCol }
+			(16 x 64)		{ 16 64 ChangeLineCol }
+			(34 x 80)		{ 34 80 ChangeLineCol }
+			(60 x 80)		{ 60 80 ChangeLineCol }
+			(28 x 90)		{ 28 90 ChangeLineCol }
+			(40 x 90)		{ 40 90 ChangeLineCol }
+			(48 x 96)		{ 48 96 ChangeLineCol }
+			(66 x 132)		{ 66 132 ChangeLineCol }
+		] /new DefaultMenu send def
+		{	/LayoutStyle	[3 3] def
+			/CellHorizGap	5 def
+		} LineColMenu send
+
+		/PointMenu
+			[(1)   (2)   (4)   (6)
+			 (8)   (10)  (12)  (14)
+			 (16)  (18)  (20)  (22)
+			 (24)  (26)  (30)  (32)
+			 (48)  (64)  (96)  (128)]
+			[{currentkey cvi ChangeFontSize}]
+		/new DefaultMenu send def
+		{	/LayoutStyle	[4 5] def
+			/CellHorizGap	5 def
+		} PointMenu send
+
+		/FixedFontMenu [
+			[(Screen)
+			 /Screen		fontkey]
+			[(Terminal)
+			 /Terminal		fontkey]
+			[(Fixed)
+			 /fixed			fontkey]
+			[(5x8)
+			 /5x8			fontkey]
+			[(6x9)
+			 /6x9			fontkey]
+			[(6x10)
+			 /6x10			fontkey]
+			[(6x13)
+			 /6x13			fontkey]
+			[(7x13)
+			 /7x13			fontkey]
+			[(7x14)
+			 /7x14			fontkey]
+			[(8x13)
+			 /8x13			fontkey]
+			[(8x16)
+			 /8x16			fontkey]
+			[(9x15)
+			 /9x15			fontkey]
+			[(10x20)
+			 /10x20			fontkey]
+			[(Screen-Bold)
+			 /Screen-Bold		fontkey]
+			[(9x15bold)
+			 /9x15bold		fontkey]
+			[(8x13bold)
+			 /8x13bold		fontkey]
+			[(7x13bold)
+			 /7x13bold		fontkey]
+			[(6x13bold)
+			 /6x13bold		fontkey]
+
+		] [{currentkey 1 get /FontName get ChangeFont}]
+		/new DefaultMenu send def
+		
+		/ScaledFontMenu [
+			[(Courier)
+			 /Courier		fontkey]
+			[(Courier-Bold)
+			 /Courier-Bold		fontkey]
+			[(Courier-Oblique)
+			 /Courier-Oblique	fontkey]
+			[(Courier-BoldOblique)
+			 /Courier-BoldOblique	fontkey]
+	
+			[(LucidaSansTypewriter)
+			 /LucidaSansTypewriter	fontkey]
+			[(LucidaSansTypewriter-Bold)
+			 /LucidaSansTypewriter-Bold	fontkey]
+		] [{currentkey 1 get /FontName get ChangeFont}]
+		/new DefaultMenu send def
+		{
+			/LayoutStyle	[4 2] def
+			/RowMajor?	false def
+			/CenterItems?	false def
+		} ScaledFontMenu send
+
+		pause
+		/ScrollLengthMenu
+			[
+				(0)   (64)   (128)  (256)
+				(512) (1024) (2048) (4096)
+			]
+			[{currentkey cvi ChangeScrollLength}]
+		/new DefaultMenu send def
+		{
+			/LayoutStyle	[4 2] def
+			/RowMajor?	false def
+			/CellHorizGap	5 def
+		} ScrollLengthMenu send
+
+		/StuffToMenu [
+			(Stuff to Frame Label)	{
+				seekTextSelection { SL } if
+						}
+			(Stuff to Icon Label)	{
+				seekTextSelection { seticonlabel } if
+						}
+			(Stuff to Both)		{
+				seekTextSelection { dup SL seticonlabel } if
+						}
+			(Version to Frame Label){
+				($Header: /it/grass/gterm/RCS/gterm1lte2.psh,v 1.15 1991/04/23 06:52:05 hugh Grass2 $)
+				8 1 index length 9 sub getinterval SL
+						}
+		] /new DefaultMenu send def
+
+	pause
+
+	systemdict /Item known not { (NeWS/liteitem.ps) run } if
+
+	pause
+
+	/PropScrollbar SimpleScrollbar
+	dictbegin
+		/Tracking false def
+	dictend
+	classbegin
+		/SetScale { % - => - (set BarScale from size)
+			/BarScale	% points per line of text
+				ItemHeight ButtonSize 2 mul sub
+				BarMax BarMin sub div def
+			/BoxSize BarViewPercent BarScale mul neg
+				ItemHeight ButtonSize 2 mul sub min
+				ScrollBarMinBoxSize max
+				def
+		} def
+		/ValueToY { % value -> y
+			BarMin BarViewPercent sub dup 0 le {
+				pop ButtonSize
+			} {
+				sub BarViewPercent sub
+				BarScale mul ButtonSize add
+				BoxSize sub
+				ButtonSize max
+				ItemHeight ButtonSize sub BoxSize sub min
+			} ifelse
+		} def
+		/YToValue { % y -> value
+			ButtonSize sub BoxSize 2 div add
+			BarScale div BarMin add .5 add truncate
+			CheckValueBounds
+		} def
+		/CheckValueBounds { % value => value (in range)
+			BarMax max BarMin BarViewPercent sub min
+		} def
+		/DoScroll { % - => -
+			SetScrollValue
+			ItemValue ItemPaintedValue ne
+				{EraseBox PaintBox NotifyUser}
+			if
+		} def
+		/SetValue { % value => -
+			/ItemValue exch def
+			/paint self send
+		} def
+		/ClientDown {
+			/Tracking true def
+			/ClientDown super send
+		} def
+		/ClientUp {
+			/Tracking false def
+		} def
+		/SetScrollBarValue { % value range_array => -
+			Tracking {
+				pop pop		% it'll catch up
+			} {
+				/setrange self send
+				/SetValue self send
+			} ifelse
+		} def
+	classend def
+
+	pause
+
+	/GTermWindow DefaultWindow 
+	dictbegin
+		/Scrollbar		null	def
+		/ScrollbarActive	false	def
+	dictend
+	classbegin
+		/BorderRight {
+			ScrollbarActive {
+				{
+					ScrollbarWidth BorderRight 5 min add
+					BorderRight max
+				} DefaultWindow send
+			} {
+				{ BorderRight } DefaultWindow send
+			} ifelse
+		} def
+
+		/ClientMinHeight {
+			ScrollbarActive {48} {5} ifelse
+		} def
+
+		/ClientMinWidth 5 def
+
+		/ScrollbarOn {
+			ScrollbarActive not {
+				/map Scrollbar send
+				BorderRight
+				/ScrollbarActive true def
+				BorderRight sub
+					FrameX FrameY
+					FrameWidth 4 -1 roll sub FrameHeight
+				/doreshape self send
+				/ShapeStretchControl self send
+			} if
+		} def
+
+		/ScrollbarOff {
+			ScrollbarActive {
+				/unmap Scrollbar send
+				BorderRight
+				/ScrollbarActive false def
+				BorderRight sub
+					FrameX FrameY
+					FrameWidth 4 -1 roll sub FrameHeight
+				/doreshape self send
+				/ShapeStretchControl self send
+			} if
+		} def
+
+		/ShapeStretchControl {
+			gsave
+				FrameCanvas setcanvas
+				ControlSize BorderRight gt
+				ControlSize BorderBottom gt and {
+					newpath
+					0	0			moveto
+					0	BorderBottom		lineto
+					ControlSize BorderRight sub
+						BorderBottom		lineto
+					ControlSize BorderRight sub
+						ControlSize		lineto
+					ControlSize
+						ControlSize		lineto
+					ControlSize
+						0			lineto
+					closepath
+				} {
+					0 0 ControlSize ControlSize rectpath
+				} ifelse
+				StretchControl reshapecanvas
+				/MoveFrameControls self send
+				/PaintFrameControls self send
+			grestore
+		} def
+
+		pause
+
+		/destroy {
+			/Scrollbar null def
+			/destroy super send
+		} def
+
+		/CreateFrameControls { % - => -
+					% (Create frame control canvases/items)
+			/CreateFrameControls super send
+			/Scrollbar
+				[10 0 1 10 10] 0
+					{ ScrollBarCode print ItemValue = }
+				FrameCanvas /new PropScrollbar send
+				def
+			{ /ItemPaintedValue 0 def } Scrollbar send
+					% this kludge shouldn't be needed
+		} def
+
+		/CreateFrameInterests { % - => -
+					% (Create frame control interests)
+			/CreateFrameInterests super send
+			FrameInterests begin
+	% Append the scroll bar "start" interests to the frame interests.
+	% The odd "forall" is used to create unique names for inclusion
+	% in the frame interests dictionary.
+				/makestartinterests Scrollbar send {
+					(Scrollbar) 1 index /Name get cvx 100
+					string cvs append
+					cvn exch def
+				} forall
+			end
+		} def
+
+		/MoveFrameControls { % - => - ([Re]set frame control shapes)
+			/MoveFrameControls super send
+			ScrollbarActive {
+				FrameWidth BorderRight sub
+				ControlSize 1 sub
+				ScrollbarWidth
+				FrameHeight ControlSize sub BorderTop sub 2 add
+				/reshape Scrollbar send
+			} if
+		} def
+
+		/PaintFrameControls { % - => - (Paint frame control areas)
+			gsave
+				/PaintFrameControls super send
+				ScrollbarActive { /paint Scrollbar send } if
+			grestore
+		} def
+
+		/SetScrollBarValue { % totallines currentposition => -
+			ScrollbarActive {
+				[
+					2 index 0 1
+					Window_lines dup 3 sub 1 max exch ]
+				/SetScrollBarValue Scrollbar send
+			} { pop } ifelse
+			pop
+		} def
+
+		/FixFrame {RePaintCode print} def
+		/PaintClient {RePaintCode print} def
+%		/PaintIcon {RePaintCode print} def
+		/PaintIcon {
+			StaticIcon? {
+				NeetTrick
+			} if
+			MiniTermIcon? {
+				% I guess this is where the multi repaint on
+				% startup bug stems from! (in NeWS 1.1) as this
+				% code is run at window startup even without iocn
+				RePaintCode print
+			} {
+				/PaintIcon super send
+			}
+			ifelse
+		} def
+		/IconImage /terminal def
+		/reshape { ChangeWidthHeight } def
+		/flipiconic { Flip_Iconic } def
+
+		/ShapeIconCanvas {
+			gsave
+			ParentCanvas setcanvas
+			0 0 IconWidth IconHeight IconPath
+			IconCanvas reshapecanvas
+			IconX null ne {
+				IconCanvas setcanvas
+% OW2 bug: this is what was causing icon canvases to disapeer
+%				[1 0 0 1 0 0] setmatrix
+				IconX IconY movecanvas
+			} if
+			grestore
+		} def
+
+		pause
+
+		/makemenus {
+			/ResizeMenu [
+				(Changing Font Size determines:) {}
+				() {}
+				() {}
+				(Changing Lines/Cols determines:) {}
+				() {}
+				() {}
+				(Changing Window Size determines:) {}
+				() {}
+				() {}
+			] /new DefaultMenu send def
+% looks bad		{ /CenterItems? false def } ResizeMenu send
+
+			/ToggleMenu [ 
+				(  Page Mode)		
+					{PageModeToggleCode print}
+				(  Auto-Margins)
+					{AutoMarginToggleCode print}
+				(  Var Width Fonts)
+					{ ToggleSimpleShow RePaintCode print}
+				(  Fast Repaint)
+					{ ToggleFastRepaint }
+				(  Scrolling Allowed)
+					{ ToggleUseCopyArea }
+				(  Static Icon)
+					{ ToggleStaticIcon }
+				(  MiniTerm Icon)
+					{ ToggleMiniTermIcon }
+			] /new DefaultMenu send def
+% looks bad		{ /CenterItems? false def } ToggleMenu send
+
+			/ConfigMenu [
+				(Lines x Cols...)	LineColMenu
+				(Points...)		PointMenu
+				(Fixed Fonts...)	FixedFontMenu
+				(Scaled Fonts...)	ScaledFontMenu
+%				(More Fonts!...)	MoreFontsMenu
+				(Resizing stuff...)	ResizeMenu
+				(Scroll Bar...)		ScrollLengthMenu
+				(Toggles...)		ToggleMenu
+				(Set Labels...)		StuffToMenu
+			] /new DefaultMenu send def
+
+			/ClientMenu [
+				(Stuff)		{
+							seekTextSelection
+							{ print } if
+						}
+				(Frame...)		{ FrameMenu } MyWindow send
+				(Config...)		ConfigMenu
+			] /new DefaultMenu send def
+
+		} def
+
+		/PageModeMenuItem	0 def	% which item of /ToggleMenu?
+		/AutoMarginMenuItem	1 def	% likewise
+		/SimpleShowMenuItem	2 def	% likewise
+		/FastRepaintMenuItem	3 def	% likewise
+		/UseCopyAreaMenuItem	4 def	% likewise
+		/StaticIconMenuItem	5 def	% likewise
+		/MiniTermIconMenuItem	6 def	% likewise
+
+		/doreshape { /reshape load } DefaultWindow send def
+
+		/doflipiconic { /flipiconic load } DefaultWindow send def
+
+	classend def
+
+	pause
+
+	% OW2: Dont do the false printermatchedfont here because it makes the
+	% characters to small to see (most of them turn white.
+	/Courier findfont setfont
+	/OnePointFont currentfont
+		[ 1 (m) stringwidth pop    div
+		  0 0
+		  1 currentfont fontheight div
+		  0 0		% these are ignored by NeWS ---- FIXME!!
+%		  1 currentfont fontheight div neg
+%		  0 1 index neg
+		] makefont def
+%] dup console exch ( ---> % % %   % % % <---\n) exch fprintf  makefont def
+%???	grestore	% no matching gsave ???
+
+	/TSB { % on/off => -   ``toggle'' scrollbar
+		dup /ScrollSaveLength exch store
+		0 eq { /ScrollbarOff } { /ScrollbarOn } ifelse MyWindow send
+	} def
+	/SSBV { % totallines currentpos => -   set scrollbar value
+		/SetScrollBarValue MyWindow send
+	} def
+
+	/BRP {
+		{
+			gsave
+			Iconic? {
+				IconCanvas setcanvas damagepath clipcanvas
+				IconFillColor fillcanvas
+				IconBorderColor strokecanvas
+				PaintIconLabel
+			} {
+				FrameCanvas setcanvas
+				damagepath clipcanvas PaintFrame
+		% initialize client canvas with background color
+				ClientCanvas setcanvas
+				backgroundcolor fillcanvas
+			} ifelse
+			grestore
+		}
+		MyWindow send
+	} def
+
+	/ERP { clipcanvas } def
+
+	/EOR { EndOfRefreshCode print } def
+
+	/CD {		 % c x y cursordown
+		gsave
+		maxy add
+		translate
+		dup length dup
+		0 0 moveto
+		0 1 rlineto
+		0 rlineto		% x component is length of c
+		0 lineto		% x component is length of c
+		closepath
+		backgroundcolor setcolor
+		fill
+		textcolor setcolor
+		0 maxy neg moveto
+		show%text
+		grestore
+	} def
+
+	/CU {		 % c x y cursorup
+		gsave
+		maxy add
+		translate
+		dup length dup
+		0 0 moveto
+		0 1 rlineto
+		0 rlineto		% x component is length of c
+		0 lineto		% x component is length of c
+		closepath
+		cursorcolor setcolor
+		fill
+		backgroundcolor setcolor
+		0 maxy neg moveto
+		show%text
+		grestore
+	} def
+
+	/CL {		% yby w yfrom nl CopyLine
+		gsave
+		/NumLin exch def			% yby w yfrom
+		maxy add 0 exch translate		% yby w
+		0 0 moveto
+		0 NumLin rlineto			% yby w
+		dup 0 rlineto				% yby w 
+		0 lineto				% yby
+		closepath
+		0 exch copyarea
+		grestore
+	} def
+
+	/SL {						% s SetFrameLabel
+		{
+			/FrameLabel exch store
+			gsave
+			FrameCanvas setcanvas
+			BorderLeft 1 add
+			FrameHeight BorderTop sub 1 add
+			FrameWidth BorderLeft BorderRight add sub 2 sub
+			BorderTop 2 sub
+			rectpath FrameFillColor setcolor fill
+				% clear label area
+			/paintframelabel self send
+			FrameBorderColor setcolor
+			PaintFrameControls PaintFocus
+			grestore
+		} MyWindow send
+	} def
+
+	/seticonlabel {
+		{
+			/IconLabel exch store
+			PaintIcon
+		} MyWindow send
+	} def
+
+	% RingBell, makes a ^g sound on most machines
+	/RB { % - => - 
+		beep
+	} def
+
+	% Visual bell, flashes the overlay on our window
+	/VB { % - => -
+% FIXUP: This is invisible in the MiniTerm, 
+		gsave
+		HiLightCanvas setcanvas
+		clippath pathbbox
+		[ 2 index 0 0 4 index 0 0 ] setmatrix pop pop pop pop
+		random random moveto
+		40 { random random lineto } repeat
+		stroke
+		.001 sleep
+		erasepage
+		grestore
+	} def
+
+	/AM {		% onoff => -		(define auto margins)
+		0 eq {(  Auto-Margins)}{(* Auto-Margins)} ifelse
+		{ AutoMarginMenuItem } MyWindow send exch
+		{AutoMarginToggleCode print}
+		/changeitem MyWindow /ToggleMenu get send
+	} def
+
+	/PM {		% onoff => -		(define page mode)
+		0 eq {(  Page Mode)}{(* Page Mode)} ifelse
+		{ PageModeMenuItem } MyWindow send exch
+		{PageModeToggleCode print}
+		/changeitem MyWindow /ToggleMenu get send
+	} def
+
+	/ToggleSimpleShow {
+		/SimpleShow SimpleShow not store
+		/FontFixedP MonoSpacedFont Font_size 1 eq or
+		SimpleShow not or store
+		FontFixedP { FixedFontCode } { VariableFontCode } ifelse print
+		{ SimpleShowMenuItem } MyWindow send
+		SimpleShow {(* Var Width Fonts)}{(  Var Width Fonts)} ifelse
+		{ ToggleSimpleShow RePaintCode print}
+		/changeitem MyWindow /ToggleMenu get send
+	} def
+
+	/ToggleFastRepaint {
+		/FastRepaint FastRepaint not store
+		FastRepaintCode print
+		FastRepaint { 1 } { 0 } ifelse =
+		{ FastRepaintMenuItem } MyWindow send
+		FastRepaint {(* Fast Repaint)}{(  Fast Repaint)} ifelse
+		{ ToggleFastRepaint }
+		/changeitem MyWindow /ToggleMenu get send
+	} def
+
+	/ToggleUseCopyArea {
+		/UseCopyArea UseCopyArea not store
+		UseCopyAreaCode print
+		UseCopyArea { 1 } { 0 } ifelse =
+		{ UseCopyAreaMenuItem } MyWindow send
+		UseCopyArea {(* Scrolling Allowed)}{(  Scrolling Allowed)} ifelse
+		{ ToggleUseCopyArea }
+		/changeitem MyWindow /ToggleMenu get send
+	} def
+
+	/ToggleStaticIcon {
+		/StaticIcon? StaticIcon? not store
+		{ StaticIconMenuItem } MyWindow send
+		StaticIcon? {(* Static Icon)}{(  Static Icon)} ifelse
+		{ ToggleStaticIcon }
+		/changeitem MyWindow /ToggleMenu get send
+	} def
+
+	/ToggleMiniTermIcon {
+		/MiniTermIcon? MiniTermIcon? not store
+		MiniTermIcon? {
+			CalcIconSize
+		}{
+			{
+				/IconWidth 64 def
+				/IconHeight 64 def
+				/ShapeIconCanvas self send
+			} MyWindow send
+			ToggleStaticIcon
+		} ifelse
+		{ MiniTermIconMenuItem } MyWindow send
+		MiniTermIcon? {(* MiniTerm Icon)}{(  MiniTerm Icon)} ifelse
+		{ ToggleMiniTermIcon }
+		/changeitem MyWindow /ToggleMenu get send
+	} def
+
+	/MT {
+		backgroundcolor setcolor
+		2 copy maxy add moveto
+		1 index 0 eq { -.25 0 rmoveto } if
+			% zap blats on left margin
+		0 1 rlineto
+		Window_cols .25 add 1 index maxy add 1 add lineto
+		0 -1 rlineto
+		closepath fill
+		moveto
+		pause
+	} def
+
+	/PN {	% paint normal
+		textcolor setcolor
+		show%text
+	} def
+
+	/PR {
+		dup textstringwidth
+		textcolor setcolor
+		stringbox
+		backgroundcolor setcolor
+		show%text
+	} def
+
+	/UN {
+		dup textstringwidth
+		textcolor setcolor
+		underscore
+		show%text
+	} def
+
+	/UR {
+		dup textstringwidth
+		textcolor setcolor
+		dup stringbox
+		backgroundcolor setcolor
+		underscore
+		show%text
+	} def
+
+	% Clear to the end of the line
+	/CE {
+	} def
+
+	% Clear the whole screen
+	% Clear screen is a specal case it it gets called from inside a ??_op
+	/CS {
+		{ Iconic? } MyWindow send {
+			MiniTermIcon? {
+			% Better: just wipe the inside of the canvas...
+			% But its ok for this to be slow as icons are still small...
+				{
+					gsave
+					IconCanvas setcanvas damagepath clipcanvas
+					IconFillColor fillcanvas
+					IconBorderColor strokecanvas
+					PaintIconLabel
+					grestore
+				} MyWindow send
+			} if
+		} {
+			backgroundcolor fillcanvas
+		} ifelse
+	} def
+
+	/textstringwidth {	% (str) => width
+		FontFixedP {
+			length
+		} {
+			stringwidth pop
+		} ifelse
+	} def
+
+	/stringbox {	% width
+		currentpoint 3 2 roll
+		0 maxy rmoveto
+		0 1 rlineto
+		0 rlineto
+		0 -1 rlineto
+		closepath fill
+		moveto
+	} def
+
+	/underscore {	% width
+		currentpoint 3 2 roll
+		1 maxy add 2 div 0 exch rmoveto
+		0 rlineto
+		stroke
+		moveto
+	} def		
+
+	/HL {	% strokeit [ ends of lines ] firstcol firstrow => -
+		% do highlighting
+		gsave
+		3 index 0 ne {
+			HiLightCanvas setcanvas
+			CurrentMatrix setmatrix
+			erasepage
+		} if
+		maxy add 1 add dup		% [] x y y
+		4 1 roll			% y [] x y
+		exch dup type /stringtype eq {
+			textstringwidth
+		} if
+		exch moveto			% y []
+		0 -1 rlineto dup		% y [] []
+		{ 				% ... x
+			dup type /stringtype eq {
+				textstringwidth
+			} {
+				1 add
+			} ifelse
+			currentpoint		% ... x cx cy
+			exch pop		% ... x cy
+			lineto
+			0 1 rlineto
+		} forall			% y []
+		length 1 gt {
+			currentpoint 0 exch	% y cx 0 cy
+			lineto pop 0 exch	% 0 y
+			lineto
+		} { pop } ifelse
+		closepath
+		currentpath /HiLightPath exch store
+		0 ne { stroke } if
+		grestore
+	} def
+
+	/HiLightRect { % strokeit startcol startrow endcol endrow => -
+		gsave
+		4 index 0 ne { % strokeit != 0
+			HiLightCanvas setcanvas
+			CurrentMatrix setmatrix
+			erasepage
+		} if
+		0 maxy translate
+		1 add exch 1 add exch
+		3 index 1 index moveto
+		1 index exch lineto
+		1 index lineto
+		lineto closepath
+		currentpath /HiLightPath exch store
+		0 ne { stroke } if
+		grestore
+	} def
+
+	/takedownoutline {
+%		/HiLightCanvas null store
+%		HiLightCanvas /Mapped false put
+		gsave
+		HiLightCanvas setcanvas erasepage
+		grestore
+	} def
+
+	/clearselectionpath {
+		/HiLightPath null store
+	} def
+
+	/PaintHiLight {
+		HiLightPath null ne {
+			gsave
+			5 setrasteropcode
+			HiLightPath setpath fill
+			grestore
+		} if
+	} def
+
+	/startselset {
+		/CurrentSelection () store
+	} def
+
+	/extsel {
+		CurrentSelection exch append /CurrentSelection exch store
+	} def
+
+	/finishselset {		% str
+		10 dict dup begin
+			/ContentsAscii		CurrentSelection	def
+			/SelectionObjSize	1			def
+			/SelectionHolder	childprocess		def
+			/Canvas			currentcanvas		def
+		end
+		/PrimarySelection setselection
+	} def
+
+	/resetscale { 10 dict begin
+		{ Iconic? { IconCanvas } { ClientCanvas } ifelse }
+			MyWindow send setcanvas
+		clippath pathbbox EdgeLeft
+		{ Iconic? } MyWindow send { IconLeftFudge add 
+		} if
+		exch
+		ScaledFont fontdescent add EdgeTop sub translate
+		clear
+
+		Font_size 1 eq {
+			1 -1 scale
+			IconXKludge IconYKludge translate
+			OnePointFont setfont
+		} {
+			/xscale ScaledFont setfont (m) stringwidth pop def
+			/yscale ScaledFont fontheight neg def
+			xscale yscale scale
+
+			Term_Font [
+				Font_size xscale div 0 0
+				Font_size yscale div 0 0 ] makefont setfont
+		} ifelse
+
+		textcolor setcolor
+
+		0 1 translate
+		/CurrentMatrix 6 array currentmatrix store
+		% The next 6 lines are for OW2.0 to fix a highlight bug
+		/HiLightCanvas where { dup
+			/HiLightCanvas undef
+			/HiLightCanvas null put
+		} {
+			userdict /HiLightCanvas null put
+		} ifelse
+		/HiLightCanvas { ClientCanvas } MyWindow send
+			createoverlay store
+		clear
+		childprocess dup null ne {
+			MySetTransform createevent copy dup begin
+				/Action matrix currentmatrix def
+				/TimeStamp lasteventtime def
+			end sendevent
+		} {
+			pop
+		} ifelse
+
+		end 
+		/maxy currentfont fontascent neg store
+	} def
+
+	% Width/Height Columns/Lines (changes made) to Font
+	/whcl2f {
+		gsave
+		{ Iconic? { IconCanvas } { ClientCanvas } ifelse }
+			MyWindow send setcanvas
+		/Term_Font SelectedFont store
+		/char_width Window_width
+			{ BorderLeft sub BorderRight sub } MyWindow send
+			EdgeLeft sub EdgeRight sub
+			Window_cols div store
+
+		/char_height Window_height
+			{ BorderTop sub BorderBottom sub } MyWindow send
+			EdgeTop sub EdgeBottom sub
+			Window_lines div store
+
+		/Font_size 0 store
+		smallest_font
+		{
+			dup Term_Font exch scalefont setfont
+			currentfont fontheight char_height ge
+			(m) stringwidth pop char_width ge or { exit } if
+			dup /Font_size exch store
+			next_font_size
+		} loop
+		pop
+
+		Term_Font Font_size scalefont setfont
+		/ScaledFont currentfont store
+		Shrink_To_Cols_Lines { clf2wh } if
+		grestore
+	} def
+
+	% Width/Height Font (forces chages to) Columns/Lines
+	/whf2cl {
+		gsave
+		{ Iconic? { IconCanvas } { ClientCanvas } ifelse }
+			MyWindow send setcanvas
+		Font_size 1 eq {
+			/Term_Font /Courier findfont
+			false printermatchfont store
+			/ScaledFont OnePointFont store
+		} {
+			/Term_Font SelectedFont store
+			/ScaledFont Term_Font Font_size scalefont store
+		} ifelse
+
+		ScaledFont setfont
+
+		/Window_cols Window_width
+			{ BorderLeft sub BorderRight sub } MyWindow send
+			EdgeLeft sub EdgeRight sub
+			(m) stringwidth pop div .5 add truncate 1 max store
+
+		/Window_lines Window_height
+			{ BorderTop sub BorderBottom sub } MyWindow send
+			EdgeTop sub EdgeBottom sub
+			currentfont fontheight div .5 add truncate 1 max store
+		Shrink_To_Cols_Lines { clf2wh } if
+		grestore
+	} def
+
+	% Columns/Lines Font (changes made to Window) Width/Height
+	/clf2wh { % - => -
+		gsave
+		{ Iconic? { IconCanvas } { ClientCanvas } ifelse }
+			MyWindow send setcanvas
+		Font_size 1 eq {
+			/Term_Font /Courier findfont
+			false printermatchfont store
+			/ScaledFont OnePointFont store
+		} {
+			/Term_Font SelectedFont store
+			/ScaledFont Term_Font Font_size scalefont store
+		} ifelse
+
+		ScaledFont setfont
+
+		/Window_width Window_cols (m) stringwidth pop mul
+			{ BorderLeft add BorderRight add } MyWindow send
+			EdgeLeft add EdgeRight add store
+
+		/Window_height Window_lines currentfont fontheight mul
+			{ BorderTop add BorderBottom add } MyWindow send
+			EdgeTop add EdgeBottom add store
+		grestore
+	} def
+
+	/SetupResizeMenu {
+		/FontChangeProc load /clf2wh load eq {
+			1 (* Window Size) {} /changeitem MyWindow
+				/ResizeMenu get send
+			2 (  Lines/Cols ) { ToggleFont } /changeitem MyWindow
+				/ResizeMenu get send
+		} {
+			1 (  Window Size) { ToggleFont } /changeitem MyWindow
+				/ResizeMenu get send
+			2 (* Lines/Cols ) {} /changeitem MyWindow
+				/ResizeMenu get send
+		} ifelse
+
+		/LineColChangeProc load /clf2wh load eq {
+			4 (* Window Size) {} /changeitem MyWindow
+				/ResizeMenu get send
+			5 (  Font Size  ) { ToggleLineCol }
+				/changeitem MyWindow
+				/ResizeMenu get send
+		} {
+			4 (  Window Size) { ToggleLineCol }
+				/changeitem MyWindow
+				/ResizeMenu get send
+			5 (* Font Size  ) {} /changeitem MyWindow
+				/ResizeMenu get send
+		} ifelse
+
+
+		/WidthHeightChangeProc load /whf2cl load eq {
+			7 (* Lines/Cols ) {} /changeitem MyWindow
+				/ResizeMenu get send
+			8 (  Font Size  ) { ToggleWidthHeight }
+				/changeitem MyWindow
+				/ResizeMenu get send
+		} {
+			7 (  Lines/Cols ) { ToggleWidthHeight }
+				/changeitem MyWindow
+				/ResizeMenu get send
+			8 (* Font Size  ) {} /changeitem MyWindow
+				/ResizeMenu get send
+		} ifelse
+
+	} def
+
+	/DefaultFontChangeProc /clf2wh load def
+	/ToggleFont {
+		/FontChangeProc load /clf2wh load eq {
+			/FontChangeProc /whf2cl load store
+		} {
+			/FontChangeProc /clf2wh load store
+		} ifelse
+		SetupResizeMenu
+	} def
+
+	/DefaultLineColChangeProc /clf2wh load def
+	/ToggleLineCol {
+		/LineColChangeProc load /clf2wh load eq {
+			/LineColChangeProc /whcl2f load store
+		} {
+			/LineColChangeProc /clf2wh load store
+		} ifelse
+		SetupResizeMenu
+	} def
+
+	/DefaultWidthHeightChangeProc /whf2cl load def
+	/ToggleWidthHeight {
+		/WidthHeightChangeProc load /whf2cl load eq {
+			/WidthHeightChangeProc /whcl2f load store
+		} {
+			/WidthHeightChangeProc /whf2cl load store
+		} ifelse
+		SetupResizeMenu
+	} def
+
+	/ChangeOne {
+		dup /Font eq {
+			pop
+			FontChangeProc
+		} {
+			/LineCol eq {
+				LineColChangeProc
+			} {
+				WidthHeightChangeProc
+			} ifelse
+		} ifelse
+
+		CalcIconSize
+
+		LineColCode print
+		Window_cols =
+		Window_lines =
+		/Window_x { FrameX } MyWindow send store
+		/Window_y { FrameY } MyWindow send store
+		Window_y Window_height add 0 lt { % don't disappear on us!
+			/Window_y 10 Window_height sub store
+		} if
+		Window_x Window_y
+		% Fixup: This is where we ought to do something about
+		% windows that are MUCH larger then the screen.  The old
+		% MaxWindow hack that was here did not work well...
+		Window_width Window_height
+		/doreshape MyWindow send
+
+	} def
+
+	/CalcIconSize {
+		MiniTermIcon? {
+			{
+				/IconWidth
+					Window_cols
+					gsave
+						IconFont setfont
+						IconLabel stringwidth pop
+					grestore
+					max EdgeLeft add IconLeftFudge add
+					EdgeRight add IconRightFudge add def
+				/IconHeight
+					Window_lines EdgeTop add EdgeBottom add
+					IconFont fontheight add def
+				/ShapeIconCanvas self send
+			} MyWindow send
+		} if
+	} def
+
+
+	/ChangeScrollLength {
+		ScrollLengthCode print =
+	} def
+
+	/ChangeFontSize {
+		/SelectedFontSize exch store
+		/Font_size SelectedFontSize store
+		/Font ChangeOne
+	} def
+
+	/ChangeWidthHeight {
+		/Window_height exch store
+		/Window_width exch store
+		/Window_y exch store
+		/Window_x exch store
+		{
+			/FrameX Window_x store
+			/FrameY Window_y store
+			ClientMinWidth BorderLeft add BorderRight add
+			ClientMinHeight BorderTop add BorderBottom add
+		} MyWindow send
+		dup Window_height gt {
+			/Window_height exch store
+		} { pop } ifelse
+		dup Window_width gt {
+			/Window_width exch store
+		} { pop } ifelse
+		/WidthHeight ChangeOne
+	} def
+
+	/ChangeLineCol {
+		/Window_cols exch store
+		/Window_lines exch store
+		/LineCol ChangeOne
+	} def
+
+	/ChangeFont { % fontname'string => -
+		dup
+		{ findfont } errored {
+			gsave framebuffer setcanvas currentcursorlocation
+			[ (Could not find font:) 5 -1 roll 100 string cvs ]
+			popmsg pop
+			grestore
+		} {
+			false printermatchfont
+			/SelectedFont exch store
+			pop
+			/MonoSpacedFont SelectedFont /isFixedPitch get store
+			% Here we test by hand for fonts we know are FixedPitch
+			% This is a workaround for a server bug...
+			SelectedFont /FontName get
+				0 index /Courier			eq
+				1 index /Courier-Bold			eq or
+				1 index /Courier-Oblique		eq or
+				1 index /Courier-BoldOblique		eq or
+				1 index /Lucida-SansTypewriter		eq or
+				1 index /Lucida-SansTypewriterBold	eq or
+				1 index /Terminal			eq or
+				1 index /7x14				eq or
+				1 index /8x16				eq or
+				{ /MonoSpacedFont true store } if pop
+			/FontFixedP MonoSpacedFont Font_size 1 eq or
+				SimpleShow not or store
+			FontFixedP { FixedFontCode } { VariableFontCode } ifelse print
+			Font_size ChangeFontSize
+		} ifelse
+	} def
+
+	/Flip_Iconic {
+		/doflipiconic self send
+		Iconic? {
+			/Font_size 1 store
+			/FontFixedP MonoSpacedFont Font_size 1 eq or
+				SimpleShow not or store
+			FontFixedP
+				{ FixedFontCode }
+				{ VariableFontCode }
+			ifelse print
+			ClientCanvas setcanvas backgroundcolor fillcanvas
+				% keep it from repainting twice
+			IconCanvas setcanvas
+			/ScaledFont OnePointFont store
+			ScaledFont setfont
+			IconCanvas /Retained get {
+				/PaintIcon self send
+			} if
+		} {
+			IconCanvas setcanvas IconFillColor fillcanvas
+			ClientCanvas setcanvas
+%IconMatrix setmatrix
+			/Font_size SelectedFontSize store
+			/FontFixedP MonoSpacedFont Font_size 1 eq or
+				SimpleShow not or store
+			FontFixedP
+				{ FixedFontCode }
+				{ VariableFontCode }
+			ifelse print
+			/ScaledFont Term_Font Font_size scalefont store
+			ScaledFont setfont
+			ClientCanvas /Retained get {
+				/PaintClient self send
+			} if
+		} ifelse
+	} def
+
+	/UserWindowCustom nullproc def
+	/AllWindowCustom nullproc def
+
+	/createwindow {
+% x y fs col line framelabel iconlabel font starticonic iconx icony
+% debug hack
+%systemdict /AAgterm currentdict put
+		pause
+		/IconInitialY exch store
+		/IconInitialX exch store
+		/StartIconic exch store
+		/InitialFont exch store
+		/MyIconLabel exch store
+		/MyFrameLabel exch store
+		/Window_lines exch store
+		/Window_cols exch store
+		/CommandLineFontSize exch store
+		/Window_y exch store
+		/Window_x exch store
+
+		/MyWindow framebuffer /new GTermWindow send store
+
+		currentprocess /ProcessName MyIconLabel ( - ) append
+			MyFrameLabel append put
+
+		/AllWindowCustom load MyWindow send
+		/UserWindowCustom load MyWindow send
+
+		Window_x Window_y 100 100 /doreshape MyWindow send
+		% this calls checkcanvases to set up FrameMenu ... ugh...
+
+		{
+			/FrameLabel MyFrameLabel def
+			/IconLabel MyIconLabel def
+			makemenus
+			/ClientFillColor {backgroundcolor} def
+			% that was done to get the top and bottom of the window the same color
+			% as the middle. -HD 90/6/7
+			% Will have to change this to have each window its own color?
+		} MyWindow send
+
+		IconInitialX 0 ge IconInitialY 0 ge and {
+			{ /IconX IconInitialX def /IconY IconInitialY def }
+			MyWindow send
+		} if
+
+		SetupResizeMenu
+		ToggleSimpleShow
+		ToggleFastRepaint
+		ToggleUseCopyArea
+		ToggleMiniTermIcon	% Give them MiniTerm Icons by default
+
+		Window_cols 0 le Window_lines 0 le or {
+			/Window_lines DefaultLines store
+			/Window_cols DefaultCols store
+		} if
+
+		CommandLineFontSize 0 le
+			{ /CommandLineFontSize DefaultFontSize store } if
+
+		{ InitialFont findfont } errored not
+			{ InitialFont ChangeFont } if
+
+		CommandLineFontSize ChangeFontSize
+
+		{ ClientCanvas setcanvas } MyWindow send
+
+		/MySetTransform createevent store
+
+		MySetTransform begin
+			/Name /SetTransform def
+			/Canvas currentcanvas def
+		end
+
+		/MyMouseEvents createevent store
+
+		MyMouseEvents begin
+			/Name [ /MouseDragged /PointButton load
+				/AdjustButton load ] def
+			/Canvas currentcanvas def
+		end
+
+		{ ClientCanvas /Retained get not } MyWindow send
+		FastRepaint and { { ToggleFastRepaint } MyWindow send } if
+
+	} def
+
+	/startinput {
+		/childprocess null store
+		{
+			systemdict /Selections known {
+				{ ClientCanvas } MyWindow send
+				dup addkbdinterests pop
+%				dup addselectioninterests pop
+				addfunctionstringsinterest pop 
+				{ FrameCanvas } MyWindow send
+				dup addkbdinterests pop
+				addfunctionstringsinterest pop 
+				{ IconCanvas } MyWindow send
+				dup addkbdinterests pop
+				addfunctionstringsinterest pop 
+			} {
+				/Ascii 128 dict def
+				/Template createevent def
+				Ascii begin
+				0 1 127 { dup def } for
+				end
+				Template
+				Ascii seteventname
+				currentcanvas seteventcanvas
+				expressinterest
+			} ifelse
+			MyMouseEvents expressinterest
+			MySetTransform expressinterest
+
+			/MyEventActions 20 dict dup begin
+	
+				/Ignore {
+				} def
+		
+				/AcceptFocus {
+			%	   true /reflectfocus MyWindow send
+				} def
+				/RestoreFocus {
+			%	   true /reflectfocus MyWindow send
+				} def
+	
+				/SetTransform {
+					Action dup null ne {
+						setmatrix
+					} {
+						pop
+					} ifelse
+				} def
+			
+				/SetSelectionAt {
+				} def
+		
+				/ExtendSelectionTo {
+				} def
+			
+				/DeSelect {
+				} def
+		
+				/LoseFocus {	% NeWS/X version of DeSelect
+				} def
+		
+				/SelectionRequest {
+				} def
+
+% OW2 Hack: Seems that I am checking to see if you have changed the
+% shift keys every time.
+				/PointButton load {
+					Action /DownTransition eq {
+						false KeyState {
+							dup
+			/LeftShift /keyforsymbol ClassKeyboard send eq {
+								pop pop true exit
+							} if
+			/RightShift /keyforsymbol ClassKeyboard send eq {
+								pop true exit
+							} if
+						} forall {
+							BeginRectSelectionCode
+							print
+						} {
+							BeginSelectionCode
+							print
+						} ifelse
+						XLocation =
+						YLocation maxy sub =
+						1 =
+						/Selection_in_progress?
+							true store
+					} {	% /UpTransition
+						Selection_in_progress? {
+							EndSelectionCode print
+							XLocation =
+							YLocation maxy sub =
+							1 =
+							/Selection_in_progress?
+								false store
+						} if
+					} ifelse
+				} def
+
+% OW2 Hack: Seems that I am checking to see if you have changed the
+% shift keys every time.
+				/AdjustButton load {
+					Action /DownTransition eq {
+						false KeyState {
+							dup
+			/LeftShift /keyforsymbol ClassKeyboard send eq {
+								pop pop true exit
+							} if
+			/RightShift /keyforsymbol ClassKeyboard send eq {
+								pop true exit
+							} if
+						} forall {
+							BeginRectExtendCode
+							print
+						} {
+							ExtendSelectionCode
+							print
+						} ifelse
+						XLocation =
+						YLocation maxy sub =
+						1 =
+						/Selection_in_progress?
+							true store
+					} {	% /UpTransition
+						Selection_in_progress? {
+							EndSelectionCode print
+							XLocation =
+							YLocation maxy sub =
+							1 =
+							/Selection_in_progress?
+								false store
+						} if
+					} ifelse
+				} def
+
+				/MouseDragged {
+					Selection_in_progress? {
+						ExtendSelectionCode print
+						XLocation =
+						YLocation maxy sub =
+						1 =
+					} if
+				} def
+		
+				/InsertValue		{
+					Action print
+				} def
+		
+				/Default	{
+					( ) dup 0 Name
+					put dup (\200) eq
+					{ (\200) print } if print
+				} def
+			end def
+		
+			% User input loop.
+			{
+				awaitevent
+%				systemdict /_termlogger known {_termlogger} if
+				begin				% event
+				MyEventActions Name 2 copy known not {
+					pop /Default
+				} if
+				get exec
+				end
+			} loop
+		} fork /childprocess exch store
+		childprocess /ProcessName (GTerm input loop) put
+		% Toatl hack: In OW2.0 something in like is keeping a hard link
+		% to the first gterm window, so we just unmap it to keep it
+		% out of your sight.
+		childprocess 
+		{
+			currentprocess /ProcessName (GTermDestroyer) put
+			newprocessgroup
+			waitprocess pop
+			/unmap MyWindow send
+			/destroy MyWindow send
+			currentdict /parrentprocess undef
+		} fork pop pop
+
+		pause pause
+
+		InitialReshapeFromUser
+			{ /reshapefromuser MyWindow send } if
+
+		StartIconic 0 ne
+			{ /flipiconic MyWindow send } if
+
+		resetscale
+		( ) 0 0 CU
+		pause
+
+		/map MyWindow send
+
+		pause
+	} def   % startinput
+
+	/StretchOpen {				% called from -ui StretchOpen
+		/InitialReshapeFromUser true def
+	} def
+
+       % This is the first function run after the loading of the gterm?XXX?.psh
+	% file, if that is allready loaded then this is happens just after
+	% the test for gtermdict.
+	% These get put in the usedict of the connection process to the cside
+
+	/GTermInit {
+		currentprocess /ProcessName (GTermInit) put
+		/HowManyFontsCanYouCount? 1 def
+		/Term_Font		DefaultTerminalFont
+					findfont false printermatchfont def
+		/SelectedFont		Term_Font def
+		/SelectedFontSize	DefaultFontSize def
+		/CommandLineFontSize	DefaultFontSize def
+		/ScaledFont		Term_Font def
+		/InitialFont		Term_Font def
+		/InitialReshapeFromUser false def
+		/StartIconic		0 def
+		/StaticIcon?		false def
+		/MiniTermIcon?		false def
+		/IconInitialX		-1 def
+		/IconInitialY		-1 def
+		/MonoSpacedFont		true def
+		/FontFixedP		true def
+		/SimpleShow		DefaultSimpleShow not def
+				% inverted because we toggle to set up menu
+		/FastRepaint		DefaultFastRepaint not def % likewise
+		/UseCopyArea		DefaultUseCopyArea not def % likewise
+		/CurrentMatrix		matrix def
+		/IconMatrix		matrix def
+		/CurrentSelection	() def
+		/ScrollSaveLength	0 def
+		systemdict /cursorcolor known not {
+			/cursorcolor DefaultCursorColor def
+		} if
+
+		/char_width		1 def
+		/char_height		1 def
+		/MetaP?			0 def
+		/ShowChar		( ) def
+		/Selection_in_progress? false def
+		/HiLightPath		null def
+		/HiLightCanvas		null def
+
+		/Font_size		 SelectedFontSize def
+		/Window_cols		DefaultCols def
+		/Window_lines		DefaultLines def
+		/Window_width		0 def
+		/Window_height		0 def
+		/Window_x		0 def
+		/Window_y		0 def
+
+		/MyIconLabel		() def
+		/MyFrameLabel		() def
+
+		/MyWindow	null def
+		/MyMouseEvents	null def
+		/MySetTransform	null def
+		/childprocess	null def
+
+		/FontChangeProc	/DefaultFontChangeProc load def
+		/LineColChangeProc /DefaultLineColChangeProc load def
+		/WidthHeightChangeProc /DefaultWidthHeightChangeProc load def
+
+		/HlBgColor where { pop }
+			{ /HlBgColor 0 0 0 rgbcolor def } ifelse
+
+		% This ought to get around the problem of PaintIcon being
+		% called the first time at startup, thus frezzing ouput to
+		% the window...
+		% Put it here so its fresh for each instance of gterm...
+		/NeetTrick { 
+			StartIconic 1 eq {
+				SuppressUpdatesCode print
+			} if
+			/NeetTrick {
+				SuppressUpdatesCode print
+			} def
+		} def
+		pause
+	} def
+end
+pause
+% Hack! The first gterm to come up has visual bugs with the overlay canvas
+% This will get rid of some of them. Sigh.. OW2 bugs...
+GTermDict_1 begin userdict begin
+GTermInit
+/MyWindow framebuffer /new GTermWindow send def
+10 10 100 100 /doreshape MyWindow send
+resetscale
+currentdict /MyWindow undef
+end end
+/ptr /ptr_m framebuffer setstandardcursor
+

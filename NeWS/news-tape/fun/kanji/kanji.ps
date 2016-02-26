@@ -1,0 +1,385 @@
+%!
+%
+% Date: Tue, 4 Oct 88 23:06:22 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Kanji: Browse the kanji font
+% From: jcricket!sjs@bellcore.com  (Stan Switzer)
+% 
+% In order to make up for so many postings of KeySee, I submit my kanji
+% font browser program for your enjoyment.
+% 
+% The Kanji font has normal ASCII glyphs in the regular ASCII range, but
+% if a character is greater than 127, it and the next character are
+% taken to represent Kanji characters.  Basically, only the ASCII
+% printable character range with the high bit on is mapped.  The rest of
+% the range is unmapped (sort of, see comments).
+% 
+% The program could be quite a bit simpler, but it diddles the scrollbar
+% (resulting in one whose bubble is proportional to the region displayed)
+% and implements "copyarea" scrolling, among other tweaks.
+% 
+% For what its worth, my wife's last name is (\307\317).
+% 
+% Enjoy,
+% Stan Switzer  sjs@ctt.bellcore.com
+% 
+% P.S.: I have an even newer and better version of KeySee now, but I
+% can't quite bring myself to post it again unless enough people mail me
+% requesting it.
+
+%
+% Explore the Kanji font
+%
+% Copyright (C) 1988 by Stan Switzer. All rights reserved.
+% This program is provided for unrestricted use, provided that this
+% copyright message is preserved. There is no warranty, and no author
+% or distributer accepts responsibility for any damage caused by this
+% program.
+%
+
+% Notes:
+%
+% It seems that Kanji is encoded by pairs of hyper-printable-ASCII
+% characters.  If we were to give each Kanji char a number "n"
+% beginning at 0, then "n", in terms of the pair (a,b) is given by
+%    n = 96*(a-160) + (b-160)
+% The -160 term comes from subtracting 128 for hyperASCII and 32
+% for printable ASCII.  There are many ways to get the same character
+% (when, for instance, b is not in the "normal" range of 160-255).
+% This analysis is based on trial and error and error and ....
+%
+% For the sake of nomenclature, we will call this number the "ordinal"
+% of the character
+%
+% Seems to crash NeWS server at dec 245,69 and 244,165:
+% maxOrdinal is not arbitrary!
+
+/F { exch findfont exch scalefont } def
+/cvoi { (8#) exch append cvx stopped 0 if } def
+/cvos { 8 (ZZZZZ) cvrs } def
+/pair2ord { 160 sub exch 160 sub 96 mul add } def
+/ord2pair { dup 96 idiv 160 add exch 96 mod 160 add } def
+/nxtpair { 1 add dup 255 gt { pop 1 add 160 } if } def
+/pair2char { (ZZ) dup 0 4 index put dup 1 3 index put } def
+
+systemdict /Item known not { (NeWS/liteitem.ps) run } if
+
+/SmallButton ButtonItem []
+classbegin
+  /new { /new super send begin
+    /ItemBorder null def
+    /ItemFrame 2 def
+    /ItemGap 3 def
+    /ItemRadius .2 def
+  currentdict end } def
+classend def
+
+/BetterBar SimpleScrollbar dictbegin
+    /BoxSize	1	def
+dictend classbegin
+    /SetScale {
+	BoxSize  % leave on stack for later
+	    /BoxSize BarMax BarMin sub BarPageValue exch div abs
+	    ItemHeight ButtonSize dup add sub mul 12 max def
+	    /SetScale super send
+	BoxSize ne { /paint self send } if
+    } def
+    /BoxPath {
+	ValueToY ItemFrame ItemWidth .15 mul 3 -1 roll       % dx x y
+	ItemWidth .7 mul BoxSize rectframe
+    } def
+classend def
+
+/VScrollWindow DefaultWindow
+dictbegin
+    /VScrollbar		null def
+    /LeftSide?		true def
+dictend
+classbegin
+    /ScrollWidth	18 def
+    /BorderWidth	16 def
+    /BorderLeft		{ LeftSide? ScrollWidth BorderWidth ifelse } def
+    /BorderRight	{ LeftSide? BorderWidth ScrollWidth ifelse } def
+    /destroy { % - => - (Create frame control canvases/items)
+        /VScrollbar null def
+        /destroy super send
+    } def
+    /CreateFrameControls { % - => - (Create frame control canvases/items)
+        /CreateFrameControls super send
+        /VScrollbar
+            [1 0 .01 .1 null] 0 {} FrameCanvas /new BetterBar send
+            def
+    } def
+    /CreateFrameInterests { % - => - (Create frame control interests)
+        /CreateFrameInterests super send
+        FrameInterests begin
+        % Append the scroll bar "start" interests to the frame interests.
+        % The odd "forall" is used to create unique names for inclusion
+        % in the frame interests dictionary.
+            /makestartinterests VScrollbar send {
+                (VScrollbar) 1 index /Name get cvx 100 string cvs append
+                cvn exch def
+            } forall
+        end
+    } def
+    /MoveFrameControls { % - => - ([Re]set frame control shapes)
+        /MoveFrameControls super send
+	LeftSide? 0 { FrameWidth BorderRight sub } ifelse
+	BorderBottom 1 sub
+	ScrollWidth FrameHeight BorderBottom sub BorderTop sub 2 add
+	/reshape VScrollbar send
+    } def
+    /PaintFrameControls { % - => - (Paint frame control areas)
+    gsave
+	/PaintFrameControls super send
+	/paint VScrollbar send
+    grestore
+    } def
+classend def
+
+/KanjiDemo VScrollWindow
+dictbegin
+  /Size 24 def
+  /Kanji /Kanji //Size F def
+  /Roman /Times-Roman 12 F def
+  /Symbol /Symbol 18 F def
+  /BigSym /Symbol 36 F def
+  /FrameLabel (Kanji Demo) def
+  /Items null def
+  /ItemList null def
+  /ItemProc null def
+  /Ordinal 0 def
+  /minOrdinal 0 def
+  /maxOrdinal 8068 def		% Empirical constant
+  /ClientMenu null def		% initialized on canvas create
+  /TmpDict null def
+  % Layout Params, set in Recalc:
+  /Descend null def	/ItemX null def 	/RowLabelX null def
+  /Col0 null def	/ColWidth null def	/nCols null def
+  /ItemY null def	/ColLabelY null def	/Row0 null def
+  /RowHeight null def	/nRows null def
+dictend classbegin
+
+  /new {
+    /new super send begin
+      /PaintClient {
+        ClientFillColor fillcanvas
+        ClientCanvas setcanvas
+        ItemList paintitems
+	0 nRows paint-me
+      } def
+      /TmpDict 20 dict store
+    currentdict end
+  } def
+
+  /CreateFrameControls {
+    /CreateFrameControls super send
+    % attach scroll proc
+    VScrollbar begin /NotifyUser { ItemValue /SCROLL ThisWindow send } def end
+  } def
+
+  /CreateClientCanvas {
+    /CreateClientCanvas super send
+
+    % various items:
+    /Items dictbegin
+      /nextpage (Next Page) { +1 /PAGE ThisWindow send }
+	ClientCanvas 0 0 /new SmallButton send def
+      /prevpage (Prev Page) { -1 /PAGE ThisWindow send }
+	ClientCanvas 0 0 /new SmallButton send def
+      /nexthalfpage (Up Half Page) { +.5 /PAGE ThisWindow send }
+	ClientCanvas 0 0 /new SmallButton send def
+      /prevhalfpage (Down Half Page) { -.5 /PAGE ThisWindow send }
+	ClientCanvas 0 0 /new SmallButton send def
+      /nextline (Up Line) { +1 /LINE ThisWindow send }
+	ClientCanvas 0 0 /new SmallButton send def
+      /prevline (Down Line) { -1 /LINE ThisWindow send }
+	ClientCanvas 0 0 /new SmallButton send def
+    dictend store
+
+    % Display order (dictionaries do not retain order):
+    /ItemList Items begin [
+      nextpage prevpage nexthalfpage prevhalfpage nextline prevline
+    ] end store
+
+    /ItemProc ItemList forkitems store
+  } def
+
+  /ShapeClientCanvas {
+    /ShapeClientCanvas super send
+    Recalc	% recalc layoput params
+
+    % Menus (here instead of in /new so FrameMenu is already set):
+    ClientMenu null eq {
+      /ClientMenu [	% Menu items:
+	%(Next Page)	{ +1 /PAGE ThisWindow send }
+	%(Prev Page)	{ -1 /PAGE ThisWindow send }
+	%(Up Line)	{ +1 /LINE ThisWindow send }
+	%(Down Line)	{ -1 /LINE ThisWindow send }
+        %(Zap)		{ /destroy ThisWindow send }
+	[(\335) Symbol]	{ +1 /PAGE ThisWindow send }
+	[(\337) Symbol]	{ -1 /PAGE ThisWindow send }
+	[(\255) Symbol]	{ +1 /LINE ThisWindow send }
+	[(\257) Symbol]	{ -1 /LINE ThisWindow send }
+	(24 pt.)	{ 24 /SIZE ThisWindow send }
+	(16 pt.)	{ 16 /SIZE ThisWindow send }
+        %[(\247) BigSym]	{ /destroy ThisWindow send }
+        [(\304) BigSym]	{ /destroy ThisWindow send }
+	/sun30		FrameMenu
+      ] /new DefaultMenu send store
+      {			% Menu options:
+	/LayoutStyle	[4 2] def
+	/CenterItems?	false def
+      } ClientMenu send
+    } if
+
+    ClientCanvas setcanvas
+
+    % now, move the items to their rightful places
+    TmpDict begin /X ItemX def /Y ItemY def /Sep 5 def
+      ItemList {
+	X Y /move 3 index send
+	  /ItemWidth exch send X add Sep add /X exch store
+      } forall
+    end
+  } def
+
+  /Recalc { % - => -  -- recalculates various layout parameters
+    /Descend Kanji fontdescent store
+    /ItemX 5 store
+    /RowLabelX ItemX store
+    /Col0 60 store
+    /ColWidth Size 6 add store
+    /nCols ClientWidth Col0 sub ColWidth div cvi store
+    /ItemY ClientHeight 30 sub store
+    /ColLabelY ItemY store
+    /Row0 ColLabelY 20 sub store
+    /RowHeight Size 6 add store
+    /nRows ColLabelY Descend sub RowHeight div cvi store
+  } def
+
+  /ColRnd { % where => where
+    nCols idiv nCols mul % round to lower multiple of nCols
+  } def
+
+  /SCROLL { % where => -
+    ColRnd GoToChar
+  } def
+
+  /PAGE {  % npages => -
+    nCols nRows mul mul Ordinal add ColRnd GoToChar
+  } def
+
+  /LINE {  % nlines => -
+    nCols mul Ordinal add
+    GoToChar
+  } def
+
+  /SIZE { % size => -
+    ClientCanvas setcanvas 0 nRows erase-me
+    /Size exch store
+    /Kanji /Kanji Size F store
+    Recalc
+    DoIt
+  } def
+
+  /DoIt {
+    Ordinal 0 lt { /Ordinal 0 store } if
+    ClientCanvas setcanvas
+    0 nRows erase-me
+    0 nRows paint-me
+  } def
+
+  /FasterDoIt { % +/-rows =>
+    ClientCanvas setcanvas
+    TmpDict begin
+      /slide exch def
+      slide 0 lt { % down
+	0 nRows slide add slide slide-me
+	0 slide neg erase-me
+	0 slide neg paint-me
+      } { % up
+	slide nRows slide sub slide slide-me
+	nRows slide sub slide erase-me
+	nRows slide sub slide paint-me
+      } ifelse
+    end
+  } def
+
+  /GoToChar { % Ordinal =>
+    dup minOrdinal lt { pop minOrdinal } if
+    dup maxOrdinal gt { pop maxOrdinal } if
+    cvi Ordinal exch /Ordinal exch store
+    TmpDict begin
+      /OldOrd exch def
+      /Diff Ordinal OldOrd sub def
+      /DiffRows Diff nCols idiv def
+      DiffRows abs nRows lt Diff nCols mod 0 eq and
+	{ DiffRows true }
+	false
+      ifelse
+    end
+    //FasterDoIt //DoIt ifelse
+  } def
+
+  /slide-me { % fstrow nrows dist => -
+    % 3 copy 3 array astore (% % % slide-me\n) exch dbgprintf
+    TmpDict begin
+      /dist exch RowHeight mul def
+      /nr exch RowHeight mul def /fstr exch RowHeight mul def
+      0 ColLabelY nr sub fstr sub Descend sub
+      ClientWidth nr rectpath
+      0 dist copyarea fill
+    end
+  } def
+
+  /erase-me { % fstrow nrows => -
+    % 2 copy 2 array astore (% % erase-me\n) exch dbgprintf
+    TmpDict begin gsave
+      /nr exch RowHeight mul def /fstr exch RowHeight mul def
+      0 ColLabelY nr sub fstr sub Descend sub
+      ClientWidth nr rectpath
+      ClientFillColor setshade fill
+    grestore end
+  } def
+
+  % written to avoid multiplication especially especially division
+  % in the inner loops.  Don't know whether it really matters, though.
+  /paint-me { % fstrow nrows => -
+    % 2 copy 2 array astore (% % paint-me\n) exch dbgprintf
+    textcolor setshade
+    TmpDict begin
+      /nr exch def /fstr exch def
+      /N Ordinal fstr nCols mul add def
+      /R ColLabelY fstr RowHeight mul sub def
+      /More? N maxOrdinal le def
+      N ord2pair
+      nr { /R R RowHeight sub store RowLabelX R moveto
+	More? { 2 copy Roman setfont exch cvos show (,)show cvos show } if
+	Kanji setfont
+	/C Col0 def
+	nCols { C R moveto /C C ColWidth add store
+	  N maxOrdinal gt {
+	    /More? false store
+	  } {
+	    pair2char show
+	    nxtpair
+	    /N N 1 add store
+	  } ifelse
+	} repeat
+	pause % give other pgms a chance
+      } repeat
+      pop pop
+      [ maxOrdinal minOrdinal nCols dup nRows mul null ]
+	/setrange VScrollbar send
+      Ordinal /setvalue VScrollbar send
+    end
+  } def
+
+classend def
+
+/win framebuffer /new KanjiDemo send def
+/reshapefromuser win send
+/map win send
+
+% ----- if anything follows this line it is not part of the program -----

@@ -1,0 +1,640 @@
+;GIL-3
+(
+(
+	:type                   :menu
+	:name                   FileMenu
+	:help                   ""
+	:columns                1
+	:menu-type              :command
+	:menu-handler           nil
+	:menu-title             ""
+	:menu-item-labels       ("Load Question....." "Save Question...." "Quit" )
+	:menu-item-label-types  (:string :string :string )
+	:menu-item-states       (:active :active :active )
+	:menu-item-defaults     (t nil nil )
+	:initial-selections     (nil nil nil )
+	:menu-item-handlers     (nil nil nil )
+	:menu-item-menus        (nil nil nil )
+	:menu-item-colors       ("" "" "" )
+	:pinnable               nil
+	:user-data              ()
+	:actions                (
+		(
+		:from                   (FileMenu "Load Question.....")
+		:when                   (Notify )
+		:to                     (FileMenu "Load Question.....")
+		:function_type          ExecuteCode
+		:arg_type               (:string)
+		:action                 ("{
+	gfm_popup_objects* open_dialog = 
+			gfm_initialize(NULL,NULL,\"Load Question\");
+			gfm_activate(open_dialog,
+				     NULL, // directory
+				     NULL, // ed pattern
+				     NULL, // filter
+				     load_question_callback, // callback
+				     NULL, // glyph
+				     GFM_LOAD);
+}")
+		)
+		(
+		:from                   (FileMenu "Quit")
+		:when                   (Notify )
+		:to                     (FileMenu "Quit")
+		:function_type          ExecuteCode
+		:arg_type               (:string)
+		:action                 ("exit(0);")
+		)
+	)
+)
+(
+	:type                   :base-window
+	:name                   olw
+	:owner                  nil
+	:width                  894
+	:height                 230
+	:background-color       ""
+	:foreground-color       ""
+	:label                  "Open Look Wais Version 2"
+	:label-type             :string
+	:initial-state          :open
+	:show-footer            nil
+	:resizable              t
+	:icon-file              ""
+	:icon-label             ""
+	:icon-mask-file         ""
+	:event-handler          nil
+	:user-data              ()
+	:actions                ()
+)
+(
+	:type                   :control-area
+	:name                   MenusPanel
+	:owner                  olw
+	:help                   ""
+	:x                      0
+	:y                      0
+	:width                  894
+	:height                 35
+	:background-color       ""
+	:foreground-color       ""
+	:initial-state          :visible
+	:show-border            t
+	:menu                   nil
+	:event-handler          nil
+	:user-data              ()
+	:actions                ()
+)
+(
+	:type                   :button
+	:name                   FileMenuButton
+	:owner                  MenusPanel
+	:help                   ""
+	:x                      8
+	:y                      8
+	:width                  54
+	:height                 19
+	:constant-width         nil
+	:button-type            :normal
+	:foreground-color       ""
+	:label                  "File"
+	:label-type             :string
+	:initial-state          :active
+	:menu                   FileMenu
+	:notify-handler         nil
+	:event-handler          nil
+	:user-data              ()
+	:actions                ()
+)
+(
+	:type                   :control-area
+	:name                   SearchPanel
+	:owner                  olw
+	:help                   ""
+	:x                      0
+	:y                      35
+	:width                  894
+	:height                 195
+	:background-color       ""
+	:foreground-color       ""
+	:initial-state          :visible
+	:show-border            nil
+	:menu                   nil
+	:event-handler          nil
+	:user-data              ()
+	:actions                ()
+)
+(
+	:type                   :text-field
+	:name                   KeywordsText
+	:owner                  SearchPanel
+	:help                   ""
+	:x                      16
+	:y                      16
+	:width                  703
+	:height                 15
+	:value-x                119
+	:value-y                16
+	:value-length           75
+	:stored-length          80
+	:rows                   3
+	:foreground-color       ""
+	:text-type              :alphanumeric
+	:label                  "Tell me about"
+	:label-type             :string
+	:layout-type            :horizontal
+	:value-underlined       t
+	:initial-value          ""
+	:initial-state          :active
+	:read-only              nil
+	:notify-handler         nil
+	:event-handler          nil
+	:user-data              ()
+	:actions                ()
+)
+(
+	:type                   :button
+	:name                   SearchButton
+	:owner                  SearchPanel
+	:help                   ""
+	:x                      768
+	:y                      32
+	:width                  82
+	:height                 19
+	:constant-width         nil
+	:button-type            :normal
+	:foreground-color       ""
+	:label                  "   Search   "
+	:label-type             :string
+	:initial-state          :active
+	:menu                   nil
+	:notify-handler         DoSearch
+	:event-handler          nil
+	:user-data              ()
+	:actions                (
+		(
+		:from                   (olw SearchButton)
+		:when                   (Notify )
+		:to                     (olw SearchButton)
+		:function_type          CallFunction
+		:arg_type               ()
+		:action                 (DoSearch)
+		)
+		(
+		:from                   (olw SearchButton)
+		:when                   (Notify )
+		:to                     (ResultsPopup)
+		:function_type          :user_defined
+		:arg_type               ()
+		:action                 (Show)
+		)
+	)
+)
+(
+	:type                   :scrolling-list
+	:name                   RelevanceFeedbackList
+	:owner                  SearchPanel
+	:help                   ""
+	:x                      16
+	:y                      40
+	:width                  700
+	:height                 134
+	:value-x                16
+	:value-y                40
+	:rows                   5
+	:foreground-color       ""
+	:label                  ""
+	:title                  "In Documents Similar To"
+	:label-type             :string
+	:layout-type            :horizontal
+	:read-only              t
+	:multiple-selections    nil
+	:selection-required     nil
+	:initial-state          :active
+	:droppable              t
+	:default-drop-site      nil
+	:menu                   nil
+	:notify-handler         nil
+	:event-handler          nil
+	:initial-list-values    ()
+	:initial-list-glyphs    ()
+	:initial-selections     ()
+	:user-data              ()
+	:actions                (
+		(
+		:from                   (olw RelevanceFeedbackList)
+		:when                   (DroppedUpon )
+		:to                     (ResultsPopup ResultsList)
+		:function_type          CallFunction
+		:arg_type               ()
+		:action                 (AddRelevantDoc)
+		)
+	)
+)
+(
+	:type                   :button
+	:name                   SelectSourcesButton
+	:owner                  SearchPanel
+	:help                   ""
+	:x                      760
+	:y                      80
+	:width                  113
+	:height                 19
+	:constant-width         nil
+	:button-type            :normal
+	:foreground-color       ""
+	:label                  "Select Sources..."
+	:label-type             :string
+	:initial-state          :active
+	:menu                   nil
+	:notify-handler         nil
+	:event-handler          nil
+	:user-data              ()
+	:actions                (
+		(
+		:from                   (olw SelectSourcesButton)
+		:when                   (Notify )
+		:to                     (SourceSelectPopup)
+		:function_type          :user_defined
+		:arg_type               ()
+		:action                 (Show)
+		)
+		(
+		:from                   (olw SelectSourcesButton)
+		:when                   (Notify )
+		:to                     (SourceSelectPopup)
+		:function_type          CallFunction
+		:arg_type               ()
+		:action                 (PrepareSources)
+		)
+	)
+)
+(
+	:type                   :popup-window
+	:name                   ResultsPopup
+	:owner                  olw
+	:width                  793
+	:height                 433
+	:background-color       "BG1"
+	:foreground-color       "Black"
+	:label                  "Results of Search for \"%s\""
+	:label-type             :string
+	:initial-state          :invisible
+	:show-footer            t
+	:resizable              nil
+	:pinned                 nil
+	:done-handler           nil
+	:event-handler          nil
+	:user-data              ()
+	:actions                ()
+)
+(
+	:type                   :control-area
+	:name                   controls4
+	:owner                  ResultsPopup
+	:help                   ""
+	:x                      0
+	:y                      0
+	:width                  793
+	:height                 433
+	:background-color       ""
+	:foreground-color       ""
+	:initial-state          :visible
+	:show-border            nil
+	:menu                   nil
+	:event-handler          nil
+	:user-data              ()
+	:actions                ()
+)
+(
+	:type                   :scrolling-list
+	:name                   ResultsList
+	:owner                  controls4
+	:help                   ""
+	:x                      8
+	:y                      16
+	:width                  730
+	:height                 404
+	:value-x                8
+	:value-y                16
+	:rows                   20
+	:foreground-color       ""
+	:label                  ""
+	:title                  "Results"
+	:label-type             :string
+	:layout-type            :horizontal
+	:read-only              t
+	:multiple-selections    nil
+	:selection-required     nil
+	:initial-state          :active
+	:droppable              nil
+	:default-drop-site      nil
+	:menu                   nil
+	:notify-handler         ViewDoc
+	:event-handler          nil
+	:initial-list-values    ()
+	:initial-list-glyphs    ()
+	:initial-selections     ()
+	:user-data              ()
+	:actions                (
+		(
+		:from                   (ResultsPopup ResultsList)
+		:when                   (Notify )
+		:to                     (ResultsPopup ResultsList)
+		:function_type          CallFunction
+		:arg_type               ()
+		:action                 (ViewDoc)
+		)
+	)
+)
+(
+	:type                   :popup-window
+	:name                   SourceSelectPopup
+	:owner                  olw
+	:width                  824
+	:height                 260
+	:background-color       ""
+	:foreground-color       ""
+	:label                  "Sources for \"%s\""
+	:label-type             :string
+	:initial-state          :invisible
+	:show-footer            t
+	:resizable              t
+	:pinned                 t
+	:done-handler           nil
+	:event-handler          nil
+	:user-data              ()
+	:actions                ()
+)
+(
+	:type                   :control-area
+	:name                   controls5
+	:owner                  SourceSelectPopup
+	:help                   ""
+	:x                      0
+	:y                      0
+	:width                  824
+	:height                 260
+	:background-color       ""
+	:foreground-color       ""
+	:initial-state          :visible
+	:show-border            nil
+	:menu                   nil
+	:event-handler          nil
+	:user-data              ()
+	:actions                ()
+)
+(
+	:type                   :scrolling-list
+	:name                   SourcesList
+	:owner                  controls5
+	:help                   ""
+	:x                      16
+	:y                      12
+	:width                  500
+	:height                 170
+	:value-x                16
+	:value-y                12
+	:rows                   7
+	:foreground-color       ""
+	:label                  ""
+	:title                  "Select sources"
+	:label-type             :string
+	:layout-type            :horizontal
+	:read-only              t
+	:multiple-selections    t
+	:selection-required     nil
+	:initial-state          :active
+	:droppable              nil
+	:default-drop-site      t
+	:menu                   nil
+	:notify-handler         nil
+	:event-handler          nil
+	:initial-list-values    ()
+	:initial-list-glyphs    ()
+	:initial-selections     ()
+	:user-data              ()
+	:actions                (
+		(
+		:from                   (SourceSelectPopup SourcesList)
+		:when                   (Notify )
+		:to                     (SourceSelectPopup ChosenSourcesList)
+		:function_type          CallFunction
+		:arg_type               ()
+		:action                 (DeSelectChosen)
+		)
+		(
+		:from                   (SourceSelectPopup SourcesList)
+		:when                   (Notify )
+		:to                     (SourceSelectPopup AddSources)
+		:function_type          :user_defined
+		:arg_type               (:string)
+		:action                 (SetLabel "->")
+		)
+	)
+)
+(
+	:type                   :scrolling-list
+	:name                   ChosenSourcesList
+	:owner                  controls5
+	:help                   ""
+	:x                      592
+	:y                      16
+	:width                  200
+	:height                 170
+	:value-x                592
+	:value-y                16
+	:rows                   7
+	:foreground-color       ""
+	:label                  ""
+	:title                  "Use these Sources"
+	:label-type             :string
+	:layout-type            :horizontal
+	:read-only              t
+	:multiple-selections    t
+	:selection-required     nil
+	:initial-state          :active
+	:droppable              nil
+	:default-drop-site      t
+	:menu                   nil
+	:notify-handler         nil
+	:event-handler          nil
+	:initial-list-values    ()
+	:initial-list-glyphs    ()
+	:initial-selections     ()
+	:user-data              ()
+	:actions                (
+		(
+		:from                   (SourceSelectPopup ChosenSourcesList)
+		:when                   (Notify )
+		:to                     (SourceSelectPopup SourcesList)
+		:function_type          CallFunction
+		:arg_type               ()
+		:action                 (DeSelectSources)
+		)
+		(
+		:from                   (SourceSelectPopup ChosenSourcesList)
+		:when                   (Notify )
+		:to                     (SourceSelectPopup AddSources)
+		:function_type          :user_defined
+		:arg_type               (:string)
+		:action                 (SetLabel "<-")
+		)
+	)
+)
+(
+	:type                   :button
+	:name                   AddSources
+	:owner                  controls5
+	:help                   ""
+	:x                      544
+	:y                      88
+	:width                  34
+	:height                 19
+	:constant-width         nil
+	:button-type            :normal
+	:foreground-color       ""
+	:label                  "<-"
+	:label-type             :string
+	:initial-state          :active
+	:menu                   nil
+	:notify-handler         AddOrDeleteSources
+	:event-handler          nil
+	:user-data              ()
+	:actions                (
+		(
+		:from                   (SourceSelectPopup AddSources)
+		:when                   (Notify )
+		:to                     (SourceSelectPopup AddSources)
+		:function_type          CallFunction
+		:arg_type               ()
+		:action                 (AddOrDeleteSources)
+		)
+	)
+)
+(
+	:type                   :button
+	:name                   AutopickSourcesButton
+	:owner                  controls5
+	:help                   ""
+	:x                      608
+	:y                      208
+	:width                  179
+	:height                 19
+	:constant-width         nil
+	:button-type            :normal
+	:foreground-color       ""
+	:label                  "Pick sources automatically"
+	:label-type             :string
+	:initial-state          :active
+	:menu                   nil
+	:notify-handler         nil
+	:event-handler          nil
+	:user-data              ()
+	:actions                (
+		(
+		:from                   (SourceSelectPopup AutopickSourcesButton)
+		:when                   (Notify )
+		:to                     (olw)
+		:function_type          CallFunction
+		:arg_type               ()
+		:action                 (set_sources)
+		)
+	)
+)
+(
+	:type                   :popup-window
+	:name                   Alert
+	:owner                  olw
+	:width                  399
+	:height                 156
+	:background-color       ""
+	:foreground-color       ""
+	:label                  "Message"
+	:label-type             :string
+	:initial-state          :invisible
+	:show-footer            nil
+	:resizable              nil
+	:pinned                 nil
+	:done-handler           nil
+	:event-handler          nil
+	:user-data              ()
+	:actions                ()
+)
+(
+	:type                   :control-area
+	:name                   controls1
+	:owner                  Alert
+	:help                   ""
+	:x                      0
+	:y                      0
+	:width                  399
+	:height                 156
+	:background-color       ""
+	:foreground-color       ""
+	:initial-state          :visible
+	:show-border            nil
+	:menu                   nil
+	:event-handler          nil
+	:user-data              ()
+	:actions                ()
+)
+(
+	:type                   :text-field
+	:name                   Message
+	:owner                  controls1
+	:help                   ""
+	:x                      16
+	:y                      16
+	:width                  383
+	:height                 110
+	:value-x                16
+	:value-y                16
+	:value-length           50
+	:stored-length          80
+	:rows                   8
+	:foreground-color       ""
+	:text-type              :multiline
+	:label                  ""
+	:label-type             :string
+	:layout-type            :horizontal
+	:value-underlined       t
+	:initial-value          ""
+	:initial-state          :active
+	:read-only              t
+	:notify-handler         nil
+	:event-handler          nil
+	:user-data              ()
+	:actions                ()
+)
+(
+	:type                   :button
+	:name                   Dismiss
+	:owner                  controls1
+	:help                   ""
+	:x                      312
+	:y                      136
+	:width                  65
+	:height                 19
+	:constant-width         nil
+	:button-type            :normal
+	:foreground-color       ""
+	:label                  "Dismiss"
+	:label-type             :string
+	:initial-state          :active
+	:menu                   nil
+	:notify-handler         nil
+	:event-handler          nil
+	:user-data              ()
+	:actions                (
+		(
+		:from                   (Alert Dismiss)
+		:when                   (Notify )
+		:to                     (Alert)
+		:function_type          :user_defined
+		:arg_type               ()
+		:action                 (Hide)
+		)
+	)
+)
+)

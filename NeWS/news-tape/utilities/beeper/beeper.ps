@@ -1,0 +1,76 @@
+%!
+% Date: Thu, 14 Apr 88 21:14:50 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: NeWS beeper for Suns
+% From: unipress!mg%repo.unipress.com@rutgers.edu (required by law)
+% 
+% This is the beeper code we used in Emacs, using the keyboard serial
+% device hack.  This can turn the bell on and off, and feep for n
+% milliseconds.  I'll post some morse code hacks as soon as they're
+% converted to PostScript.
+
+% This works only on Suns; it does nothing on other machines.  Because NeWS
+% doesn't allow access to the keyboard bell, we use a device that lets us send
+% things directly to the keyboard, including the sequence to turn the bell on
+% and off.  This device is optionally created when installing Emacs; see
+% D.sun/Makefile in the src directory.
+%
+% To create the serial keyboard device on a Sun:
+% 	/etc/mknod kbdzs c 12 2; chmod 666 kbdzs
+%
+%   /beeper /new EmacsSounder send def	% create beeper object
+%   /beep	beeper send		% beep once
+%   1 /tone	beeper send		% turn bell on
+%   0 /tone	beeper send		% turn bell off
+%
+% Mike Gallaher
+
+/EmacsSounder	Object
+dictbegin
+    /soundFile	    null def	% file for sound device
+    /soundInterest  null def	% interest in soundEvent
+    /soundEvent	    null def	% event signaling end of beep
+
+    /beepMS	    150 def	% duration of beep in milliseconds
+    /beeping	    null def	% monitor for locking beep
+dictend
+classbegin
+    /new {
+	/new super send begin
+	    { (/dev/kbdzs) (w) file } stopped { pop pop } {
+		/soundFile exch def } ifelse
+	    /soundInterest createevent begin
+		/Name /SoundEvent def
+		/Canvas null def
+		/Action null def
+		currentdict end
+	    def
+	    /soundEvent soundInterest createevent copy def
+	    /beeping createmonitor def
+	    currentdict
+	end
+    } def
+    /beep {
+	{
+	    beepMS 60000 div		    % convert to minutes
+	    beeping {
+		soundEvent begin
+		    currenttime add /TimeStamp exch def
+		    currentdict
+		end sendevent
+		soundInterest expressinterest
+		1 tone
+		awaitevent
+		0 tone
+		soundInterest revokeinterest
+	    } monitor
+	} fork pop
+    } def
+
+    /tone {
+	0 ne 2 3 ifelse
+	soundFile null ne {
+	    soundFile exch write soundFile flushfile
+	} { pop } ifelse
+    } def
+classend def

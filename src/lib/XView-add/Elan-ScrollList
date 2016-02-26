@@ -1,0 +1,175 @@
+Article 788 of comp.windows.open-look:
+Path: sq!geac!censor!utzoo!utgpu!news-server.csri.toronto.edu!rutgers!uwm.edu!zaphod.mps.ohio-state.edu!swrinde!elroy.jpl.nasa.gov!ames!elan!tom
+From: tom@elan.Elan.COM (Thomas Smith)
+Newsgroups: comp.windows.open-look
+Subject: XView scrolling list utility (source included)
+Message-ID: <961@elan.Elan.COM>
+Date: 6 Mar 91 02:25:38 GMT
+Organization: Elan Computer Group, Inc., Mountain View, CA
+Lines: 163
+
+It appears that many developers, large and small, are having trouble
+creating product-quality programs using the XView Scrolling List
+package.  We at Elan Computer Group have solved some of these problems
+for our own use, and we have decided to distribute our particular solution
+in the interest of promoting higher quality software.
+
+Hope this helps.
+    Thomas Smith
+    Elan Computer Group, Inc.
+    (415) 964-2200
+    tom@elan.com, ...!{ames, uunet, hplabs}!elan!tom
+
+/*
+ * void ReassignListEntries(Panel_item list, char **entries)
+ *
+ *     Replaces all of the entries in 'list' with the strings in the
+ *     null-terminated array 'entries'.
+ *      + only replaces entries if they are different
+ *      + buffers replacements for efficiency
+ *      + manipulates the scrollbar correctly
+ *      + deactivates the list if it is empty
+ *      + works around several XView bugs
+ *
+ * Copyright (c) 1990 Elan Computer Group, Inc.
+ * All Rights Reserved.
+ *
+ * This is published non-proprietary source code of Elan Computer Group, Inc.
+ * Any and all parties are free to distribute this code or include it in
+ * any product or program, whether for sale or free distribution.
+ * This source code is not under any warranty or guarantee, explicitly
+ * or implicitly, by Elan Computer Group Inc. or its employees.
+ */
+
+#include <xview/xview.h>
+#include <xview/panel.h>
+#include <xview/scrollbar.h>
+
+typedef unsigned char Boolean;
+#if ! defined(TRUE)
+#define TRUE	(1)
+#define FALSE	(0)
+#endif
+
+/* limit for ATTR_LIST including a pad */
+#define MAX_XVIEW_ATTRIBUTES    (255 - 20)
+
+extern char *malloc();
+extern int free();
+extern int strcmp();
+
+void
+ReassignListEntries(list, entries)
+Panel_item list;
+char **entries;
+{
+    register int newNumItems, currentNumItems, attrIndex, entryIndex;
+    int attrListSize;
+    Xv_opaque *attrList;
+    Boolean listInactive, scrollbarInactive;
+
+    currentNumItems = (int) xv_get(list, PANEL_LIST_NROWS);
+    if ((entries == (char **) 0) || (entries[0] == (char *) 0)) {
+	newNumItems = 0;
+	listInactive = TRUE;
+    } else {
+	for (newNumItems = 0; entries[newNumItems] != 0; newNumItems++) ;
+	listInactive = FALSE;
+    }
+
+    /* see if the lists are the same */
+    if (currentNumItems == newNumItems) {
+	register int i;
+	register char *itemStr;
+	Boolean same = TRUE;
+
+	for (i = 0; i < newNumItems; i++) {
+	    itemStr = (char *) xv_get(list, PANEL_LIST_STRING, i);
+	    if (strcmp(itemStr, entries[i]) != 0) {
+		same = FALSE;
+		break;
+	    }
+	}
+
+	if (same) {
+	    return;
+	}
+    }
+
+    if (newNumItems == 0) {
+	/* must have at least one entry to hold selection (XView bug) */
+	newNumItems = 1;
+    }
+
+
+    /* for each element: ATTR + index + string */
+    attrListSize = newNumItems * 3;
+    if (currentNumItems > newNumItems) {
+	/* ATTR + indexx for each extra element */
+	attrListSize += (currentNumItems - newNumItems) * 2;
+    }
+    /* null terminator for ATTR_LIST */
+    attrListSize++;
+    
+    attrList = (Xv_opaque *)
+		malloc((unsigned) (attrListSize * sizeof(Xv_opaque)));
+    attrIndex = 0;
+    /* delete excess entries */
+    while (currentNumItems > newNumItems) {
+	attrList[attrIndex] = (Xv_opaque) PANEL_LIST_DELETE;
+	attrList[attrIndex + 1] = (Xv_opaque) currentNumItems - 1;
+	currentNumItems--;
+	attrIndex += 2;
+
+	/* see if we have overflowed XView limit */
+	if (attrIndex > MAX_XVIEW_ATTRIBUTES) {
+	    /* terminate and flush ATTR_LIST */
+	    attrList[attrIndex] = (Xv_opaque) 0;
+	    xv_set(list, ATTR_LIST, attrList, 0);
+	    attrIndex = 0;
+	}
+    }
+
+    /* add new entries */
+    if (newNumItems != 0) {
+	for (entryIndex = 0; entryIndex < newNumItems; entryIndex++) {
+	    attrList[attrIndex++] = (Xv_opaque) PANEL_LIST_STRING;
+	    attrList[attrIndex++] = (Xv_opaque) entryIndex;
+	    if ((entries == (char **) 0) ||
+			    (entries[entryIndex] == (char *) 0)) {
+		/* can happen if list is empty */
+		attrList[attrIndex++] = (Xv_opaque) "";
+	    } else
+		attrList[attrIndex++] = (Xv_opaque) entries[entryIndex];
+
+	    /* see if we have overflowed XView limit */
+	    if (attrIndex > MAX_XVIEW_ATTRIBUTES) {
+		/* terminate and flush ATTR_LIST */
+		attrList[attrIndex] = (Xv_opaque) 0;
+		xv_set(list, ATTR_LIST, attrList, 0);
+		attrIndex = 0;
+	    }
+	}
+    }
+    attrList[attrIndex] = (Xv_opaque) 0;	/* terminate ATTR_LIST */
+
+    xv_set(list, ATTR_LIST, attrList,
+			PANEL_INACTIVE, (Xv_opaque) listInactive,
+			0);
+    /* must do this as separate call to avoid XView bug (2.0) */
+    xv_set(list, PANEL_LIST_SELECT, 0, TRUE, 0);
+    if (listInactive)
+	xv_set(list, PANEL_LIST_SELECT, 0, FALSE, 0);
+
+    /* zero and disable scrollbar manually (XView should do these) */
+    scrollbarInactive = (listInactive ||
+		(newNumItems <= (int) xv_get(list, PANEL_LIST_DISPLAY_ROWS)));
+    xv_set(xv_get(list, PANEL_LIST_SCROLLBAR),
+			    SCROLLBAR_VIEW_START, 0,
+			    SCROLLBAR_INACTIVE, (int) scrollbarInactive,
+			    0);
+
+    free((char *) attrList);
+}
+
+

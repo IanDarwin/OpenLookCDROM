@@ -1,0 +1,599 @@
+head	1.10;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.10
+date	92.12.13.03.50.42;	author lacey;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	92.12.12.22.38.16;	author gaubert;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	92.12.11.15.45.50;	author lacey;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	92.12.10.09.05.18;	author lacey;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	92.12.03.14.58.25;	author lacey;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	92.11.27.20.34.05;	author lacey;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	92.11.24.01.05.59;	author gaubert;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	92.11.19.07.29.48;	author gaubert;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	92.11.03.03.57.42;	author lacey;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	92.11.03.00.57.54;	author gaubert;	state Exp;
+branches;
+next	;
+
+
+desc
+@This is the read for the top level code
+@
+
+
+1.10
+log
+@Unterminated constant fixed
+@
+text
+@/* xplan - project planning tool
+ * Copyright (C) 1992 Brian Gaubert, Mark M. Lacey, Richard Malingkas,
+ * and Mike Marlow.
+ * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation.
+ * 
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License (distributed with this program in the file
+ * COPYING) for more details.
+ * 
+ * If you did not received a copy of the GNU General Public License
+ * along with this program, write to the Free Software Foundation,
+ * Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * 
+ * Since this was a project for a one semester software engineering
+ * course, the authors will not be offering support for the product
+ * after its release.
+ *-----------------------------------------------------------------------------
+ * FILE readfile.c ************************************************************
+ *
+ * Description of Contents
+ *
+ *     This file contains the function readfile(). This function will be
+ *   used to open the input file for the read and used to call the
+ *   function yyparse.
+ *   
+ * Header files referenced
+ *
+ *     There are none within this file.
+ *
+ *  Author... Brian Gaubert
+ *  Date .... 1992 Nov 2
+ *
+ * FILE readfile.c */
+#include "db.h"
+#include <stdio.h>
+#include <string.h>
+extern FILE *yyin;
+
+void fixup_resources(void);
+void fixup_dependencies(void);
+void strip_escaped_quote(void);
+
+/* FUNCTION readfile *********************************************************
+*
+*  Purpose:
+*
+*       The purpose of this function is to set up and open the input
+*      file from the filename parameter that was given to it. This
+*      function will also call the function yyparse. It will return a
+*       value of 0 if the file was successfully opened and a 1 if the
+*	file was not successfully opened.
+*
+*    Sample Call:
+*
+*        retval = readfile(filename);
+*
+*    INPUTS:
+*
+*     filename  -  This is the filename that is given to the routine
+*                  from the user interface which intern will come from
+*		  the user.
+*
+*    OUTPUTS:
+*
+*     This function will return a 0 if the file is successfully opened
+*     and will return a 1 if there is an error in the proces of
+*     openinmg the file
+*
+*    Processing narrative:
+*    NOTE: This narrative came from the detailed design. I have also
+*          included the relations that this function has with the
+*	  functions yylex and yyparse, since those functions are made
+*	  fron the tools Flex and Bison.
+*
+*
+*      The tools Flex and Bison play an important part in reading a project
+*     file The tool Flex will be used to generate code that scans a file and
+*     looks for different tokens that are later assigned to the database
+*      structure that is used in creating a task list. The Flex tool will
+*      create tables that are used to look up the keywords that are used in
+*      the file. The tool creates a file called lex.yy.c and will create a
+*      function called yylex().  Bison, on the other hand, is used to create
+*      a parser which in turn parses the file so that the database can get
+*      the information that it needs to build the task list.  The set up of
+*      the bison file correlates to the grammar that is used to read the
+*      correct information from the file. Bison, like Flex, will use the
+*      input file that parses the input. These files are called
+*      parser.tab.c and parser.tab.h. The function that is created
+*      from the Bison tool is called yyparse(). These functions use a file
+*      pointer for the file to be read in called yyin. The function yyparse()
+*      will call yylex(), the scanner. From here the scanner, yylex(), will
+*      send the correct tokens to the parser from the input file.
+*
+*       The structure yylval will contain a token (taken from the scanner),
+*      a string constant, and an integer (which will be used to insert into
+*      the database). The string used in scanning the file will initially come
+*      from the global variable created from the scanner called yytext. From
+*      the scanner this variable will be placed into the stack yylval. Bison
+*      will then use the information from the stack to update the database.
+*      The file will be parsed in a bottom-up manner, so when each element of
+*      a task is parsed, a local variable within the structure will be updated.
+*       Then when all of the variables of that particular task have been 
+*      parsed, a call will be made to insert the task into list, thus by
+*      creating a list and a node that is appended to the list. If the task
+*      has subtasks, a list will be created under that main task, and the the
+*      subtasks will follow under it in a list of itself. This process will
+*      take place for all of the task in the file until the file has been
+*      totally read in. The grammar used in Bison will know when all of the
+*      tasks for the file have been read in and the control will be issued
+*      back to the read-file routine, which will end this routine. The
+*      control will then return back to the user interface.
+*
+*       The function yyparse is created from the tool Bison. The files created
+*      by Bison include the parser.tab.c and the parser.tab.h. These
+*      Bison files are related directly to the files created by the Flex
+*      tool. The purpose of using Bison is to allow the read from the file to
+*      the user interface to be easy and easily changeable, thus creating a
+*      file that can be made up from another source rather than the program
+*      itself. The functionality of yyparse will involve parsing the file
+*      according to the keywords used in yylex(). The parse will use a bottom
+*      up approach which is done by Bison automatically. From the parsing
+*      stage, Bison allows for code to be executed whenever it reaches a
+*      certain point in the parse tree or rule in the grammar. Upon reaching
+*      a single task in the parse of the file, the parser will make calls to
+*      the database functions to create-main-task-list, create-task-node,
+*      create-task-list, create-task-info, and add-task-to-end. The function
+*      create-main-task-list will create the main task list from the first
+*      task within the file. Other lists (subtask) and main task nodes will
+*      added on to this main task node.  The function create-task-node will
+*      create a node so the information can be stored within a node which
+*      will make it easier in maintaining the list that is currently being
+*      worked on. The function create-task-list will be used for creating any
+*      other list , subtask or main task, for the database. The function
+*      create-task-info will store all of the information of that task in the
+*      node specified. Lastly, the function add-task-to-end will add the task
+*      to the end of the list.  This process of adding a single task, along
+*      with all of its subtask lists, dependencies, and resources will
+*      involve a simple stack for that particular task. Once a task is
+*      created it will be stored into the stack, then all of its subtasks
+*      will be stored on top of the main task. Then, when the main task is
+*      done being read from the file, contents of the stack will come off and
+*      will be placed into the database.
+*
+*       The function yylex will involve the scanning part of the read function.
+*      The scanner will scan through the file and look for specific keywords
+*      and identifiers that will be used later in the parsing section of the
+*      read. When an identifier is found, the scanner will return a token to
+*      the caller of the function, yyparse. When a specific identifier is
+*      found in the file that is a STRING or an INT the scanner will return a
+*      token code and will assign it to the correct variable in the yylval
+*      structure. The yylval structure will contain the token code, an long
+*      integer variable and a character pointer. 
+*
+*      	 
+*    PDL for the function:
+*
+*        PROCEDURE read-file EXTERNAL REFERENCE;
+*        INTERFACE filename;
+*          BEGIN
+*            yyin = OPEN filename;
+*           CALL yyparse PROCEDURE;
+*            CLOSE yyin;
+*          END
+*
+* FUNCTION readfile */ 
+int readfile( char *filename )
+{
+  int j;  /*  j --> the value of yyparse */
+
+     /*---> Open the input file with yyin */
+     yyin = fopen( filename, "r" );
+
+     /*---> If the file pointer is null, return error */
+     if( yyin == NULL ) {
+        /*---> Display the error message to the user */
+	return 1;
+     } else {
+	/* call yyparst and start scanning and parsing the file */
+        if (yyparse()) {
+	   yyrestart(yyin);
+	   fclose(yyin);
+	   return 2;
+	} else {
+	   fixup_dependencies();
+	   fixup_resources();
+	   fclose(yyin);
+	   return 0;
+	}
+     }
+}
+
+/* FUNCTION fixup_dependencies()**********************************************
+ *
+ *  PURPOSE
+ *
+ *   This function will fix up trhe dependencies by putting a NULL
+ *   at the end of the dependency list.
+ *
+ *  SAMPLE CALL
+ *
+ *    fixup_dependencies();
+ *   
+ *  INPUTS
+ *
+ *   none.
+ *
+ *  OUTPUTS
+ *
+ *  Fixes up the dependencies in the list stored by the database.
+ *
+ *  AUTHOR/AUDITOR/TESTER
+ *
+ * Author...   Mark Lacey Dec. 2, 1992
+ * Tester...   Mark Lacey Dec. 2, 1992
+ *
+ *  MODIFICATIONS (most recent to least)
+ *
+ * FUNCTION fixup_dependencies() */
+
+void fixup_dependencies()
+{
+   /* Declare the variables used in the function */
+   struct
+     task_node *tn, *dn, *new_node;
+
+   /* Get the main task list */
+   tn = get_main_task_list()->head;
+
+   /* for each node in the list */
+   while (tn) {
+      /* if there are no dependencies, create an empty list */
+      if (!tn->data->dependencies)
+	tn->data->dependencies = create_task_list(NULL, NULL, NULL);
+
+      /* if there are no dependents, create an empty list */
+      if (!tn->data->dependents)
+	tn->data->dependents = create_task_list(NULL, NULL, NULL);
+
+      dn = tn->data->dependencies->head;
+
+      /* for each dependency in this list, create a dependent that */
+      /* points back to this node */
+      while (dn) {
+	 if (!dn->data->dependents)
+	   dn->data->dependents = create_task_list(NULL, NULL,
+						   NULL);
+	 
+	 new_node = create_task_node(tn->data, NULL, NULL);
+	 add_task_to_end(dn->data->dependents, new_node);
+
+	 dn = dn->next;
+      }
+
+      tn = tn->next;
+   }
+}
+
+/* FUNCTION fixup_resources()**********************************************
+ *
+ *  PURPOSE
+ *
+ *   This function will fix up trhe resource by putting a NULL
+ *   at the end of the resource list.
+ *
+ *  SAMPLE CALL
+ *
+ *    fixup_resource();
+ *   
+ *  INPUTS
+ *
+ *   none.
+ *
+ *  OUTPUTS
+ *
+ *  Fixes up the resources in the list stored by the database.
+ *
+ *  AUTHOR/AUDITOR/TESTER
+ *
+ * Author...   Mark Lacey Dec. 2, 1992
+ * Tester...   Mark Lacey Dec. 2, 1992
+ *
+ *  MODIFICATIONS (most recent to least)
+ *
+ * FUNCTION fixup_resources() */
+void fixup_resources()
+{
+   /* Declare the variables */
+   struct task_node *tn;
+
+   /* Get the main task list */
+   tn = get_main_task_list()->head;
+
+   while (tn) {
+      /* If there are no resources, create an empty resource list */
+      if (!tn->data->resources)
+	tn->data->resources = create_resource_list(NULL, NULL, NULL);
+      tn = tn->next;
+   }
+}
+
+@
+
+
+1.9
+log
+@This is the final version of the readfile.c nd its code documentation
+@
+text
+@d234 1
+a234 1
+   /* Set the dependencies to null for the whole list */
+d236 1
+d240 1
+d246 2
+d295 1
+a295 1
+   /* Get the main task list *?
+d299 1
+a299 1
+      /* Check the resources */
+@
+
+
+1.8
+log
+@The file we did our final demo with.
+@
+text
+@d1 23
+a23 1
+/* FILE readfile.c ************************************************************
+d183 1
+d197 28
+d227 1
+d231 1
+d234 1
+d259 27
+d288 1
+d291 1
+d295 1
+a300 39
+
+/*main()
+{
+  int i, j, k;
+  char file[100];
+  char outfile[100];
+
+ for(i=0;i<1;i++)
+  {
+    printf(" Please type in the name of the file to be processed \n");
+    gets(file);
+
+    j = readfile( file );
+
+    if ( j == 1)
+     {
+       printf(" There is an error in the file \n");
+     }
+    else
+     {
+      printf(" The file has been processed \n");
+     }
+    printf(" Please specify the name of the file to write to.\n");
+    gets(outfile);
+     k = writefile_init( outfile );
+    if ( k == 1)
+     {
+       printf(" There is an error in the file \n");
+     }
+    else
+     {
+      printf(" The file has been processed \n");
+     }
+    
+  }
+
+} */     
+
+
+@
+
+
+1.7
+log
+@*** empty log message ***
+@
+text
+@d22 1
+d167 1
+d205 12
+@
+
+
+1.6
+log
+@Latest revisions before practice demo.
+@
+text
+@d22 3
+d161 1
+d163 1
+a163 1
+	   return 1;
+d165 1
+d171 32
+@
+
+
+1.5
+log
+@*** empty log message ***
+@
+text
+@a156 2
+	/*---> Initialize the string table and Make the call to yyparse() */
+	tab_initialize();
+@
+
+
+1.4
+log
+@*** empty log message ***
+@
+text
+@d153 1
+a153 2
+     if( yyin == NULL )
+       {
+d156 1
+a156 3
+       }
+     else
+       {
+d159 8
+a166 14
+        j = yyparse();
+
+	/*---> This function is used for testing*/ 
+	/*print_str_table();*/
+	/*print_task_list();*/
+	/*---> If there is a parse error return error */
+        if (j == 1)
+	  {
+	    /* Display parse error message */
+	    return 1;
+	  }
+       }
+       close(yyin);
+       return 0;
+@
+
+
+1.3
+log
+@*** empty log message ***
+@
+text
+@d166 1
+a166 1
+	print_task_list();
+d178 1
+a178 1
+main()
+d180 1
+a180 1
+  int i, j;
+d182 1
+d184 1
+a184 1
+ for(i=0;i<10;i++)
+d199 12
+d213 3
+a215 1
+}      
+@
+
+
+1.2
+log
+@*** empty log message ***
+@
+text
+@a0 2
+/* Top Level Code: Group 7 readfile.c */
+
+d17 1
+a17 1
+
+d147 1
+a147 1
+  int i,j;
+d149 27
+a175 21
+     i = 1;
+     for(i=1;i<=strlen(filename)-1;i++)
+        {
+          yyin = fopen( filename, "r" );
+          if( yyin == NULL )
+             {
+               /* Display the error message to the user */
+	       return 1;
+             }
+          else
+             {  
+               j = yyparse();
+	       if (j == 1)
+	          {
+		    /* Display parse error message */
+		    return 1;
+		  }
+             }
+             close(yyin);
+             return 0;
+        }
+d178 23
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d1 2
+@

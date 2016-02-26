@@ -1,0 +1,418 @@
+head	2.0;
+access;
+symbols;
+locks
+	ses:2.0; strict;
+comment	@ * @;
+
+
+2.0
+date	93.05.12.15.48.48;	author ses;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	93.05.12.15.47.01;	author ses;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	93.05.10.18.03.34;	author ses;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	93.04.20.23.30.49;	author ses;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	93.04.13.17.03.13;	author ses;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	93.04.13.14.46.18;	author ses;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	93.04.05.22.19.50;	author ses;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	93.04.05.20.38.58;	author ses;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+2.0
+log
+@Release 0.1a
+@
+text
+@#ifndef OLUTILS_H
+#define OLUTILS_H
+#include <string.h>
+#include <xview/xview.h>
+#include <xview/panel.h>
+
+typedef int (*ol_notify_list_proc)(Panel_item,char*,
+			       Xv_opaque,Panel_list_op,Event*,int);
+
+class ol_object {
+ protected: 
+  Xv_opaque the_object;
+ public:
+  operator Xv_opaque() {
+    return the_object;
+  }
+
+};
+class ol_panel : public ol_object {
+ public:
+  
+  void set_label(char* string) {xv_set(the_object,PANEL_LABEL_STRING,string, NULL);}
+  char* get_label() {return (char*)xv_get(the_object,PANEL_LABEL_STRING);}  
+  void show(int flag=1) {
+    xv_set(the_object, XV_SHOW,flag,NULL);
+  }
+};
+
+class ol_frame :public ol_object {    
+ public:
+  ol_frame(Xv_opaque o) {the_object = o;}
+  ol_frame() {the_object = 0;}
+  void set_left_footer(char* string) {
+    xv_set(the_object,FRAME_LEFT_FOOTER,string,NULL);
+  }
+  void set_right_footer(char* string) {
+    xv_set(the_object,FRAME_RIGHT_FOOTER,string,NULL);
+  }
+  void show_footer(int flag=TRUE) {
+    xv_set(the_object,FRAME_SHOW_FOOTER,flag,NULL);
+  }
+  void show_header(int flag=TRUE) {
+    xv_set(the_object,FRAME_SHOW_HEADER,flag,NULL);
+  }
+  void set_header(char* string) {
+    xv_set(the_object,FRAME_LABEL,string,NULL);
+  }
+  void set_busy(int flag=TRUE) {
+    xv_set(the_object,FRAME_BUSY,flag,NULL);
+  }
+  void set_icon(Server_image im) {
+    Icon i = xv_create(the_object,ICON,
+		       ICON_IMAGE,im,
+		       NULL);
+    xv_set(the_object,FRAME_ICON,i,NULL);
+  }
+};
+
+typedef Menu_item (*ol_menu_callback)(Menu men, Menu_item ot);
+
+class ol_menu : public ol_object {
+  int allocated;
+ public:
+  ol_menu() { allocated = 0; the_object = 0;}
+//  ~ol_menu() {if (allocated) {xv_destroy_safe(the_object);}}
+  ol_menu(char* string) {
+    create(string);
+  }
+  void add_item(char* title, ol_menu_callback action=0) {
+    Menu_item mi;
+    mi = xv_create(NULL,MENUITEM,
+		   MENU_STRING,title,
+		   NULL);
+    if(action) {
+      xv_set(mi,MENU_NOTIFY_PROC,action,NULL);
+    }
+    xv_set(the_object,MENU_APPEND_ITEM,mi,NULL);
+  }
+    
+  ol_text(Xv_opaque t) {allocated = 0;the_object = t;}
+  
+  void create(char* title) {
+    the_object = xv_create(NULL,MENU,
+			   MENU_TITLE_ITEM,title,
+			   NULL);
+    allocated = 1;
+  }
+  void make_pinnable(int flag=TRUE) {
+    xv_set(the_object,MENU_PIN,flag,NULL);
+  }
+};
+
+class ol_list : public ol_panel {
+  int sel;
+ public:
+  ol_list(Xv_opaque l) { the_object = l;}
+  ol_list() {the_object = 0 ; sel = -1;}
+  int num_rows() {return (int)xv_get(the_object,PANEL_LIST_NROWS); }
+
+  int insert(char* string,int n,  void* data=0,Xv_opaque glyph = 0);
+  int append(char* string, void*data=0,Xv_opaque glyph =0) {
+    return insert(string,num_rows(),data,glyph);
+  }
+  void delete_all() {
+    int n=0;
+    n = num_rows();
+    xv_set(the_object, PANEL_LIST_DELETE_ROWS, 0,n, NULL);
+  }
+  void del(int n) {xv_set(the_object,PANEL_LIST_DELETE,n, NULL); }
+  void select(int n, int f=FALSE) {
+    xv_set(the_object, PANEL_LIST_SELECT,n,f, NULL); }
+  int is_selected(int n) {
+    return (int)xv_get(the_object,PANEL_LIST_SELECTED,n);
+  }
+  int get_first() {
+    return sel =  (int) xv_get(the_object, PANEL_LIST_FIRST_SELECTED);  }
+
+  int get_next() {
+    return sel = (int) xv_get(the_object,PANEL_LIST_NEXT_SELECTED,sel);  }
+  
+  void deselect_all() {
+    int n = 0;
+    for(n = get_first() ; n != -1 ; n = get_next()) { select(n,FALSE); } }
+  char* get_item(int n, void** data=0, Xv_opaque* glyph=0) ;      
+  void set_unique(int flag) {
+    xv_set(the_object, PANEL_LIST_INSERT_DUPLICATE,flag, NULL);
+  }
+  void delete_selected() {
+    xv_set(the_object,PANEL_LIST_DELETE_SELECTED_ROWS,NULL); }
+  void set_sorted(int flag=PANEL_FORWARD) {
+    xv_set(the_object,PANEL_LIST_SORT,flag,NULL);}
+  void set_notify_proc(ol_notify_list_proc the_proc) {
+    xv_set(the_object,
+	   PANEL_NOTIFY_PROC,the_proc,
+	   NULL);
+  }
+  void set_menu(Xv_opaque menu) {
+    xv_set(the_object,PANEL_ITEM_MENU,menu,NULL);
+  }
+};
+
+class ol_button : public ol_panel {
+ public:
+  ol_button() {    the_object =0;  }
+  ol_button(Xv_opaque b) { the_object = b;}
+
+
+};
+class ol_text : public ol_panel {
+ public:
+  ol_text() {the_object = 0;}
+  ol_text(Xv_opaque t) {the_object = t;}
+  char* get_text() {
+    return (char*)xv_get(the_object,PANEL_VALUE);
+  }
+  void set_text(char* message) {
+    xv_set(the_object,PANEL_VALUE,message,0);
+  }
+};
+
+  
+#endif 
+@
+
+
+1.7
+log
+@release bersion
+@
+text
+@@
+
+
+1.6
+log
+@*** empty log message ***
+@
+text
+@d51 6
+@
+
+
+1.5
+log
+@*** empty log message ***
+@
+text
+@d14 3
+d18 3
+a20 1
+
+d52 36
+a87 1
+class ol_list : public ol_object {
+a100 1
+    printf("need to delete %d rows\n",n);
+d115 1
+a115 1
+  int deselect_all() {
+d131 3
+d136 1
+a136 1
+class ol_button : public ol_object {
+d143 1
+a143 1
+class ol_text : public ol_object {
+d154 2
+@
+
+
+1.4
+log
+@*** empty log message ***
+@
+text
+@d7 1
+a7 1
+typedef void (*ol_notify_list_proc)(Panel_item,char*,
+d14 2
+d19 3
+d23 24
+a46 1
+   
+d59 4
+a62 1
+    xv_set(the_object, PANEL_LIST_DELETE_ROWS, 0,num_rows(), NULL);
+@
+
+
+1.3
+log
+@*** empty log message ***
+@
+text
+@d6 4
+d56 6
+a61 2
+}
+;
+@
+
+
+1.2
+log
+@*** empty log message ***
+@
+text
+@d5 11
+a15 2
+class ol_list {
+  Xv_opaque the_list;
+d18 3
+a20 3
+  ol_list(Xv_opaque l) { the_list = l;}
+  ol_list() {the_list = 0 ; sel = -1;}
+  int num_rows() {return (int)xv_get(the_list,PANEL_LIST_NROWS); }
+d22 1
+a22 17
+  int insert(char* string,int n,  void* data=0,Xv_opaque glyph = 0) {
+    xv_set(the_list,
+	   PANEL_LIST_INSERT,n,
+	   PANEL_LIST_STRING,n,strdup(string),
+	   NULL);
+    if(data) {
+      xv_set(the_list,
+	     PANEL_LIST_CLIENT_DATA,n,data,
+	     NULL);
+    }
+    if(glyph) {
+      xv_set(the_list,
+	     PANEL_LIST_GLYPH,n,glyph,
+	     NULL);
+    }
+    return 0;
+  }
+d24 1
+a24 2
+    int n = num_rows();
+    return insert(string,n,data,glyph);
+d27 1
+a27 1
+    xv_set(the_list, PANEL_LIST_DELETE_ROWS, 0,num_rows(), NULL);
+d29 1
+a29 1
+  void del(int n) {xv_set(the_list,PANEL_LIST_DELETE,n, NULL); }
+d31 3
+a33 4
+    xv_set(the_list,
+	  PANEL_LIST_SELECT,n,f,
+	   NULL
+	 );
+d36 1
+a36 3
+    sel =  (int) xv_get(the_list, PANEL_LIST_FIRST_SELECTED);
+    return sel;
+  }
+d39 1
+a39 3
+    sel = (int) xv_get(the_list,PANEL_LIST_NEXT_SELECTED,sel);
+    return sel;
+  }
+d43 2
+a44 15
+    for(n = get_first() ; n != -1 ; n = get_next()) {
+      select(n,FALSE);
+    }
+  }
+  char* get_item(int n, void** data=0, Xv_opaque* glyph=0) 
+    {
+    char* tmp = (char*)xv_get(the_list,PANEL_LIST_STRING,n);
+    if(data) {
+      *data = (void*)xv_get(the_list,PANEL_LIST_CLIENT_DATA,n);
+    }
+    if(glyph) {
+      *glyph = (Xv_opaque)xv_get(the_list,PANEL_LIST_GLYPH,n);
+    }
+    return tmp;
+  }      
+d46 1
+a46 3
+    xv_set(the_list,
+	   PANEL_LIST_INSERT_DUPLICATE,flag,
+	   NULL);
+d48 6
+d55 1
+a55 4
+};
+
+class ol_button {
+  Xv_opaque the_button;
+d57 2
+a58 2
+  ol_button() {    the_button =0;  }
+  ol_button(Xv_opaque b) { the_button = b;}
+d60 1
+a60 2
+  void set_label(char* string) {xv_set(the_button,PANEL_LABEL_STRING,string, NULL);}
+  char* get_label() {return (char*)xv_get(the_button,PANEL_LABEL_STRING);}
+d62 1
+a62 2
+class ol_text {
+  Xv_opaque the_text;
+d64 2
+a65 2
+  ol_text() {the_text = 0;}
+  ol_text(Xv_opaque t) {the_text = t;}
+d67 4
+a70 1
+    return (char*)xv_get(the_text,PANEL_VALUE);
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d60 17
+d79 18
+@

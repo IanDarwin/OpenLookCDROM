@@ -1,0 +1,330 @@
+%!
+% Copyright (C) 1988 by Bruce Schwartz and Mark Lentczner. All rights
+% reserved.  This program is provided for unrestricted use, provided that
+% this copyright message is preserved. There is no warranty, and no
+% author or distributer accepts responsibility for any damage caused by
+% this program.
+% 
+% This is an interactive screen saver program. 
+%
+% The algorithms used in this program are based on an idea of Dan Ingalls.
+%
+
+/lockmenu where
+	{ pop }
+	{ (lockmenu.ps) LoadFile pop }
+ifelse
+
+/CurveType (1234) def
+
+/initState % - -> -
+{
+	[ currentcursorlocation ] initHistory
+	initRecording
+	blankScreen
+} def
+
+/niceColor	% - -> - sets the color to something nice
+{
+	/hue random def
+	/sat random 4 div .15 add def
+	/bri random 3 div .6 add def
+
+	framebuffer /Color get
+		{ hue sat bri hsbcolor setcolor } 
+		{ 1 setgray }
+	ifelse
+} def
+
+/nextColor % - -> - makes a nice color
+{
+userdict
+	hue 0.003 add
+	dup 1 ge { 1 sub } if
+	/hue exch put
+
+	framebuffer /Color get
+		{ hue sat bri hsbcolor setcolor } 
+		{ 1 setgray }
+	ifelse
+} def
+
+/history [] def
+/filter [] def
+/hysterisis 50 def
+/takeInput true def
+
+
+/initHistory % pt -> -
+{
+	/filter exch def
+
+	[
+		hysterisis { filter } repeat
+	]
+	/history exch def
+} def
+
+
+/filterPoint % pt -> pt
+{
+	filter [4 4] {mul} arrayop
+	{add} arrayop
+	[5 5] {div} arrayop
+	dup /filter exch def
+} def
+
+
+/initRecording % - -> -
+{
+	/recording [] def
+} def
+
+
+/recordPoint % pt -> -
+{
+	recording dup length 1 add 3 -1 roll arrayinsert
+	/recording exch def
+} def
+
+/generatePoints % - -> -
+{
+	initRecording
+
+	clippath pathbbox 
+	2 index sub /h exch def
+	2 index sub /w exch def
+	/y exch def
+	/x exch def
+
+	[ x w 2 div add y h 2 div add ]
+	250
+	{
+		[ random 0.5 sub w mul 8 div random 0.5 sub h mul 8 div ]
+		{ add } arrayop
+		dup recordPoint
+	} repeat
+	pop
+} def
+
+/funTransform % - -> -
+{
+	/mat matrix currentmatrix def
+
+	0 1 5
+	{
+		dup mat exch get
+		random 0.5 sub 10 div add
+		mat 3 1 roll put
+	} for
+	mat setmatrix
+} def
+
+
+/notSoFunTransform % - -> -
+{
+	10 rotate
+} def
+	
+
+
+/playback % - -> -
+{
+	niceColor
+	notSoFunTransform
+
+	recording length 10 le { generatePoints } if
+
+	recording 0 get initHistory
+	0 1 recording length 1 sub
+	{
+		recording exch get
+		dealWithNextPoint
+		% 1 1800 div sleep
+		pause
+	} for
+} def
+
+
+/getHistoricPoint	% order -> pt
+{
+	history exch 1 index length 1 sub mul 3 div get
+} def
+	
+
+/drawNextCurve % - -> -
+{ 10 dict begin
+	
+	CurveType string2Index
+    1 sub /d exch def
+    1 sub /c exch def
+    1 sub /b exch def
+    1 sub /a exch def
+
+	nextColor
+
+	a getHistoricPoint coordinates moveto
+	b getHistoricPoint coordinates
+	c getHistoricPoint coordinates
+	d getHistoricPoint coordinates curveto
+	stroke
+end } def
+
+
+/drawNextLine % - -> -
+{
+	nextColor
+
+	history 0 get coordinates moveto
+	history dup length 1 sub get coordinates lineto
+	stroke
+} def
+
+
+/drawNextThing
+{
+	drawNextCurve
+} def
+
+
+/dealWithNextPoint % pt -> -
+{
+	filterPoint
+
+	history 0 arraydelete
+	dup length 3 -1 roll arrayinsert
+	/history exch def
+
+	drawNextThing
+} def
+
+
+/pointeq % ptA ptB -> boolean
+{
+	{ eq } arrayop
+	aload pop and
+} def
+
+
+/doWeb % - -> -
+{
+	niceColor
+	[ currentcursorlocation ] initHistory
+	initRecording
+
+	/n 0 def
+	[ -1 -1 ]
+
+	% (starting web\n) [] dbgprintf
+
+	{
+		takeInput not { exit } if
+
+		[ currentcursorlocation ]
+		exch 1 index pointeq
+		{
+			n 60 ge
+				{ exit }
+				{ n 1 add /n exch def }
+			ifelse
+		}
+		{	
+			dup recordPoint
+			dup dealWithNextPoint
+		}
+		ifelse
+		1 1800 div sleep
+	} loop
+
+	pop
+
+	% (ending web\n) [] dbgprintf
+} def
+
+
+
+/waitMoved % - -> -
+{
+	getcanvascursor
+
+	/nouse /nouse_m can setstandardcursor
+	{ { blankScreen playback 1 60 div sleep } loop } fork
+	/TapeDeck exch def
+	createevent dup
+	begin
+		/Name MouseDragged def
+	end
+	dup expressinterest
+	awaitevent pop
+	revokeinterest
+	TapeDeck killprocess
+
+	setcanvascursor
+
+} def
+
+
+
+/blankScreen
+{
+	gsave
+	can setcanvas
+	0 fillcanvas
+	grestore
+}  def
+
+
+framebuffer newcanvas
+/can exch def
+0 0 moveto
+framebuffer setcanvas clippath
+% 0 0 500 500 rectpath  % debugging for now
+can reshapecanvas
+can /Mapped true put
+% /nouse /nouse_m can setstandardcursor
+can setcanvas
+clippath pathbbox 2 div exch 2 div exch translate pop pop
+0 fillcanvas
+
+{ { blankScreen doWeb waitMoved } loop } fork pop
+
+/StopEvt createevent def
+StopEvt begin
+	/Canvas can def
+	/Name /LeftMouseButton def
+end
+
+{
+	StopEvt expressinterest
+	{
+		% (awaiting...) [] dbgprintf
+		awaitevent
+		% (done\n) [] dbgprintf
+		pop
+		KillProcess killprocessgroup
+	} loop
+} fork pause
+/KillProcess exch def
+
+/dealWithMenu % - -> -
+{
+	userdict /takeInput false put
+	/showat lockmenu send
+	userdict /takeInput true put
+} def
+
+
+[
+	MenuButton
+	{ {newprocessgroup dealWithMenu} fork pop }
+	% { {dealWithMenu} fork pop }
+	DownTransition can eventmgrinterest
+]
+forkeventmgr
+
+
+/cleanUp
+{
+	can /Mapped false put
+	KillProcess killprocessgroup
+} def

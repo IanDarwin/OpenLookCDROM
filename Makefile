@@ -1,5 +1,5 @@
 # OLCD Makefile
-# $Id$
+# $Id: Makefile,v 1.19 2004/09/24 01:28:21 ian Exp $
 
 # How we made your version of "The OPEN LOOK, XView and NeWS Archive CD-ROM".
 

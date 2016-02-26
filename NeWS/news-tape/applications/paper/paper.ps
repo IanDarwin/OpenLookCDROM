@@ -1,0 +1,569 @@
+%
+% This file is a product of Sun Microsystems, Inc. and is provided for
+% unrestricted use provided that this legend is included on all tape
+% media and as a part of the software program in whole or part.
+% Users may copy, modify or distribute this file at will.
+% 
+% THIS FILE IS PROVIDED AS IS WITH NO WARRANTIES OF ANY KIND INCLUDING THE
+% WARRANTIES OF DESIGN, MERCHANTIBILITY AND FITNESS FOR A PARTICULAR
+% PURPOSE, OR ARISING FROM A COURSE OF DEALING, USAGE OR TRADE PRACTICE.
+% 
+% This file is provided with no support and without any obligation on the
+% part of Sun Microsystems, Inc. to assist in its use, correction,
+% modification or enhancement.
+% 
+% SUN MICROSYSTEMS, INC. SHALL HAVE NO LIABILITY WITH RESPECT TO THE
+% INFRINGEMENT OF COPYRIGHTS, TRADE SECRETS OR ANY PATENTS BY THIS FILE
+% OR ANY PART THEREOF.
+% 
+% In no event will Sun Microsystems, Inc. be liable for any lost revenue
+% or profits or other special, indirect and consequential damages, even
+% if Sun has been advised of the possibility of such damages.
+% 
+% Sun Microsystems, Inc.
+% 2550 Garcia Avenue
+% Mountain View, California  94043
+%
+% Modifications to the original Sun Microsystems, Inc. source code
+% made by the Grasshopper Group are in the Public Domain.
+%
+% Extensions to this file by Eric Messick of the Grasshopper Group.
+%
+% Grasshopper Group
+% 212 Clayton St
+% San Francisco, CA 94117
+%
+%
+% @(#)$Header: paper.ps,v 1.7 88/09/14 15:17:16 eric Exp $
+%
+
+
+systemdict begin
+	/PaperDict 50 dict def
+end
+
+systemdict /Item known not { (NeWS/liteitem.ps) run } if
+
+PaperDict begin
+
+/ps_initialize { % w h x y
+	/@PaperUserDict 200 dict def
+	/errordict 10 dict def
+	errordict /rangecheck { stop } put
+%	systemdict /settransfer /pop load def
+
+	@PaperUserDict begin
+
+	/ImageY exch def	% position of center of rendering area in points
+	/ImageX exch def
+	/Height exch def	% size of requested rendering area in points
+	/Width exch def
+
+	/CanX 0 def		% position of lower left of rendered canvas on ClientCanvas
+	/CanY 0 def		%	in ClientCanvas units (points)
+
+	/Resolution 72 def	% display points per user space inch
+	/ScaleFactor 1 def	% display space points per user space point
+	/Rotation 0 def		% current angle paper is ``held'' at
+
+	/UserBBoxX Width def	% size of bounding box of rendering area @ ScaleFactor == 1
+	/UserBBoxY Height def	%	in ClientCanvas units (points)
+
+	/startmatrix null def	% transform from default user space to user space at end of prolog
+
+	/PicWidth 0 def		% size of rendercanvas in ClientCanvas units
+	/PicHeight 0 def	%	used to scale target unit square for imagecanvas operator
+	/Margin 2 def		% extra whitespace added to PicWidth and PicHeight
+
+	/ShowRendering? true def	% pop rendering canvas up while drawing? -- negated, toggled by setupwindow
+	/AltShowRendering? false def	% reimage clientcanvas while drawing? -- negated, toggled by setupwindow
+	/FitOnResize? true def		% rescale to fit on window resize?
+	/JustReshaped? false def	% render canvas is dammaged because of window reshape
+	/SliderOn? false def		% are there multiple pages?
+
+	{ statusdict begin 0 setjobtimeout end } errored pop	% there should be a better way!!!
+
+%	/settransfer {pop} def					% we no longer need to castrate the server
+%	/currenttransfer { { } } def
+%	/currentscreen { 0 0 { } } def
+%	/setscreen { pop pop pop } def
+%	/definefont { exch dup type /keywordtype ne { (                               ) cvs cvn } if
+%			exch definefont } def
+%	/StandardEncoding magic:AdobeSequence def
+%	magic:fontdict /Encoding StandardEncoding put
+
+	/DoBox true def
+	/MIN		1  def		% MIN always = 1, MAX sent by client
+	[1 0 0 1 0 0] setmatrix
+} def
+
+/TitlePage {
+	gsave
+	ImageX ImageY translate
+	Width 8.5 div Height 11 div
+	min dup scale
+
+	0 setgray
+
+	/Times-Bold findfont 1.5 scalefont setfont
+	0 2.25 moveto
+	(Paper) cshow
+
+	/Times-Roman findfont .5 scalefont setfont
+	0 0.875 moveto
+	(Grasshopper Group) cshow
+	0 -0.25 moveto
+	(Eric Messick) cshow
+	0 -1.75 moveto
+	(psview) cshow
+	0 -2.5 moveto
+	(Sun Microsystems, Inc) cshow
+
+	/Helvetica findfont .25 scalefont setfont
+	0 1.625 moveto
+	(A PostScript Previewer) cshow
+	0 1.25 moveto
+	(from) cshow
+	0 0.25 moveto
+	(by) cshow
+	0 -1.25 moveto
+	(an adaption of) cshow
+	0 -2.1 moveto
+	(from) cshow
+	grestore
+} def
+
+/ps_setupwindow { % framelabel
+	/frame_label exch def
+
+	/startmatrix 6 array currentmatrix def		% this is after prolog code is executed
+
+	MIN MAX lt { /SliderOn? true store } if
+
+	/win framebuffer /new PSWindow send def
+	{ /FrameLabel (%) [frame_label] sprintf def } win send
+	/reshapefromuser win send
+	/map win send 
+
+	% Create handlers for each key
+	/handlers 100 dict def
+	handlers begin
+		32 { /NEXT win send } def		% ' '
+		43 { /NEXT win send } def		% '+'
+		8  { /PREV win send } def		% '\b'
+		45 { /PREV win send } def		% '-'
+		48 { /FIRST win send } def		% '0'
+		60 { /FIRST win send } def		% '<'
+		44 { /FIRST win send } def		% ','
+		62 { /LAST win send } def		% '>'
+		46 { /LAST win send } def		% ','
+		36 { /LAST win send } def		% '$'
+		3  { /EXIT win send } def		% ^C
+		113 {/EXIT win send } def		% 'q'
+		12 { /REDIS win send } def		% ^L
+%		63 { TitlePage /PaintImage win send /PaintClient win send } def % '?'
+		/LeftMouseButton {/NEXT win send } def
+	end
+
+	{	% done as a separate process so the file reading
+		% process can exit
+		win /ClientCanvas get setcanvas
+
+	% Start the input handler
+		systemdict /Selections known {		% The new extended input system
+			currentcanvas addkbdinterests pop
+		} if
+		createevent dup begin
+			/Name 200 dict dup begin
+				0 1 127 { dup def } for
+				/LeftMouseButton dup def
+			end def
+			/Action /DownTransition def
+			/Canvas currentcanvas def
+		end expressinterest
+
+	/eventmgr [
+		AdjustButton {DragCanvas}
+		DownTransition win /ClientCanvas get eventmgrinterest
+	] forkeventmgr def
+
+	% Input handling loop
+		{   clear
+			/CurrentEventX awaitevent def
+			CurrentEventX /Name get dup
+			handlers exch known {
+				handlers exch get cvx exec
+			} if
+		} loop
+	} fork clear
+
+	/rendering false def
+	/timerinterest createevent def
+	/timerevent createevent def
+	timerinterest /Name /PaperRepaint put
+	timerevent /Name /PaperRepaint put
+	/timerinterval .05 def
+	{
+		timerinterest expressinterest
+		{
+			awaitevent begin
+				rendering AltShowRendering? and {
+					/PaintClient win send
+				        timerevent recallevent
+					timerevent /TimeStamp 
+					  currenttime timerinterval add put
+					timerevent sendevent
+				} if
+			end
+		} loop
+	} fork
+
+	Toggle_ShowRendering
+	Toggle_AltShowRender
+
+%	end			% @PaperUserDict
+} def
+
+/ps_paintimage {
+	/PaintClient win send
+} def
+
+/SizeToFit {
+	{ ClientCanvas setcanvas } win send
+	clippath pathbbox
+	4 2 roll pop pop
+	72 mul UserBBoxY div exch 72 mul UserBBoxX div exch min
+	/set_resolution win send
+	/FitOnResize? true store
+} def
+
+/SetCanLoc {/CanY exch store /CanX exch store} def
+
+/ScrollCanvas { % event => -
+	begin  XLocation YLocation end /y exch def /x exch def
+	CanX x0 x sub add CanY y0 y sub add SetCanLoc /PaintClient win send 
+	/x0 x def /y0 y def
+} def
+
+/DragCanvas { % event => -
+	10 dict begin
+		gsave
+			win /ClientCanvas get setcanvas
+			begin  XLocation YLocation end /y0 exch def /x0 exch def
+			/xcurs /xcurs_m currentcanvas setstandardcursor
+			[  MouseDragged {ScrollCanvas} null null eventmgrinterest
+				AdjustButton {exit} UpTransition null eventmgrinterest
+			] forkeventmgr waitprocess pop
+			/ptr /ptr_m currentcanvas setstandardcursor
+		grestore
+	end
+} def
+
+/Toggle_ShowRendering {
+	/ShowRendering? ShowRendering? not store
+	0
+	ShowRendering? {(* Show Rendering 1)}{(  Show Rendering 1)} ifelse
+	{ Toggle_ShowRendering }
+	/changeitem win /toggle_menu get send
+} def
+
+/Toggle_AltShowRender {
+	/AltShowRendering? AltShowRendering? not store
+	1
+	AltShowRendering? {(* Show Rendering 2)}{(  Show Rendering 2)} ifelse
+	{ Toggle_AltShowRender }
+	/changeitem win /toggle_menu get send
+	rendering AltShowRendering? and { 
+	  timerevent recallevent
+	  timerevent /TimeStamp currenttime put 
+	  timerevent sendevent
+	} if
+} def
+
+/PSWindow DefaultWindow
+dictbegin
+	/PSCanvas	null def	% the 2 sub windows
+	/PSItem		null def	%
+	/PageCount	1  def		% current page number, initially = 1 
+
+	/IconHeight 15 def
+	/BorderTop 21 def
+dictend
+classbegin
+	/new_page { % new page number => -
+		dup /PageCount exch store
+		0 tagprint typedprint
+		SliderOn? {
+			PSItem /ItemValue PageCount put
+			/paint PSItem send
+		} if
+	} def 
+
+	/NEXT {
+		PageCount 1 add dup MAX gt {pop} { new_page } ifelse
+	} def
+
+	/PREV {
+		PageCount 1 sub dup MIN lt {pop} { new_page } ifelse
+	} def
+
+	/REDIS	{ PageCount new_page } def
+	/FIRST	{ MIN new_page } def
+	/LAST	{ MAX new_page } def
+	/EXIT	{ 1 tagprint } def
+
+	/reshape {
+		/reshape super send
+		/JustReshaped? true store
+	} def
+
+	/PaintClient {
+		JustReshaped? {
+			/JustReshaped? false store
+			FitOnResize? {
+				SizeToFit
+			} if
+			/reset_position self send
+		} if
+		gsave
+		ClientCanvas setcanvas
+		initmatrix
+		CanX neg CanY neg translate
+		PicWidth PicHeight scale
+		PSCanvas imagecanvas
+		grestore
+	} def
+
+	/StartPage {
+		/hourg /hourg_m ClientCanvas setstandardcursor
+		/rendering true store
+		AltShowRendering? {
+			timerevent recallevent
+			timerevent /TimeStamp currenttime put
+			timerevent sendevent
+		} if
+		PSCanvas setcanvas
+		1 fillcanvas
+
+		ShowRendering? {
+			0 0 movecanvas
+			PSCanvas canvastotop
+			PSCanvas /Mapped true put
+		} if
+
+		initmatrix
+		PicWidth 2 div PicHeight 2 div translate
+		Rotation rotate
+		Resolution 72 div dup scale
+		ImageX neg ImageY neg translate
+		0 setgray
+
+		gsave
+		startmatrix concat
+	} def
+
+	/EndPage {
+		grestore
+
+		DoBox {
+			ImageX Width 2 div sub
+			ImageY Height 2 div sub
+			Width Height rectpath stroke
+		} if
+
+		ShowRendering? {
+			PSCanvas /Mapped false put
+		} if
+		/rendering false store
+		/ptr /ptr_m ClientCanvas setstandardcursor
+	} def
+
+	/PaintFrame {
+		/PaintFrame super send
+		SliderOn? { /paint PSItem send } if
+	} def
+
+	/PaintIcon { 
+		gsave IconCanvas setcanvas
+		IconFillColor fillcanvas IconBorderColor strokecanvas
+		IconTextColor setcolor IconFont setfont
+		IconWidth 2 div 3 moveto FrameLabel cshow
+		grestore
+	} def 
+
+	% if PageCount != ItemValue, repaint SliderItem
+	/PSset { % page number => -
+		dictbegin
+		/page exch def
+		page MAX gt page MIN lt page PageCount eq or or {pop}
+		{ page new_page } ifelse
+		dictend
+	} def
+
+	/PaintFocus nullproc def
+
+	/CreateFrameCanvas {
+		/CreateFrameCanvas super send
+		SliderOn? {
+					% Create the slider item:
+			/Item_len 200 def 
+			/PSItem (Page Number: ) [ MIN MAX PageCount ]
+			/Right {ItemValue /PSset win send}
+			FrameCanvas Item_len 0 /new SliderItem send
+			dup /ItemFrame 1 put
+			BorderTop FrameHeight BorderTop sub /move 3 index send store
+			[PSItem] forkitems pop			% Activate the slider
+		} if
+	} def
+
+	/CreateClientMenu {
+		/page_menu [
+			(Next Page)	{ /NEXT win send }
+			(Previous Page)	{ /PREV win send }
+			(First Page)	{ /FIRST win send }
+			(Last Page)	{ /LAST win send }
+		] /new DefaultMenu send def
+
+		/res_menu [
+			(Fit) { SizeToFit /PaintClient win send }
+			(9) { 9 /SetRes win send }
+			(18) { 18 /SetRes win send }
+			(36) { 36 /SetRes win send }
+			(72) { 72 /SetRes win send }
+			(82) { 82 /SetRes win send }
+			(100) { 100 /SetRes win send }
+			(115) { 115 /SetRes win send }
+			(118) { 118 /SetRes win send }
+			(144) { 144 /SetRes win send }
+			(150) { 150 /SetRes win send }
+			(300) { 300 /SetRes win send }
+			(400) { 400 /SetRes win send }
+			(600) { 600 /SetRes win send }
+			(1200) { 1200 /SetRes win send }
+		] /new DefaultMenu send def
+		{
+			/LayoutStyle [5 3] def
+			/RowMajor? false def
+			/CellHorizGap 5 def
+		} res_menu send
+
+		/rot_menu [
+			(none) { 0 /Rotate win send }
+			(-.5) { Rotation .5 sub /Rotate win send }
+			(-1) { Rotation 1 sub /Rotate win send }
+			(-5) { Rotation 5 sub /Rotate win send }
+			(-15) { Rotation 15 sub /Rotate win send }
+			(-30) { Rotation 30 sub /Rotate win send }
+			(-45) { Rotation 45 sub /Rotate win send }
+			(-90) { Rotation 90 sub /Rotate win send }
+			(180) { Rotation 180 add /Rotate win send }
+			(90) { Rotation 90 add /Rotate win send }
+			(45) { Rotation 45 add /Rotate win send }
+			(30) { Rotation 30 add /Rotate win send }
+			(15) { Rotation 15 add /Rotate win send }
+			(5) { Rotation 5 add /Rotate win send }
+			(1) { Rotation 1 add /Rotate win send }
+			(.5) { Rotation .5 add /Rotate win send }
+		] /new DefaultMenu send def
+		{
+			/LayoutStyle [8 3] def
+			/RowMajor? false def
+			/CellHorizGap 5 def
+		} rot_menu send
+
+		/toggle_menu [
+			(  Show Rendering 1)	{ Toggle_ShowRendering }
+			(  Show Rendering 2)	{ Toggle_AltShowRender }
+		] /new DefaultMenu send def
+
+		/ClientMenu [
+			SliderOn? {
+				(Page...)		page_menu
+			} if
+			(Resolution...)		res_menu
+			(Rotate...)		rot_menu
+			(Toggles...)		toggle_menu
+			(Reset Scrolling)	{ /reset win send }
+			(Re-render)		{ /REDIS win send }
+			(Write Canvas)		{
+				currentcursorlocation 2 copy (Writing to /tmp/paper) popmsg pop
+				gsave { PSCanvas setcanvas } win send
+				newpath (/tmp/paper) writecanvas grestore
+				(Done) popmsg pop
+						}
+			(Quit)			{ /EXIT win send }
+		] /new DefaultMenu send def
+	} def
+
+	/CreateClientCanvas {
+		/CreateClientCanvas super send			% create the ClientCanvas
+		/CreateClientMenu self send			% make a menu
+		/PSCanvas framebuffer newcanvas store		% Create the PostScript subwindow
+		PSCanvas /Retained true put
+		PSCanvas /Mapped false put
+	} def
+
+	/Rotate {
+		dup Rotation ne {
+			/Rotation exch store
+			gsave
+				initmatrix
+				Rotation rotate
+				0 0 Width Height rectpath
+				initmatrix
+				pathbbox			% x(ll) y(ll) x(ur) y(ur)
+				exch 4 1 roll exch		% x(ur) x(ll) y(ur) y(ll)
+				sub /UserBBoxY exch store
+				sub /UserBBoxX exch store
+			grestore
+			FitOnResize? {
+				SizeToFit
+			} {
+				Resolution /set_resolution self send
+			} ifelse
+			/PaintClient self send
+		} if
+	} def
+
+	/set_resolution {
+		/Resolution exch store
+		/PicWidth UserBBoxX Resolution mul 72 div Margin add truncate def
+		/PicHeight UserBBoxY Resolution mul 72 div Margin add truncate def
+		0 0 PicWidth PicHeight rectpath PSCanvas reshapecanvas
+		/reset_position self send
+		/REDIS self send
+	} def
+
+	/SetRes {
+		/set_resolution self send
+%		/PaintClient self send
+		/FitOnResize? false store
+	} def
+
+	/reset_position {
+		ClientCanvas setcanvas
+		clippath pathbbox
+		PicHeight sub neg 2 div
+		/CanY exch store
+		PicWidth sub neg 2 div
+		/CanX exch store
+		pop pop
+		ClientFillColor fillcanvas
+	} def
+
+	/reset {
+		/reset_position self send
+		/PaintClient self send
+	} def
+
+	/ShapeFrameCanvas {
+		/ShapeFrameCanvas super send
+		SliderOn? {
+			FrameCanvas setcanvas
+			BorderTop FrameHeight BorderTop sub /move PSItem send
+		} if
+	} def
+
+classend def
+
+end

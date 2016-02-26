@@ -1,0 +1,318 @@
+%!
+%
+% Date: Wed, 13 Jul 88 01:27:48 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Fun with windows: make your workstation look more like a Mac...
+% From: ichthyosaur.cis.ohio-state.edu!elwell@tut.cis.ohio-state.edu  (Clayton M. Elwell)
+% 
+% This article contains a context diff for the file 'mac.ps' in NeWS 1.1
+% that makes the mac-style window class more mac-like.  Also, since the
+% class MacWindow is equivalent in function and interface to ScrollWindow,
+% you can patch 'nterm' to use it, even without the source (I hate editing
+% binaries, but it worked).  Also, if you've installed the fixed window size
+% stuff from Jorgen Knudsen, it will use it, which is handy.
+% 
+% You'll need to remove the signature at the end.
+% 
+% Enjoy,
+% 
+% Clayton
+
+%
+%		mac.ps 1.5 87/08/03
+%
+% Mac stuff.
+
+systemdict /Item known not { (NeWS/liteitem.ps) run } if
+
+systemdict /MacWindow known not {
+systemdict begin
+
+% ============================= MacWindow =============================
+/MacWindow
+systemdict /EnhancedWindow known not { LiteWindow } { EnhancedWindow } ifelse
+dictbegin
+    /HScrollbar		null def
+    /VScrollbar		null def
+
+    % Make these changes to LiteWindow:
+    /CloseControl	null def
+    /StretchControl	null def
+dictend
+classbegin
+    /BorderLeft		1 def
+    /BorderBottom	16 def
+    /BorderRight	16 def
+    /BorderTop		19 def
+    /FrameFont		/Helvetica-Bold findfont 12 scalefont def
+    /ClientMinWidth {
+    gsave
+        FrameFont setfont
+        FrameLabel stringwidth pop LabelMargin 2 mul add
+        CloseControlX add ControlSize add
+        StripeMargin 4 mul add
+    grestore
+    } def
+    /ClientMinHeight	1 def
+    
+    /createscrollbars { % - => - (Create scrollbar canvases/items)
+        /HScrollbar
+            [0 1 .01 .1 null] 0 {} FrameCanvas /new MacScrollbar send
+            dup /BarVertical? false put
+            def
+        /VScrollbar
+            [1 0 .01 .1 null] 0 {} FrameCanvas /new MacScrollbar send
+            def
+    } def
+    /shapescrollbars { % - => - (Shape scrollbar canvases/items)
+	0 0 FrameWidth BorderRight sub 1 add BorderBottom
+	/reshape HScrollbar send
+
+	FrameWidth BorderRight sub BorderBottom 1 sub
+	BorderRight FrameHeight BorderBottom sub BorderTop sub 2 add
+	/reshape VScrollbar send
+    } def
+    /paintscrollbars	{ % - => - (Paint frame canvas)
+	/paint HScrollbar send
+	/paint VScrollbar send
+    } def
+
+    /LabelMargin	6 def
+    /StripeMargin	2 def
+    /StripeHeight	12 def
+    /StripeBase		15 def
+    /CloseControlX	12 def
+    /destroy { % - => - (Create frame control canvases/items)
+        /HScrollbar null def
+        /VScrollbar null def
+        /destroy super send
+    } def
+    /PaintFrameBorder	{ % - => - (Paint frame canvas)
+    gsave
+        /PaintFrameBorder super send
+        FrameBorderColor setcolor
+        
+        mark
+        FrameWidth StripeMargin 2 mul sub 2 sub			% dx
+        StripeMargin FrameHeight StripeBase sub .5 add 6 {	% dx x y
+            2 copy moveto 2 index 0 rlineto 2 add
+        } repeat
+        stroke cleartomark
+
+	FrameFont setfont FrameFillColor setcolor
+	CloseControlX StripeMargin sub FrameHeight StripeBase sub % xy
+	    ControlSize StripeMargin 2 mul add StripeHeight	  % xywh
+	    rectpath fill
+
+	FrameLabel stringwidth pop LabelMargin 2 mul add	    % w
+	    FrameWidth 1 index sub 2 div FrameHeight StripeBase sub % wxy
+	    3 -1 roll StripeHeight				    % xywh
+	    rectpath fill
+    grestore
+    } def
+    /PaintFrameLabel {
+	FrameWidth 2 div
+	FrameHeight BorderTop sub
+	BorderTop currentfont fontascent sub 2 div
+	currentfont fontdescent max 2 add add moveto FrameLabel cshow
+    } def
+    /PaintFocus	{ % - => - (Paint frame canvas)
+	gsave
+	FrameCanvas setcanvas
+	KeyFocus? {KeyFocusColor} {FrameFillColor} ifelse setcolor
+	% nothing yet!
+	grestore
+    } def
+    /CreateFrameControls { % - => - (Create frame control canvases/items)
+        /CreateFrameControls super send
+        createscrollbars
+    } def
+    /CreateFrameInterests { % - => - (Create frame control interests)
+        /CreateFrameInterests super send
+        FrameInterests begin
+        % Append the scroll bar "start" interests to the frame interests.
+        % The odd "forall" is used to create unique names for inclusion
+        % in the frame interests dictionary.
+            /makestartinterests HScrollbar send {
+                (HScrollbar) 1 index /Name get cvx 100 string cvs append
+                cvn exch def
+            } forall
+            /makestartinterests VScrollbar send {
+                (VScrollbar) 1 index /Name get cvx 100 string cvs append
+                cvn exch def
+            } forall
+        end
+    } def
+    /MoveFrameControls { % - => - ([Re]set frame control shapes)
+        /MoveFrameControls super send
+        
+        CloseControl setcanvas
+        CloseControlX
+            FrameHeight BorderTop sub BorderTop ControlSize sub 2 div add
+            movecanvas
+	
+        shapescrollbars
+    } def
+    /stretchboximage 14 14 1 { } { <
+	0000 0000 3F80 2080 20F8 2088 2088 2088
+	3F88 0808 0808 0808 0FF8 0000
+    > } buildimage def
+    /PaintFrameControls { % - => - (Paint frame control areas)
+    gsave
+	CloseControl setcanvas 2 4 moveto 2 14 lineto 13 14 lineto 13 4 lineto
+	2 4 lineto stroke
+	StretchControl setcanvas 1 1 translate 14 14 scale
+	true stretchboximage imagemaskcanvas
+        paintscrollbars
+    grestore
+    } def
+classend def
+
+% ============================= MacMenu =============================
+/MacMenu LitePullRightMenu
+dictbegin
+    /FlippedKeys?	false def
+    /BarOK?		false def
+dictend
+classbegin
+    /IfTopMenu { % key macvalue => value
+	BarOK? ParentMenu null eq and {
+	    exch pop
+	} {
+	    pop LitePullRightMenu exch get
+	} ifelse
+    } def
+    
+    /LayoutStyle	{/LayoutStyle /Horizontal IfTopMenu} def
+    /PullRightDelta	{/PullRightDelta 0 IfTopMenu} def
+    /Border		{/Border 2 IfTopMenu} def
+
+    /CenterItems?	false def
+%    /MenuFont		/Helvetica-Bold findfont 14 scalefont def
+    
+    /FlipKeys {
+	MenuItems {
+	begin
+	    Key type /stringtype eq Menu null ne and {
+	    	Key (=>) search {
+	    	    exch pop exch append /Key exch def
+	    	} if
+	    } if
+	end
+	} forall
+	/FlippedKeys? true def
+    } def
+    /layout {
+	BarOK? ParentMenu null eq and FlippedKeys? not and {FlipKeys} if
+	/layout super send
+    } def
+
+classend def
+
+% ============================= ScrollItem =============================
+/MacScrollbar ScrollbarItem []
+classbegin
+    /ButtonSize	    	14 def
+    /BoxSize		14 def		% height of box
+    /ArrowSize		14 def				% height of btn arrow
+    /ScrollDownArrow 14 14 1 { } { <
+	0000 0000 1FC0 1040 1040 1040 F078 4010
+	2020 1040 0880 0500 0200 0000
+	> } buildimage def
+
+    /ItemFillColor	.75 .75 .75 rgbcolor def
+    /BoxFillColor	1 1 1 rgbcolor def
+    /ButtonFillColor	1 1 1 rgbcolor def
+
+    % SubClassResponsibility:
+    /PaintBar { % - => - (paint bar)
+        ItemFillColor fillcanvas
+	ItemFrame 0 0 ItemWidth ItemHeight rectframe
+	ItemBorderColor setcolor eofill
+    } def
+    /PaintArrow { % color xscale yscale x y
+    gsave
+	translate scale setshade true ScrollDownArrow imagemaskcanvas
+    grestore
+    } def
+    /PaintButtons { % - => - (paint buttons)
+        ItemFrame 0 0 ItemWidth ButtonSize rectframe
+        ButtonFillColor setcolor gsave fill grestore
+        ItemBorderColor setcolor eofill
+        ItemBorderColor 14 14
+        ItemWidth ArrowSize sub 2 div ItemFrame
+	BarVertical? { 1 sub } { 2 sub } ifelse	    % hack hack
+	PaintArrow
+        
+
+        ItemFrame 0 ItemHeight ButtonSize sub ItemWidth ButtonSize rectframe
+        ButtonFillColor setcolor gsave fill grestore
+        ItemBorderColor setcolor eofill
+        ItemBorderColor 14 -14
+        ItemWidth ArrowSize sub 2 div ItemHeight 1 add
+	ItemFrame sub PaintArrow
+    } def
+    /PaintBox { % - => - (paint box)
+        ItemValue BoxPath
+        BoxFillColor setcolor gsave fill grestore
+        ItemBorderColor setcolor eofill
+        /ItemPaintedValue ItemValue def
+    } def
+    /EraseBox { % - => - (fill painted box with background color)
+        ItemPaintedValue BoxPath ItemFillColor setcolor fill
+    } def
+    /BoxPath { % value => - (Make a box path for the given value)
+        ValueToY ItemFrame dup 3 -1 roll		% dx x y
+%        BoxSize 2 div sub				% adjust for box
+%        ButtonSize max ItemHeight ButtonSize sub BoxSize sub min % "
+        ItemWidth ItemFrame 2 mul sub BoxSize rectframe
+    } def
+    /SetScrollMotion { % - => - (set ScrollMotion from event location)
+	CurrentEvent /YLocation get			% y
+	dup ButtonSize le {
+	    /ScrollMotion /ScrollLineBackward def
+	} {
+	dup ItemHeight ButtonSize sub ge {
+	    /ScrollMotion /ScrollLineForward def
+	} {
+	    ItemPaintedValue ValueToY			% y yPainted
+	    2 copy le {
+%	    2 copy BoxSize 2 div sub le {
+		/ScrollMotion /ScrollPageBackward def
+	    } {
+	    2 copy BoxSize add ge {
+%	    2 copy BoxSize 2 div add ge {
+		/ScrollMotion /ScrollPageForward def
+	    } {
+		/ScrollMotion /ScrollAbsolute def
+	    } ifelse % 2 copy BoxSize add ge
+	    } ifelse % 2 copy le
+	    pop % pop yPainted
+
+	} ifelse % dup ItemHeight ButtonSize sub ge
+	} ifelse % dup ButtonSize le
+	pop % pop y
+    } def
+    
+    % Geometry:  Factor out the box size.
+    /SetScale { % - => - (set BarScale from size)
+        /BarScale	% barsize / range
+            ItemHeight BoxSize sub ButtonSize 2 mul sub
+            BarMax BarMin sub div def
+    } def
+    /YToValue { % y -> value
+        BoxSize 2 div sub ButtonSize sub % use super!
+        BarScale div BarMin add
+        CheckValueBounds
+    } def
+classend def
+% ============================= Misc =============================
+
+
+% FIX!!
+
+SunViewMenu /CenterItems? false put
+
+end	%  systemdict begin
+
+} if	%  systemdict /MacWindow known not

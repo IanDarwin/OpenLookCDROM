@@ -1,0 +1,363 @@
+%!
+%
+% Date: Thu, 13 Oct 88 03:59:35 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: ruler application
+% From: Eric Marshall <marshall@software.org>
+% 
+% 	Here is my first full NeWS application, the always
+% popular *ruler*.  Not just one ruler mind you, but three!  The
+% kind of rulers supported are English, Metric, and Unit.  I almost
+% forgot to mention that the ruler can be displayed either horizontally
+% or vertically.  Will the features ever stop?
+% 
+% 	The only machine specific stuff about the ruler is
+% the variable /units_per_inch, which is set to the number of units
+% per inch :-)  If your version of NeWS supports a correct default
+% user space, set it to 72, otherwise figure the value out somehow.
+% Sun NeWS 1.1 has the default user space set to be the monitor
+% resolution, and the standard Sun monochrome monitor (which is
+% what I have) has 83 pixels per inch.  Enjoy.
+% 
+% 
+% Eric Marshall
+% Software Productivity Consortium
+% 1880 North Campus Commons Drive
+% Reston, VA 22091
+% (703) 391-1838
+% 
+% CSNET: marshall@software.org
+% ARPANET: marshall%software.org@relay.cs.net  OR
+%          @relay.cs.net:marshall@software.org
+% 
+% -----------------------------------------------------------------------------
+% 			  	  The OSF.
+% 				Just say NO.
+% 
+% 
+
+%
+%  An English, Metric, and Unit ruler.
+%
+
+%% Sun NeWS 1.1 bug fixes --------------------------------------------
+
+% default user space equals the device resolution rather than
+% 72 units per inch, standard Sun monochrome monitor resolution is
+/units_per_inch 83 def
+
+% work around show bug when using rotated text on monochrome
+% monitors, individually emit each character of the string
+/SHOW { { cvis show } forall } def
+
+%% Global Definitions ------------------------------------------------
+
+% upper case letters are 17 units tall for 24 point Times-Bold
+% font (so says charpath and pathbbox)
+/half_text_height 8.5 def
+
+% kinds of rulers
+/english 1 def
+/metric  2 def
+/unit    3 def
+
+/ruler_kind        unit def
+/horizontal_ruler? true def
+
+/ruler_width     0 def     % logical width
+/ruler_height    0 def     % logical height
+
+/ruler_menu [
+  (English)        { /ruler_kind english store draw_ruler }
+  (Metric)         { /ruler_kind metric  store draw_ruler }
+  (Unit)           { /ruler_kind unit    store draw_ruler }
+  (Vertical Ruler) { make_vertical_ruler }
+  (Stretch Edge)   { getfbclick pop pop /stretchwindowedge ThisWindow send }
+  (Quit)           { currentprocess killprocessgroup }
+] /new DefaultMenu send def
+
+%% English Stuff ----------------------------------------------------------
+
+/english_hash_distance units_per_inch 8 div def
+/english_unit_width units_per_inch def
+
+%
+% Draw the ruler markings for an English ruler.
+%
+/draw_english_markings { % draw_hash_labels? => -
+  /draw_hash_labels? exch def
+  /hash_counter 1 def
+  /current_hash_label 1 def
+
+  english_hash_distance
+  english_hash_distance
+  ruler_width english_unit_width add {
+    /x exch def
+    x 0 moveto
+    0
+    hash_counter 8 eq { % inch
+      draw_hash_labels? {
+        (Inch) draw_ruler_kind
+        current_hash_label x draw_hash_label
+      } if
+
+      /current_hash_label current_hash_label 1 add def
+      /hash_counter 0 def
+      20
+    } {
+      hash_counter 4 eq { % 1/2 inch
+        12.5
+      } {
+        hash_counter 2 mod 0 eq { % 1/4 inch
+          8
+        } { % 1/8 inch
+          5
+        } ifelse
+      } ifelse
+    } ifelse
+
+    rlineto stroke
+
+    /hash_counter hash_counter 1 add def
+  } for
+} def
+
+%% Metric Stuff ----------------------------------------------------------
+
+/metric_hash_distance units_per_inch 25.4 div def
+/metric_unit_width metric_hash_distance 50 mul def
+
+%
+% Draw the ruler markings for a Metric ruler.
+%
+/draw_metric_markings { % draw_hash_labels? => -
+  /draw_hash_labels? exch def
+  /hash_counter 1 def
+  /current_hash_label 5 def
+
+  metric_hash_distance
+  metric_hash_distance
+  ruler_width metric_unit_width add {
+    /x exch def
+    x 0 moveto
+    0
+    hash_counter 10 mod 0 eq { % centimeter
+      hash_counter 50 eq {
+        draw_hash_labels? {
+          (CM) draw_ruler_kind
+          current_hash_label x draw_hash_label
+        } if
+
+        /current_hash_label current_hash_label 5 add def
+        /hash_counter 0 def
+      } if
+
+      20
+    } { % millimeter
+      5
+    } ifelse
+
+    rlineto stroke
+
+    /hash_counter hash_counter 1 add def
+  } for
+} def
+
+
+%% Unit Stuff ----------------------------------------------------------
+
+/unit_hash_distance 10 def
+/unit_unit_width 100 def
+
+%
+% Draw the ruler markings for a Unit ruler.
+%
+/draw_unit_markings { % draw_hash_labels? => -
+  /draw_hash_labels? exch def
+  /hash_counter 1 def
+  /current_hash_label 100 def
+
+  unit_hash_distance
+  unit_hash_distance
+  ruler_width unit_unit_width add {
+    /x exch def
+    x 0 moveto
+    0
+    hash_counter 10 mod 0 eq { % 100 units
+      20
+      draw_hash_labels? {
+        (Unit) draw_ruler_kind
+        current_hash_label x draw_hash_label
+      } if
+
+      /current_hash_label current_hash_label 100 add def
+      /hash_counter 0 def
+    } {
+      hash_counter 5 mod 0 eq { % 50 units
+        10
+      } { % 10 units
+        5
+      } ifelse
+    } ifelse
+
+    rlineto stroke
+
+    /hash_counter hash_counter 1 add def
+  } for
+} def
+
+%% Ruler Stuff ----------------------------------------------------------
+
+%
+% Convert the horizontal ruler into a vertical ruler.
+%
+/make_vertical_ruler { % - => -
+  /horizontal_ruler? false store
+
+  % pivot the ruler about its center point
+  /center_x win /FrameX get ruler_width 2 div add def
+  /center_y win /FrameY get ruler_height 2 div add def
+
+  center_x ruler_height 2 div sub
+  center_y ruler_width 2 div sub
+  ruler_height
+  ruler_width
+  /reshape win send
+
+  % change menu entry back to "Horizontal Ruler"
+  3 (Horizontal Ruler) { make_horizontal_ruler } /changeitem ruler_menu send
+} def
+
+
+%
+% Convert the vertical ruler into a horizontal ruler.
+%
+/make_horizontal_ruler { % - => -
+  /horizontal_ruler? true store
+
+  % pivot the ruler about its center point
+  /center_x win /FrameX get ruler_height 2 div add def
+  /center_y win /FrameY get ruler_width 2 div add def
+
+  center_x ruler_width 2 div sub
+  center_y ruler_height 2 div sub
+  ruler_width
+  ruler_height
+  /reshape win send
+
+  % change menu entry back to "Vertical Ruler"
+  3 (Vertical Ruler) { make_vertical_ruler } /changeitem ruler_menu send
+} def
+
+
+%
+% Draw the kind of the ruler, English, Metric, or Unit.
+%
+/draw_ruler_kind { % ruler_kind => -
+  gsave
+    10 ruler_height 2 idiv half_text_height sub moveto
+    SHOW
+  grestore
+} def
+
+
+%
+% Draw one of the ruler hash labels centered within the ruler.
+%
+/draw_hash_label { % x_position hash_label => -
+  /x exch def
+  /hash_label exch def
+
+  /label_string 4 string def
+  hash_label label_string cvs
+  stringwidth
+  pop
+  /half_string_width exch 2 idiv def
+  x half_string_width sub
+  ruler_height 2 idiv half_text_height sub
+  gsave
+    moveto
+    label_string
+    SHOW
+  grestore
+} def
+
+
+%
+% Draw the hash marks on the edge of the ruler.
+%
+/draw_hash_marks { % - => -
+  0 0 moveto
+
+  % draw the bottom and top hash marks
+  1 1 2 {
+    % invert the Y axis for the hash marks on the top
+    2 eq {
+      0 ruler_height translate
+      [ 1 0 0 -1 0 0 ] concat
+      false     % draw_hash_labels? parameter to draw_XXX_markings routines
+    } {
+      true      % draw_hash_labels? parameter to draw_XXX_markings routines
+    } ifelse
+
+    ruler_kind english eq {
+      draw_english_markings
+    } {
+      ruler_kind metric eq {
+        draw_metric_markings
+      } {
+        draw_unit_markings
+      } ifelse
+    } ifelse
+  } for
+} def
+
+
+%
+% Draw the entire ruler.
+%
+/draw_ruler { % - => -
+  win /ClientCanvas get setcanvas
+
+  erasepage
+  0 strokecanvas
+
+  % set up ruler for either horizontal or vertical display
+  horizontal_ruler? {
+    /ruler_width win /ClientWidth get store
+    /ruler_height win /ClientHeight get store
+  } {
+    /ruler_width win /ClientHeight get store
+    /ruler_height win /ClientWidth get store
+    0 ruler_width translate
+    -90 rotate
+  } ifelse
+
+  draw_hash_marks
+} def
+
+%% Main ----------------------------------------------------------
+
+/Times-Bold findfont 24 scalefont setfont
+
+/win framebuffer /new DefaultWindow send def
+
+{
+  % remove the frame border, and redefine its associated methods
+  /BorderLeft   0 def
+  /BorderBottom 0 def
+  /BorderRight  0 def
+  /BorderTop    0 def
+  /PaintFrame   nullproc def
+  /PaintFocus   nullproc def
+
+  /PaintClient { draw_ruler } def
+
+  % redefine the menu
+  /ClientMenu ruler_menu def
+} win send
+
+150 450 850 90
+
+/reshape win send
+/map win send

@@ -1,0 +1,163 @@
+#!/usr/bin/X11/wish -f
+
+#puts {$Id: showvt,v 1.3 1994/12/26 20:41:11 wolf Exp $}
+
+#hier steht immer der Sendename, dessen Seiten im Moment angezeigt werden
+set aktSender ""
+if {[llength $argv]>=1} { set aktSender [lindex $argv 0] }
+
+#seite, die gerade angezeigt wird
+set momentaneSeite 100
+if {[llength $argv]>=2} { set momentaneSeite [lindex $argv 1] }
+
+set momentaneUnterSeite 1
+if {[llength $argv]>=3} { set momentaneUnterSeite [lindex $argv 2] }
+
+# hier werden die Seiten, die der Benutzer angeschaut hat,
+# abgespeichert (jeweils { sender seite unterseite })
+set history  {}
+# Zeiger auf Seite, auf die mit Back gesprungen wird
+set BackPtr 1
+
+
+# Rahmen fuer die Sender und Radioknoepfe darin anlegen
+frame .senderframe
+
+set senderliste [exec getsender]
+set id 0
+foreach s $senderliste {
+ # puts $s
+ # puts xxxxxxxxxx
+ radiobutton .senderframe.nr$id -text $s -command "newsender $s"
+ pack .senderframe.nr$id -side top -expand true -fill x
+ set id [expr $id +1]
+}
+# hier wird die jeweilige Zahl der gespeicherten Seiten zum gewaehlten Sender 
+# angegeben
+label .senderframe.seitenzahl  -width 4 -textvariable seitenzahl
+pack .senderframe.seitenzahl  -side top -expand true -fill x
+
+pack .senderframe -side left -fill y -padx 5m -pady 5m
+
+#Textwidget, in dem die Viedeotextseite angezeigt wird, anlegen.
+text .t -height 25 -width 40 -bg grey  -state disabled -font 10x20 \
+        -borderwidth 1m -relief groove
+pack .t -side top -padx 5m -pady 5m 
+
+#Rahmen fuer Kommandos und Knoepfe darin anlegen
+frame .com 
+
+button .com.quit -text Quit -command exit
+button .com.homepage -text 100 -command {getpage $aktSender 100 1 1}
+button .com.back -text zurück -command {back}
+
+frame .com.page
+label .com.page.aktSeite  -width 3 -textvariable momentaneSeite 
+
+button .com.page.plus1 -text + -command {movepage 1}
+button .com.page.minus1 -text - -command {movepage -1}   
+button .com.page.plus10 -text ++ -command {movepage 10}
+button .com.page.minus10 -text -- -command {movepage -10}   
+button .com.page.plus100 -text +++ -command {movepage 100}
+button .com.page.minus100 -text --- -command {movepage -100}   
+pack  .com.page.minus100 .com.page.minus10 .com.page.minus1 \
+      .com.page.aktSeite \
+      .com.page.plus1 .com.page.plus10 .com.page.plus100 \
+       -padx 0.5m -side left
+bind .t <Key-a> {movepage 1}
+
+frame .com.subpage
+button .com.subpage.toSubpage1 -text |<< -command {getpage $aktSender $momentaneSeite 1 1 }
+button .com.subpage.back -text << -command {movesubpage -1 }
+button .com.subpage.forward -text >> -command {movesubpage 1 }
+label .com.subpage.aktUnterSeite  -width 1 -textvariable momentaneUnterSeite
+pack .com.subpage.toSubpage1 .com.subpage.back  .com.subpage.aktUnterSeite \
+       .com.subpage.forward  -padx 0.5m -side left
+
+frame .com.goto
+entry .com.goto.page -width 3 -textvariable zielseite -bg grey
+button .com.goto.ok -text OK -command {getpage $aktSender $zielseite 1 1; set zielseite ""}
+pack .com.goto.page .com.goto.ok -side left -padx 1m
+
+pack .com.quit .com.homepage .com.back .com.page \
+      .com.subpage .com.goto  -side left -padx 5m 
+pack .com -side bottom -padx 4m -pady 4m
+
+# angegebene seite einlesen und anzeigen
+proc getpage {sender seite unterseite resethist} {
+ global momentaneSeite momentaneUnterSeite history BackPtr
+ set seiteninhalt [exec getpage $sender $seite $unterseite]
+ if { [string length $seiteninhalt] > 0 } {
+   #neue seite anzeigen
+   .t configure -state normal
+   #puts "Seite loeschen"
+   .t delete 1.0 end
+   #puts "Seite einfuegen"
+   .t insert 1.0  $seiteninhalt
+   .t configure -state disabled
+   set momentaneSeite $seite
+   set momentaneUnterSeite $unterseite
+  }
+    set neu [list $sender $seite $unterseite]
+    set neulist [list $neu]
+    set history [concat $neulist $history]
+  if {$resethist} {
+    set BackPtr 1
+   } else {
+    set BackPtr [expr $BackPtr+1]
+  }
+    #puts $history
+    #puts $BackPtr
+}
+
+# seitennummer bei der uebergebeben Zeigerposition auslesen
+# und diese Seite anzeigen
+proc getlinkedpage {x y newwindow} {
+ global aktSender
+ set nummer [.t get @$x,${y}wordstart @$x,${y}wordend]
+ #puts $nummer
+ if { [regexp {^[0-9][0-9][0-9]$} $nummer] } {
+  if {$newwindow} {
+    exec showvt $aktSender $nummer 1 &
+    } else {
+   getpage $aktSender $nummer 1 1
+    }
+ }
+}
+
+# andere Seite n seiten vor oder nach der momentanen Seite anzeigen
+proc movepage {n} {
+  global momentaneSeite aktSender
+  getpage $aktSender [expr $momentaneSeite+$n]    1 1
+}
+
+proc movesubpage {n} {
+  global momentaneSeite aktSender momentaneUnterSeite
+  getpage $aktSender $momentaneSeite [expr $momentaneUnterSeite+$n] 1
+}
+
+proc newsender {sender} {
+    global aktSender seitenzahl
+    set aktSender $sender
+    getpage $aktSender 100 1 1
+    set seitenzahl [exec countpages $sender]
+}
+
+proc back {} {
+ global history BackPtr
+ if {[llength $history] > $BackPtr} {
+   set PageToGoBackTo [lindex $history $BackPtr]
+   set BackPtr [expr $BackPtr+1]
+   getpage [lindex $PageToGoBackTo 0] [lindex $PageToGoBackTo 1] \
+           [lindex $PageToGoBackTo 2] 0
+ }
+}
+
+
+bind .t <ButtonRelease-1>  {getlinkedpage %x %y 0}
+bind .t <Shift-ButtonRelease-1>  {getlinkedpage %x %y 1}
+bind .t <3> {back}
+
+
+
+getpage $aktSender $momentaneSeite $momentaneUnterSeite  1

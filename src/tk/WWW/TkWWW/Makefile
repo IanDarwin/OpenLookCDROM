@@ -1,0 +1,132 @@
+# Generated automatically from Makefile.in by configure.
+# Master Makefile for tkWWW
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2, or (at your option)
+# any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
+#### Start of system configuration section. ####
+
+srcdir = .
+VPATH = .
+
+CC = cc
+INSTALL = cp
+INSTALL_PROGRAM = $(INSTALL)
+
+AR = ar
+RANLIB = :
+
+DEFS =  -DSTDC_HEADERS=1 -DNO_GETWD=1 -DUSE_DIRENT=1
+LIBS =  -lelf -lsocket -lnsl
+
+CFLAGS = -O
+LDFLAGS =
+
+prefix = /usr/local
+exec_prefix = ${prefix}
+
+# Prefix for each installed program, normally empty or `g'.
+binprefix = 
+# Prefix for each installed man page, normally empty or `g'.
+manprefix = 
+
+# Where to install the executables.
+bindir = $(exec_prefix)/bin
+
+# Where to put mvdir, if your system lacks the rename system call.
+libdir = $(exec_prefix)/lib
+tkwww_libdir = $(libdir)/tkWWW
+
+# Where to put the manual pages.
+mandir = $(prefix)/man/man1
+# Extension (not including `.') for the installed manual page filenames.
+manext = 1
+
+# Where the program finds things
+tk_www_src_dir = $(tkwww_libdir)
+tk_www_extra_path = :/usr/local/bin
+tk_www_home_page = file://localhost/cdrom/index.html
+tk_www_start_page = file://localhost/cdrom/index.html
+tk_www_mail = mail
+tk_www_tk_cmd = $(bindir)/wwwish
+
+#### End of system configuration section. ####
+
+SHELL = /bin/sh
+
+DISTFILES =  Makefile.in README.txt configure configure.in
+
+# Redundant stuff for making only selected programs.
+PROGS =
+
+# Subdirectories to run make in for the primary targets.
+SUBDIRS = Library Server Tcl
+
+all interp::
+	for dir in $(SUBDIRS); do \
+	  echo making $@ in $$dir ; \
+	  (cd $$dir; $(MAKE) $(MFLAGS) CC="$(CC)" $@) ; \
+	done
+
+info:
+install-info:
+dvi:
+
+check:
+installcheck:
+
+Makefile: config.status $(srcdir)/Makefile.in $(srcdir)/Server/Makefile.in \
+	    $(srcdir)/Library/Makefile.in
+	$(SHELL) config.status
+
+# Make sure all installation directories, e.g. $(bindir) actually exist by
+# making them if necessary.
+
+installdirs:
+	$(SHELL) $(srcdir)/mkinstalldirs \
+	  $(bindir) $(datadir) $(libdir) $(infodir) $(mandir) $(tkwww_libdir)
+
+install interpinstall:: installdirs 
+	for dir in $(SUBDIRS); do \
+	  echo making $@ in $$dir ; \
+	  (cd $$dir; $(MAKE) $@) ; \
+	done
+
+uninstall TAGS clean mostlyclean distclean realclean::
+	for dir in $(SUBDIRS); do \
+	  echo making $@ in $$dir ; \
+	  (cd $$dir; $(MAKE) $(MDEFINES) $@) ; \
+	done
+
+distclean realclean::
+	rm -f Makefile config.status
+
+ac_dir = /home/gd/gnu/autoconf
+dist: $(DISTFILES)
+	if [ -f $(ac_dir)/autoconf ]; then \
+	  $(ac_dir)/autoconf --macrodir=$(ac_dir); \
+	else :; fi
+	echo fileutils-`sed -e '/version_string/!d' -e 's/[^0-9.]*\([0-9.]*\).*/\1/' -e q src/version.c` > .fname
+	rm -rf `cat .fname`
+	mkdir `cat .fname`
+	ln $(DISTFILES) `cat .fname`
+	for dir in $(SUBDIRS); do \
+	  mkdir `cat .fname`/$$dir; \
+	  (cd $$dir; $(MAKE) $@); \
+	done
+	tar chzf `cat .fname`.tar.z `cat .fname`
+	rm -rf `cat .fname` .fname
+
+# Prevent GNU make v3 from overflowing arg limit on SysV.
+.NOEXPORT:

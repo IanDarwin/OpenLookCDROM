@@ -1,0 +1,66 @@
+/*
+ *	(c) Copyright 1991 Sun Microsystems, Inc.  All rights reserved.
+ *	See LEGAL_NOTICE file for terms and restrictions.
+ */
+
+#ifndef ARRAY_TILE_DEFINED
+#define ARRAY_TILE_DEFINED
+
+/* @(#) array.h 1.7 92/10/30  */
+
+#include <sspkg/rectobj.h>
+
+typedef Xv_opaque	Array_tile;
+
+extern Xv_pkg		array_tile_pkg;
+#define ARRAY_TILE		&array_tile_pkg
+
+typedef struct {
+	Rectobj_struct	parent_data;
+	Xv_opaque	private_data;
+}		Array_tile_struct;
+
+
+#define ATTR_ARRAY_TILE 	ATTR_PKG_UNUSED_LAST-11
+#define ARRAY_TILE_ATTR(type, ordinal)	ATTR(ATTR_ARRAY_TILE, type, ordinal)
+
+typedef enum {
+
+	ARRAY_TILE_COLUMN_GAP	= ARRAY_TILE_ATTR(ATTR_INT, 1),
+	ARRAY_TILE_ROW_GAP	= ARRAY_TILE_ATTR(ATTR_INT, 2),
+	ARRAY_TILE_COLUMN_WIDTH	= ARRAY_TILE_ATTR(ATTR_INT, 3),
+	ARRAY_TILE_ROW_HEIGHT	= ARRAY_TILE_ATTR(ATTR_INT, 4),
+	ARRAY_TILE_N_COLUMNS	= ARRAY_TILE_ATTR(ATTR_INT, 5),
+	ARRAY_TILE_N_ROWS	= ARRAY_TILE_ATTR(ATTR_INT, 6),
+	ARRAY_TILE_COLUMN	= ARRAY_TILE_ATTR(ATTR_OPAQUE_PAIR, 7),
+	ARRAY_TILE_ROW		= ARRAY_TILE_ATTR(ATTR_OPAQUE_PAIR, 8),
+	ARRAY_TILE_POSITION	= ARRAY_TILE_ATTR(ATTR_OPAQUE_TRIPLE, 9),
+	ARRAY_TILE_LAYOUT	= ARRAY_TILE_ATTR(ATTR_ENUM, 10),
+	ARRAY_TILE_AUTO_POSITION= ARRAY_TILE_ATTR(ATTR_BOOLEAN, 11),
+	ARRAY_TILE_VLINES	= ARRAY_TILE_ATTR(ATTR_BOOLEAN, 12),
+	ARRAY_TILE_HLINES	= ARRAY_TILE_ATTR(ATTR_BOOLEAN, 13),
+	ARRAY_TILE_ALIGN	= ARRAY_TILE_ATTR(ATTR_ENUM, 14),
+
+} Array_tile_attr;
+
+typedef enum {
+	ARRAY_TILE_LAYOUT_COLUMN,
+	ARRAY_TILE_LAYOUT_ROW,
+} Array_tile_layout;
+
+typedef enum {
+       ARRAY_TILE_ALIGN_NORTHWEST,
+       ARRAY_TILE_ALIGN_NORTH,
+       ARRAY_TILE_ALIGN_NORTHEAST,
+       ARRAY_TILE_ALIGN_WEST,
+       ARRAY_TILE_ALIGN_CENTER,
+       ARRAY_TILE_ALIGN_EAST,
+       ARRAY_TILE_ALIGN_SOUTHWEST,
+       ARRAY_TILE_ALIGN_SOUTH,
+       ARRAY_TILE_ALIGN_SOUTHEAST,
+} Array_tile_align;
+
+#define	ARRAY_TILE_AUTO_LAYOUT	ARRAY_TILE_AUTO_POSITION
+
+#endif
+

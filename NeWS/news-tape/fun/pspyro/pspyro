@@ -1,0 +1,693 @@
+#! /usr/NeWS/bin/psh
+%
+% Date: Tue, 30 May 89 22:07:02 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: psPyro, a user extensible fireworks display screen saver
+% From: marshall@software.org (Eric Marshall)
+% Message-Id: <m0fSBpX-00028IC@software.software.org>
+% 
+% 	psPyro is a user extensible fireworks display screen
+% saver.  psPyro is fashioned after the MacIntosh screen saver
+% program "Pyro", written by Bill Steinberg and Steve Brecher.
+% Although psPyro actually contains no code which determines if
+% the screen saver should be invoked, it should be possible to
+% incorporate psPyro into a "true" screen saver program, e.g. Stan
+% Switzer's NeWS-based BlankScreen program or some system-level
+% screen saver.  psPyro executes by randomly selecting a place
+% to fire each firework, randomly selects a direction in which
+% to fire the firework, randomly selects a width and height for
+% the firework trail to follow, and finally, randomly selects a
+% number of explosions to explode to conclude the firework firing.
+% This continues forever until either the mouse is moved or one
+% of the mouse buttons is pressed.
+% 
+% 	User extensibility is achieved via definitions in the
+% /PSPyro dictionary, which is located in /systemdict.  Although
+% only a small number of psPyro's internal definitions were intended
+% to be user configurable, all can be modified.  The intended user
+% modifiable definitions are as follows:
+% 
+% 	/unusable_screen_width - the percent of each side of the screen
+% 				 which will not be used to fire a firework
+% 				 from.  The default is 10% of the screen
+% 				 width.
+% 
+% 	/unusable_screen_height - the percent of the top of the screen which
+% 				  will not be used by the trail of a firework.
+% 				  The default is 10% of the screen height.
+% 
+% 	/minimum_trail_height - the minimum height of a firework trail, in
+% 				terms of a percentage of the screen height.
+% 				The default is 75% of the screen height.
+% 
+% 	/minimum_explosion_angle - the minimum angle a firework trail will
+% 				   travel before an explosion occurs.
+% 				   Logically, fireworks travel in a
+% 				   counterclockwise direction, starting at
+% 				   angle 0.  The default is 100.
+% 
+% 	/maximum_explosion_angle - the maximum angle a firework trail will
+% 				   travel before an explosion occurs.  The
+% 				   default is 150.
+% 
+% 	/minimum_#_explosions - the minimum number of explosions per firework.
+% 				The default is 1.
+% 
+% 	/maximum_#_explosions - the maximum number of explosions per firework.
+% 				The default is 5.
+% 
+% 	/trail_length - the length (in degrees) of the animated firework trail.
+% 			The default is 3.
+% 
+% 	/time_between_firings - the time (in seconds) between firework firings.
+% 				The default is 2.
+% 
+% 	/multiple_explosion_radius - the radius (in units) from the center
+% 				     of the original explosion to the center
+% 				     of multiple explosions.  The default
+% 				     is 100.
+% 
+% 	/delay_amount - the number of /pause's between firework trail updates.
+% 			The default is 50.  I would have preferred to specify
+% 			a time in seconds to delay for, but /sleep wasn't
+% 			allowing for satisfactory animation.
+% 
+% 	/explosion_kinds - the array which contains the names of the procedures
+% 			   implementing the different explosions.
+% 
+% 	A standard place to provide user specific definitions
+% for psPyro is in your user.ps file.  An example user.ps fragment
+% follows which specifies the values for the minimum and maximum
+% explosion angles, and which adds a new explosion to the list
+% of available explosions (default is 5 different explosions):
+% 
+% 	systemdict begin
+% 	  /PSPyro 20 dict def
+% 
+% 	  PSPyro begin
+% 	    /minimum_explosion_angle 45 def
+% 	    /maximum_explosion_angle 90 def
+% 
+% 	    /T { translate 0 0 moveto 1 setgray (Explosion) show } def
+% 
+% 	    /explosion_kinds [ /T ] def
+% 	  end
+% 	end
+% 
+% 	A few words are in order concerning the definition of
+% new explosions.  If /explosion_kinds is provided within /PSPyro,
+% then the contents of the provided array are ADDED to the internal
+% psPyro list of available explosions.  If /replace_explosion_kinds
+% is provided, the provided array is used to REPLACE the internal
+% psPyro list.  Also, each procedure named in the /explosion_kinds
+% and /replace_explosion_kinds arrays accept two parameters, the
+% x and y position of the center of the explosion.  The supplied
+% explosion procedures simply /translate to the specified location
+% and draw about the origin, but more sophisticated procedures
+% could use the positional information as the basis for altering
+% the explosion shape, e.g. if the explosion is to occur very high
+% or very low.  Go ahead and write some fancy explosions.  Collect
+% them, trade them, sell them :-)
+% 
+% 	Unfortunately, I don't have access to a color monitor,
+% so there is no support for color anything.  Wouldn't it be nice
+% if someone with a color monitor ...
+% 
+% 	psPyro was developed on a Sun 3/160 running NeWS 1.1
+% under SunOS 3.5.
+% 
+% 
+% Eric Marshall
+% Software Productivity Consortium
+% SPC Building
+% 2214 Rock Hill Road
+% Herndon, VA 22070
+% (703) 742-7153
+% 
+% CSNET: marshall@software.org
+% ARPANET: marshall%software.org@relay.cs.net
+% 
+% ----------------------------------------------------------------------
+% 	I'm just an X programmer gone straight.
+% 
+% 
+
+%
+%  psPyro, a user extensible fireworks display screen saver.
+%
+
+%
+% Physical screen dimensions ------------------------------------------
+%
+/screen_width  0 def
+/screen_height 0 def
+
+
+%
+% Global variables concerning current firework characteristics --------
+%
+/trail_width          0 def
+/trail_height         0 def
+/trail_start_x        0 def
+/trail_going_left? true def
+/explosion_angle      0 def
+
+
+%
+% Heuristics for firework creation and display (user configurable) ----
+%
+/unusable_screen_width  0.1  def     % set to percent of physical screen width
+/unusable_screen_height 0.1  def     % set to percent of physical screen height
+/minimum_trail_height   0.75 def     % set to percent of physical screen height
+
+/minimum_explosion_angle 100 def
+/maximum_explosion_angle 150 def
+
+/minimum_#_explosions 1 def
+/maximum_#_explosions 5 def
+
+% the length of the firework trail
+/trail_length 3 def
+
+% time between firework firings (seconds)
+/time_between_firings 2 def
+
+% radius of multiple explosions from the center of the original explosion
+/multiple_explosion_radius 100 def
+
+% the number of /pause's between firework trail updates, and other stuff
+/delay_amount 50 def
+
+
+%
+% Firework explosion definitions (user configurable) ------------------
+%
+
+% array to keep the names of the different explosions in
+/explosion_kinds [
+                   /dots_explosion
+                   /circle_explosion
+                   /star_explosion
+                   /solid_circle_explosion
+                   /colored_circle_explosion
+                 ] def
+
+
+%
+%  Dots explosion.
+%
+
+/draw_one_quarter {
+  30 0 moveto
+   2 -2 rlineto
+   2  2 rlineto
+  -2  2 rlineto
+  closepath
+  fill
+
+  20 10 3 3 rectpath fill
+  10 20 3 3 rectpath fill
+} def
+
+/dots_explosion { % x y => -
+  gsave
+    translate
+
+    gsave
+      5 {
+        1 setgray
+
+        4 {
+          draw_one_quarter
+
+          90 rotate
+        } repeat
+
+        1.3 1.3 scale
+      } repeat
+    grestore
+
+    gsave
+      5 {
+        0 setgray
+
+        4 {
+          draw_one_quarter
+
+          90 rotate
+        } repeat
+
+        1.3 1.3 scale
+      } repeat
+    grestore
+  grestore
+} def
+
+
+%
+%  Circle explosion.
+%
+
+/draw_circle { % - => -
+  0 0 10 0 360 arc stroke
+} def
+
+/circle_explosion { % x y => -
+  gsave
+    translate
+
+    gsave
+
+      6 {
+        1.4 dup scale
+        1 setgray
+        little_delay
+        draw_circle
+      } repeat
+    grestore
+
+    gsave
+      6 {
+        1.4 dup scale
+        0 setgray
+        little_delay
+        draw_circle
+      } repeat
+    grestore
+  grestore
+} def
+
+
+%
+%  Star explosion.
+%
+
+/draw_star { % - => -
+  gsave
+    8 {
+      -30 0 moveto
+      60 0 rlineto stroke
+      22.5 rotate
+    } repeat
+  grestore
+} def
+
+/star_explosion { % x y => -
+  gsave
+    translate
+
+    gsave
+      4 {
+        1.4 dup scale
+        1 setgray
+        little_delay little_delay
+        draw_star
+      } repeat
+    grestore
+
+    gsave
+      4 {
+        1.4 dup scale
+        0 setgray
+        little_delay
+        draw_star
+      } repeat
+    grestore
+  grestore
+} def
+
+
+%
+%  Solid circle explosion.
+%
+
+/draw_dot { % - => -
+  0 0 10 0 360 arc fill
+} def
+
+/solid_circle_explosion { % x y => -
+  gsave
+    translate
+
+    gsave
+      4 {
+        1.4 dup scale
+        1 setgray
+        little_delay
+        draw_dot
+      } repeat
+
+      0 setgray
+      little_delay
+      draw_dot
+    grestore
+  grestore
+} def
+
+
+%
+%  Colored circle explosion.
+%
+
+/draw_dot { % - => -
+  0 0 10 0 360 arc fill
+} def
+
+/colored_circle_explosion { % x y => -
+  gsave
+    translate
+
+    gsave
+      4 {
+        1.4 dup scale
+        random setgray
+        little_delay
+        draw_dot
+      } repeat
+
+      0 setgray
+      little_delay
+      draw_dot
+    grestore
+  grestore
+} def
+
+
+%
+% Support utilities ---------------------------------------------------
+%
+
+%
+%  A delay loop.
+%
+%  The prefered method, /sleep, wasn't working smoothly enough
+%  to give good animation.
+%
+/little_delay {
+  1 1 delay_amount {
+    pause
+
+    pop
+  } for
+} def
+
+
+%
+%  Apply the user preferences to the program.
+%
+/apply_user_preferences { % - => -
+  systemdict /PSPyro known {
+    PSPyro {
+      1 index dup
+
+      % if it's the special EXPLOSION_KINDS or REPLACE_EXPLOSION_KINDS name
+      /explosion_kinds eq {
+        % concatenate user's array with existing EXPLOSION_KINDS array
+        pop
+        exch pop
+        /explosion_kinds [
+        3 2 roll
+        aload pop
+        explosion_kinds aload pop
+        ] def
+      } {
+        /replace_explosion_kinds eq {
+          % replace entire EXPLOSION_KINDS array with user's array
+          exch pop
+          /explosion_kinds
+          exch
+          def
+        } {
+          % do assignment into userdict
+          def
+        } ifelse
+      } ifelse
+    } forall
+  } if
+} def
+
+
+%
+%  Draw one instance of a firework trail from:
+%    angle     to angle
+%        theta        theta + trail_length - 1
+%
+/draw_trail { % theta => -
+  /theta exch def
+
+  % erase the first degree from the previous trail
+  0 setgray
+  0 0 1 theta 1 sub theta arc stroke
+
+  1 setgray
+
+  theta 1 theta trail_length add 1 sub {
+    0 0 1
+    4 -1 roll
+    dup 1 add arc stroke
+  } for
+} def
+
+
+%
+%  Animate the entire firework trail up until the explosion.
+%
+/animate_trail { % - => -
+  % draw the first trail instance
+  1 setgray
+
+  0 1 trail_length 1 sub {
+    0 0 1
+    4 -1 roll
+    dup 1 add arc stroke
+  } for
+
+  % draw the rest of the trail
+  1 1 explosion_angle {
+    draw_trail
+
+    little_delay
+  } for
+
+  % remove the last trail instance
+  0 setgray
+
+  explosion_angle 1 explosion_angle trail_length add 1 sub {
+    0 0 1
+    4 -1 roll
+    dup 1 add arc stroke
+  } for
+} def
+
+
+%
+%  Determine the characterictics of the next firework.
+%
+/determine_firework_characteristics { % - => -
+  % randomly pick the starting position to fire the firework from
+  /trail_start_x screen_width random mul def
+
+  %
+  % pick the direction of the firework trail
+  %
+  % if the picked starting position is too close to a screen
+  % edge, force the direction to be towards the opposite screen
+  % side, otherwise randomly pick the direction
+  %
+  trail_start_x unusable_screen_width le {
+    /trail_going_left? false def
+  } {
+    trail_start_x screen_width unusable_screen_width sub ge {
+      /trail_going_left? true def
+    } {
+      % randomly pick the direction
+      /trail_going_left? random round 0 eq def
+    } ifelse
+  } ifelse
+
+  % randomly pick the width of the firework trail
+  trail_going_left? {
+    /trail_width trail_start_x random mul def
+  } {
+    /trail_width screen_width trail_start_x sub random mul def
+  } ifelse
+
+  % randomly pick the height of the firework trail
+  /trail_height screen_height random mul def
+
+  trail_height minimum_trail_height le {
+    /trail_height minimum_trail_height def
+  } if
+
+  % randomly pick the ending angle of the firework explosion
+  /explosion_angle
+    maximum_explosion_angle minimum_explosion_angle sub
+    random mul
+    minimum_explosion_angle add round def
+} def
+
+
+%
+%  Animate a firework explosion.
+%
+/animate_explosion { % explosion_x explosion_y #explosions => -
+  /#explosions exch def
+  /explosion_y exch def
+  /explosion_x exch def
+
+  % randomly pick which explosion to use
+  /which_explosion explosion_kinds explosion_kinds length random mul floor get def
+
+  % explode the first of the explosions
+  explosion_x explosion_y which_explosion cvx exec
+
+  % explode the remaining number of explosions (possible none),
+  % randomly picking each location based upon the initial explosion
+  % location
+  #explosions 1 sub {
+    % randomly pick another explosion location
+    360 random mul dup
+    cos multiple_explosion_radius mul
+    explosion_x add
+    exch
+    sin multiple_explosion_radius mul
+    explosion_y add
+    which_explosion cvx exec
+  } repeat
+} def
+
+
+%
+%  Continually make fireworks.
+%
+/make_fireworks { % - => -
+  {
+    {
+      initmatrix
+      sky setcanvas
+
+      % create a new firework
+      determine_firework_characteristics
+
+      % translate to the center of the firework trail arc
+      trail_start_x unusable_screen_width add
+      trail_width 2 div
+
+      trail_going_left? {
+        sub
+      } {
+        add
+      } ifelse
+
+      0 translate
+
+      trail_going_left? not {
+        -1 1 scale
+      } if
+
+      % create the firing of the firework
+      1 setgray
+      trail_width 2 div 0 20 0 180 arc fill
+
+      little_delay
+
+      0 setgray
+      trail_width 2 div 0 20 0 180 arc fill
+
+      % create the firework trail
+      trail_width 2 div trail_height scale
+
+      animate_trail
+
+      % calculate the location of the firework explosion
+      initmatrix
+
+      trail_start_x unusable_screen_width add
+      trail_width 2 div
+
+      trail_going_left? {
+        sub
+      } {
+        add
+      } ifelse
+
+      explosion_angle trail_length add
+      cos
+      trail_width 2 div mul
+
+      trail_going_left? {
+        add
+      } {
+        sub
+      } ifelse
+
+      explosion_angle trail_length add sin trail_height mul
+
+      % calculate the number of explosions for the firework
+      maximum_#_explosions random mul round
+      dup
+      0 eq {
+        pop
+        minimum_#_explosions
+      } if
+
+      % create the explosion!
+      animate_explosion
+
+      % wait between firework firings
+      time_between_firings 60 div sleep
+    } loop
+  } fork
+} def
+
+
+%
+% Main ----------------------------------------------------------
+%
+
+% get the dimensions of the physical screen
+clippath pathbbox
+/screen_height exch def
+/screen_width exch def
+
+clear
+
+% apply user preferences
+apply_user_preferences
+
+% calculate the actual values of the firework creation and display heuristics
+/unusable_screen_width screen_width unusable_screen_width mul def
+/unusable_screen_height screen_height unusable_screen_height mul def
+/minimum_trail_height screen_height minimum_trail_height mul def
+
+% calculate the usable screen area
+/screen_height screen_height unusable_screen_height sub def
+/screen_width screen_width unusable_screen_width dup add sub def
+
+% create the black sky
+clippath pathbbox
+rectpath
+/sky framebuffer newcanvas def
+sky reshapecanvas
+sky /Mapped true put
+sky setcanvas
+0 fillcanvas
+
+% remove the cursor
+/nouse /nouse_m sky setstandardcursor
+
+% start the fireworks display
+make_fireworks
+
+% wait for a mouse movement or click to end the fireworks display
+createevent dup begin
+  /Name [
+          /LeftMouseButton
+          /MiddleMouseButton
+          /RightMouseButton
+          /MouseDragged
+        ] def
+  /Canvas sky def
+end expressinterest
+awaitevent
+currentprocess killprocessgroup

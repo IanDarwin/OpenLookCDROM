@@ -1,0 +1,617 @@
+head	1.17;
+access;
+symbols;
+locks; strict;
+comment	@ * @;
+
+
+1.17
+date	92.12.11.16.47.14;	author lacey;	state Exp;
+branches;
+next	1.16;
+
+1.16
+date	92.12.11.15.47.46;	author lacey;	state Exp;
+branches;
+next	1.15;
+
+1.15
+date	92.12.09.01.51.45;	author malingka;	state Exp;
+branches;
+next	1.14;
+
+1.14
+date	92.12.09.01.32.41;	author malingka;	state Exp;
+branches;
+next	1.13;
+
+1.13
+date	92.12.03.14.57.09;	author lacey;	state Exp;
+branches;
+next	1.12;
+
+1.12
+date	92.11.27.20.36.00;	author lacey;	state Exp;
+branches;
+next	1.11;
+
+1.11
+date	92.11.19.15.28.20;	author lacey;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	92.11.17.02.07.16;	author marlow;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	92.11.12.14.30.48;	author lacey;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	92.11.12.14.26.44;	author lacey;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	92.11.12.03.37.03;	author marlow;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	92.10.27.19.59.51;	author malingka;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	92.10.27.19.03.29;	author malingka;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	92.10.27.16.26.19;	author lacey;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	92.10.27.15.37.24;	author malingka;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	92.10.26.04.58.20;	author lacey;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	92.10.22.21.07.47;	author lacey;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.17
+log
+@make
+@
+text
+@/* FILE db.h **********************************************************
+ *
+ * Author.... Mark M. Lacey (mml)
+ * Date......
+ *
+ * Auditor... 
+ * Date...... 
+ *
+ * FILE db.h */
+
+#ifndef _db_h_
+#define _db_h_
+
+/* #define's and enumerated types */
+
+#define MAXNAMELEN 60
+#define MAXDESCLEN 800
+
+enum boolean {false, true};
+
+/* the information for each task */
+struct task_info {
+   char *name;                   /* pointer to the name of the task */
+   char *desc;                   /* pointer to task description */
+   unsigned duration;            /* the duration, in days */
+   unsigned planned_start_date;  /* All of the following dates are */
+				 /* stored in Julian format */
+   unsigned planned_end_date;
+   unsigned actual_start_date;
+   unsigned actual_end_date;
+   unsigned forecast_start_date;
+   unsigned forecast_end_date;
+   unsigned earliest_start_date;
+   unsigned earliest_end_date;
+   unsigned latest_start_date;
+   unsigned latest_end_date;
+   unsigned critical_date;         /* used in calculating critical path  */
+
+   unsigned float_time;              /* the float time, in days */
+
+   enum boolean milestone;           /* does this completion of this task */
+				     /* mean we have hit a milstone? */
+   enum boolean deliverable;         /* does the completion of this task */
+                                     /* yield a deliverable? */
+   enum boolean critical_path;       /* does this task belong to the */
+                                     /* critical path ? */
+
+   struct resource_list *resources; /* list of resources that are to */
+				    /* be employed in completing this */
+				    /* task */
+
+   struct task_list *subtasks;     /* list of sub-tasks that are a */
+				   /* part of this task */
+
+   struct task_node *parent;       /* if this task is a subtask, then */
+				   /* this points to the task that */
+				   /* this is a subtask of --- */
+				   /* otherwise this is NULL */
+
+   struct task_list *dependencies; /* those tasks that need to be */
+				   /* complete before this task can be */
+				   /* started */
+
+   struct task_list *dependents;   /* those tasks that depend on this */
+				   /* tasks being complete before they */
+				   /* can be started */
+   
+   unsigned number_of_dependents;  /* used in checking for dependency */
+				   /* loops */
+
+   unsigned x_pert, y_pert;        /* starting position of PERT box */
+   unsigned x_gantt, y_gantt;      /* starting position of Gantt bar */
+   unsigned length;                /* Length of a Gantt bar */
+   
+   unsigned number_of_visits;      /* */
+   enum boolean visit;             /* determine whether a node has been */
+                                   /* visited by visit-task() procedure */
+
+}; /* end of struct task_info */
+
+/* a node in our task list */
+struct task_node {
+   struct task_info *data;            /* pointer to the task */
+				      /* information for this node */
+   struct task_node *prev;            /* pointer to the previous node */
+				      /* in the list */
+   struct task_node *next;            /* pointer to the next node in */
+				      /* the list */
+};
+
+/* a task list */
+struct task_list {
+   struct task_node *head;            /* the head of the task list */
+   struct task_node *tail;            /* the tail of the task list */
+   struct task_node *current;         /* the node last accessed */
+   unsigned size;
+};
+
+struct resource_info {
+   struct string_node *resource;
+};
+
+struct resource_node {
+   struct resource_info *data;        /* pointer to the resource */
+				      /* information for this node */
+   struct resource_node *prev;        /* pointer to the previous node */
+				      /* in the list */
+   struct resource_node *next;        /* pointer to the next node in */
+				      /* the list */
+};
+
+struct resource_list {
+   struct resource_node *head;        /* head of the resource list */
+   struct resource_node *tail;        /* talk of the resource list */
+   struct resource_node *current;     /* the node last accessed */
+   unsigned size;                     /* number of elements in the */
+				      /* list */
+};
+
+/*
+*  Function prototypes for all the functions in the database library.
+*
+*/
+struct task_info *create_task_info(char *, 
+				    char *, 
+				    unsigned, 
+				    unsigned, 
+				    unsigned, 
+				    unsigned, 
+				    unsigned, 
+				    unsigned, 
+				    unsigned,
+				    unsigned, 
+				    unsigned, 
+				    unsigned, 
+				    unsigned, 
+				    unsigned,
+				    enum boolean, 
+				    enum boolean, 
+				    struct resource_list *, 
+				    struct task_list *, 
+				    struct task_node *,
+				    struct task_list *,
+				    struct task_list *,
+				    unsigned,
+				    unsigned,
+				    unsigned, 
+				    unsigned, 
+				    unsigned,
+				    unsigned);
+void change_task_info(struct task_info *,
+		      char *, 
+		      char *, 
+		      unsigned, 
+		      unsigned,
+		      unsigned,
+		      unsigned,
+		      unsigned,
+		      unsigned,
+		      unsigned,
+		      unsigned,
+		      unsigned,
+		      unsigned,
+		      unsigned,
+		      unsigned,
+		      enum boolean, 
+		      enum boolean, 
+		      struct resource_list *, 
+		      struct task_list *, 
+		      struct task_node *,
+		      struct task_list *,
+		      struct task_list *,
+		      unsigned,
+		      unsigned,
+		      unsigned,
+		      unsigned,
+		      unsigned,
+		      unsigned);
+void destroy_task_info(struct task_info *);
+struct task_node * create_task_node(struct task_info *,
+				   struct task_node *,
+				   struct task_node *);
+void destroy_task_node(struct task_list *, struct task_node *);
+struct task_list *create_task_list(struct task_node *,
+				   struct task_node *,
+				   struct task_node *);
+void add_task_to_beginning(struct task_list *, 
+			   struct task_node *);
+void add_task_to_end(struct task_list *,
+		     struct task_node *);
+void add_task_before(struct task_list *, 
+		     struct task_node *, 
+		     struct task_node *);
+void add_task_after(struct task_list *,
+		    struct task_node *,
+		    struct task_node *);
+struct task_node *find_task(struct task_list *,
+			    char *);
+struct task_node *create_default_task(void);
+struct task_node *list_current(struct task_list *);
+struct task_node *list_next(struct task_list *);
+struct resource_info *create_resource_info(char *);
+void destroy_resource_info(struct resource_info *);
+struct task_list *get_main_task_list();
+void create_main_task_list();
+void set_main_task_list(struct task_list *);
+
+
+/***************************************************************************/
+/********************** NEW RESOURCE FUNCTIONS *****************************/
+/***************************************************************************/
+
+struct resource_node * create_resource_node(struct resource_info *,
+                                   struct resource_node *,
+                                   struct resource_node *);
+void destroy_resource_node(struct resource_node *);
+struct resource_list *create_resource_list(struct resource_node *,
+                                   struct resource_node *,
+                                   struct resource_node *);
+void add_resource_to_beginning(struct resource_list *, 
+                           struct resource_node *);
+void add_resource_to_end(struct resource_list *,
+                     struct resource_node *);
+void add_resource_before(struct resource_list *, 
+                     struct resource_node *, 
+                     struct resource_node *);
+void add_resource_after(struct resource_list *,
+                    struct resource_node *,
+                    struct resource_node *);
+
+
+
+
+#endif
+
+@
+
+
+1.16
+log
+@The file used for the final demo.
+@
+text
+@a15 3
+#define SAVE 1
+#define LOAD 0
+
+@
+
+
+1.15
+log
+@add critical_date
+@
+text
+@d16 3
+@
+
+
+1.14
+log
+@add boolean critical_path;
+@
+text
+@d37 1
+@
+
+
+1.13
+log
+@Latest revisions before practice demo.
+@
+text
+@d44 2
+@
+
+
+1.12
+log
+@*** empty log message ***
+@
+text
+@d196 1
+@
+
+
+1.11
+log
+@Added a couple routines, and modified others.
+@
+text
+@a116 6
+struct date {
+  short year;
+  short month;
+  short day;
+};
+
+@
+
+
+1.10
+log
+@Functions were added for RESOURCE linked list operations like
+those that exist for TASK linked list operations.
+modified by Marlow 11-16-92
+@
+text
+@d93 1
+d113 2
+d127 1
+a127 1
+struct task_info * create_task_info(char *, 
+d154 28
+d186 1
+a186 1
+void destroy_task_node(struct task_node *);
+d207 2
+@
+
+
+1.9
+log
+@Removed a data structure that was replaced by the string_table code.
+@
+text
+@d177 26
+d204 1
+@
+
+
+1.8
+log
+@Revised the documentation a bit.
+@
+text
+@a94 10
+struct string_hash_node {
+   char *str;
+   unsigned length;
+};
+
+struct string_hash_table {
+   struct string_hash_node *table;
+   unsigned size;
+};
+
+d96 1
+a96 1
+   struct string_table_node *resource;
+a174 4
+struct string_hash_node *string_hash_search(struct string_hash_table
+					    *, char *);
+struct string_hash_node *string_hash_insert(struct string_hash_table
+					    *, char *);
+@
+
+
+1.7
+log
+@*** empty log message ***
+@
+text
+@a104 2
+struct string_hash_table *resource_hash_table;   /* Changed by Marlow */
+
+d106 1
+a106 1
+   struct string_hash_node *name;
+d135 26
+a160 27
+				   char *, 
+				   unsigned, 
+				   unsigned, 
+				   unsigned, 
+				   unsigned, 
+				   unsigned, 
+				   unsigned, 
+				   unsigned,
+				   unsigned, 
+				   unsigned, 
+				   unsigned, 
+				   unsigned, 
+				   unsigned,
+				   enum boolean, 
+				   enum boolean, 
+				   struct resource_list *, 
+				   struct task_list *, 
+				   struct task_node *,
+				   struct task_list *,
+				   struct task_list *,
+				   unsigned,
+				   unsigned,
+				    unsigned, /* Changed by Marlow */
+				    unsigned, /* Changed by Marlow */
+		/* x,y, was changed to x_Prt, y_Prt, x_Gnt, y_Gnt by marlow in db.c */ 
+				   unsigned,
+				   unsigned);
+d191 1
+a191 2
+#endif _db_h_
+
+@
+
+
+1.6
+log
+@*** empty log message ***
+@
+text
+@d68 2
+a69 2
+   unsigned x-pert, y-pert;        /* starting position of PERT box */
+   unsigned x-gantt, y-gantt;      /* starting position of Gantt bar */
+d105 2
+d133 4
+a136 4
+ * Function prototypes for all the functions in the database library.
+ *
+ */
+struct task_info *create_task_info(char *, 
+d159 3
+d165 1
+a165 1
+struct task_node *create_task_node(struct task_info *,
+@
+
+
+1.5
+log
+@create 2 different x-y coord for PERT and gantt charts
+x-pert, y-pert, x-gantt, y-gantt
+@
+text
+@a69 1
+
+d71 1
+d73 2
+@
+
+
+1.4
+log
+@Fixed missing semi-colon
+@
+text
+@d68 2
+a69 2
+   unsigned x, y;                  /* starting position of PERT box or */
+				   /* Gantt bar */
+d72 1
+a72 1
+   unsigned numer_of_visits;       /* */
+@
+
+
+1.3
+log
+@added a struct for date.
+@
+text
+@d72 1
+a72 1
+   unsigned numer_of_visits        /* */
+d153 4
+a156 4
+				   int,
+				   int,
+				   int,
+				   int);
+@
+
+
+1.2
+log
+@*** empty log message ***
+@
+text
+@d72 1
+d120 6
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d14 5
+a20 4
+#define TASK_NAME_LEN (30)
+#define TASK_DESC_LEN (200)
+#define RES_NAME_LEN (TASK_NAME_LEN)
+
+d38 1
+a38 1
+   unsigned float_time;         /* the float time, in days */
+d40 4
+a43 4
+   boolean milestone;           /* does this completion of this task */
+				/* mean we have hit a milstone? */
+   boolean deliverable;         /* does the completion of this task */
+				/* yield a deliverable? */
+d52 1
+a52 1
+   struct task_info *parent;       /* if this task is a subtask, then */
+d63 10
+a72 1
+				   /* can be started
+d92 10
+d103 1
+a103 1
+   char name[RES_NAME_LEN+1];         /* resource name being used */
+d120 59
+@

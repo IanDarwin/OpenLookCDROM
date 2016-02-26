@@ -1,0 +1,154 @@
+#!/bin/csh -f
+echo '################################################################'
+echo '                   user-dstool installation script'
+echo ''       
+echo '                         Cornell University '
+echo '                   Center for Applied Mathematics '
+echo '################################################################'
+echo ''
+#
+# step 1:  check for the proper environment variables
+#          ( DSTOOL, OPENWINHOME )  
+#
+set stop_switch = 0
+
+set current_dir = $cwd
+cd ..
+set head_dir = $cwd
+
+echo ' '
+echo ' This script installs a new local copy of the basic user-dstool directory'
+echo ' in accordance with instructions by the user.  For more information about'
+echo ' the dstool multi-user configuration, consult the dstool installation manual.'
+echo ' '
+
+echo ' '
+echo The installation of the user-dstool directory depends on the
+echo environment variable DSTOOL.  You MUST have DSTOOL defined to
+echo proceed with the program installation.
+echo ' '
+while( $stop_switch == 0 )
+    if (${?DSTOOL}) then
+       echo Currently, DSTOOL is set to the path:
+       echo "            "$DSTOOL
+       echo Do you want to proceed with this path to the main dstool installation"?":
+       echo -n "(yes or no): "; set ans = $<
+       if ( $ans == "" || $ans == yes || $ans == y || $ans == YES || $ans == Y) then
+	 set reminder = 0
+         set stop_switch  = 1
+       else 
+	 echo ' '
+         echo Do you want to quit the installation program, or define a new
+         echo directory for dstool installation"?"
+         echo -n "(quit or continue): "; set ans = $<
+         if ( $ans == "" || $ans =~ [qQ]* ) then 
+	   echo The installation script is terminated.
+           exit(0)
+         else
+	   echo ' '
+	   echo -n "Enter path to installation directory: "; set pathquery = $<
+	   setenv  DSTOOL $pathquery
+         endif
+       endif
+    else
+       echo Currently, DSTOOL has NOT been set.  Do you want to temporarily
+       echo set this environment variable for the purpose of installing the
+       echo dstool program"?"
+       echo -n "(yes or no): "; set ans = $<
+       if ( $ans == "" || $ans =~ [yY]* ) then
+         echo ' ' 
+         echo -n "Enter path to installation directory: "; set pathquery = $<
+	 setenv  DSTOOL pathquery
+       else
+	 echo The installation script is terminated.
+	 exit(0)
+       endif
+    endif
+    echo ' ' 
+end
+
+set stop_switch = 0
+echo -n "Input the full destination path for the user-dstool directory: "; set new_dir = $<
+
+while( $stop_switch == 0 )
+  if (${?new_dir}) then
+     echo Currently, the new user-dstool directory will be installed in:
+     echo "            "$new_dir
+     echo Do you want to proceed to install the user-dstool files in $new_dir"?":
+     echo -n "(yes or no): "; set ans = $<
+     if ( $ans == "" || $ans == yes || $ans == y || $ans == YES || $ans == Y) then
+        set reminder = 0
+        set stop_switch  = 1
+     else 
+        echo ' '
+        echo Do you want to quit the installation program, or define a new
+        echo directory for user-dstool installation"?"
+        echo -n "(quit or continue): "; set ans = $<
+        if ( $ans == "" || $ans =~ [qQ]* ) then
+	  echo The installation script is terminated.
+          exit(0)
+        else
+	  echo ' '
+	  echo -n "Enter path to installation directory: "; set new_dir = $<
+        endif
+     endif
+end
+
+if( -e $new_dir != 1 ) then
+  echo 'The new user-dstool directory does not exist.  Shall I create it now?'
+  echo -n "(yes or no): "; set ans = $<
+  if ( $ans == "" || $ans =~ [yY]* ) then
+     mkdir $new_dir
+  else 
+     echo The installation script is terminated.
+     exit(0)
+  endif
+endif
+
+cd $new_dir
+cp $DSTOOL/site_specific/user_dstool_arc.Z .
+uncompress user_dstool_arc.Z
+tar -xvf user_dstool_arc 
+\rm -f user_dstool_arc
+
+grep '^USING_FORT' $DSTOOL/site_specific/lib_incl.mk > /dev/null
+if ($status == 0) then
+	set using_fortran = 1
+else
+	set using_fortran = 0
+endif
+
+grep '^USING_TCL' $DSTOOL/site_specific/lib_incl.mk > /dev/null
+if ($status == 0) then
+	set using_tcl = 1
+else
+	set using_tcl = 0
+endif
+
+grep '^USING_PVM' $DSTOOL/site_specific/lib_incl.mk > /dev/null
+if ($status == 0) then
+	set using_pvm = 1
+else
+	set using_pvm = 0
+endif
+
+unalias cp
+
+if ( ($using_tcl == 0) || ($using_fortran == 0) || ($using_pvm == 0) ) then
+	cp $new_dir/Makefile $new_dir/Makefile.orig
+endif
+
+if ($using_fortran == 0) then
+	$DSTOOL/install/fix_for_no_fortran $DSTOOL $new_dir install_dsuser
+endif
+
+if ($using_tcl == 0) then
+	$DSTOOL/install/fix_for_no_tcl $DSTOOL $new_dir install_dsuser
+endif
+
+if ($using_pvm == 0) then
+	$DSTOOL/install/fix_for_no_pvm $DSTOOL $new_dir install_dsuser
+endif
+
+echo ' '
+echo The installation of the user-dstool files in $new_dir is complete.

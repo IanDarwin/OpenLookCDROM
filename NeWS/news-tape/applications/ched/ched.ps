@@ -1,0 +1,213 @@
+%
+% This file is a product of Sun Microsystems, Inc. and is provided for
+% unrestricted use provided that this legend is included on all tape
+% media and as a part of the software program in whole or part.  Users
+% may copy or modify this file without charge, but are not authorized to
+% license or distribute it to anyone else except as part of a product
+% or program developed by the user.
+% 
+% THIS FILE IS PROVIDED AS IS WITH NO WARRANTIES OF ANY KIND INCLUDING THE
+% WARRANTIES OF DESIGN, MERCHANTIBILITY AND FITNESS FOR A PARTICULAR
+% PURPOSE, OR ARISING FROM A COURSE OF DEALING, USAGE OR TRADE PRACTICE.
+% 
+% This file is provided with no support and without any obligation on the
+% part of Sun Microsystems, Inc. to assist in its use, correction,
+% modification or enhancement.
+% 
+% SUN MICROSYSTEMS, INC. SHALL HAVE NO LIABILITY WITH RESPECT TO THE
+% INFRINGEMENT OF COPYRIGHTS, TRADE SECRETS OR ANY PATENTS BY THIS FILE
+% OR ANY PART THEREOF.
+% 
+% In no event will Sun Microsystems, Inc. be liable for any lost revenue
+% or profits or other special, indirect and consequential damages, even
+% if Sun has been advised of the possibility of such damages.
+% 
+% Sun Microsystems, Inc.
+% 2550 Garcia Avenue
+% Mountain View, California  94043
+
+
+/WCV 100 dict def
+/ScrollBorderColor 0 0 0 rgbcolor def
+/ScrollBubbleColor ScrollBorderColor def
+/ScrollBackgroundColor 1 1 1 rgbcolor def
+/DFS {	% Define font: font font index => -
+	% returns font information to the application
+	% height, descent, number of characters & width array
+    setfileinputtoken
+    0 tagprint
+    begin
+	currentdict dup fontheight typedprint
+	fontdescent typedprint
+	WidthArray dup length typedprint
+	aload length 2 div { pop typedprint } repeat
+    end
+    } def
+
+/CRT {	% draw caret: x y CRT => -
+    gsave moveto 0 16 rlineto 5 setrasteropcode stroke grestore
+} def
+
+/RDM {	% send a redraw message for a window back to the client
+    WindowID load /ClientCanvas get setcanvas
+    1 tagprint WindowID typedprint clippath pathbbox typedprint typedprint pop pop
+} def
+
+% Given the index for a window, make its client canvas be the current canvas.
+/UWN  { load /ClientCanvas get setcanvas } def
+
+% Start a redraw: set the output clip to the damage path and paint the window frame
+/SRD { load { gsave FrameCanvas setcanvas
+    damagepath clipcanvas PaintFrame grestore } exch send } def
+
+% End a redraw: reset the output clip
+/ERD { clipcanvas } def
+
+% x y w h => -		Erase a rectangle
+/ERS { moveto rect 1 setgray fill 0 setgray } def
+/DrawBubble { 
+    setcolor clippath pathbbox 20 sub LastDocumentPosition neg 1 add mul 10 add 16 exch moveto
+    -12 -12 rlineto 0 24 rlineto closepath stroke
+    /LastDocumentPosition DocumentPosition def
+} def
+
+/KeyActions 20 dict begin
+	% The following procedures are called when the input agent
+	% recieves events with corresponding names.
+	/RestoreFocus { } def
+	/DeSelect { } def
+	/EnterEvent { } def
+	/ExitEvent {
+	  XLocation 0 le { {
+	    end % remove event
+	    10 dict begin	% scrollbar input agent
+		clippath pathbbox -22 0 translate 0 0 moveto 20 exch rect
+		framebuffer newcanvas /cv exch def
+		cv reshapecanvas
+		cv setcanvas
+		cv /Retained false put
+		cv /SaveBehind true put
+		cv /Mapped true put
+		/MouseInWin false def
+		createevent begin
+		    /Canvas cv def
+		    /Name ScrollMouseDict def
+		    currentdict end expressinterest
+		createevent begin
+		    /Name /SetScroll def
+		    /Action WindowID def
+		    currentdict end expressinterest
+		{   clear awaitevent begin
+		    { ScrollKeyActions Name get cvx exec } exec%stopped
+		    end
+		} loop
+	} fork pop } if } def
+	/LeftMouseButton { 0 SendMouseEvent } def
+	/MiddleMouseButton { 2 SendMouseEvent } def
+	/MouseDragged { 6 SendMouseEvent } def
+currentdict end def
+/ScrollKeyActions 20 dict begin
+	% The following procedures are called when the input agent
+	% for scroll bars recieves events with corresponding names.
+	/ExitEvent { currentprocess killprocess } def
+	/EnterEvent { /MouseInWin true store } def
+	/Recirculate { MouseInWin not { currentprocess killprocess } if } def
+	/Damaged {
+	    createevent begin
+		/Canvas currentcanvas def
+		/Name /Recirculate def
+		/TimeStamp currenttime .01 add def
+		currentdict end
+	    sendevent
+	    clippath ScrollBackgroundColor setcolor fill
+	    clippath ScrollBorderColor setcolor strokebbox
+	    /LastDocumentPosition DocumentPosition def
+	    ScrollBubbleColor DrawBubble } def
+	/LeftMouseButton { YLocation 4 SendScrollEvent } def
+	/MiddleMouseButton { YLocation 10 sub
+	    clippath pathbbox exch pop exch pop exch pop
+	    20 sub div neg 1 add 5 SendScrollEvent } def
+	/MouseDragged { } def
+	/RightMouseButton { YLocation neg 4 SendScrollEvent } def
+	/SetScroll { ScrollBackgroundColor DrawBubble ScrollBubbleColor DrawBubble } def
+currentdict end def
+
+	/MouseDict 5 dict begin
+		/ExitEvent dup def
+		/LeftMouseButton dup def
+		/MiddleMouseButton dup def
+		currentdict end def
+	/ScrollMouseDict 10 dict begin
+		/ExitEvent dup def
+		/EnterEvent dup def
+		/LeftMouseButton dup def
+		/MiddleMouseButton dup def
+		/RightMouseButton dup def
+		/Recirculate dup def
+		/Damaged dup def
+		currentdict end def
+
+/MKW {	% Make a window: index label => -
+    /LABEL exch def
+    /thisindex exch def
+    /win framebuffer /new DefaultWindow send def
+    thisindex win def
+    { 	/FrameLabel LABEL def
+	/PaintClient /RDM load def
+	/FixFrame /RDM load def
+	/DocumentPosition 0 def
+	/LastDocumentPosition DocumentPosition def
+	/IconImage /text_clean def
+	/WindowID thisindex def
+    } win send
+    /reshapefromuser win send
+    /map win send
+    {	% The input agent
+	win begin
+	ClientCanvas addkbdinterests
+	createevent begin
+	    /Canvas ClientCanvas def
+	    /Name MouseDict def
+	    currentdict end expressinterest
+	% loop, reading events and transmitting events to the client.
+	{ 	clear awaitevent begin
+		ClientCanvas setcanvas
+	 	{
+		    Name type /integertype eq
+			{ 2 tagprint WindowID typedprint Name typedprint }
+			{ KeyActions Name get cvx exec } ifelse
+		} exec%stopped
+		end
+	} loop
+    } fork pop
+} def
+
+/SendMouseEvent {	% Called in the context of an event to send
+			% a mouse event to the client.
+  /WindowID where
+  { pop 3 tagprint
+    WindowID typedprint
+    Action /UpTransition eq
+	{ 1 add MouseDict /MouseDragged undef }
+	{ MouseDict /MouseDragged dup put } 
+    ifelse typedprint
+    XLocation typedprint YLocation typedprint
+  } if
+} def
+/SendScrollEvent {	% Called in the context of an event to send
+			% a mouse event to the client.
+  /WindowID where
+  { pop Action /DownTransition eq { 
+      tagprint WindowID typedprint
+      typedprint } if
+  } if
+} def
+/STS { 	% Set scrollbar position
+    load begin
+    /DocumentPosition exch store
+    createevent begin
+	/Name /SetScroll def
+	/Action WindowID def
+	currentdict end
+    sendevent
+} def

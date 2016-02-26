@@ -1,0 +1,141 @@
+#!/bin/sh
+#
+# Catch me if you can!
+#
+# Copyright (C) 1989 by Stan Switzer. All rights reserved.
+# This program is provided for unrestricted use, provided that this 
+# copyright message is preserved. There is no warranty, and no author 
+# or distributer accepts responsibility for any damage caused by this 
+# program.
+#
+# Stan Switzer  sjs@ctt.bellcore.com
+#
+# This program is an elaboration on a theme by
+#	 Chris Warth (ihnp4!ulysses!csw)
+#
+# usage:
+#	catchme [options] [message]
+# options:
+#	@system  	run it on someone else's system
+#	@@system	a sneakier way to do the same
+
+SYS= CMD=psh N=/usr/NeWS/bin STR=
+for ARG
+do
+	case "$ARG" in
+	@@*			) SYS=`expr "$ARG" : '..\(.*\)'`
+	  CMD="rsh $SYS sh -c 'NEWSSERVER=\"`setnewshost $SYS`\" $N/psh'";;
+	@*			) SYS=`expr "$ARG" : '.\(.*\)'`;;
+	*			) STR="$STR $ARG";;
+	esac
+done
+
+if test -z "$NEWSHOME"; then NEWSHOME=/usr/NeWS; fi
+
+case $PATH in
+*/NeWS/bin	)	;;
+*		)	PATH=$PATH:$NEWSHOME/bin; export PATH;;
+esac
+
+if test -n "$SYS"
+then
+	if NEWSSERVER=`setnewshost $SYS`
+	then	export NEWSSERVER
+	else	exit 1
+	fi
+fi
+
+if test -z "$STR"; then STR=" Catch Me!"; fi
+ 
+{ echo "/Str ($STR ) def"; cat <<EOF ; } | $CMD
+/Times-BoldItalic findfont 24 scalefont setfont
+/Border 8 def
+/Frame 4 def
+/Zaprad 100 def
+/Count 10 def
+/Width Str stringwidth pop Border dup add add def
+/Height currentfont fontheight Border dup add add def
+/Radius Border def
+/Canvas framebuffer newcanvas def
+Canvas begin
+  /Retained true def
+  /SaveBehind true def
+end
+Radius 0 0 Width Height rrectpath Canvas reshapecanvas
+clippath pathbbox 4 2 roll pop pop
+  /MaxY exch Height sub def /MaxX exch Width sub def
+/Where { MaxX random mul MaxY random mul } def
+{ % fork
+  Canvas setcanvas
+  Where movecanvas
+  /Interest createevent dup begin
+    /Canvas currentcanvas def
+  end def
+  Interest /Name 5 dict dup begin
+      /Damaged {
+	0 fillcanvas
+	Border Frame sub Frame Frame Width Frame dup add sub Height
+		Frame dup add sub rrectpath
+	ColorDisplay? { 1 .7 .7 rgbcolor } .9 ifelse
+	setshade fill 0 setgray
+	Width 2 div Height 2 div moveto
+	0 currentfont fontascent -.5 mul rmoveto
+	Str cshow
+      } def
+      /EnterEvent {
+	/Count Count 1 sub def Count 0 le { exit } if
+	Where movecanvas Canvas canvastotop
+      } def
+      /Time {
+	Where movecanvas Canvas canvastotop
+	dup begin /TimeStamp currenttime random .10 mul add def end
+	dup sendevent
+      } def
+  end put
+  Interest expressinterest
+  Interest createevent copy dup begin
+    /TimeStamp currenttime random .10 mul add def
+    /Name /Time def
+  end sendevent
+  Canvas canvastotop
+  Canvas /Mapped true put
+  { awaitevent pop } loop pop
+  Interest /Name get begin
+    /Damaged {
+      /Times-BoldItalic findfont 36 scalefont setfont
+      newpath
+      .05 .05 1 {
+	Zaprad Zaprad 2 index Zaprad mul 0 360 arc
+	dup ColorDisplay? {
+	  dup .2 mul exch		% hue pct
+	  1 1 index .4 mul sub exch	% hue sat pct
+	  1 exch .05 mul sub		% hue sat bright
+	  hsbcolor
+	} if
+	setshade eofill
+	Zaprad Zaprad 2 index Zaprad mul 0 360 arc pop
+      } for
+      Zaprad Zaprad currentfont fontascent -2 div add moveto
+      1 setgray (Boom!) cshow
+    } def
+    /Time {} def
+    /Done { exit } def
+  end
+  framebuffer setcanvas
+  Canvas getcanvaslocation
+    Height 2 div add Zaprad sub exch Width 2 div add Zaprad sub exch
+    translate Zaprad Zaprad Zaprad 0 360 arc
+  Canvas reshapecanvas
+  framebuffer createoverlay setcanvas
+  gsave 5 setrasteropcode
+     ColorDisplay? 1 2 ifelse { clippath fill pause erasepage } repeat
+  grestore
+  Canvas setcanvas
+  Interest /Name get /Damaged get exec
+  Interest createevent copy dup begin
+    /TimeStamp currenttime 1.5 60 div add def
+    /Name /Done def
+  end sendevent
+  { awaitevent pop } loop pop
+} fork
+EOF

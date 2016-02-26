@@ -1,0 +1,192 @@
+#!/user/bin/psh
+%+
+%	Module: tfdemo
+%	Author: mike
+%	Function: test program for the TextField Object Class
+%	just uses postscript, does'nt use any of my forms package
+%	Notes:
+%	Modification History:
+%	Date	Author		Reason
+%	-------------------------------------------------------------
+%	-------------------------------------------------------------
+%-
+
+/Fill .3 .4 1 hsbcolor def
+
+% load in any files we need
+/TxtFld where not { pop
+  (txtfld.ps) run % change this or just load txtfld.ps in first.
+} if
+
+%+
+% disable_keys:		(string of keys) txtfld_instance => -
+%
+% Function: disable all the keys contained in (string of keys) for text field
+% txtfld_instance 
+%
+% Note!!: see the note for numeric_only_keys, it also applies to this proc.
+%-
+/disable_keys {
+2 dict begin /fld exch def /str exch def
+    str length dict dup begin 
+	str { 
+	    % => string element
+	    /FLASH def 
+	    % /DONOTHING def
+	} forall
+	end /setkeys fld send
+end %localscope
+} def
+
+%+
+% use_only_keys: 	(string) txtfld_instance => -
+%
+% disable all the typical typewriter keys (space thru tilda) , then enable 
+% just the keys described in "(string)" for the the text field 
+% "txtfld_instance". 
+%
+% Note!!:This is good if you just need it for one field. If you are doing it 
+% for a bunch of fields do not use this since it will create a whole new 
+% keymap for each text field!.  make a single key map and attach to each text 
+% field that you want to make use of it.
+%-
+/use_only_keys {
+3 dict begin /fld exch def /use_keys exch def
+    /tkeys (~) 0 get ( ) 0 get sub 1 add string def
+    % disable typewriter keys
+    ( ) 0 get 1 (~) 0 get { 
+	tkeys exch dup ( ) 0 get sub exch put
+    } for 
+    tkeys fld disable_keys
+    % enable number keys
+    fld /TFMap get begin use_keys{ dup def } forall end
+end %localscope
+} def
+
+
+/scratch null def
+
+% ParentCanvas => text_field_dict
+/make_txt_flds {
+2 dict begin /ParentCanvas exch def
+
+    % start our dict of text fields
+    10 dict dup begin
+	/scratch (you can enter 1 more character than what's in this field ) store
+	/FldOne scratch ParentCanvas /new TxtFld send def
+
+	% configure the textfield
+	{
+	    /TextFill .5 1 1 hsbcolor def
+	    /ObjX 5 store
+	    /ObjY 5 store
+	    /TextMaxLines 1 store
+	    /TextFontSize 14 store
+	    /TextFont /Courier findfont 14 scalefont store
+	    /ObjW
+	    gsave 
+		TextFont setfont scratch (W) append stringwidth pop
+	    grestore store
+	    /TextMaxChars scratch length 1 add def
+	} FldOne send /init FldOne send
+	% tell this puppy to ignore returns/linefeeds
+	(\n\r) FldOne disable_keys
+
+
+	/FldTwo () ParentCanvas /new TxtFld send def
+	{
+	    /ObjX 5 def
+	    /ObjY 40 def
+	    /TextFill .19 1 1 hsbcolor def
+	    /TextFontSize 32 def
+	    /TextFont /Times-Roman findfont TextFontSize scalefont def
+	    /ObjW gsave 
+		TextFont setfont (1234567890) 
+		stringwidth pop 4 add grestore def
+	    /TextMaxChars 10 def
+	} FldTwo send /init FldTwo send 
+	(1234567890) FldTwo use_only_keys
+
+	% allocate the text field
+	/FldThree 
+(Here are some of the edit commands:\n\
+^p    -    takes you to the previous field\n\
+^n    -    takes you to the next field\n\
+^a    -    takes you to the start of the field\n\
+^e    -    takes you to the end of the field\n\
+^b    -    moves the cursor back a character\n\
+^f    -    moves the cursor forward a character\n\
+^d    -    deletes the character in front of the cursor\n\
+^u    -    blanks out the entire field\n\
+<DEL> -    deletes the character in front of the cursor\n\
+<RET> -    starts a new line\n\
+Click -    to move the cursor to a different spot in the text object)
+	    ParentCanvas   % parent canvas
+	    /new TxtFld send
+	def
+
+	% configure the textfield
+	{
+	    /TextFill Fill def
+	    /ObjX 5 store
+	    /ObjY 300 store
+	    /ObjW 700 store
+	    /TextMaxLines 12 store
+	    /TextFontSize 14 store
+	    /TextFont /Courier findfont 14 scalefont store
+	} FldThree send /init FldThree send
+
+    end % => dict_of_txtflds
+end % localscope
+} def
+
+/backpaint { .4 .8 1 hsbcolor fillcanvas } def
+
+/main {
+16 dict begin %localscope
+
+    % make win
+    /tfwin framebuffer /new LiteWindow send def
+
+    { 
+	/FrameLabel (Text Field Object Demo) def
+	/PaintClient { backpaint Txt_Flds painttextfields } def
+    } tfwin send
+
+    % size it
+    100 100 742 550 /reshape tfwin send
+
+    % our ClientCanvas has been made so now we can add the text fields
+    { 
+	/Txt_Flds ClientCanvas make_txt_flds def 
+	/Txt_Kbd_Mgr ClientCanvas startTFkbdmgr def
+
+	1 dict begin
+	    /fldlist [ /FldThree /FldTwo /FldOne ] def
+            %% now set the current focus holder and the field motion order
+            /fldlist [
+                %% as we go, make sure all the fields supplied actually exist
+                %% turn our array of field names into instances they refer to
+                fldlist {
+                    dup Txt_Flds exch known not {
+                        (formsblock:startkbdmgr '/%' is_a_non-existent_field\n!)
+                        sprintf fmFatal
+                    } if
+                    Txt_Flds exch get
+                } forall
+            ] def
+            %% set the kbd focus to the first one in the list
+            null null /setfocus fldlist 0 get send
+            %% set the order used by field motion keys
+            ClientCanvas fldlist setTFkbdorder pause
+        end %% localscope
+
+    } tfwin send
+
+    /map tfwin send
+
+end %localscope
+} def % main
+
+% 
+main

@@ -1,0 +1,548 @@
+%! /usr/NeWS/bin/psh
+
+% NeWS object browser and editor (NeWS1.1)
+%
+% Jeremy Huxtable
+%
+% Mon Jul 25 17:36:06 BST 1988
+
+% This file implements a NeWS object browser and editor.  A browser is
+% a window which may be popped up onto any array or dictionary and
+% lets you view and alter the contents.
+% Firstly, the ArrayBrowser:
+%
+%    Viewing:
+%       This displays an array in vertical form, the first element at
+%       the top.  A scrollbar is provided to let you look at all of
+%       long arrays.  Clicking the PointButton on an element
+%       in the display will pop up a sub-browser onto that element,
+%       provided that it is an array or dictionary.  There is no point
+%       having browsers for integers etc.
+%    Editing:
+%       Clicking the AdjustButton on an element will pop up an editing
+%       window for that element. This is a window containing a text item
+%       and two buttons. The first button, marked "Put", evaluates the
+%       contents of the text item and replaces it in the array where you
+%       originally clicked.  When the browser is redisplayed, you will
+%       see the change displayed.  The second button, marked "Null",
+%       is a short cut, and sets the element to null. This is useful when
+%       you are trying to break cyclic reference chains.
+%
+% Next the DictBrowser:
+%
+%       This is essentially the same as an ArrayBrowser, but displays
+%       pairs of keys/values in no particular order.  The mouse buttons
+%       can be used in the same way as for the ArrayBrowser.
+%
+% The FontBrowser:
+%       This has two views: a) as a dictionary, and b) as a font.
+%       Switch between the two by selecting from the menu.
+%
+% The ProcessBrowser, CanvasBrowser, and EventBrowser:
+%
+%       These are the same as DictBrowsers, but have menu options which
+%       allow you to manupulate the object being browsed.  You can kill,
+%       suspend, or continue processes, map/unmap canvases or move them
+%       to the top or bottom, and revoke interest in events.  The last
+%       of these is particularly interesting as all processes waiting
+%       on the events will die with "invalidaccess" errors. Revoking
+%       interest is the quickest way of zapping cyclic references.
+
+% BUGS:
+%       - reference counting problems, browsers will not zap until their
+%         children have been zapped.
+%       - display of dictionaries is not good, should calculate the widths
+%         of keys and values.
+%       - dictionary entries should be sorted.
+%       - the horizontal scrollbar doesn't do anything yet.
+%       - scrollbars don't work properly for FontBrowsers.
+%       - should have different views of the same object, maybe combine
+%         it with Don Hopkins' visualising window.
+%       - the subclassing is bit messy and shows that this thing evolved.
+%         It did only take an afternoon to write initially though.
+
+systemdict /Item known not { (NeWS/liteitem.ps) run } if
+
+/EditWindow DefaultWindow [
+    /EditItems      % Items in the window
+    /EditObject     % Object being edited
+    /EditKey        % Key in object
+]
+classbegin
+    /FrameLabel (Object Editor) def
+
+    /new { % object key => instance
+	/new super send begin
+	    /EditKey exch cvlit def
+	    /EditObject exch cvlit def
+	    /EditItems null def
+	    /NewValue () def
+	    currentdict
+	end
+    } def
+
+    /gettopleft {
+	320 140
+	fboverlay setcanvas getclick 2 index sub    % Subtract height from y to select top left
+	4 2 roll reshape
+    } def
+
+    /PaintClient {
+	EditItems paintitems
+    } def
+
+    /do_proc { % proc =>
+	errored {
+	    (Error: %) [$error /errorname get]
+	    /printf
+	} {
+	    () /printstring
+	} ifelse
+	EditItems /message_item get send
+    } def
+
+    /set_value {
+	/NewValue exch def
+    } def
+
+    /activate {
+	/EditItems 6 dict dup begin
+	    /edit_string (Value:) EditObject EditKey get cvstring /Right
+		[ /ItemValue cvx self /set_value exch /send cvx ] cvx
+		ClientCanvas /new TextItem send
+		10 75 260 0 /reshape 5 index send def
+
+	    /message_item () () /Right
+		nullproc
+		ClientCanvas /new MessageItem send
+		10 45 240 0 /reshape 5 index send def
+
+	    /ok_button (Put)
+		[ self /do_edit exch /send cvx ] cvx
+		ClientCanvas /new ButtonItem send
+		dup /ItemFrame 1 put
+		dup /ItemRadius 0.2 put
+		80 10 60 15 /reshape 5 index send def
+
+	    /null_button (Null)
+		[ self /do_null exch /send cvx ] cvx
+		ClientCanvas /new ButtonItem send
+		dup /ItemFrame 1 put
+		dup /ItemRadius 0.2 put
+		150 10 60 15 /reshape 5 index send def
+
+	end def
+	EditItems forkitems pop
+	map
+    } def
+
+    /do_edit {
+	{
+	    {
+		clear
+		NewValue cvx exec
+		EditObject EditKey 3 2 roll put
+	    } do_proc
+	} fork waitprocess pop
+    } def
+
+    /do_null {
+	{ EditObject EditKey null put } do_proc
+    } def
+
+    /destroy {
+	/EditItems null def
+	/destroy super send
+    } def
+
+classend def
+
+/ZapScrollWindow ScrollWindow []
+classbegin
+    /CreateFrameControls { % - => -
+	 /CreateFrameControls super send
+	  gsave
+		FrameCanvas setcanvas
+		/ZapControl FrameCanvas newcanvas dup begin
+		    /Mapped true def
+		    /EventsConsumed /AllEvents def
+		end def
+		0 0 BorderTop BorderRight rectpath ZapControl reshapecanvas
+	  grestore
+    } def % CreateFrameControls
+
+    /CreateFrameInterests { % - => -
+	 /CreateFrameInterests super send
+		FrameInterests begin
+		    /FrameZapEvent
+			PointButton /destroy
+			DownTransition ZapControl eventmgrinterest def
+		end
+    } def % CreateFrameInterests
+
+    /MoveFrameControls { % - => -
+	 /MoveFrameControls super send
+	  gsave
+		ZapControl setcanvas
+		FrameWidth BorderRight sub
+		    FrameHeight BorderTop sub movecanvas
+	 grestore
+    } def % MoveFrameControls
+
+    /PaintFrameControls { % - => -
+	 /PaintFrameControls super send
+	 gsave
+		ZapControl setcanvas 2 4 moveto /panel_check_off showicon
+	 grestore
+    } def % PaintFrameControls
+
+classend def
+
+/ScrollingWidget ZapScrollWindow [
+    /EventMgr
+    /Contents
+    /ContentsCanvas
+    /Lines
+    /VisibleLines
+    /StartLine
+    /StartCol
+]
+classbegin
+    /LMargin 3 def
+    /TextFont /Times-Roman findfont 14 scalefont def
+
+    /new { % label contents parent => instance
+	/new super send begin
+	    /Contents exch def
+	    /FrameLabel exch def
+	    /Lines Contents length def
+	    /StartLine 0 def
+	    /VisibleLines 0 def
+	    currentdict
+	end
+    } def
+
+    /autoshape { % x y =>
+	200
+	Lines 40 min TextFont fontheight mul
+	    BorderTop add BorderBottom add LMargin add reshape
+    } def
+
+    /createscrollbars { % - => - (Create scrollbar canvases/items)
+	/HScrollbar
+	    [0 1 .01 .1 null] 0
+	    [ /ItemValue cvx self /pan exch /send cvx ] cvx
+	    FrameCanvas /new SimpleScrollbar send
+	    dup /BarVertical? false put
+	    def
+	/VScrollbar
+	    [1 0 .01 .1 null] 0
+	    [ /ItemValue cvx self /scroll exch /send cvx ] cvx
+	    FrameCanvas /new SimpleScrollbar send
+	    def
+    } def
+
+    /PaintClient { % - => -
+	ClientCanvas setcanvas
+	1 fillcanvas 0 setgray
+	TextFont setfont
+	/VisibleLines ClientHeight currentfont fontheight div round def
+	LMargin ClientHeight currentfont fontheight sub moveto
+	StartLine 1 StartLine VisibleLines add Contents length 1 sub min {
+	    ShowLine
+	    LMargin currentpoint exch pop moveto
+	    0 currentfont fontheight neg rmoveto
+	} for
+    } def
+
+    /ShowLine {
+	Contents exch get
+	cvstring show
+    } def
+
+    /scroll { % lineno =>
+	Lines mul
+	/StartLine exch floor def
+	PaintClient
+    } def
+
+    /pan {
+	/StartCol exch def
+	PaintClient
+    } def
+
+    /YValueToLine { % event => lineno true, or false
+	ClientCanvas setcanvas
+	/YLocation get
+	ClientHeight exch sub
+	TextFont fontheight div floor StartLine add
+	dup dup 0 ge exch Lines lt and
+	dup not { exch pop } if
+    } def
+
+    /pointbutton { % event => -
+	YValueToLine {
+	    select
+	} if
+    } def
+
+    /adjustbutton { % event => -
+	YValueToLine {
+	    Contents exch start_editor
+	} if
+    } def
+
+    /select { % lineno => -
+	SubClassResponsibility!
+    } def
+
+    /map {
+	/map super send
+	/EventMgr [
+	    PointButton [ self /pointbutton exch /send cvx ] cvx
+	    DownTransition ClientCanvas eventmgrinterest
+	    AdjustButton [ self /adjustbutton exch /send cvx ] cvx
+	    DownTransition ClientCanvas eventmgrinterest
+	] forkeventmgr def
+    } def
+
+    /destroy {
+	EventMgr null ne { EventMgr killprocess /EventMgr null def } if
+	{ /NotifyUser null def } HScrollbar send
+	{ /NotifyUser null def } VScrollbar send
+	/ClientMenu null def
+	/destroy super send
+    } def
+
+classend def
+
+/Browser ScrollingWidget []
+classbegin
+    /TextFont /Times-Roman findfont 14 scalefont def
+
+    /new { % array parent => instance
+	/new super send begin
+	    /ClientMenu [
+		menuitems
+	    ] /new DefaultMenu send def
+	    currentdict
+	end
+    } def
+
+    /select { % lineno => -
+	SubClassResponsibility!
+    } def
+
+    /browse { % label object =>
+	FrameX 30 add FrameY 30 add 4 2 roll ParentCanvas start_browser
+    } def
+
+    /menuitems {
+	(Zap) [ self /destroy exch /send cvx ] cvx
+    } def
+
+    /start_editor { % object key =>
+	{
+	    newprocessgroup
+	    framebuffer /new EditWindow send
+	    /gettopleft 1 index send
+	    /activate exch send
+	} fork pop pop pop
+    } def
+
+classend def
+
+/ArrayBrowser Browser []
+classbegin
+    /select { % lineno => -
+	Contents exch get dup cvstring exch browse
+    } def
+classend def
+
+/DictBrowser Browser [
+    /BrowserObject
+]
+classbegin
+    /new {
+	exch dup dictkeys exch 4 1 roll exch
+	/new super send begin
+	    /BrowserObject exch def
+	    currentdict
+	end
+    } def
+
+    /adjustbutton { % event => -
+	YValueToLine {
+	    BrowserObject Contents 3 2 roll get start_editor
+	} if
+    } def
+
+    /ShowLine {
+	ClientWidth 2 div 0 rmoveto currentpoint
+	Contents 3 index get
+	cvstring rshow
+	moveto
+	( : ) show
+	Contents exch get
+	BrowserObject exch get %cvlit
+	cvstring show
+    } def
+
+    /select { % lineno => -
+	Contents exch get dup cvstring exch
+	BrowserObject exch get browse
+    } def
+
+    /do_proc { % proc =>
+	BrowserObject exch load errored pop
+	pause PaintClient
+    } def
+
+classend def
+
+/FontBrowser DictBrowser
+dictbegin
+    /FontView false def
+dictend
+classbegin
+    /PaintClient { % - => -
+	FontView {
+	    ClientCanvas setcanvas
+	    1 fillcanvas 0 setgray
+	    BrowserObject setfont
+	    /VisibleLines ClientHeight currentfont fontheight div round def
+	    LMargin ClientHeight currentfont fontheight sub moveto
+	    StartLine 1 StartLine VisibleLines add Contents length 1 sub min {
+		[
+		    0 1 16 { dup 2 add index 16 mul add } for
+		] cvas show
+		pop
+		LMargin currentpoint exch pop moveto
+		0 currentfont fontheight neg rmoveto
+	    } for
+	} {
+	    /PaintClient super send
+	} ifelse
+    } def
+
+    /menuitems {
+	(Font) [ true self /set_view exch /send cvx ] cvx
+	(Dictionary) [ false self /set_view exch /send cvx ] cvx
+	/menuitems super send
+    } def
+
+    /set_view { % bool =>
+	/FontView exch def
+	PaintClient
+    } def
+
+    /pointbutton { % - => -
+	FontView not { /pointbutton super send } if
+    } def
+
+    /adjustbutton { % - => -
+	FontView not { /adjustbutton super send } if
+    } def
+
+classend def
+
+/ProcessBrowser DictBrowser []
+classbegin
+    /menuitems {
+	(Kill) [ /killprocess self /do_proc exch /send cvx ] cvx
+	(Kill Group) [ /killprocessgroup self /do_proc exch /send cvx ] cvx
+	(Suspend) [ /suspendprocess self /do_proc exch /send cvx ] cvx
+	(Continue) [ /continueprocess self /do_proc exch /send cvx ] cvx
+	/menuitems super send
+    } def
+classend def
+
+/EventBrowser DictBrowser []
+classbegin
+    /menuitems {
+	(Revoke Interest) [ /revokeinterest self /do_proc exch /send cvx ] cvx
+	/menuitems super send
+    } def
+classend def
+
+/CanvasBrowser DictBrowser []
+classbegin
+    /menuitems {
+	(Top) [ /canvastotop self /do_proc exch /send cvx ] cvx
+	(Bottom) [ /canvastobottom self /do_proc exch /send cvx ] cvx
+	(Map) [ /mapcanvas self /do_proc exch /send cvx ] cvx
+	(Unmap) [ /unmapcanvas self /do_proc exch /send cvx ] cvx
+	/menuitems super send
+    } def
+classend def
+
+/cvstring { % value => string
+    dup type /stringtype eq {
+	((%)) sprintf
+    } {
+	dup type /nametype eq 1 index xcheck not and {
+	    (/%) sprintf
+	} {
+	    100 string cvs
+	} ifelse
+    } ifelse
+} def
+
+% This function sorts an array into alphabetic order, and should be used
+% for ordering dictionary keys so you can find them. Unfortunately, it is too
+% slow to be of much use. Anyone fancy writing a fast sort in PostScript?
+/sortarray { % array => array
+    dup
+    4 dict begin
+	/a exch def
+	0 1 a length 1 sub {
+	    /i exch def
+	    /ai a i get cvstring def
+	    0 1 i 1 sub {
+		/j exch def
+		ai a j get cvstring lt {
+		    a i get a j get
+		    a i 3 2 roll put
+		    a j 3 2 roll put
+		} if
+	    } for
+	} for
+    end
+} def
+
+/dictkeys { % dict => [keys]
+    [ exch
+	{ pop } forall
+    ]
+    % comment out the next line to stop sorting dictionaries
+    dup length 40 le { sortarray } if
+} def
+
+/BrowserDict 10 dict dup begin
+    /dicttype { DictBrowser } def
+    /arraytype { ArrayBrowser } def
+    /canvastype { CanvasBrowser } def
+    /fonttype { FontBrowser } def
+    /processtype { ProcessBrowser } def
+    /eventtype { EventBrowser } def
+end def
+
+/start_browser { % x y label object parent =>
+    exch cvlit
+    BrowserDict 1 index type known {
+	{
+	    newprocessgroup
+	    exch /new BrowserDict 3 index type get exec send
+	    3 1 roll
+	    /autoshape 3 index send
+	    /map exch send
+	} fork pop
+    } if
+    5 {pop} repeat
+} def
+
+% The following pops up a browser onto systemdict:
+%
+% 0 0 (systemdict) systemdict framebuffer start_browser
+
+% End of browser code.

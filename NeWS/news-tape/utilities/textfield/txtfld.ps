@@ -1,0 +1,1617 @@
+%+
+% Copyright 1987, Eaton Corp., IMSD.
+% Module: txtfld.ps
+% Author: Mike Hoegeman
+% Function: text field class for forms, etc..
+% Notes:
+% Modification History:
+% Date	Author		Reason
+% -------------------------------------------------------------
+% 10Aug87	MCH			Initial Release.
+% -------------------------------------------------------------
+%-
+
+systemdict begin
+
+/TxtFld Object
+
+% instance variables
+dictbegin
+
+    %%%%%%% Instance proc stubs %%%%
+    /TFEnter { true } def		% called when fld becomes active
+    /TFExit { true } def		% called when fld becomes inactive
+					% these two procs MUST return a bool
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    /TFMenu nulldict def		% handle to user supplied menu
+    /TFHelp {} def 			% help proc stub
+    /Active? false def
+    /Initialized? false def
+    /PaintIfDamaged? false def
+    /TFMap nulldict def			% reg. key map inited in "/init" method
+    /TFFMap nulldict def		% func. key map inited in "/init" method
+    /TFMsg { dbgprintf } def 		% error and/or msg handler
+    /TFCanvas nulldict def	
+    /ObjX 0 def 			% X & Y pos of canvas
+    /ObjY 0 def
+    /ObjW 0 def
+    %%%% ObjH is a proc, not a variable - see below....
+    /TFParent nulldict def
+    /TFEvtMgr nulldict def		% pid of event mgr for this fld
+    /TFUser nulldict def 		% handle for whatever the user feels 
+			 		% like associating w/ the text field
+    %%%%%% Text/Drawing stuff %%%%%%
+    /TextSpacing 1 def 			% spacing between lines
+    /TextFontSize  14 def		% size of font
+    /TextFont /Times-Roman findfont TextFontSize scalefont def
+    /TextFontSize TextFont fontheight def
+    /TextMaxLines 1 def			% no. of lines displayed
+    /TextLineLimit 1 def		% no of allowed lines 0 = infinite
+    /TextMaxChars 31900 def		% max chars allowed in field
+					% never set this larger than 31900!!
+    /TextWhite		( \t) def	% list of wrd brk chars (not used yet)
+    /TextBrkCh		(\n) 0 get def	% line break char
+    /TextWidth		null def
+    /TextY  null def 			% X And Y for start of text position
+    /TextX  2 def 
+    /TextCaret		null def
+    /TextColor		0 def
+    /TextFill		.8 def
+    %%%%%% text data
+    /TextBuf		() def		% actual text of field
+    %%%%% text/draw  positioning stuff
+    /Right	null def	% # of chars to the left of cursor
+    /Left	null def	% # of chars to the right of cursor
+    /xpos	null def	% # of pixels to the left of cursor
+    /ypos       null def
+    /CursorUpdate? true def	% flag used by EndTextEvent to decide
+				% decide whether it should update cursor pos.
+    %% label stuff
+    /Label () def
+    /LabelColor TextColor def
+    /LabelFont TextFont def
+    /LabelPaint {} def
+
+
+dictend
+
+classbegin
+
+%+ Class Variables:
+
+%+
+% TFClassMap: (a dictionary)
+%
+% The default keyboard map for use by instances of the textfield class.
+% The map is realized in the form a postscript dictionary which uses
+% integers as keys and either integers or names as values each key typed.
+% The map is by the /input method of the textfld class
+%-
+
+/TFClassMap 300 dict dup begin
+    %% Regular keys
+    32 1 127 { dup def } for
+    %0 1 255 { dup def } for
+    1 /BEGINNING def	% ^A
+    2 /BKWDCHAR def	% ^B
+    4 /ROFWD def	% ^D
+    5 /END def		% ^E
+    6 /FWDCHAR def	% ^F
+    8 /RO def		% ^H
+    13 10 def 		% map return to newline
+    14 /NEXT def	% ^N
+    16 /PREV def 	% ^P
+    21 /FIELDKILL def	% ^U
+    127 /RO def		% Del
+end def
+
+/TFClassFMap 10 dict dup begin
+    %% Default Function Keys
+    /NextScreenKey /NEXT def	%% pNeWS/lk201
+    /PrevScreenKey /PREV def	%% pNeWS/lk201
+    /DELkey /RO def
+    /FindKey /ROFWD def 	%% pNeWS/lk201
+    /CRkey 10 def 		%% pNeWS/lk201 (return key)
+    /SelectKey /FIELDKILL def 	%% pNeWS/lk201
+    /RightArrowKey /FWDCHAR def %% pNeWS/lk201
+    /LeftArrowKey /BKWDCHAR def	%% pNeWS/lk201
+
+    /FunctionR10 /BKWDCHAR def	%% sun 
+    /FunctionR12 /FWDCHAR def	%% sun
+end def
+
+%+
+% TFBBox:	- => x y w h
+% Function: return the bbox coords for the textfield
+%-
+
+/TFBBox { ObjX ObjY ObjW ObjH } def
+
+%+
+% TextShow:	(string) leftmargin => -
+% Function:
+%-
+
+/TextShow { /ShowIt TextOp } def
+
+% (string) => bool
+/ShowIt {
+1 dict begin /str exch def
+    gsave 
+	currentpoint
+	    newpath clipcanvaspath pathbbox points2rect 
+	    newpath str false charpath pathbbox points2rect 
+	10 -2 roll moveto 
+	rectsoverlap { str show } if
+	true
+    grestore 
+end
+} def
+
+% (string) leftmargin => -
+/TextClear { /ClearIt TextOp } def
+
+%+
+% ClearIt:	(string) => bool
+% Function: For use with TextOp
+%-
+
+/ClearIt { 
+    gsave 
+	clipcanvaspath pathbbox points2rect 
+	% => (string) x y w h
+	5 -1 roll newpath false charpath 
+	pathbbox points2rect rectsoverlap { TextFill setshade fill } if
+	true
+    grestore 
+} def
+
+%+
+% TextOp:	(string) leftmargin proc => -
+% Function:
+%-
+
+/TextOp {
+4 dict begin 
+    /proc exch def /lmargin exch def /stillleft exch def
+    currentpoint /y exch def lmargin null eq {/lmargin exch def} {pop} ifelse
+    {
+	stillleft TextBrkCh cvis  search {
+
+	    % apply proc to stuff before the (\n)
+	    proc cvx exec { 
+		pop % the (\n)
+		/stillleft exch def % save what we have left
+		/y y TextSpacing TextFontSize mul sub def % move to next line
+		lmargin y moveto
+	    } {
+		pop pop exit % proc sez we can quit early..
+	    } ifelse
+
+	} {
+
+	    proc cvx exec pop  % exec proc, pop return value 
+	    exit 	
+
+	} ifelse
+	% pause
+    } loop
+end
+} def
+
+% line# => y
+% function: translate line# to Y position
+/Line2Y {
+    pop
+    ObjH TextFontSize sub
+    % exch 1 sub TextFontSize TextSpacing mul mul sub TextFontSize sub
+} def
+
+%
+%
+/ObjH { 
+    TextSpacing TextFontSize mul TextMaxLines mul TextFont 
+    TextSpacing 1 eq { fontdescent add } if
+} def
+
+% x y w h => -
+/reshape {
+4 dict begin /h exch def /w exch def /y exch def /x exch def
+    gsave TFParent setcanvas x y translate
+	0 0 w h rectpath TFCanvas reshapecanvas
+    grestore
+end
+} def
+
+% - => -
+/starteventmgr {
+    TFEvtMgr nulldict eq { 
+	/TFEvtMgr MakeIdleInterests forkeventmgr store
+    } {
+	(startidleinterests attempted on live TFEvtMgr!!\n) [] TFMsg
+    } ifelse
+} def
+
+%+
+% MakeIdleInterests:	- => interestdict
+%
+% Function: 		create all the interests that the text field does on 
+%			it's own (i.e. everything except the keyboard)
+%-
+/MakeIdleInterests {
+    10 dict begin % leave a little room for possible subclass events
+	% active the kbd input on this object
+	/ActivateEvent
+	    PointButton  % evt names
+	    { 
+%		begin  gsave %evt
+		gsave %evt % Fixed for X11/NeWS -deh
+		self /TFCanvas get setcanvas 
+		CurrentEvent begin XLocation YLocation end /setfocus self send 
+%		grestore end  %evt
+		grestore  %evt % Fixed for X11/NeWS -deh
+	    }
+	    DownTransition  % Action
+	    TFCanvas % Canvas
+	eventmgrinterest def
+
+	% damage repairer
+	/TFDamageEvent 
+	    /Damaged
+	    /TFDamagePaint
+	    null
+	    TFCanvas
+	eventmgrinterest def
+
+	% menu tracker
+	/MenuEvent
+	    MenuButton { TFMenu nulldict ne { /show TFMenu send } if }
+	    DownTransition
+	    TFCanvas
+	eventmgrinterest def
+    currentdict end
+} def
+
+/TFDamagePaint { PaintIfDamaged? { /paint self send } if } def
+
+%+
+% setfocus: 	x y  => -    or... 	null null => -
+%
+% Function: set the focus to be this txt fld.  if the field is already active
+% all this does is just reset the cursor to the closest char. to the supplied
+% x y coordinates.  If we are not active we ask the keyboard mgr to give us
+% focus.  We may not actually get the focus if the field that currently has it
+% does not give it up.
+%
+% If x or y are null the coordinates are left as they are
+%-
+
+/setfocus {
+2 dict begin /tmpy exch def /tmpx exch def
+    Active? not {
+	tmpx tmpy TFParent self reqTFkbdfocus
+    } { 
+	%% We are already the active field, just set the caret location 
+	tmpx tmpy settextxy 
+	starttext
+    } ifelse 
+end %localscope
+} def
+
+%+
+% grabfocus:	x y  => -	or null null => -
+% Function:	A mean-spirited version of setfocus. does'nt ask for the focus
+%		like setfocus. it just unconditionally grabs it.
+%-
+
+/grabfocus {
+2 dict begin /tmpy exch def /tmpx exch def
+    Active? not {
+	createevent begin
+	    /Name /TFKbdFocus def
+	    /ClientData 2 dict begin
+		/Instance self def
+		/XandY [ tmpx tmpy ] def
+	    currentdict end def
+	    /Canvas TFParent def
+	    /Action /Grab def
+	currentdict end
+	sendevent
+    } {
+	%% We are already the active field, just set the caret location 
+	tmpx tmpy settextxy 
+	starttext
+    } ifelse
+end %% localscope
+} def
+
+
+%+
+% bool => -
+%+
+/highlight {
+gsave 
+    TFCanvas setcanvas { TextColor } { TextFill } ifelse strokecanvas 
+grestore
+} def
+
+
+%+
+% revokefocus:	- => bool 
+% Function:	if the field is not currently active. this does nothing
+%
+% should not really ever call this, except from TFKbdmgr
+%-
+/revokefocus {
+    Active? {
+	% preform the exit procedure before we give up the focus
+	% if we return false do not give it up
+	/TFExit self send dup {
+	    false /highlight self send
+	    self /Active? false put
+	    stoptext
+	} if
+    } {
+	%(What?? I got a revoke method but I'm inactive\n) [] TFMsg
+	true % we are not active (should not really get this case)
+    } ifelse
+} def
+
+% x y => -
+/move {
+    gsave TFCanvas setcanvas movecanvas grestore 
+} def
+
+% - => -
+% repaint the text field
+%
+% call this w/ calltextproc
+%
+/Paint { 
+    gsave 
+	% the gsave, setcanvas nonsense is to get around the cliiping done
+	% by call textproc
+	TFCanvas setcanvas 
+	TextFill fillcanvas Active? /highlight self send
+    grestore
+    TextFont setfont TextColor setshade 
+    0 0 moveto TextBuf null TextShow
+} def
+
+/map { 
+    TFCanvas /Mapped true put
+} def
+
+/unmap { 
+    TFCanvas /Mapped false put
+} def
+
+/destroy {
+    /revokefocus self send
+    /unmap self send
+    TFEvtMgr dup nulldict ne { killprocess } { pop } ifelse
+    /TFCanvas nulldict store
+    /TFUser nulldict store
+} def
+
+%
+% once we've create a instance of a txtfld with "/new" method, we initialize
+% it with "/init" method (after we've added any user specific stuff  
+% like "TextFont" )
+%
+/init {
+    TFBBox reshape 
+    TextInit 
+    TFMap nulldict eq TFMap null eq or { /TFMap TFClassMap def } if
+    TFFMap nulldict eq TFFMap null eq or { /TFFMap TFClassFMap def } if
+    /starteventmgr self send
+    starttext stoptext /paint self send
+    /Initialized? true store
+} def
+
+%+
+% setkeys: 		dict => -
+% function: method for redefining keymap
+%
+% if the current key map is the class keymap, then make a copy and munge
+% with that one. then assign the munged one to be the instances keymap
+%-
+/setkeys { 
+    TFMap TFClassMap eq {
+	TFClassMap dup maxlength dict copy /TFMap exch def
+    } if 
+    TFMap begin { def } forall end 
+} def
+
+%
+% still under construction - dict type's and array types not dealt with yet
+% files and strings work though !!
+%
+% Renamed from "load" -deh
+/dataload {
+    1 dict begin /thingy exch def
+    thingy type {
+	%/arraytype { thingy compositeload }
+	%/dicttype { thingy compositeload } 
+	/filetype { thingy FileLoad } 
+	/stringtype { thingy /setvalue self send }
+	/Default { (cannot load data of type % \n) [ thingy type ] TFMsg }
+    } case
+    end %localscope
+} def
+
+%+
+% classname:	- => /class_name
+% Function:	return the name of the class for this object
+%-
+/classname {
+    /TxtFld
+} def
+
+%+
+% new:		initial_text parentcanvas => instance 
+% Function: 	Create a new instance
+%-
+/new  
+{
+    /new super send begin
+
+    % grab args
+    /TFParent exch store 
+    /TextBuf exch 64 string append store
+    % make the main canvas, set it's attr's
+    /TFCanvas TFParent newcanvas dup begin 
+	/Mapped true def
+	/EventsConsumed /AllEvents def
+    end store
+    /xhair /xhair_m TFCanvas setstandardcursor
+
+    currentdict end % leave new instance on stack
+} def % /new method
+
+% 
+% data => -
+% process some keyboard/selection input
+%
+/input {
+	dup type /stringtype eq {
+	    {inserttext} forall
+	}{
+	    inserttext
+	} ifelse
+} def
+
+% function: called when insert attempted on txtfld with a maxed out buffer
+/fieldfull {
+    /flash self send
+    % (Take Off You Hoser\n) [] dbgprintf
+} def
+
+classend def % object TextField
+
+%%%%%%%% Utilities %%%%%%%%
+
+%+
+% parentcanvas proc => -
+%
+% function: send to all textfields with parent canvas "Canvas" the
+% executable array "proc" to be executed
+%-
+
+/AllTextFields {
+    createevent dup begin
+    /Canvas 3 index def
+    /Name /TFAllEvent def
+    /Action /ExecClientData def
+    /ClientData 2 index def
+    end sendevent pop pop
+} def
+
+%+
+% stopTFkdbfocus:	parent_canvas => -
+%
+% Function: request that the active text field not belong to anyone
+%-
+
+/stopTFkbdfocus {
+   null null null % => pcan null null null 
+   4 -1 roll exch % => null null pcan null 
+   reqTFkbdfocus 
+} def
+
+%+
+% reqTFkbdfocus:    x y parent_canvas textfield_instance => -
+%
+% Function: request that the specified textfield become the active field
+%-
+
+/reqTFkbdfocus {
+4 dict begin 
+    /tfinstance exch def 
+    /parentcanvas exch def 
+    /y exch def 
+    /x exch def
+    createevent dup begin
+	/Name /TFKbdFocus def
+	/ClientData 2 dict dup begin 
+	    /Instance tfinstance def
+	    /XandY [ x y ] def
+	end def
+	/Canvas parentcanvas def
+	/Action /Set def
+    end sendevent
+end %localscope
+} def
+
+%+
+% setTFkbdorder:	parentcanvas [fld_inst1... fld_instN] => -
+% Function: set the field order for the field movement keys
+%-
+
+/setTFkbdorder {
+    createevent begin
+	/ClientData exch def
+	/Canvas exch def
+	/Name /TFKbdFldOp def
+	/Action /SetOrder def
+    currentdict end 
+    sendevent
+} def
+
+%+
+% TFkbdfldop:	Canvas /Operation => -
+% 
+% Function: field level operation handler. Operations are ...
+% 
+% /Next /Prev /First /Last /ClearAll
+%-
+
+/TFkbdfldop {
+    createevent begin
+	/Action exch def
+	/Canvas exch def
+	/Name /TFKbdFldOp def
+    currentdict end 
+    sendevent
+} def
+
+%+
+% startTFkbdmgr:
+% parent_canvas => pid
+%
+% Function: starts up the liteweight process that handles all keyboard
+% input for all children textfields of a particular parentcanvas also
+% handles field level operations like cursor movement between fields,
+% etc..
+%-
+
+/startTFkbdmgr {
+    /_tmp_parent_canvas_handle_ exch def
+    [
+	%%
+	%% An executable forkitems argument
+	%% handles keyboard input
+	%%
+	{ _tmp_parent_canvas_handle_ MakeTFKbdInterests } 
+
+	%%
+	%% handles (re)setting of keyboard input focus
+	%%
+	/TFKbdFocus
+	{ 
+	    begin %% event
+		%% Two things in ClientData: "Instance" and "XandY"
+		GetCurrentTF null ne {
+		    Action /Grab eq {
+			%% don't ask for focus, grab it!!
+			{
+			    %% stomp the Grab-ee
+			    false highlight
+			    self /Active? false put
+			    stoptext
+			} GetCurrentTF send
+			%% give to the Grab-er
+			ClientData /XandY get aload pop 
+			    ClientData /Instance get SetCurrentTF
+		    } {
+			%% ask if we can take the focus from current holder
+			%% we don't do a /revokefocus INSTANCE send here 
+			%% because we want to keep current dict stack the way 
+			%% it is so we use the /doit method
+			{ revokefocus } /doit GetCurrentTF send {
+			    %% they say "go ahead", give it to the requestor
+			    ClientData /XandY get aload pop 
+				ClientData /Instance get SetCurrentTF
+			} {
+			    %% the current holder sez "take off you hoser"
+			} ifelse
+		    } ifelse
+
+		} {
+		    %% nobody has it right now so give it to the requestor
+		    ClientData /XandY get aload pop 
+			ClientData /Instance get SetCurrentTF 
+		} ifelse
+	    end %% event 
+	}
+	[/Set /Grab]
+	_tmp_parent_canvas_handle_
+	eventmgrinterest
+
+	%%
+	%% handles various field level cursor operations
+	%%
+	/TFKbdFldOp
+	{ DoTFKbdFldOp }
+	[/SetOrder /Prev /First /Last /Next]
+	_tmp_parent_canvas_handle_
+	eventmgrinterest
+
+    ] forkeventmgr 
+
+currentdict /_tmp_parent_canvas_handle_ undef
+} def
+
+%+
+%
+%-
+
+/DoTFKbdFldOp {
+3 dict begin
+    /i null def
+    /currenttf GetCurrentTF def
+    /fldorder EventMgrDict /FldOrder known 
+	    { EventMgrDict /FldOrder get } { null } ifelse def
+
+    begin %event
+	Action [
+	    /Next {
+		fldorder null ne currenttf null ne and {
+		    /i fldorder currenttf getmatch store
+		    /i i fldorder length 1 sub ge { 0 } { 1 i add } ifelse store
+		    null null /setfocus fldorder i get send
+		} if
+	    }
+	    /Prev {
+		fldorder null ne currenttf null ne and {
+		    /i fldorder currenttf getmatch store
+		    /i i 0 le { fldorder length 1 sub } { i 1 sub } ifelse store
+		    null null /setfocus fldorder i get send
+		} if
+	    }
+	    /First {
+		fldorder null ne currenttf null ne and {
+		    null null /setfocus fldorder 0 get send 
+		} if
+	    } 
+	    /Last {
+		fldorder null ne currenttf null ne and {
+		    null null /setfocus fldorder dup length 1 sub get send
+		} if
+	    }
+
+	    %% set the order for the fld level operations
+	    /SetOrder {
+		ClientData null eq {
+		    EventMgrDict /FldOrder known { 
+			EventMgrDict /FldOrder undef
+		    } if
+		} {
+		    EventMgrDict /FldOrder ClientData put
+		} ifelse
+	    }
+	] case
+    end %% event
+end %% localscope
+} def
+
+%+
+% <paintTFLabels>
+%
+% dict_of_text_fields => -
+%
+% Function: loop thru all text fields we have and do whatever label
+% painting they have stashed away in their TFUser dictionary. This causes
+% painting on the parent canvas for the text fields.
+%-
+
+/paintTFLabels {
+    {
+	%% => /name txtfldinstance
+	/LabelPaint exch send 
+	pop % the name
+    } forall
+} def
+
+%+
+% <getmatch>
+%
+% array object => index | -1
+%
+% Function: figure it out yourself
+%-
+
+/getmatch {
+3 dict begin
+    /obj exch def /i 0 def
+    {  
+	obj eq { /matched? true def exit } { /i i 1 add def } ifelse
+    } forall
+    currentdict /matched? known { i } { -1 } ifelse
+end
+} def
+
+%+
+% <MakeTFKbdInterests>	
+%
+% canvas => - 
+%
+% Function: Create the standard kbd interests via addkdbinterests then
+% embellish them so that they are suitable for use with the forkeventmgr
+% utility
+%-
+
+/MakeTFKbdInterests { 
+    1 dict begin
+    /pcanvas exch def
+
+    %% init current txt field focus to be "none"
+    null null null SetCurrentTF 
+
+    pcanvas addkbdinterests
+
+    %% Insert the callback procs for these interests 
+    aload pop
+
+    %% set up kbd focus interest callback
+    /ClientData 10 dict dup /CallBack { 
+	dup /Name get {
+	    /RestoreFocus /AcceptFocus {
+		GetCurrentTF null ne {
+		    {
+			true highlight 
+		    } GetCurrentTF send
+		    %%/setfocus GetCurrentTF send
+		} if
+	    }
+	    /DeSelect {
+		GetCurrentTF null ne {
+		    {
+			false highlight
+		    } GetCurrentTF send
+		    %%/revokefocus GetCurrentTF send
+		} if
+	    }
+	    /Default {(Default Focus kbd event!\n) print ==}
+	} case
+    } put put
+
+    %% set up kbd InsertValue callback
+    /ClientData 10 dict dup /CallBack { 
+	GetCurrentTF null ne {
+	    /Action get /input GetCurrentTF send
+	} if
+    } put put
+
+    %% set up kbd Ascii callback
+    /ClientData 10 dict dup /CallBack { 
+	GetCurrentTF null ne {
+	    /Name get /input GetCurrentTF send
+	} if
+    } put put
+
+    %% set up function keys callback
+    pcanvas addfunctionnamesinterest 
+    begin
+	/Action /DownTransition def
+	/ClientData 10 dict dup begin
+	    /CallBack {
+		GetCurrentTF null ne {
+		    /Name get /input GetCurrentTF send
+		} if
+	    } def
+	end def
+    end
+
+    end %localscope
+} def
+
+%+
+% SetCurrentTF:		x y textfield -> - 
+%
+% Function: Install item in eventmgr arg dict (used by text field kbd mgr)
+%-
+
+/SetCurrentTF {
+3 dict begin 
+    /fld exch def %% grab the args from stack
+    EventMgrDict /CurrentTF fld put %% tell kbd mgr fld has now got the focus
+    %% if fld is null we are just blanking out the Current Field
+    fld null ne {
+	  gsave fld /TFCanvas get setcanvas
+	    /tmpy exch def /tmpx exch def
+	    fld /Active? true put %% tell the fld that it is active
+	    tmpx tmpy /settextxy fld send %% position the caret, etc...
+	    /starttext fld send 
+	    true /highlight fld send
+	    /TFEnter fld send %% call the user defined field enter proc.
+	    pop %% right now just pop the val returned by TFEnter
+	    %% something like this someday maybe...
+	    %% { etcetera.... /Default { } } case
+	  grestore
+    } {
+	pop pop %% the x and y , we do not care about them
+    } ifelse
+end
+} def
+
+%+
+% GetCurrentTF:	- => textfield | null 
+%
+% Function: Retrieve the current holder of the kbd focus, (used by kbd
+% event mgr)
+%-
+
+/GetCurrentTF { 
+    EventMgrDict /CurrentTF get dup null ne { 
+	% => txtfld
+	% Special Case: Make sure current focus holder has'nt been destroyed 
+	% by someone! If it has just make the current focus holder null 
+	% (this means no-one has it)
+	/TFCanvas get type /canvastype ne {
+	    % it has, make "nobody" the current focus holder
+	    EventMgrDict /CurrentTF null put
+	} if
+	EventMgrDict /CurrentTF get
+    } if
+} def
+
+
+%+
+% painttextfields:	textfield_dict/array => -
+%
+% Function: paint a set of TextFields
+%-
+
+/painttextfields { 
+    dup type /dicttype eq {
+	{ exch pop /tfpaint exch send } forall
+    } {
+	{ /tfpaint send } forall
+    } ifelse
+} def
+
+%+
+% <callcaretproc>    /proc => -
+%
+% Function: Set up proper environment for a caret operation, then do the
+% operation specified by the /proc argument.
+%-
+
+/callcaretproc { 
+    Initialized? {
+    gsave 
+	TFCanvas setcanvas initmatrix TextX TextY translate TextFont setfont 
+	caretpackage begin cvx exec end 
+    grestore
+    } {
+	pop 
+    } ifelse
+} def
+
+
+/StartText {
+    EndTextEvent
+} def
+
+/StopText {
+    TextCaret /destroycaret callcaretproc
+} def
+
+%+
+% <InsertText>		char | /FunctionKeyName => -
+%
+% Function: Internal Handler to input recieved through the /input method
+%-
+
+/InsertText { 
+1 dict begin /in_obj exch def
+
+    %% check for textbuf overflow: [10 is a fudge!]
+    Left Right add TextBuf length 10 sub ge {
+	/TextBuf TextBuf 40 string append store
+    } if
+
+    %% translate the input thru our maps
+    TFMap in_obj known {
+	%% translate the input via the normal key map
+	/in_obj TFMap in_obj get def
+    } { 
+	%%
+	TFFMap in_obj known {
+	    %% translate the input via the function key map
+	    /in_obj TFFMap in_obj get def
+	} {
+	    /in_obj /DONOTHING def % Huh ?
+	} ifelse
+    } ifelse
+
+    BeginTextEvent
+    in_obj type /nametype eq {
+	%% a function rather than a keystroke char.
+	in_obj cvx exec
+    } {
+	%% regular keystroke
+	Left Right add TextMaxChars ge {
+	    %% they've hit their max allowable characters
+	    /fieldfull self send
+	} {
+	    in_obj TextBrkCh eq {
+		TextLineLimit 0 gt 
+		TextBuf NumOfLines TextLineLimit ge and {
+		    %% they've hit their max allowable lines
+		    /fieldfull self send
+		} {
+		    in_obj INSERTCHAR
+		} ifelse
+	    } {
+		in_obj INSERTCHAR
+	    } ifelse
+	} ifelse
+    } ifelse 
+    EndTextEvent
+end %% localscope
+} def
+
+%+
+% NumOfLines:	(string) => numoflines
+%
+% Function: returns the number of lines as an int for <(string)> an empty
+% string is regarded as having 1 line.
+%-
+
+/NumOfLines {
+    1 exch {
+	%% => total (stillleft)
+	TextBrkCh cvis search {
+	    pop pop
+	    exch 1 add exch
+	} {
+	    pop exit %% the loop
+	}  ifelse
+    } loop
+} def
+
+%+
+% INSERTCHAR:
+% char => -
+%
+% function: called by InsertText to handle insertion of literal
+% characters into the text field
+%-
+
+/INSERTCHAR {
+1 dict begin /in_obj exch def
+    Right 0 ne {
+	% Move the stuff to right of us over 1 char
+	% and blank out what used to be on the right
+	xpos ypos moveto 
+	TextBuf Left 1 add
+
+	% If it's a line break ch we have to repaint ALL the text
+	% below us. Otherwise just repaint from cursor to end of line
+	TextBuf Left Right getinterval dup 
+	in_obj TextBrkCh ne {
+	    TextBrkCh cvis search { exch pop exch pop } if
+	} if 
+	0 TextClear
+	putinterval
+    } if
+    
+    TextBuf Left in_obj put 	% Insert the char
+    TextBuf Left 1 Right add getinterval  
+    in_obj TextBrkCh ne {
+	% if key not a newline, only need to repaint current line
+	TextBrkCh cvis search { exch pop exch pop } if
+    } if
+
+    % => (buf to right of insert inclusive)
+    xpos ypos moveto 
+    TextColor setshade 
+    0 TextShow 
+
+    /Left Left 1 add store
+    % adjust the current cursor position
+    TextBrkCh in_obj eq {
+	/xpos 0 store
+	/ypos ypos TextFontSize TextSpacing mul sub store
+    } {
+	/xpos xpos in_obj cvis stringwidth pop add store
+    } ifelse
+    /CursorUpdate? false store 
+end %localscope
+} def
+
+
+%+
+% NullTrim:	(string\000\000.... \000)  =>  (string)
+%
+% Function: Trims trailing 000's from strings
+%-
+
+/NullTrim { 1 string search { exch pop exch pop } if } def
+
+%+
+% SetTextXY:  x y => -  or ...  null null => -
+%
+% reset the cursor position given an arbitrary X Y location within a text
+% field such that the cursor position (to the nearest character) matches
+% the supplied x y value. If x and/or y are null, then just do a "reset"
+% of the of the cursor to the where it was last in the field when the
+% field was last active.
+%-
+
+/SetTextXY { 
+    5 dict begin %localscope
+    BeginTextEvent
+    /clicky exch def 
+    /clickx exch def
+
+    % if y or y is null then then all we are to do is reset the x and y pos 
+    % given the number of characters to the left and right of the cursor
+    clickx null ne clicky null ne and {
+
+	% more localscope  stuff
+	/clicky clicky ObjH sub def
+	/tmp null def
+	/stillleft TextBuf def
+	/pre null def
+
+	/xpos 0 store /ypos 0 store BEGINNING
+	{
+	    stillleft TextBrkCh cvis search {
+		/pre exch def 
+		pop 
+		/stillleft exch def
+		/tmp ypos TextFontSize TextSpacing mul sub def
+
+		tmp clicky le {
+		    % we've found our line
+		    /stillleft pre def
+		    exit
+		} {
+		    % this ain't it; bump our counters and keep going...
+		    /ypos tmp store
+		    /tmp pre length 1 add def
+		    /Left Left tmp add store /Right Right tmp sub store
+		} ifelse
+	    } {
+		% no more lines left
+		exit 
+	    } ifelse
+	} loop 
+
+	% Now figure out the X value
+	/clickx clickx TextX sub neg def % neg for ge exit below.
+	/tmp 0 def
+
+	% move over char by char till we hit desired X pos.
+	stillleft NullTrim {
+	    cvis stringwidth pop dup /xpos exch xpos add store
+	    clickx add /clickx exch def
+	    clickx 0 ge {exit} if
+	    %/tmp tmp 1 add def
+	    /Right Right 1 sub store
+	    /Left Left 1 add store
+	} forall
+
+	% reset the Left and Right placeholders
+	%/Right Right tmp sub store /Left Left tmp add store
+
+
+    } {
+	% x or y is null just reset given no. of chars to the left
+	% and right of the cursor pos
+	Update_xpos Update_ypos
+    } ifelse
+
+    end %localscope
+
+    /CursorUpdate? false store
+    EndTextEvent
+} def
+
+%% field-level operations
+/NEXT	{ TFParent /Next TFkbdfldop } def
+/PREV	{ TFParent /Prev TFkbdfldop } def
+/FIRST	{ TFParent /First TFkbdfldop } def
+/LAST	{ TFParent /Last TFkbdfldop } def
+
+    
+/EOL {StopText} def
+/BEGINNING { /Left 0 store /Right TextBuf NullTrim length store } def
+/END { /Right 0 store /Left TextBuf NullTrim length store } def
+
+/FLASH {
+    gsave 
+	TFCanvas setcanvas
+	0 1 50 { 50 div 1 1 hsbcolor fillcanvas pause } for
+    grestore
+    Paint
+} def
+
+/FWDCHAR {Right 0 gt {/Left Left 1 add store /Right Right 1 sub store}if} def
+/BKWDCHAR {Left 0 gt {/Left Left 1 sub store /Right Right 1 add store}if} def
+/ROFWD {Right 0 gt {FWDCHAR BeginTextEvent EndTextEvent RO} if} def
+/DONOTHING {} def
+
+/FIELDKILL {
+    0 0 moveto
+    TextBuf 0 TextClear
+    /TextBuf 100 string store
+    /Left 0 store /Right 0 store
+} def
+
+/RO {
+    1 dict begin /wrapFromBelow? false def
+    Left 0 gt {
+	% Unpaint the text dirtied from the char delete
+	/xpos xpos TextBuf Left 1 sub get cvis stringwidth pop sub store
+	xpos ypos moveto
+	TextBuf Left 1 sub Right 1 add  getinterval 
+	TextBrkCh cvis anchorsearch { 
+	    % We are wrapping a line up from below, redraw ALL text after 
+	    % this char.
+	    /wrapFromBelow? true def
+	    pop 
+	    % adjust cursor ypos up a line
+	    /ypos ypos TextFontSize TextSpacing mul add store
+	} { 
+	    % no wrap from below, hack off stuff after newline & just 
+	    % redraw current line
+	    TextBrkCh cvis search { exch pop exch pop } if 
+	} ifelse
+	0 TextClear
+
+	% actually delete the character from the buffer 
+	/TextBuf 
+	    %     debug stuff
+	    % console TextBuf 0 Left 1 sub getinterval  (\n) append writestring
+	    % console TextBuf Left Right getinterval (\n) append writestring
+	    %
+	    TextBuf 0 Left 1 sub getinterval 
+	    TextBuf Left Right getinterval
+	    append
+	store
+
+	/Left Left 1 sub store
+
+	Update_xpos % Update_ypos 
+	xpos ypos moveto % update the cursor position
+
+	% repaint the text we unpainted
+	TextBuf Left Right getinterval 
+	wrapFromBelow? not {
+	    TextBrkCh cvis search { exch pop exch pop } if
+	} if 
+	0 TextShow
+	/CursorUpdate? false store %
+    } if
+    end % localscope
+} def
+
+%+
+% <Update_xpos>
+%
+% - => - 
+%
+% Function: reset xpos, does not rely on current cursor pos.  As a result
+% it's a slow if the current line is really long
+%-
+
+/Update_xpos {
+1 dict begin 
+    /linestart 0 def
+    TextBuf length 0 le { 
+	/xpos 0 store 
+    } {
+	Left 1 sub -1 0 {
+	    dup TextBuf exch get TextBrkCh eq { 
+		/linestart exch def exit
+	    }{
+		pop 
+	    } ifelse
+	} for
+	TextBuf linestart Left linestart sub getinterval 
+	stringwidth pop /xpos exch store
+    } ifelse
+end
+} def
+
+%+
+% <Update_ypos>
+%
+% - => - 
+%
+% Function: reset ypos from scratch
+%-
+
+/Update_ypos {
+1 dict begin 
+    /tmp 0 def
+    TextBuf length 0 le {
+	/ypos 0 store
+    } {
+	TextBuf 0 Left getinterval {
+	    TextBrkCh eq { /tmp tmp 1 add def } if
+	} forall
+	/tmp tmp 0 max def
+	/ypos tmp TextFontSize TextSpacing mul mul neg store
+    } ifelse
+end
+} def
+
+/BeginTextEvent {TextCaret /stopcaret callcaretproc } def
+
+%
+% makes sure the cursor is in the right place after a text proc call
+%
+
+/EndTextEvent {
+    % Caller already set cursor pos if CursorUpdate? is false
+    CursorUpdate? { Update_xpos Update_ypos } if /CursorUpdate? true store 
+    TextCaret TextX xpos add TextY ypos add /movecaret callcaretproc
+} def
+
+%
+% init_string => -
+%
+% function: init the text and caret stuff
+
+/TextInit { 
+    gsave
+	% set the vars which key off of the TFCanvas attributes
+	/TextWidth ObjW 2 sub store
+	TextY null eq { /TextY 1 Line2Y store } if
+
+	% now that we got those, set the other stuff accordingly
+	TextFont setfont
+	/TextCaret 
+	    caretpackage begin
+	    /defaultcaret TFCanvas createcaret
+	    end
+	store
+	TextBuf setvalue
+    grestore
+} def
+
+%+
+% setvalue:		(string) => -
+%
+% Function: (re)set the contents of the text in the text field
+%-
+
+/setvalue {
+    /TextBuf exch def
+    %%/Left TextBuf NullTrim length def /Right 0 store
+    /Right TextBuf NullTrim length def /Left 0 store
+    %%/xpos 0 TextBuf stringwidth pop add store
+    %%Update_ypos
+    /xpos 0 store /ypos 0 store
+    /CursorUpdate? false def
+    %%starttext stoptext 
+    tfpaint 
+} def
+
+%+
+% getvalue:		- => (text\nmore text\nyet more text\n...)
+%
+% Function: fetch the contents of the text field buffer
+%-
+
+/getvalue { TextBuf NullTrim } def
+
+/settextbuf {/SetTextBuf calltextproc} def
+/starttext {/StartText calltextproc} def		% - => -
+/stoptext {/StopText calltextproc} def			% - => -
+/inserttext {/InsertText calltextproc} def		% char => -
+/settextxy {/SetTextXY calltextproc} def		% x y => -
+% this fudge is here for the benefit of painttextfields
+% it's here 'cause send gets confused when you do a paint 
+% inside of a send to a different class (like menus)
+/tfpaint { /Paint calltextproc } def
+/paint {/Paint calltextproc} def 			% - => -
+/flash { /FLASH calltextproc } def
+
+%+
+% <calltextproc>
+%
+%  ..params.. text proc  =>  -  
+%
+% Function: (Do std setup & call proc)
+%-
+
+/calltextproc {	
+    Initialized? {
+    gsave
+	TFCanvas setcanvas 
+	initmatrix 
+	%% so we do'nt hose the active/inactive border
+	1.5 0 0 ObjW ObjH insetrect rectpath clip
+	TextX TextY translate 
+	TextColor setshade TextFont setfont
+	cvx exec
+    grestore
+    } {
+	pop
+    } ifelse
+} def
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  Caret Section %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/caretpackage 50 dict dup begin
+
+/TF_CTemplate 20 dict dup begin
+% caret parameters:
+    /CaretX		null def
+    /CaretY		null def
+    /CaretCanvas	null def
+    /CaretBlinkRate	1 60 div def % 1/2 second; 1 second "blink".
+    /CaretEventMgr	null def
+
+% Caret Procs
+    /CreateCaret	nullproc def
+    /StartCaret		nullproc def
+    /BlinkCaret		nullproc def
+    /StopCaret		nullproc def
+end def % TF_CTemplate ... begin
+
+/DefaultCaret TF_CTemplate maxlength dict dup begin
+    /CreateCaret {
+	/CaretOverlay CaretCanvas createoverlay def
+    } def
+    /BlinkCaret { % event  =>  -
+        CaretOn not PaintCaret
+        SendCaretEvent
+    } def
+    /SendCaretEvent { % event => -
+	dup begin
+	    /Name	/CaretTimeOut def
+	    /Canvas	CaretCanvas def
+	    /TimeStamp	currenttime CaretBlinkRate add def
+	    /Process	CaretEventMgr def
+	end sendevent
+    } def
+    /StartCaret {CaretOn not {true PaintCaret} if} def
+    /StopCaret {CaretOn {false PaintCaret} if} def
+
+% additional stuff for DefaultCaret:
+    /PaintCaret { % bool  =>  -
+        /CaretOn exch def
+        CaretOverlay setcanvas
+        CaretOn {
+            CaretX CaretY currentfont fontdescent 2 div sub moveto
+            0 currentfont fontheight rlineto stroke
+        }{
+            erasepage
+        } ifelse
+    } def
+    /CaretOn		false def
+    /CaretOverlay	null def
+end def % DefaultCaret ... begin
+
+% ---------- Class Procs ----------
+
+/createcaret { %  createproc canvas =>  caret (Create a caret for canvas)
+    gsave
+    TF_CTemplate dup maxlength dict copy begin
+	/CaretCanvas exch def
+	cvx exec
+	CreateCaret
+	currentdict
+    end
+    grestore
+} def
+
+/movecaret { %  caret x y  =>  -  (Starts caret blinking at x y in canvas)
+    gsave
+    3 -1 roll begin
+	StopCaret
+	
+	/CaretY exch def
+	/CaretX exch def
+	CaretEventMgr null eq {
+	    /CaretEventMgr [
+	        /CaretTimeOut /BlinkCaret
+	        null CaretCanvas eventmgrinterest
+	    ] forkeventmgr def
+	    createevent SendCaretEvent
+	} if
+	
+	StartCaret
+    end
+    grestore
+} def
+
+/stopcaret { %  caret  =>  -  (Takes caret down)
+    gsave
+    begin
+	StopCaret %StartCaret
+    end
+    grestore
+} def
+
+/destroycaret {	%  caret  =>  -
+    gsave
+    begin
+        CaretEventMgr null ne {
+	    StopCaret
+	    CaretEventMgr /CaretEventMgr null store killprocess
+	} if
+    end
+    grestore
+} def
+
+/defaultcaret {	%  -  =>  -  (Installs caret defaults.)
+    DefaultCaret {def} forall
+} def
+
+
+end def % caretpackage begin
+
+% misc utilities 
+
+%+
+% file => (string)
+%
+% reads typical text files (i.e newline line seperated files ) 3200 chars
+% is the max file size (under NeWS anyway)
+%-
+
+/FileLoad {
+    5 dict begin 
+    /fileobj exch def /maxchars 30000 def /buf 2048 string def
+    /totalchars 0 def
+    /returnstr null def
+
+    % if it ain't a file we assume it's the name of a file we should open
+    fileobj type /filetype ne {
+	{ fileobj 128 string cvs (r) file } stopped {
+	    /fileobj null def
+	} {
+	    /fileobj exch def
+	} ifelse
+    } if
+
+    fileobj null eq fileobj rcheck not or {
+	(File Object is not readable\n ) [] TFMsg
+    } {
+
+	% read until there nothing left
+	{
+	    { fileobj buf readstring } stopped {
+		(Error reading file object, load discontinued\n) [] TFMsg 
+		fileobj closefile exit
+	    } {
+		% => substring bool 
+
+		exch dup length returnstr null eq { () } { returnstr } ifelse
+		length add maxchars ge {
+		    pop % the substring from readstring
+		    (File Buffer Full!\n) [] TFMsg  fileobj closefile exit
+		} {
+		    % add the read buffer 
+		    returnstr null eq { () } { returnstr } ifelse 
+		    exch append /returnstr exch def
+		    %console returnstr writestring
+		} ifelse
+
+		% if EOF exit ...
+		not { fileobj closefile exit } if
+
+	    } ifelse
+	    pause
+	} loop
+    } ifelse
+    returnstr
+    end %localscope
+} def
+
+
+%+
+% src dst => bool_status
+%
+% Function: if writeobject is a string a file object is opened using the
+% string as the name of the file atfer the write of the string to the
+% file object is complete, the file object is closed. if writeobject is a
+% file object then it is used as is and left open.  bool_status returns
+% the success/failure of the write
+%-
+
+/FileWrite {
+    2 dict begin /src exch def /dst exch def
+	dst type {
+	    /stringtype {
+		% open the file
+		{ dst (w) file } stopped {
+		    (cannot open file %\n) [ dst ] TFMsg
+		} {
+		    /dst exch def
+		    { dst src writestring } stopped not
+		} if else
+	    }
+	    /filetype {
+		{ dst src writestring } stopped not
+	    }
+	    /Default {
+		(Unrecognized object type of % passed to FileWrite\n) 
+		[ dst ]  TFMsg
+		false
+	    } 
+	} case
+    end % localscope
+} def
+
+%
+% - => (/usr/tmp/ps<currenttime>-<currentprocessid>)
+%
+/TmpFileName {
+    1 dict begin /name null def
+	() [
+	    (/usr/tmp/ps) 
+	    currenttime 30 string cvs
+	    (-)
+	    0 currentprocess 30 string cvs { add } forall 30 string cvs 
+	]  { append } forall 
+	/name exch def
+	name
+    end
+} def
+
+%
+% debug aids
+%
+
+% print out various path info
+/dbgprintpaths {
+gsave 
+    (currentpath: %t\t clippath: %\t clipcanvaspath: %\n) 
+    [
+	currentpath 
+	newpath clippath currentpath 
+	newpath clipcanvaspath currentpath 
+    ] dbgprintf
+grestore
+} def
+
+%+
+% <DisplayOnlyTxtFld>
+%
+% Function: A display only subclass of the TxtFld class.
+% 
+% Notes: this should override a lot more stuff than it does to make it
+% cheaper than a regular TxtFld . In fact DisplayOnlyTxtFld should 
+% probably Be TxtFld's Parent!! - MCH
+% 
+%-
+
+/DisplayOnlyTxtFld TxtFld
+[]
+classbegin
+
+/TFClassMap nulldict def
+/TFClassFMap nulldict def
+
+/new {
+    /new super send 
+    % set the cursor to be th arrow...
+    begin /ptr /ptr_m TFCanvas setstandardcursor currentdict end
+} def
+
+/input { pop } def
+/inserttext { pop } def
+/starteventmgr nullproc def
+
+classend def
+
+end % systemdict

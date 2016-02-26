@@ -1,0 +1,228 @@
+%!
+% From spectral!sjs@bellcore.com Wed Oct 11 01:22:21 1989
+% Date: 11 Oct 89 00:10:39 GMT
+% From: spectral!sjs@bellcore.com  (Stan Switzer)
+% Subject: A simple "graph" item
+% To: news-makers@brillig.umd.edu
+% 
+% Here's a simple "graph" item.
+% 
+% Just stuff it into "psh."  There's a test routine at the end.
+% 
+% Stan Switzer  sjs@bellcore.com
+% 
+% -------------------
+%
+% GraphItem: a simple "graph" item
+%
+% Copyright (C) 1989 by Stan Switzer. All rights reserved.
+% This program is provided for unrestricted use, provided that this 
+% copyright message is preserved. There is no warranty, and no author 
+% or distributer accepts responsibility for any damage caused by this 
+% program.
+%
+% S. J. Switzer  8/14/89  sjs@bellcore.com
+
+% GraphItem
+
+/GraphItem LabeledItem dictbegin
+    /MinX	       0    def
+    /MaxX	       0    def
+    /Nticks	       0    def
+    /Xlabels	       0    def
+    /MinY	       0    def
+    /MaxY	       0    def
+    /Yticks	       0    def
+    /Ylabels	       0    def
+    /GraphWidth	       0    def
+    /GraphHeight       0    def
+    /GraphX	       0    def
+    /GraphY	       0    def
+    /GraphD	       0    def
+    /dD		       0    def
+    /dL		       0    def
+    /TrackIndex	       0    def
+    /Overlay	       null def
+    /Array	       null def
+dictend classbegin
+    
+    %   minx maxx xticks xlabels
+    %   miny maxy yticks ylabels
+    %   label [ initial-values ] loc notifyproc parentcanvas => instance
+    /new {
+	/new super send begin
+	    /Array ItemObject def
+	    /Ylabels exch def
+	    /Yticks exch def
+	    /MaxY exch def
+	    /MinY exch def
+	    /Xlabels exch def
+	    /Xticks exch def
+	    /MaxX exch def
+	    /MinX exch def
+	    currentdict
+	end
+    } def
+    
+    /Xoff   23	 def
+    /Yoff   14	 def
+    /Tick   3	 def
+    
+    /reshape { % x y w h
+	/ItemHeight exch def /ItemWidth exch def
+	
+	LabelSize /LabelHeight exch def /LabelWidth exch def
+	
+	/ObjectWidth ItemWidth def
+	/ObjectHeight ItemHeight def
+	
+	AdjustItemSize
+	/ObjectWidth ItemWidth 2 ItemBorder mul sub def
+	ObjectLoc /Right eq ObjectLoc /Left eq or {
+	    /ObjectWidth ObjectWidth LabelWidth sub ItemGap sub def
+	} if
+	CalcObj&LabelXY
+	
+	/GraphWidth ObjectWidth Xoff sub def
+	/GraphHeight ObjectHeight Yoff sub def
+	/GraphX ObjectX Xoff add def
+	/GraphY ObjectY Yoff add def
+	/GraphD GraphWidth Array length 1 sub 1 max div def
+	
+	ItemWidth ItemHeight /reshape super send
+    } def
+    
+    /LabFont /Times-Roman findfont 10 scalefont def
+    
+    /PaintItem {
+	/PaintItem super send
+	ItemBorderColor setcolor
+	LabFont setfont
+	/dD GraphHeight currentfont fontascent sub Ylabels 1 add div def
+	/dL MaxY MinY sub Ylabels 1 add div def
+	0 1 Ylabels 1 add {
+	    ObjectX 2 add GraphY 2 index dD mul add cvi moveto
+	    dL mul MinY add (xxxx) cvs show
+	} for
+	/dD GraphWidth MaxX (xxxx) cvs stringwidth
+	pop sub Xlabels 1 add div def
+	/dL MaxX MinX sub Xlabels 1 add div def
+	0 1 Xlabels 1 add {
+	    GraphX 1 index dD mul add cvi ObjectY moveto
+	    dL mul MinX add (xxxx) cvs show
+	} for
+	/dD GraphHeight Yticks 1 add div def
+	0 1 Yticks 1 add {
+	    GraphX exch GraphY exch dD mul add cvi moveto
+	    Tick neg 0 rlineto stroke
+	} for
+	/dD GraphWidth Xticks 1 add div def
+	0 1 Xticks 1 add {
+	    GraphX exch dD mul add cvi GraphY moveto
+	    0 Tick neg rlineto stroke
+	} for
+
+	PaintGraph
+    } def
+    
+    /PaintGraph {
+	gsave ItemFillColor setcolor
+	    GraphX GraphY GraphWidth GraphHeight rectpath fill
+	grestore
+	GraphX GraphY GraphWidth GraphHeight rectpath stroke
+	% 2 setlinewidth 1 setlinequality
+	0 1 Array length 1 sub {
+	    dup IndexToX Array 2 index get ValToY
+	    2 index 0 eq { moveto } { 2 copy lineto stroke moveto } ifelse
+	    pop
+	} for
+    } def
+    /IndexToX { GraphX exch GraphD mul add cvi } def
+    /ValToY { MinY sub MaxY MinY sub div GraphHeight mul GraphY add cvi } def
+    
+    /DragIndex?	false def
+    
+    /ClientDown {
+	EventMgrDict /CurrentTextItem known {
+	    CurrentTextItem null ne {
+		/stoptext CurrentTextItem /ItemText get send
+		null SetCurrentTextItem
+	    } if
+	} if
+	CurrentEvent /XLocation get GraphX sub GraphD .5 mul add
+	GraphD div cvi 0 max Array length 1 sub min
+	/TrackIndex exch def
+	Overlay null eq {
+	    /Overlay currentcanvas createoverlay store
+	} if
+	ClientDrag
+    } def
+    /ClientDrag	{
+	Overlay setcanvas
+	erasepage
+        DragIndex? {  % Thanks, Don!
+	    TrackIndex % old
+	    CurrentEvent /XLocation get GraphX sub GraphD .5 mul add % old x
+	    GraphD div cvi 0 max Array length 1 sub min % old new
+
+	    2 copy eq { pop pop } {
+		dup 3 1 roll % new old new
+		2 copy sub 0 lt 1 -1 ifelse exch { % new first step last
+		    Array exch EventY put
+		} for % new
+		ItemBegin PaintGraph ItemEnd
+		/TrackIndex exch def %
+	    } ifelse
+	} if
+
+	TrackIndex 0 ne {
+	    TrackIndex 1 sub IndexToX Array TrackIndex 1 sub get ValToY moveto
+	} if
+	TrackIndex IndexToX CurrentEvent /YLocation get
+	GraphY max GraphY GraphHeight add min
+	% 2 copy
+	TrackIndex 0 ne { lineto } { moveto } ifelse
+	TrackIndex Array length 1 sub lt {
+	    TrackIndex 1 add IndexToX Array TrackIndex 1 add get ValToY
+	    lineto
+	} if
+	stroke
+	% LabFont setfont moveto EventY (xxxx) cvs cshow
+    } def
+    /ClientUp {
+	Overlay setcanvas
+	erasepage
+	Array TrackIndex EventY put
+	ItemBegin PaintGraph ItemEnd
+	NotifyUser
+	StopItem
+    } def
+	    
+    /EventY {
+	CurrentEvent /YLocation get GraphY sub GraphHeight div
+	0 max 1 min MaxY MinY sub mul MinY add
+    } def
+	    
+classend def
+
+/TestGraph {
+    /win currentcanvas /new DefaultWindow send def
+    {
+	10 10 200 150 reshape
+	/PaintClient { Items paintitems	} def
+	/FrameLabel ( GraphItem Demo ) def
+	ClientCanvas ClientFillColor
+    } win send
+    /fillcol exch def /can exch def
+    /Items dictbegin
+	/Graph 0 256 3 1 0 256 3 1
+	(Graph) [ 0 64 256 {} for ] /Top { } can
+	120 60 /new GraphItem send
+	10 10 /move 3 index send def
+    dictend def
+    Items { /ItemFillColor fillcol put pop } forall
+    /ItemMgr Items forkitems def
+    /map win send
+} def
+
+TestGraph

@@ -1,0 +1,180 @@
+XCOMM ##########################################################################
+XCOMM # SCCS_data: @(#) WcLib.tmpl	1.5 92/06/10 06:09:55
+XCOMM #
+
+/*
+ * Wcl Library Template
+ * Uses: LibraryName, and if defined, LibraryOptions and UseTableFromXp
+ * USRLIBDIR, INCDIR, SOWCREV, HEADERS, SRCS, OBJS
+ */
+
+   LIBRARY_NAME = LibraryName
+   INSTALLFLAGS = $(INSTINCFLAGS)
+       LINTLIBS = $(LINTXLIB)
+
+#if XRelease >= 50
+XCOMM # Wcl Library Template for X11R5
+XCOMM # 
+
+      LIBRARY_g = $(LIBRARY_NAME)$(DLX)
+      LIBRARY_p = $(LIBRARY_NAME)_p
+
+/* LibraryObjectRule which accepts cc options
+*/
+#define CustomLibraryObjectRule(options)				@@\
+all::									@@\
+	_DebuggedLibMkdir()						@@\
+	_ProfiledLibMkdir()						@@\
+	_SharedLibMkdir()						@@\
+									@@\
+.c.o:									@@\
+	_DebuggedObjCompile(options)					@@\
+	_ProfiledObjCompile(options)					@@\
+	_SharedObjCompile(options)					@@\
+	_NormalObjCompile(options)					@@\
+									@@\
+clean::									@@\
+	_DebuggedCleanDir()						@@\
+	_ProfiledCleanDir()						@@\
+	_SharedCleanDir()						@@\
+
+
+#ifdef LibraryOptions
+DEPENDFLAGS = LibraryOptions
+CustomLibraryObjectRule($(DEPENDFLAGS))
+#else
+LibraryObjectRule()
+#endif
+
+#if DoSharedLib
+#if DoNormalLib
+SharedLibraryTarget($(LIBRARY_NAME),$(SOWCREV),$(OBJS),shared,..)
+#else
+SharedLibraryTarget($(LIBRARY_NAME),$(SOWCREV),$(OBJS),.,.)
+#endif
+InstallSharedLibrary($(LIBRARY_NAME),$(SOWCREV),$(USRLIBDIR))
+#endif
+#if DoNormalLib
+NormalLibraryTarget($(LIBRARY_NAME),$(OBJS))
+InstallLibrary($(LIBRARY_NAME),$(USRLIBDIR))
+#endif
+#if DoProfileLib
+ProfiledLibraryTarget($(LIBRARY_NAME),$(OBJS))
+InstallLibrary($(LIBRARY_p),$(USRLIBDIR))
+#endif
+#if DoDebugLib
+DebuggedLibraryTarget($(LIBRARY_NAME),$(OBJS))
+InstallLibrary($(LIBRARY_g),$(USRLIBDIR))
+#endif
+
+LintLibraryTarget($(LIBRARY_NAME),$(SRCS))
+InstallLintLibrary($(LIBRARY_NAME),$(LINTLIBDIR))
+
+BuildIncludes($(HEADERS),$(LIBRARY_NAME),..)
+InstallMultiple($(HEADERS),$(INCDIR)/$(LIBRARY_NAME))
+
+DependTarget()
+
+NormalLintTarget($(SRCS))
+
+XCOMM # End of Wcl Library Template for X11R5
+#else
+XCOMM # Wcl Library Template for Pre-X11R5
+XCOMM # 
+
+/* This really does not work properly, but if your Imake configuration
+ * really cannot support the widget sets you have,
+ *
+ *		FIX YOUR IMAKE CONFIGURATION!
+ *
+ * I cannot do everything...  (hey, its been a long day)
+ */
+#ifdef LibraryOptions
+     CFLAGS = $(CDEBUGFLAGS) $(CCOPTIONS) $(ALLDEFINES) LibraryOptions
+DEPENDFLAGS = LibraryOptions
+#endif
+
+      LIBRARY_g = $(LIBRARY_NAME)$(DLX)
+      LIBRARY_p = $(LIBRARY_NAME)_p
+
+all::
+#if DoSharedLib
+# if DoDebugLib
+SharedAndDebuggedLibraryObjectRule()
+#define MySpecialRule(a,b,c) SpecialSharedAndDebuggedObjectRule(a,b,c)
+# else
+SharedLibraryObjectRule()
+#define MySpecialRule(a,b,c) SpecialSharedObjectRule(a,b,c)
+# endif
+#else
+# if DoDebugLib && DoProfileLib
+DebuggedAndProfiledLibraryObjectRule()
+#define MySpecialRule(a,b,c) SpecialDebuggedAndProfiledObjectRule(a,b,c)
+# else
+#  if DoDebugLib
+DebuggedLibraryObjectRule()
+#define MySpecialRule(a,b,c) SpecialDebuggedObjectRule(a,b,c)
+#  else
+#   if DoProfileLib
+ProfiledLibraryObjectRule()
+#define MySpecialRule(a,b,c) SpecialProfiledObjectRule(a,b,c)
+#   else
+NormalLibraryObjectRule()
+#define MySpecialRule(a,b,c) SpecialObjectRule(a,b,c)
+#   endif
+#  endif
+# endif
+#endif
+
+#ifndef SpecialLibObjectRule
+#define SpecialLibObjectRule(objs,deps,options) MySpecialRule(objs,deps,options)
+#endif
+
+#if HasSharedLibraries && DoSharedLib
+NormalSharedLibraryTarget($(LIBRARY_NAME),$(SOWCREV),$(OBJS))
+InstallSharedLibrary($(LIBRARY_NAME),$(SOWCREV),$(USRLIBDIR))
+#endif
+
+#if DoNormalLib
+NormalLibraryTarget($(LIBRARY_NAME),$(OBJS))
+InstallLibrary($(LIBRARY_NAME),$(USRLIBDIR))
+#endif
+
+LintLibraryTarget($(LIBRARY_NAME),$(SRCS))
+InstallLintLibrary($(LIBRARY_NAME),$(LINTLIBDIR))
+
+#if DoProfileLib
+ProfiledLibraryTarget($(LIBRARY_NAME),$(OBJS))
+InstallLibrary($(LIBRARY_p),$(USRLIBDIR))
+#endif
+
+#if DoDebugLib
+DebuggedLibraryTarget($(LIBRARY_NAME),$(OBJS))
+InstallLibrary($(LIBRARY_g),$(USRLIBDIR))
+#endif
+
+MakeDirectories(install,$(INCDIR)/$(LIBRARY_NAME))
+InstallMultiple($(HEADERS),$(INCDIR)/$(LIBRARY_NAME))
+BuildIncludes($(HEADERS),$(LIBRARY_NAME),..)
+
+DependTarget()
+
+NormalLintTarget($(SRCS))
+
+XCOMM # End of Wcl Library Template for Pre-X11R5
+#endif
+
+#ifdef UseTableFromXp
+/* Get Table sources before depending in "make World"
+*/
+includes:: Table.c TableLoc.c TableVec.c
+
+Table.c: ../Xp/Table.c
+	rm -f Table.c ; $(LN) ../Xp/Table.c .
+
+TableLoc.c: ../Xp/TableLoc.c
+	rm -f TableLoc.c ; $(LN) ../Xp/TableLoc.c .
+
+TableVec.c: ../Xp/TableVec.c
+	rm -f TableVec.c ; $(LN) ../Xp/TableVec.c .
+#endif

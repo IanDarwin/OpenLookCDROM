@@ -1,0 +1,624 @@
+   local                                                            PSVIEW(1)
+
+   NAME
+     psview - A PostScript file previewer and display server
+
+   SYNTAX
+     psview [switches] [file[.ps|.PS]]
+
+   DESCRIPTION
+
+     PsView is a PostScript file previewer. It can either use the Display
+     PostScript extension of DIGITAL's X11 server (Ultrix Worksystem Software
+     release 4.2 or higher) or the public-domain "ghostscript" PostScript
+     interpreter (release 2.4 or higher).
+
+     PsView is designed to work very much like the xdvi DVI file previewer.
+     The program works best on PostScript files that follow Adobe's
+     structuring conventions (PS-Adobe-2.0). Other PostScript files can also
+     be browsed, but then scrolling and paging backward are much slower.
+
+     The user gives commands to PsView using both the mouse and the keyboard.
+     These commands can control the size of the page, the way the page is fit
+     to the viewing window, the portion of the page selected for viewing, the
+     way one page is replaced by another, and many other options. These are
+     decribed in detail below. The "Help" and "?" keys give a quick on-line
+     summary of these commands.
+
+     If the input file is "-", PsView reads the PostScript file from its
+     standard input.
+
+     A special mode enables PsView to act as a PostScript display server (see
+     "STREAM MODE" below).
+
+     If something goes wrong, consult the "REMARKS", "BUGS" and "BUG
+     REPORTING" sections at the end of this manual page.
+
+   VIEWING MODES
+
+     PsView works in four different viewing modes. The first one, called
+     "full page mode", automatically adjusts the scale factor to make the
+     entire page fit in the window whenever the window is resized. This mode
+     is the default mode at startup.
+
+     The second one, called "full width mode", adjusts the scale factor to
+     make the page occupy the window's full width.
+
+     The third one, called "full height mode", adjusts the scale factor to
+     make the page occupy the window's full height.
+
+     Finally, "fixed scale mode" maintains the scale factor when the window
+     is resized.
+
+     Full page mode and fixed scale mode will automatically resize (shrink)
+     the window to reflect the document's aspect ratio, unless the
+     "fixedGeometry" X resource is set to "yes", in which case, PsView will
+     never attempt to change the window's size and position.
+
+     Note that the size of the window cannot exceed the size of the screen.
+
+     Viewing modes are selected through the "s", "f", "F", "w", "W", "h" and
+     "H" commands (see "COMMANDS" below).
+
+   BOUNDING BOXES
+
+     Every structured PostScript file has a bounding box defined in its
+     prologue.  PsView uses this bounding box to fit the page to the size of
+     the window/screen. This bounding box is valid for the entire document.
+     When the document has no bounding box, an A4 page format is assumed.
+
+     The document's default bounding box can be overridden by using the "-b"
+     and "-B" command line switches (see below). It can also be changed
+     dynamically by selecting part of the document using the mouse and
+     holding down the "SHIFT" key. Selecting a portion of the document
+     without holding down the "SHIFT" key displays, in the window's title
+     bar, the bounding box corresponding to the selected rectangle, but does
+     not change the document's bounding box. When the bounding box is
+     changed, the scale factor is recomputed, full page mode is automatically
+     turned on, and the window is refitted on the entire screen (i.e.  the
+     window is zoomed to the maximum size permitted by the new bounding box).
+
+     Bounding boxes changes are kept in a stack. You can revert to a previous
+     bounding box by using the "r" (revert) command (see below for a detailed
+     description of this command). The "SHIFT-DRAG" action can therefore be
+     used as a (multi-level) zoom.
+
+     Selecting a region with your mouse while holding down the "CONTROL" key
+     creates a new "Post-It" window sized and zoomed to the selected region.
+     This command forks a new PsView process.
+
+     You can save the current bounding box of a file by using the "S" (save)
+     command. A backup file named "file~" will automatically be generated in
+     this case, unless the "backup" X resource is set to "no". Note that
+     saving a bounding box does not change the way your document is printed,
+     since a bounding box is only a PostScript commment. This feature can be
+     used to select part of a figure for inclusion in a TeX/LaTeX document
+     using the "\psfig" macro. Moreover, when you examine the file again
+     using PsView, the new bounding box will be used.
+
+   ROTATION
+
+     It is possible to rotate the document by an arbitrary angle. You can
+     either use the "-R" switch when starting PsView or change that angle
+     dynamically using the "R" command (see "COMMANDS" below). Note that the
+     angles are always specified in degrees and clockwise.
+
+   UPDATING
+
+     PsView automatically checks the PostScript file every second, and
+     rereads it if it has changed. This way, you can launch PsView once and
+     regenerate the file as you wish without losing your current settings.
+     There is also a "U" (update) command to refresh the window.
+
+     This auto update feature can be disabled by using the "u" command, the
+     "-u" switch, or the "autoUpdate" X resource (see "X RESOURCES" below).
+     When "auto update" mode is disabled, "Up to date" is displayed in the
+     title bar while the file is up to date, and "Out of date" is displayed
+     when the file becomes out of date. When "autoUpdate" is disabled, you
+     can reread the file by using the "u" command twice.
+
+     Note that since there is no clean way under Ultrix to know that a
+     process is accessing a file, PsView attempts to "guess" that a process
+     has finished updating a file by waiting for the modification time to
+     stabilize. This might fail if the process does not write the file
+     continuously. By default, PsView checks the modification time every two
+     seconds. If this delay is too short, it can be changed through the "-D"
+     switch or the "updateDelay" X resource (see below).
+
+     In any case, you are advised to update your PostScript files atomically,
+     in which case you can safely set the update delay to 0. For instance,
+     when generating files with "dvips", you should do the following:
+
+     %dvips file.dvi -o tmp.ps
+     %mv tmp.ps file.ps
+
+   DRAWING MODES
+
+     By default, PsView draws directly into the window, so that whenever the
+     window is partially obscured, the entire page has to be regenerated by
+     the PostScript interpreter. This mode is called "watch progress" mode,
+     and is the default mode. It is very fast and "light".
+
+     There is also another mode, called "pixmap mode", that uses a pixmap
+     buffer and therefore avoids update events. This mode is handy for files
+     that take a long time to print, and is mandatory for unstructured files
+     since redrawing the current page of an unstructured file would require
+     reprocessing the document from the beginning. You should be aware that
+     this mode consumes a lot of memory and might cause your X server to
+     grow. The default mode can be specified by the "mode" X resource and
+     overridden by the "-W" switch, which toggles the default mode.
+
+     Note that PsView never asks the X server to use backing store in "watch
+     progress" mode unless the "backingStore" X resource is set to "no"
+     (because of a bug in the DPS extension).
+
+   NIFTINESS
+
+     PostScript prologues can be specified through the "-I" and "-J" switches
+     or through the "includeFile" X resource.  A prologue can be any
+     PostScript file, and doesn't have to begin with "%!". In stream mode,
+     the prologues are sent to the PostScript interpreter before printing the
+     first page, and every time the page has to be reprocessed. Note that
+     every permanent modification of the transformation matrix and every
+     function definition should be placed in the prologues.
+
+     The presentation mode ("-P" switch) can be used to display slides with a
+     nice fade-out effect. Try it, you'll like it! In this mode, the left and
+     right mouse buttons are used to go to the previous and next pages, and
+     the middle mouse button is used to change the document's bounding box.
+     Note: this mode turns on "pixmap mode" to allow the fade-out effect.
+     Different effects can be specified (-P1 or -P, -P2, -P3). The default is
+     -P1.
+
+     PsView automatically adds scroll bars when the entire page is not
+     visible in the window. By definition, there are no scroll bars in full
+     page mode, since the scale factor is adjusted so that the entire
+     document fits in the window. To have scroll bars, you should therefore
+     select one of the three other PsView modes using one of the "s", "w",
+     "W", "h" and "H" commands.
+
+     In pixmap mode, PsView makes a smooth scrolling. When the scale factor
+     is important, this feature can consume a lot of memory and cause your X
+     server to grow. It can be disabled by setting the "smoothScrolling" X
+     resource to "no", through the "-L" switch, or via the "L" command.  Note
+     that smooth scrolling is automatically disabled when the server is
+     unable to allocate the requested pixmap.
+
+     The "constrainedGeometry" X resource can be used to force PsView to use
+     the startup geometry as the default geometry every time the window is
+     refitted to the entire screen ("F", "W", "H", "z", "R", and bounding box
+     selection commands).
+
+     The "path" resource specifies a path to scan when opening files. The
+     current working directory is always searched first. For each directory,
+     PsView attempts to open the files "file", "file.ps" and "file.PS".
+
+     PsView can be customized using the X11 resources mechanism. These
+     resources override the program's defaults, and can themselves be
+     overridden using command line switches. Some boolean switches act as a
+     toggle with respect to the default (either the program's default or the
+     resource's default). For every toggle switch, such as "-C" for instance,
+     an absolute value can be specified by specifying either "-C+" or "-C-".
+
+     See the "X RESOURCES" section of the manual page below.
+
+   SWITCHES
+
+     -H        PsView on-line help.
+
+     -d <dpy>  Specifies the X display name.
+
+     -e <engine>
+               Specifies the PostScript "engine". It can be either "dps"
+               (Display PostScript) or "gs" (ghostscript). The default engine
+               can be changed through the "engine" X resource. If you specify
+               the ghostscript engine, it may fail if its initialization
+               files are not where it was built to look for them, so it may
+               not work for you simply to copy ghostscript from another
+               system; you may have to rebuild it or execute psview in the
+               directory where ghostscript's initialization files are found.
+
+     -g <geometry>
+               Specifies the X geometry of the document's window, using the
+               usual notation "WxH+X0+Y0" (negative coordinates are not
+               supported). When the "constrainedGeometry" X resource is set,
+               this geometry is also used every time the window is fitted to
+               the entire screen.
+
+     -t        Specifies the window's title (default = file name).
+
+     -p <num>  Open the document at page <num>.
+
+     -b <x0> <y0> <x1> <y1>
+               Specifies the document's bounding box. This option overrides
+               any bounding box specified within the document.
+
+     -B <style name>
+               Forces the use of one of the bounding boxes specified in the
+               "boundingBox" resource. Different bounding boxes can be
+               specified using this resource, and they can be referred to
+               using symbolic names. The syntax for each entry is: <x0> <y0>
+               <x1> <y1> (<style name>).
+
+     -R <angle>
+               Rotate the document by <angle> degrees clockwise.
+
+     -s <scale>
+               Start in fixed scale mode with the specified scale factor.
+
+     -f        Start in full page mode.
+
+     -w        Start in full width mode.
+
+     -h        Start in full height mode.
+
+     -i        Replace bitmap images with crossed out boxes. This (unsafe)
+               switch can be used to speed up the display. It acts as a
+               toggle with respect to the "bitmapImages" X resource.
+
+     -W        Disable the watch progress mode. This switch acts as a toggle
+               with respect to the "watchProgress" X resource.
+
+     -G        Fixed geometry. This switch acts as a toggle with respect to
+               the "fixedGeometry" X resource.
+
+     -L        Disable smooth scrolling. This switch acts as a toggle with
+               respect to the "smoothScrolling" X resource.
+
+     -U        Force unstructured mode.
+
+     -P[123]   Presentation mode. The left and right mouse buttons now page
+               backward and forward through the document. The middle mouse
+               button is used to change the bounding box of the document and
+               create "Post-It" windows. This switch automatically turns the
+               "watchProgress" mode off to enable the fade-out effect while
+               moving from one page to another.
+
+     -C        Clear page mode. When paging backward or forward under
+               structured mode, clears the current page immediately, before
+               drawing the new page. This mode can only be activated with the
+               "pixmap mode". The switch acts as a toggle with respect to the
+               "clearPage" X resource.
+
+     -u        Inhibit the automatic update when the PostScript file changes.
+               This switch acts as a toggle with respect to the "autoUpdate"
+               X resource.
+
+     -D <delay>
+               Automatic file update delay.
+
+     -S <socket>
+               Specifies a UNIX socket name to read from (stream mode).
+
+     -I <prologue>
+               Specifies a PostScript prologue to be sent before the
+               document's prologue.
+
+     -J <prologue>
+               Specifies a PostScript prologue to be sent after the
+               document's prologue.
+
+     -q        Exit PsView at the end of the input stream (stream mode only).
+
+     -Q        Exit PsView when parent process dies.
+
+     -v        Verbose mode. PostScript messages are printed on stderr.
+
+     -l        Create the window below its siblings.
+
+     -# <window id>
+               Create a child window of window <window id>. The window id can
+               be specified either in decimal or hexadecimal format.
+
+     -o <file> Save the pixmap to the specified ppm file.
+
+   COMMANDS
+
+     The user can interact with PsView using the keyboard. Here are the
+     keyboard commands.
+
+     HELP, ?   On line help.
+
+     q         Quit PsView immediately.
+
+     Q         Quit PsView after every event has been processed. Useful in
+               batch mode.
+
+     NEXT_SCREEN, n
+               Next page. An optional prefix <n> can be specified to jump
+               ahead <n> pages.
+
+     PREV_SCREEN, p, b
+               Previous page. An optional prefix <n> can be specified to jump
+               backward <n> pages.
+
+     LEFT, RIGHT, UP, DOWN (arrow keys)
+               Scrolling. You can also scroll down using the space bar and
+               the carriage return keys. Any of these keys will make PsView
+               jump to the next (resp.  previous) page when the bottom (resp.
+               top) of the page is reached.
+
+     HOME      Scroll to the upper left corner of the current page.
+
+     <num> g   Go to page <num>.
+
+     g         Go to the last page.
+
+     SELECT, s Turn on fixed scale mode using the current scale factor.
+
+     <num> s   Turn on fixed scale mode with scale factor <num>.
+
+     f         Turn on full page mode, and fit the page to the current
+               window.
+
+     w         Turn on full width mode, and fit the page to the current
+               window.
+
+     h         Turn on full height mode, and fit the page to the current
+               window.
+
+     F         Turn on full page mode, and fit the page to the screen.
+
+     W         Turn on full width mode, and fit the page to the screen.
+
+     H         Turn on full height mode, and fit the page to the screen.
+
+     z         Zoom out the current bounding box by a factor of two relative
+               to the center of the image, turn on full page mode, and fit
+               the page to the screen. This zoom can be canceled by the "r"
+               command.
+
+     <angle> R Rotate to <angle> degrees clockwise, turn on full page mode
+               and fit the page to the screen.
+
+     r         Revert to the former settings (i.e. document's bounding box,
+               window's size and location, scale factor, viewing mode and
+               rotation angle) after resizing a window, changing the bounding
+               box via a "SHIFT-DRAG" or a "z" command, or applying one of
+               the "<angle> R", "<num> s", "f", "w", "h", "F", "W" or "H"
+               configuration commands. Several such commands can be stacked.
+
+     CTRL-R    Revert to the former bounding box (fast revert).
+
+     ESCAPE, t <title>
+               Change the window's title. Hit "ESCAPE" or "t", enter the
+               title, and then hit "ESCAPE" or "RETURN".
+
+     S         Save the PostScript document with the current bounding box.
+               Note that the rotation angle and the scale factor are not
+               saved.
+
+     CTRL-S    Save the pixmap corresponding to the curent window in ppm
+               format (portable pixmap file format). The file names are
+               "Pixmap000.ppm", "Pixmap001.ppm". A different name can be
+               specified through the "pixmapFileName" X resource.
+
+     CTRL-P    Enter a new print command. Enter the command, using "%s" as
+               the PostScript file name, and then hit "ESCAPE" or "RETURN".
+
+     P         Print the current page (structured files only).
+
+     <num> P   Print <num> pages starting at the current page (structured
+               files only).
+
+     u         Toggle the "auto update" mode.
+
+     =         Toggle the "watch progress" mode.
+
+     e         Select next rendering engine.
+
+     L         Toggle the "smooth scrolling" mode.
+
+     G         Toggle the "fixed geometry" mode.
+
+     U         Redisplay the current page (and reread the file if necessary).
+
+     d         Switch the PsView window to the other screen (if any).
+
+     D         Duplicate the PsView window. This forks a new process.
+
+     i         Enable/disable bitmap images ("bitmapImages" X resource
+               toggle).
+
+     v         Display PsView's version.
+
+   X RESOURCES
+
+     PsView defaults can be specified using the following resources
+     (defaults, where they exist, in brackets []):
+
+             PsView.autoUpdate:           [yes] |  no
+             PsView.backingStore:          yes  | [no]
+             PsView.backup:               [yes] |  no
+             PsView.bitmapImages:         [yes] |  no
+             PsView.clearPage:            [yes] |  no
+             PsView.clip:                  yes  | [no]
+             PsView.constrainedGeometry:   yes  | [no]
+             PsView.engine:               [dps] |  gs
+             PsView.fixedGeometry:         yes  | [no]
+             PsView.smoothScrolling:      [yes] |  no
+             PsView.verbose:               yes  | [no]
+             PsView.watchProgress:        [yes] |  no
+             PsView.mode:                 [fullPage] | fullHeight |
+                                           fullWidth | fixedScale <scale>
+             PsView.pixmapFileName:       <pixmap file name>     [Pixmap]
+             PsView.postScriptFileName:   <PostScript file name> [PostScript]
+             PsView.printCommand:         <print command>        [lpr %s]
+             PsView.scrollBarWidth:       <width>                [20]
+             PsView.updateDelay:          <delay>                [3]
+             PsView.boundingBox:          x0 y0 x1 y1 (<style name>) ...
+             PsView.geometry:             <geometry>
+             PsView.gs:                   <ghostscript executable>
+             PsView.helpFile:             <help file>
+             PsView.includeFile:          <prologue file>
+             PsView.path:                 <colon-separated path>
+
+     If the "clip" resource is set to "yes", the page is clipped to the
+     document's bounding box (useful for rotated documents). This option is
+     not available with ghostscript. Note that the location of the ghostscript
+     executable, the help file, and the prologue file may be private or
+     site-dependent. The print command is site-dependent (-P, etc.).
+
+   STREAM MODE
+
+     When no file name is specified at startup, or when a UNIX socket name is
+     specified through the "-S" switch, PsView enters a special mode called
+     "stream mode". This mode is meant to be used in conjunction with other
+     programs to make PsView act as a PostScript display server. In this
+     mode, every input datum (read either from the standard input or from the
+     specified socket) is incrementally sent to the PostScript interpreter.
+     When reading from a socket, PsView first deletes the socket if it
+     already exists, creates a new socket, waits for a client to connect, and
+     finally creates the display window.
+
+     Every "%%BoundingBox" specification is ignored in this mode, so the only
+     way to specify a bounding box is either to use the "-b" or "-B"
+     switches, or to interactively select a bounding box with "SHIFT-DRAG".
+     The default bounding box corresponds to an A4 page format.
+
+     When a "showpage" is encountered, the page is erased, and the PostScript
+     description of the current page internally kept by PsView is discarded.
+     This mode is therefore single-page and acts as a real printer. Note that
+     the "showpage" command be sent literally and musn't be called from
+     another PostScript procedure. Finally, note that each atomic "write" to
+     the input stream must be terminated by a complete PostScript token
+     (i.e., word).
+
+     "Post-It" windows are not supported under this mode for obvious reasons.
+
+     Since streams are anonymous, the "S" (save) command will save the
+     current page description in files named "PostScript000.ps",
+     "PostScript001.ps". A different name can be specified through the
+     "postScriptFileName" X resource.
+
+     Finally, you can force PsView to quit when the end of the input stream
+     is encountered through the "-q" (quit) switch.
+
+   CHILD MODE
+
+     A special mode enables PsView to create a child window of a given window
+     ("-#" switch). Under this mode, PsView adjusts the size of its window to
+     the size of its mother window and keeps all the information about its
+     internal state on the title bar ("WM_NAME" property) of its window, as
+     follows:
+
+     <m***>      PsView message or warning
+     <fp>, <fw>,
+     <fh>, <fs>  Full page, full width, full height or fixed scale mode
+     <s***>      Scale factor
+     <b***>      Bounding box
+     <R***>      Rotation angle
+     <f***>      File pathname (none in stream mode)
+     <P***>      Page number
+     <U+>, <U->  AutoUpdate mode
+     <W+>, <W->  Watch progress
+     <I+>, <I->  Bitmap images
+     <L+>, <L->  Printable file
+     <S->, <S+>  Smooth scrolling
+     <r->, <r+>  "Revert stack" non empty
+     <p->, <p+>  Previous page?
+     <n->, <n+>  Next page?
+
+   REMARKS
+
+     PsView should work fine with properly structured files. You can work
+     with unstructured PostScript files, but the results are not guaranteed.
+     In particular, the last page of a PostScript document shouldn't close
+     the working dictionary ("end" command) before the "%%Trailer" comment,
+     or some of the prologue-defined commands might become undefined, in
+     which case you would get the following message:
+
+     %%[ Error: undefined; OffendingCommand: <command> ]%%
+
+     Files starting with "PS-Adobe-1.0" are considered unstructured by
+     PsView. But in many cases, you can get a structured file just by
+     changing the "1.0" suffix into "2.0". This will be much more pleasant to
+     work with.
+
+     Finally, PsView interacts a lot with the window manager to find out the
+     size of the title bar and the window's border width, and attempts to
+     enforce its desired window's placement. This implies that PsView is not,
+     strictly speaking, a well behaved X application.  Therefore, PsView
+     should not be used without running a not-too-exotic, ICCCM-compliant
+     window manager. PsView has has been successfully tested under the
+     following window managers: mwm, twm, tvtwm, gwm and dxwm. Note that
+     since dxwm doesn't allow applications to iconify/deiconify windows,
+     PsView will always starts iconified under dxwm.
+
+   BUGS
+
+     You should be aware that the "clippath" operator in a Display PostScript
+     context (as opposed to a printer context) will return a path
+     corresponding to the current window, but not the path corresponding to
+     the page. Therefore, well behaved PostScript documents should avoid
+     using "clippath" to determine the page size of the printing device, and
+     "intelligent" documents trying to automatically adjust their scale
+     factor and position to the page size will not behave as expected when
+     browsed using PsView. In particular, some "troff" prologues use the
+     "clippath" operator. In such a case, try changing the "/useclippath true
+     def" line into "/useclippath false def", or create a file "clippath.ps"
+     containing:
+
+          /clippath {newpath 0 0 moveto 0 800 lineto 550 800 lineto 550 0
+          lineto closepath} bind def
+
+     and include it in the prologue:
+
+          psview -I clippath foo.ps
+
+     If your document prints fine but cannot be correctly browsed using
+     PsView, it is almost certainly the case that the PostScript is not
+     properly structured. There is unfortunately almost nothing that can be
+     done automatically to correct this. For instance, the following ill-
+     behaved structured file will print correctly, but the scale factor will
+     double every time the window is refreshed.
+
+     %!PS-Adobe-2.0
+     %%BoundingBox: 0 0 100 100
+     %%Page: 1 1
+       2 2 scale
+       0 0 moveto 50 50 lineto stroke
+     %%Trailer
+
+     Note that this file will behave correctly under the "unstructured mode"
+     ("-U" switch), since a new Display PostScript context will be started
+     every time the page is reprocessed. To make this file behave correctly
+     under the "structured mode", a save/restore pair should be added at the
+     beginning and at the end of the page description, as follows:
+
+     %!PS-Adobe-2.0
+     %%BoundingBox: 0 0 100 100
+     %%Page: 1 1
+     /SavedState save def
+       2 2 scale
+       0 0 moveto 50 50 lineto stroke
+     SavedState restore
+     %%Trailer
+
+   BUG REPORTING
+
+     If PsView crashes your X server (and your working session for that
+     matter), chances are that this is not PsView's fault but rather a server
+     bug. These bugs should be reported to the X server developers.
+
+     Please make sure that your PostScript file is not faulty before sending
+     a bug report. A good way to do this is to run PsView on a PostScript
+     file generated by a different tool ("dvips" is a good candidate).
+
+   SEE ALSO
+
+     xpsview(1), pscommand(1), psfit(1), psprint(1), psslides(1)
+
+     PostScript Language Reference Manual
+
+     PostScript Language Tutorial and Cookbook
+
+   COPYRIGHT NOTICE
+
+     PostScript is a trademark of Adobe Systems Incorporated.
+
+   AUTHOR
+
+     Name:         Francois Bourdoncle
+     Organization: DIGITAL Paris Research Laboratory
+     Email:        bourdoncle@prl.dec.com

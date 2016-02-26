@@ -1,0 +1,658 @@
+From: tmatimar@isgtec.com (Ted Timar)
+Newsgroups: comp.unix.questions,comp.unix.shell,comp.answers,news.answers
+Subject: Unix - Frequently Asked Questions (4/7) [Frequent posting]
+Date: 8 May 1995 11:28:00 GMT
+Organization: ISG Technologies, Inc
+Approved: news-answers-request@MIT.Edu
+Expires: 5 Jun 1995 11:27:28 GMT
+Message-ID: <unix-faq/faq/part4_799932448@rtfm.mit.edu>
+
+Archive-name: unix-faq/faq/part4
+Version: $Id: part4,v 2.7 1995/03/28 14:15:14 tmatimar Exp $
+
+These seven articles contain the answers to some Frequently Asked
+Questions often seen in comp.unix.questions and comp.unix.shell.
+Please don't ask these questions again, they've been answered plenty
+of times already - and please don't flame someone just because they may
+not have read this particular posting.  Thank you.
+
+This collection of documents is Copyright (c) 1994, Ted Timar, except
+Part 6, which is Copyright (c) 1994, Pierre Lewis and Ted Timar.
+All rights reserved.  Permission to distribute the collection is
+hereby granted providing that distribution is electronic, no money
+is involved, reasonable attempts are made to use the latest version
+and all credits and this copyright notice are maintained.
+Other requests for distribution will be considered.  All reasonable
+requests will be granted.
+
+All information here has been contributed with good intentions, but
+none of it is guaranteed either by the contributors or myself to be
+accurate.  The users of this information take all responsibility for
+any damage that may occur.
+
+Many FAQs, including this one, are available on the archive site
+rtfm.mit.edu in the directory pub/usenet/news.answers.
+The name under which a FAQ is archived appears in the "Archive-Name:"
+line at the top of the article.  This FAQ is archived as
+"unix-faq/faq/part[1-7]".
+
+These articles are divided approximately as follows:
+
+      1.*) General questions.
+      2.*) Relatively basic questions, likely to be asked by beginners.
+      3.*) Intermediate questions.
+      4.*) Advanced questions, likely to be asked by people who thought
+           they already knew all of the answers.
+      5.*) Questions pertaining to the various shells, and the differences.
+      6.*) An overview of Unix variants.
+      7.*) An comparison of configuration management systems (RCS, SCCS).
+
+This article includes answers to:
+
+      4.1)  How do I read characters from a terminal without requiring the user
+              to hit RETURN?
+      4.2)  How do I check to see if there are characters to be read without
+              actually reading?
+      4.3)  How do I find the name of an open file?
+      4.4)  How can an executing program determine its own pathname?
+      4.5)  How do I use popen() to open a process for reading AND writing?
+      4.6)  How do I sleep() in a C program for less than one second?
+      4.7)  How can I get setuid shell scripts to work?
+      4.8)  How can I find out which user or process has a file open or is using
+            a particular file system (so that I can unmount it?)
+      4.9)  How do I keep track of people who are fingering me?
+      4.10) Is it possible to reconnect a process to a terminal after it has
+            been disconnected, e.g. after starting a program in the background
+            and logging out?
+      4.11) Is it possible to "spy" on a terminal, displaying the output
+            that's appearing on it on another terminal?
+
+If you're looking for the answer to, say, question 4.5, and want to skip
+everything else, you can search ahead for the regular expression "^4.5)".
+
+While these are all legitimate questions, they seem to crop up in
+comp.unix.questions or comp.unix.shell on an annual basis, usually
+followed by plenty of replies (only some of which are correct) and then
+a period of griping about how the same questions keep coming up.  You
+may also like to read the monthly article "Answers to Frequently Asked
+Questions" in the newsgroup "news.announce.newusers", which will tell
+you what "UNIX" stands for.
+
+With the variety of Unix systems in the world, it's hard to guarantee
+that these answers will work everywhere.  Read your local manual pages
+before trying anything suggested here.  If you have suggestions or
+corrections for any of these answers, please send them to to
+tmatimar@isgtec.com.
+
+----------------------------------------------------------------------
+
+Subject: How do I read characters ... without requiring the user to hit RETURN?
+Date: Thu Mar 18 17:16:55 EST 1993
+
+4.1)  How do I read characters from a terminal without requiring the user
+      to hit RETURN?
+
+      Check out cbreak mode in BSD, ~ICANON mode in SysV.
+
+      If you don't want to tackle setting the terminal parameters
+      yourself (using the "ioctl(2)" system call) you can let the stty
+      program do the work - but this is slow and inefficient, and you
+      should change the code to do it right some time:
+
+      #include <stdio.h>
+      main()
+      {
+            int c;
+
+            printf("Hit any character to continue\n");
+            /*
+             * ioctl() would be better here; only lazy
+             * programmers do it this way:
+             */
+            system("/bin/stty cbreak");        /* or "stty raw" */
+            c = getchar();
+            system("/bin/stty -cbreak");
+            printf("Thank you for typing %c.\n", c);
+
+            exit(0);
+      }
+
+      Several people have sent me various more correct solutions to
+      this problem.  I'm sorry that I'm not including any of them here,
+      because they really are beyond the scope of this list.
+
+      You might like to check out the documentation for the "curses"
+      library of portable screen functions.  Often if you're interested
+      in single-character I/O like this, you're also interested in
+      doing some sort of screen display control, and the curses library
+      provides various portable routines for both functions.
+
+------------------------------
+
+Subject: How do I check to see if there are characters to be read ... ?
+Date: Thu Mar 18 17:16:55 EST 1993
+
+4.2)  How do I check to see if there are characters to be read without
+      actually reading?
+
+      Certain versions of UNIX provide ways to check whether characters
+      are currently available to be read from a file descriptor.  In
+      BSD, you can use select(2).  You can also use the FIONREAD ioctl,
+      which returns the number of characters waiting to be read, but
+      only works on terminals, pipes and sockets.  In System V Release
+      3, you can use poll(2), but that only works on streams.  In Xenix
+      - and therefore Unix SysV r3.2 and later - the rdchk() system call
+      reports whether a read() call on a given file descriptor will block.
+
+      There is no way to check whether characters are available to be
+      read from a FILE pointer.  (You could poke around inside stdio
+      data structures to see if the input buffer is nonempty, but that
+      wouldn't work since you'd have no way of knowing what will happen
+      the next time you try to fill the buffer.)
+
+      Sometimes people ask this question with the intention of writing
+            if (characters available from fd)
+                    read(fd, buf, sizeof buf);
+      in order to get the effect of a nonblocking read.  This is not
+      the best way to do this, because it is possible that characters
+      will be available when you test for availability, but will no
+      longer be available when you call read.  Instead, set the
+      O_NDELAY flag (which is also called FNDELAY under BSD) using the
+      F_SETFL option of fcntl(2).  Older systems (Version 7, 4.1 BSD)
+      don't have O_NDELAY; on these systems the closest you can get to
+      a nonblocking read is to use alarm(2) to time out the read.
+
+------------------------------
+
+Subject: How do I find the name of an open file?
+Date: Thu Mar 18 17:16:55 EST 1993
+
+4.3)  How do I find the name of an open file?
+
+      In general, this is too difficult.  The file descriptor may
+      be attached to a pipe or pty, in which case it has no name.
+      It may be attached to a file that has been removed.  It may
+      have multiple names, due to either hard or symbolic links.
+
+      If you really need to do this, and be sure you think long
+      and hard about it and have decided that you have no choice,
+      you can use find with the -inum and possibly -xdev option,
+      or you can use ncheck, or you can recreate the functionality
+      of one of these within your program.  Just realize that
+      searching a 600 megabyte filesystem for a file that may not
+      even exist is going to take some time.
+
+------------------------------
+
+Subject: How can an executing program determine its own pathname?
+Date: Thu Mar 18 17:16:55 EST 1993
+
+4.4)  How can an executing program determine its own pathname?
+
+      Your program can look at argv[0]; if it begins with a "/", it is
+      probably the absolute pathname to your program, otherwise your
+      program can look at every directory named in the environment
+      variable PATH and try to find the first one that contains an
+      executable file whose name matches your program's argv[0] (which
+      by convention is the name of the file being executed).  By
+      concatenating that directory and the value of argv[0] you'd
+      probably have the right name.
+
+      You can't really be sure though, since it is quite legal for one
+      program to exec() another with any value of argv[0] it desires.
+      It is merely a convention that new programs are exec'd with the
+      executable file name in argv[0].
+
+      For instance, purely a hypothetical example:
+        
+        #include <stdio.h>
+        main()
+        {
+            execl("/usr/games/rogue", "vi Thesis", (char *)NULL);
+        }
+
+      The executed program thinks its name (its argv[0] value) is
+      "vi Thesis".   (Certain other programs might also think that
+      the name of the program you're currently running is "vi Thesis",
+      but of course this is just a hypothetical example, don't
+      try it yourself :-)
+
+------------------------------
+
+Subject: How do I use popen() to open a process for reading AND writing?
+Date: Thu Mar 18 17:16:55 EST 1993
+
+4.5)  How do I use popen() to open a process for reading AND writing?
+
+      The problem with trying to pipe both input and output to an
+      arbitrary slave process is that deadlock can occur, if both
+      processes are waiting for not-yet-generated input at the same
+      time.  Deadlock can be avoided only by having BOTH sides follow a
+      strict deadlock-free protocol, but since that requires
+      cooperation from the processes it is inappropriate for a
+      popen()-like library function.
+
+      The 'expect' distribution includes a library of functions that a
+      C programmer can call directly.  One of the functions does the
+      equivalent of a popen for both reading and writing.  It uses ptys
+      rather than pipes, and has no deadlock problem.  It's portable to
+      both BSD and SV.  See the next answer for more about 'expect'.
+
+------------------------------
+
+Subject: How do I sleep() in a C program for less than one second?
+Date: Thu Mar 18 17:16:55 EST 1993
+
+4.6)  How do I sleep() in a C program for less than one second?
+
+      The first thing you need to be aware of is that all you can
+      specify is a MINIMUM amount of delay; the actual delay will
+      depend on scheduling issues such as system load, and could be
+      arbitrarily large if you're unlucky.
+
+      There is no standard library function that you can count on in
+      all environments for "napping" (the usual name for short
+      sleeps).  Some environments supply a "usleep(n)" function which
+      suspends execution for n microseconds.  If your environment
+      doesn't support usleep(), here are a couple of implementations
+      for BSD and System V environments.
+
+      The following code is adapted from Doug Gwyn's System V emulation
+      support for 4BSD and exploits the 4BSD select() system call.
+      Doug originally called it 'nap()'; you probably want to call it
+      "usleep()";
+
+      /*
+            usleep -- support routine for 4.2BSD system call emulations
+            last edit:  29-Oct-1984     D A Gwyn
+      */
+
+      extern int        select();
+
+      int
+      usleep( usec )                            /* returns 0 if ok, else -1 */
+            long                usec;           /* delay in microseconds */
+            {
+            static struct                       /* `timeval' */
+                    {
+                    long        tv_sec;         /* seconds */
+                    long        tv_usec;        /* microsecs */
+                    }   delay;          /* _select() timeout */
+
+            delay.tv_sec = usec / 1000000L;
+            delay.tv_usec = usec % 1000000L;
+
+            return select( 0, (long *)0, (long *)0, (long *)0, &delay );
+            }
+
+      On System V you might do it this way:
+
+      /*
+      subseconds sleeps for System V - or anything that has poll()
+      Don Libes, 4/1/1991
+
+      The BSD analog to this function is defined in terms of
+      microseconds while poll() is defined in terms of milliseconds.
+      For compatibility, this function provides accuracy "over the long
+      run" by truncating actual requests to milliseconds and
+      accumulating microseconds across calls with the idea that you are
+      probably calling it in a tight loop, and that over the long run,
+      the error will even out.
+
+      If you aren't calling it in a tight loop, then you almost
+      certainly aren't making microsecond-resolution requests anyway,
+      in which case you don't care about microseconds.  And if you did,
+      you wouldn't be using UNIX anyway because random system
+      indigestion (i.e., scheduling) can make mincemeat out of any
+      timing code.
+
+      Returns 0 if successful timeout, -1 if unsuccessful.
+
+      */
+
+      #include <poll.h>
+
+      int
+      usleep(usec)
+      unsigned int usec;                /* microseconds */
+      {
+            static subtotal = 0;        /* microseconds */
+            int msec;                   /* milliseconds */
+
+            /* 'foo' is only here because some versions of 5.3 have
+             * a bug where the first argument to poll() is checked
+             * for a valid memory address even if the second argument is 0.
+             */
+            struct pollfd foo;
+
+            subtotal += usec;
+            /* if less then 1 msec request, do nothing but remember it */
+            if (subtotal < 1000) return(0);
+            msec = subtotal/1000;
+            subtotal = subtotal%1000;
+            return poll(&foo,(unsigned long)0,msec);
+      }
+
+      Another possibility for nap()ing on System V, and probably other
+      non-BSD Unices is Jon Zeeff's s5nap package, posted to
+      comp.sources.misc, volume 4.  It does require a installing a
+      device driver, but works flawlessly once installed.  (Its
+      resolution is limited to the kernel HZ value, since it uses the
+      kernel delay() routine.)
+
+      Many newer versions of Unix have a nanosleep function.
+
+------------------------------
+
+Subject: How can I get setuid shell scripts to work?
+Date: Thu Mar 18 17:16:55 EST 1993
+
+4.7)  How can I get setuid shell scripts to work?
+
+      [ This is a long answer, but it's a complicated and frequently-asked
+        question.  Thanks to Maarten Litmaath for this answer, and
+        for the "indir" program mentioned below. ]
+
+      Let us first assume you are on a UNIX variant (e.g. 4.3BSD or
+      SunOS) that knows about so-called `executable shell scripts'.
+      Such a script must start with a line like:
+
+        #!/bin/sh
+
+      The script is called `executable' because just like a real (binary)
+      executable it starts with a so-called `magic number' indicating
+      the type of the executable.  In our case this number is `#!' and
+      the OS takes the rest of the first line as the interpreter for
+      the script, possibly followed by 1 initial option like:
+
+        #!/bin/sed -f
+
+      Suppose this script is called `foo' and is found in /bin,
+      then if you type:
+
+        foo arg1 arg2 arg3
+
+      the OS will rearrange things as though you had typed:
+
+        /bin/sed -f /bin/foo arg1 arg2 arg3
+
+      There is one difference though: if the setuid permission bit for
+      `foo' is set, it will be honored in the first form of the
+      command; if you really type the second form, the OS will honor
+      the permission bits of /bin/sed, which is not setuid, of course.
+
+      ----------
+
+      OK, but what if my shell script does NOT start with such a `#!'
+      line or my OS does not know about it?
+
+      Well, if the shell (or anybody else) tries to execute it, the OS
+      will return an error indication, as the file does not start with
+      a valid magic number.  Upon receiving this indication the shell
+      ASSUMES the file to be a shell script and gives it another try:
+
+        /bin/sh shell_script arguments
+
+      But we have already seen that a setuid bit on `shell_script' will
+      NOT be honored in this case!
+
+      ----------
+
+      Right, but what about the security risks of setuid shell scripts?
+
+      Well, suppose the script is called `/etc/setuid_script', starting
+      with:
+
+        #!/bin/sh
+        
+      Now let us see what happens if we issue the following commands:
+
+        $ cd /tmp
+        $ ln /etc/setuid_script -i
+        $ PATH=.
+        $ -i
+
+      We know the last command will be rearranged to:
+
+        /bin/sh -i
+
+      But this command will give us an interactive shell, setuid to the
+      owner of the script!
+      Fortunately this security hole can easily be closed by making the
+      first line:
+
+        #!/bin/sh -
+
+      The `-' signals the end of the option list: the next argument `-i'
+      will be taken as the name of the file to read commands from, just
+      like it should!
+
+      ---------
+
+      There are more serious problems though:
+
+        $ cd /tmp
+        $ ln /etc/setuid_script temp
+        $ nice -20 temp &
+        $ mv my_script temp
+
+      The third command will be rearranged to:
+
+        nice -20 /bin/sh - temp
+
+      As this command runs so slowly, the fourth command might be able
+      to replace the original `temp' with `my_script' BEFORE `temp' is
+      opened by the shell!  There are 4 ways to fix this security hole:
+
+        1)  let the OS start setuid scripts in a different, secure way
+            - System V R4 and 4.4BSD use the /dev/fd driver to pass the
+            interpreter a file descriptor for the script
+
+        2)  let the script be interpreted indirectly, through a frontend
+            that makes sure everything is all right before starting the
+            real interpreter - if you use the `indir' program from
+            comp.sources.unix the setuid script will look like this:
+
+                #!/bin/indir -u
+                #?/bin/sh /etc/setuid_script
+
+        3)  make a `binary wrapper': a real executable that is setuid and
+            whose only task is to execute the interpreter with the name of
+            the script as an argument
+
+        4)  make a general `setuid script server' that tries to locate the
+            requested `service' in a database of valid scripts and upon
+            success will start the right interpreter with the right
+            arguments.
+
+      ---------
+
+      Now that we have made sure the right file gets interpreted, are
+      there any risks left?
+
+      Certainly!  For shell scripts you must not forget to set the PATH
+      variable to a safe path explicitly.  Can you figure out why?
+      Also there is the IFS variable that might cause trouble if not
+      set properly.  Other environment variables might turn out to
+      compromise security as well, e.g. SHELL...  Furthermore you must
+      make sure the commands in the script do not allow interactive
+      shell escapes!  Then there is the umask which may have been set
+      to something strange...
+
+      Etcetera.  You should realise that a setuid script `inherits' all
+      the bugs and security risks of the commands that it calls!
+
+      All in all we get the impression setuid shell scripts are quite a
+      risky business!  You may be better off writing a C program instead!
+
+------------------------------
+
+Subject: How can I find out which user or process has a file open ... ?
+Date: Thu Mar 18 17:16:55 EST 1993
+
+4.8)  How can I find out which user or process has a file open or is using
+      a particular file system (so that I can unmount it?)
+
+      Use fuser (system V), fstat (BSD), ofiles (public domain) or
+      pff (public domain).  These programs will tell you various things
+      about processes using particular files.
+
+      A port of the 4.3 BSD fstat to Dynix, SunOS and Ultrix
+      can be found in archives of comp.sources.unix, volume 18.
+
+      pff is part of the kstuff package, and works on quite a few systems.
+      Instructions for obtaining kstuff are provided in question 3.10.
+
+------------------------------
+
+Subject: How do I keep track of people who are fingering me?
+>From: jik@cam.ov.com (Jonathan I. Kamens)
+>From: malenovi@plains.NoDak.edu (Nikola Malenovic)
+Date: Thu, 29 Sep 1994 07:28:37 -0400
+
+4.9)  How do I keep track of people who are fingering me?
+
+      Generally, you can't find out the userid of someone who is
+      fingering you from a remote machine.  You may be able to
+      find out which machine the remote request is coming from.
+      One possibility, if your system supports it and assuming
+      the finger daemon doesn't object, is to make your .plan file a
+      "named pipe" instead of a plain file.  (Use 'mknod' to do this.)
+
+      You can then start up a program that will open your .plan file
+      for writing; the open will block until some other process (namely
+      fingerd) opens the .plan for reading.  Now you can feed whatever you
+      want through this pipe, which lets you show different .plan
+      information every time someone fingers you.  One program for
+      doing this is the "planner" package in volume 41 of the
+      comp.sources.misc archives.
+
+      Of course, this may not work at all if your system doesn't
+      support named pipes or if your local fingerd insists
+      on having plain .plan files.
+
+      Your program can also take the opportunity to look at the output
+      of "netstat" and spot where an incoming finger connection is
+      coming from, but this won't get you the remote user.
+
+      Getting the remote userid would require that the remote site be
+      running an identity service such as RFC 931.  There are now three
+      RFC 931 implementations for popular BSD machines, and several
+      applications (such as the wuarchive ftpd) supporting the server.
+      For more information join the rfc931-users mailing list,
+      rfc931-users-request@kramden.acf.nyu.edu.
+
+      There are three caveats relating to this answer.  The first is
+      that many NFS systems won't recognize the named pipe correctly.
+      This means that trying to read the pipe on another machine will
+      either block until it times out, or see it as a zero-length file,
+      and never print it.
+
+      The second problem is that on many systems, fingerd checks that
+      the .plan file contains data (and is readable) before trying to
+      read it.  This will cause remote fingers to miss your .plan file
+      entirely.
+
+      The third problem is that a system that supports named pipes
+      usually has a fixed number of named pipes available on the
+      system at any given time - check the kernel config file and
+      FIFOCNT option.  If the number of pipes on the system exceeds the
+      FIFOCNT value, the system blocks new pipes until somebody frees
+      the resources.  The reason for this is that buffers are allocated
+      in a non-paged memory.
+
+------------------------------
+
+Subject: Is it possible to reconnect a process to a terminal ... ?
+Date: Thu Mar 18 17:16:55 EST 1993
+
+4.10) Is it possible to reconnect a process to a terminal after it has
+      been disconnected, e.g. after starting a program in the background
+      and logging out?
+
+      Most variants of Unix do not support "detaching" and "attaching"
+      processes, as operating systems such as VMS and Multics support.
+      However, there are two freely redistributable packages which can
+      be used to start processes in such a way that they can be later
+      reattached to a terminal.
+
+      The first is "screen," which is described in the
+      comp.sources.unix archives as "Screen, multiple windows on a CRT"
+      (see the "screen-3.2" package in comp.sources.misc, volume 28.)
+      This package will run on at least BSD, System V r3.2 and SCO UNIX.
+
+      The second is "pty," which is described in the comp.sources.unix
+      archives as a package to "Run a program under a pty session" (see
+      "pty" in volume 23).  pty is designed for use under BSD-like
+      system only.
+
+      Neither of these packages is retroactive, i.e. you must have
+      started a process under screen or pty in order to be able to
+      detach and reattach it.
+
+------------------------------
+
+Subject: Is it possible to "spy" on a terminal ... ?
+Date: Wed, 28 Dec 1994 18:35:00 -0500
+
+4.11) Is it possible to "spy" on a terminal, displaying the output
+      that's appearing on it on another terminal?
+
+      There are a few different ways you can do this, although none
+      of them is perfect:
+
+      * kibitz allows two (or more) people to interact with a shell
+        (or any arbitary program).  Uses include:
+
+        - watching or aiding another person's terminal session;
+        - recording a conversation while retaining the ability to
+          scroll backwards, save the conversation, or even edit it
+          while in progress;
+        - teaming up on games, document editing, or other cooperative
+          tasks where each person has strengths and weakness that
+          complement one another.
+
+        kibitz comes as part of the expect distribution.  See question 3.9.
+
+        kibitz requires permission from the person to be spyed upon.  To
+        spy without permission requires less pleasant approaches:
+
+      * You can write a program that rummages through Kernel structures
+        and watches the output buffer for the terminal in question,
+        displaying characters as they are output.  This, obviously, is
+        not something that should be attempted by anyone who does not
+        have experience working with the Unix kernel.  Furthermore,
+        whatever method you come up with will probably be quite
+        non-portable.
+
+      * If you want to do this to a particular hard-wired terminal all
+        the time (e.g. if you want operators to be able to check the
+        console terminal of a machine from other machines), you can
+        actually splice a monitor into the cable for the terminal.  For
+        example, plug the monitor output into another machine's serial
+        port, and run a program on that port that stores its input
+        somewhere and then transmits it out *another* port, this one
+        really going to the physical terminal.  If you do this, you have
+        to make sure that any output from the terminal is transmitted
+        back over the wire, although if you splice only into the
+        computer->terminal wires, this isn't much of a problem.  This is
+        not something that should be attempted by anyone who is not very
+        familiar with terminal wiring and such.
+
+      * The latest version of screen includes a multi-user mode.
+        Some details about screen can be found in question 4.10.
+
+      * If the system being used has streams (SunOS, SVR4), the advise
+        program that was posted in volume 28 of comp.sources.misc can
+        be used.  AND it doesn't requirethat it be run first (you do
+        have to configure your system in advance to automatically push
+        the advise module on the stream whenever a tty or pty is opened).
+
+------------------------------
+
+End of unix/faq Digest part 4 of 7
+**********************************
+
+-- 
+Ted Timar - tmatimar@isgtec.com
+ISG Technologies Inc., 6509 Airport Road, Mississauga, Ontario, Canada L4V 1S7

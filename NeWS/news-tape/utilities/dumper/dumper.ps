@@ -1,0 +1,191 @@
+%!
+%
+% Date: Sun, 31 Jul 88 05:21:42 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: NeWS screen dump utility
+% From: eagle!icdoc!Ist!jh@ucbvax.Berkeley.EDU  (Jeremy Huxtable)
+% 
+% Here's a useful utility which allows you to dump arbitrary areas of the screen
+% as Sun rasterfiles, and then display them in a window. Very useful for doing
+% documentation.
+% 
+% This works OK on Monochrome Sun3/50 and 3/75's, but hasn't
+% been tested on a colour display.  There appear to be some
+% problems with NeWS's "writecanvas" operator.  At least on our
+% system, canvases written with "writecanvas" cannot be read
+% back by anything, while rasterfiles written by other programs
+% (e.g.  FrameMaker) can't be read back using "readcanvas".
+% "writescreen" and "readcanvas" seem to work together OK
+% though. I have had some trouble with NeWS core dumping when
+% using "readcanvas/imagecanvas", but presumably this will go
+% away in the next release :-)
+% 
+
+% NeWS Screen dumper
+%
+% Jeremy Huxtable
+%
+% Mon Jul 25 17:36:06 BST 1988
+
+% Class "DumpWindow" implements a NeWS screen dumper.  The window contains
+% three buttons and a text item:
+%       The text item allows you to select the filename to dump to.
+%       Dump    - allows you to select a rectangle on the screen to dump to the file.
+%                 While dumping, the Dump window is unmapped so that it does
+%                 not interfere with the screen image.
+%       Restore - allows you to select a rectangle on the screen into
+%                 which the image will be painted (directly onto the framebuffer).
+%       Display - pops up a window which displays the image from the given file.
+%                 The image is scaled to fit into the window.
+%
+% BUGS: You can't zap the parent window until all Display windows have been
+%       zapped. I can't find where the dangling reference to the window is.
+
+systemdict /Item known not { (NeWS/liteitem.ps) run } if
+
+/DumpWindow DefaultWindow [
+    /DumpItems
+    /Filename
+]
+classbegin
+    /IconImage /screendump def
+    /FrameLabel (Screen Dump) def
+
+    /new {
+	/new super send begin
+	    /DumpItems null def
+	    /Filename (,Scrndump) def
+	    300 140
+	    fboverlay setcanvas getclick 2 index sub    % Subtract height from y to select top left
+	    4 2 roll
+	    reshape
+	    activate
+	    currentdict
+	end
+    } def
+
+    /PaintClient {
+	DumpItems paintitems
+    } def
+
+    /set_name {
+	/Filename exch def
+    } def
+
+    /message { % str => -
+	/printstring DumpItems /message get send
+    } def
+
+    /activate {
+	/DumpItems 5 dict dup begin
+	    /filename (File name:) Filename /Right
+		[ /ItemValue cvx self /set_name exch /send cvx ] cvx
+		ClientCanvas /new TextItem send
+		10 75 240 0 /reshape 5 index send def
+
+	    /message () () /Right
+		nullproc
+		ClientCanvas /new MessageItem send
+		10 45 240 0 /reshape 5 index send def
+
+	    /dump_button (Dump)
+		[ self /do_dump exch /send cvx ] cvx
+		ClientCanvas /new ButtonItem send
+		dup /ItemFrame 1 put
+		dup /ItemRadius 0.2 put
+		10 10 70 25 /reshape 5 index send def
+
+	    /restore_button (Restore)
+		[ self /do_restore exch /send cvx ] cvx
+		ClientCanvas /new ButtonItem send
+		dup /ItemFrame 1 put
+		dup /ItemRadius 0.2 put
+		100 10 70 25 /reshape 5 index send def
+
+	    /display_button (Display)
+		[ self /do_display exch /send cvx ] cvx
+		ClientCanvas /new ButtonItem send
+		dup /ItemFrame 1 put
+		dup /ItemRadius 0.2 put
+		190 10 70 25 /reshape 5 index send def
+	end def
+	DumpItems forkitems pop
+    } def
+
+    /do_dump {
+	gsave
+	    unmap
+	    fboverlay setcanvas getwholerect waitprocess aload pop
+	    framebuffer setcanvas
+	    points2rect
+	    rectpath
+	    { Filename writescreen } errored
+	    { (Can't write file) } { () } ifelse
+	    message
+	    map
+	grestore
+    } def
+
+    /do_restore {
+	gsave
+	    fboverlay setcanvas getwholerect waitprocess aload pop
+	    framebuffer setcanvas
+	    points2rect
+	    4 2 roll translate scale
+	    { Filename readcanvas } errored
+	    { (Can't read file) } { imagecanvas () } ifelse
+	    message
+	grestore
+    } def
+
+    /do_display {
+	{
+	    clear
+	    newprocessgroup
+	    Filename
+	    framebuffer /new ImageWindow send
+	    /reshapefromuser 1 index send
+	    /map exch send
+	    countdictstack 1 sub { end } repeat
+	} fork pop
+    } def
+
+    /destroy {
+	/DumpItems null def
+	/destroy super send
+    } def
+
+classend def
+
+/ImageWindow DefaultWindow [
+    /ImageCanvas
+]
+classbegin
+    /IconImage /screendump def
+    /FrameLabel (Image Display) def
+
+    /new { % filename => instance
+	/new super send begin
+	    /FrameLabel 1 index def
+	    { readcanvas } errored { null } if
+	    /ImageCanvas exch def
+	    currentdict
+	end
+    } def
+
+    /PaintClient {
+	ImageCanvas null eq {
+	    clippath pathbbox
+	    exch 2 div exch 2 div moveto
+	    (Can't read image file) cshow
+	    pop pop
+	} {
+	    clippath pathbbox scale pop pop
+	    ImageCanvas imagecanvas
+	} ifelse
+    } def
+
+classend def
+
+/map framebuffer /new DumpWindow send send
+

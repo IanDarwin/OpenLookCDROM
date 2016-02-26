@@ -1,0 +1,2865 @@
+#! /bin/sh
+
+# $Id: hexsweeper,v 1.145 92/11/04 17:52:18 lee Exp Locker: lee $
+
+# known bugs:
+#
+# Properties:
+#  
+#   No Reset To Factory
+#  
+#   No Save Settings
+#  
+#   Apply sometimees gets HexDepth wrong - it should be saved as a proportion,
+#   not as a number between 0 and HexDHeight
+#  
+#   No command-line options (yet)
+#  
+#   Default font in Font menu was wrong because of Quicksort - deleted for now
+#  
+#   Doesn't use X defaults yet, because I don't have the new Defaults code
+#   from OpenWindows 3.0.1
+#  
+#   No way to set FG and BG (apart from using "props", WorkSpace->Properties)
+#  
+#   Should be a Use 3D button.
+#  
+#   The Props key doesn't always bring Props up
+#
+#   Oh boy, when will it end?
+#  
+# Help:
+#   
+#   Does not explain the game well enough
+#   Should give examples, show hexagons with labels, give hints
+#
+#   No spot help - don't know how without a wire connection
+#
+# Game:
+#
+#   Draws new game after iconifying
+#
+#   Applying Properties also causes new game
+#
+#   Game doesn't havet as interesting tactics as the square one
+#
+#   No equivalent of ms/win middle button
+#
+#   Uses TNT, will stop working soon.  But I'd hate to've done it in X!
+#
+# Too many features!  Program too long!
+
+
+psh << 'barefoot_boy'
+
+%%%% Default hex size
+/DefaultHexSize 28 def
+/DefaultOutlineWidth 1.2 def
+
+/DebugDrawing? false def
+
+[ /NeWS /TNTCore /TNT ] {
+    %   The knownpackage test is to avoid repeatedly re-loading the
+    %   packages when loading this program into an interactive psh
+    %   for testing.
+    %
+    dup 3 0 knownpackage not {
+        dup 3 0 findpackage beginpackage
+    } if
+    pop
+} forall
+
+% statusdict begin 1200 setjobtimeout end
+
+true setpacking
+
+% The constant string below is updated automatically by RCS
+/MyName
+    ($Revision: 1.145 $) (Revision:) search {		%  post match pre
+        pop pop						%  post
+        dup length 1 sub 0 exch getinterval             %  str
+    } if						%  str
+    (HexSweeper %) sprintf
+def
+
+/MineDict 30 dict dup begin
+    /SecondsSoFar 0 def
+    /Counting false def
+    /MineCount 0 def
+end def
+
+% put these in userdict since they are used so much:
+/MineRows 8 def
+/MineCols 15 def
+
+/sqrt3 3 sqrt def
+
+/Hex3DDict 60 dict dup begin
+    /i0 { i0x i0y } def
+    /i1 { i1x i1y } def
+    /i2 { i2x i2y } def
+    /i3 { i3x i3y } def
+    /i4 { i4x i4y } def
+    /i5 { i5x i5y } def
+
+    /p0 { p0x p0y } def
+    /p1 { p1x p1y } def
+    /p2 { p2x p2y } def
+    /p3 { p3x p3y } def
+    /p4 { p4x p4y } def
+    /p5 { p5x p5y } def
+end def
+
+/SetHexSizeFromFlat {
+    /HexHWidth exch def
+    /HexDWidth HexHWidth 2 div def
+    /HexDHeight HexHWidth sqrt3 mul 2 div def
+    /HexHDelta HexDWidth HexHWidth add def
+    /HexWidth HexDWidth 2 mul HexHWidth add def
+    /HexHeight HexDHeight 2 mul def
+    UseColorGlyphs? SetColorMode
+    /NeedFillThreshold 100 HexHWidth div cvi 10  max def
+} def
+
+/SetHexSizeAndDepthFromFlat {
+    SetHexSizeFromFlat
+    HexHWidth 7 div cvi dup 0 eq { pop 1 } if SetHexDepth
+} def
+
+/SetHexDepth {
+    /HexDepth exch HexDHeight min cvi def
+    Hex3DDict begin
+	/a HexDepth sqrt3 div def
+    end
+    HexDepth 0 eq {
+	/Draw3DHexAt /Draw2DHexWithOutlineAtProc load cvx def
+    } {
+	/Draw3DHexAt /Draw3DHexAtProc load cvx def
+    } ifelse
+} def
+
+/SetHexDepthByProportion {
+    HexDHeight mul SetHexDepth
+} def
+
+/HexFont { /GillSans } def
+/HexBoldFont { /GillSans-Bold } def
+
+% TNT display items for glyphs:
+/BrightGlyphColors [
+    null % 0 glyph is currently unused
+    0.20 0.2 1.0 rgbcolor	0.1 0.9 0.1 rgbcolor	0.0 0.9 1.0 rgbcolor
+    0.95 0.0 0.8 rgbcolor	1.0 0.9 0.0 rgbcolor	0.8 0.1 0.1 rgbcolor
+] def
+
+/DingyMonoGlyphColors [
+    null % 0 glyph is currently unused
+    0 0 0 rgbcolor		0 0 0 rgbcolor		0 0 0 rgbcolor
+    0 0 0 rgbcolor		0 0 0 rgbcolor		0 0 0 rgbcolor
+] def
+
+/UseColorGlyphs? framebuffer /Color get def
+
+/SetColorMode { % bool => -
+    {
+	BrightGlyphColors
+    } {
+	DingyMonoGlyphColors
+    } ifelse /GlyphColors exch def
+    MakeGlyphs
+} def
+
+pause
+
+/MakeGlyphs {
+    /BombGlyph [ (\154) ] def
+    /SetBombFont { /ZapfDingbats findfont HexHWidth scalefont setfont } def
+    /WrongMarkGlyph [
+	(\067)
+	/ZapfDingbats findfont HexWidth scalefont % pretty huge...
+	1 0 0 rgbcolor
+    ] def
+    /MarkGlyph [(\076) /ZapfDingbats findfont HexWidth scalefont ] def
+
+    UseColorGlyphs? {
+	/0Glyph ( ) def %% actually never used
+	/1Glyph [(1) HexFont findfont HexWidth scalefont
+	    GlyphColors 1 get ] def
+	/2Glyph [(2) HexFont findfont HexWidth scalefont
+	    GlyphColors 2 get ] def
+	/3Glyph [(3) HexFont findfont HexWidth scalefont
+	    GlyphColors 3 get ] def
+	/4Glyph [(4) HexBoldFont findfont HexWidth scalefont
+	    GlyphColors 4 get ] def
+	/5Glyph [(5) HexBoldFont findfont HexWidth scalefont
+	    GlyphColors 5 get ] def
+	/6Glyph [(6) HexBoldFont  findfont HexWidth scalefont
+	    GlyphColors 6 get ] def
+    } {
+	/0Glyph ( ) def
+	/Black 0 0 0 rgbcolor def
+	/1Glyph [(1) HexFont findfont HexWidth scalefont Black ] def
+	/2Glyph [(2) HexFont findfont HexWidth scalefont Black ] def
+	/3Glyph [(3) HexFont findfont HexWidth scalefont Black ] def
+	/4Glyph [(4) HexBoldFont findfont HexWidth scalefont Black ] def
+	/5Glyph [(5) HexBoldFont findfont HexWidth scalefont Black ] def
+	/6Glyph [(6) HexBoldFont findfont HexWidth scalefont Black ] def
+    } ifelse
+
+    /GlyphArray [ 0Glyph 1Glyph 2Glyph 3Glyph 4Glyph 5Glyph 6Glyph ] def
+} def
+
+/FindHexWestPoint { % x y FindHexWestPoint -> x y of p0
+    12 dict begin
+	% transform coordinates so the centre of hex 0,0 is at 0,0:
+	/y exch HexDHeight sub def
+	/x exch HexWidth 2 div sub def			% -
+
+	% find a 60 degree line to the left of (x, y)
+	% that intersects the x axis at a multiple of HWidth units
+
+	%		+
+	%	       /|
+	%	      / |	 Angle t is 60 degrees, so
+	%	     /  | y	 x - x1 = y/sqrt3
+	%	    /t) |
+	%	   +----+ . . .+
+	%	   x1	x 	x2 [see below]
+
+	% (calculate x1 and round down to a multiple of HexHWidth)
+	/x1 x y sqrt3 div sub HexHWidth div floor cvi def
+
+	% Now we do the same in the other direction:
+	/x2 y sqrt3 div x add HexHWidth div floor cvi def
+
+	% intersect the two lines:
+	/x3 x2 x1 add 2 div HexHWidth mul def
+	/y3 x2 HexHWidth mul x3 sub sqrt3 mul def
+
+	% Now we check that the intersection will be a West point:
+	x1 x2 add 3 mod 3 add 3 mod {
+	    0 { % found a centre
+		/x1 x1 1 sub def
+		/x2 x2 1 sub def
+	    }
+	    1 {
+		% it's perfect!
+	    }
+	    2 {
+		% found a top left or bottom left corner.
+		% intersect the two lines:
+		y3 y lt {
+		    /x1 x1 1 sub def
+		} {
+		    /x2 x2 1 sub def
+		} ifelse
+	    }
+	} case
+
+	/x3 x2 x1 add 2 div HexHWidth mul def
+	/y3 x2 HexHWidth mul x3 sub sqrt3 mul def
+
+	x3 HexWidth 2 div add
+	y3 HexDHeight add
+    end
+} def
+
+pause
+
+/MakeHex {
+    /p0y exch def
+    /p0x exch def
+    /p1x HexDWidth p0x add def /p1y HexDHeight p0y add def
+    /p2x HexHWidth p1x add def /p2y p1y def
+    /p3x HexDWidth p2x add def /p3y p0y def
+    /p4x p2x def /p4y p0y HexDHeight sub def
+    /p5x p1x def /p5y p4y def
+} def
+
+/MakeInnerHex {
+    /i0x p0x a 2 mul add def	/i0y p0y def
+    /i1x p1x a add def		/i1y p1y HexDepth sub def
+    /i2x p2x a sub def		/i2y i1y def
+    /i3x p3x a 2 mul sub def	/i3y i0y def
+    /i4x i2x def		/i4y p4y HexDepth add def
+    /i5x i1x def		/i5y i4y def
+} def
+
+/AddHexToPath { % x y of Western (leftmost) point => -
+    Hex3DDict begin
+	/p0y exch def /p0x exch def
+	p0x p0y moveto % po
+	HexDWidth HexDHeight rlineto % p1
+	HexHWidth 0 rlineto % p2
+	HexDWidth HexDHeight neg rlineto % p3
+	p0x HexHDelta add  p0y HexDHeight sub lineto % p4
+	p0x HexDWidth add  p0y HexDHeight sub lineto
+    end
+} def
+
+/Draw2DHexWithOutlineAtProc { % x y of Western (leftmost) point => -
+    gsave % @@ ++ 1
+	newpath
+	AddHexToPath closepath			% -
+	gsave % @@ ++ 2
+	    BG setcolor fill
+	grestore % @@ -- 2
+	DefaultOutlineWidth setlinewidth FG
+	setcolor stroke 	% -
+    grestore % @@ -- 1
+} def
+
+/Draw2DHexAt { % x y of Western (leftmost) point => -
+    gsave % @@ ++ 1
+	newpath
+	AddHexToPath BG setcolor fill
+    grestore % @@ -- 1
+} def
+
+/Draw3DHexAtProc {
+    Hex3DDict begin
+	gsave % @@ ++ 1
+	    MakeHex
+	    MakeInnerHex
+
+	    0 setlinewidth
+	    newpath
+
+	    BG setcolor % top
+	    i0 moveto i1 lineto i2 lineto i3 lineto i4 lineto i5 lineto fill
+
+	    BG0 setcolor % highlight
+	    p0 moveto p1 lineto p2 lineto i2 lineto i1 lineto i0 lineto fill
+
+	    BG2 setcolor % diagonals
+	    p0 moveto i0 lineto i5 lineto p5 lineto fill
+	    p2 moveto p3 lineto i3 lineto i2 lineto fill
+	    
+	    BG3 setcolor % shadow
+	    p5 moveto i5 lineto i4 lineto i3 lineto p3 lineto p4 lineto fill
+	grestore % @@ -- 1
+    end
+} def
+
+/Draw3DHexAt /Draw3DHexAtProc load cvx def
+
+pause
+
+DefaultHexSize SetHexSizeAndDepthFromFlat
+
+/ClearMines { % rows cols ClearMines => -
+    /MineBoard growabledict def
+    /PlacesBeen growabledict def			% Rows Cols
+    mul dup array					% n array
+    MineDict exch					% n Dict array
+    /NearbyMines exch put				% n 
+    1 sub -1 0 {
+	MineDict /NearbyMines get exch 0 put
+    } for						% -
+} def
+
+/GetNearbyMines { % Row Col => n or null
+    MineRows mul add					% index
+    MineDict /NearbyMines get				% array index
+    exch get						% n or null
+} def
+
+/CheckInRange { % x y -> bool
+    FindHexWestPoint PointToCoords			% r c
+    2 copy 0 lt						% r c r bool
+    exch 0 lt or					% r c bool
+    3 1 roll						% bool r c
+    MineCols ge						% bool r bool
+    exch MineRows ge or					% bool bool
+    or % true if out of range				% bool
+    not
+} def
+
+% PointToCoords:
+% convert the Westernmost corner of a Hex to row and col
+%
+/PointToCoords { % x y => Row Col
+    exch						% y x
+    HexHDelta div cvi 					% y Col
+    dup 2 mod 1 eq { 					% y Col
+	exch % Col y
+	HexDWidth sub
+    } {
+	exch						% Col y
+    } ifelse						% Col y
+    HexDWidth sub
+    HexHeight div
+    dup 0 lt { 1 sub } if
+    cvi							% Col Row
+    exch						% Row Col
+} def
+
+
+/DoAutoWalk { % Row Col => -
+    %%
+    %% Called when we find that we have landed on a hexagon with no
+    %% nearby mines (GetNearbyMines returned 0).  We have already been
+    %% drawn flat at this point.
+    %%
+    %% We flatten each of the neighbours.  If any neighbour has
+    %% no nearby mines, we repeat the process for that neighbour.
+    %%
+    %% OPTIMISATION: expanded RowColToKey inline, since we can use MineRows.
+    %%
+    /busy /setcursor Parent send
+
+    canvas1 setcanvas
+
+    10 dict begin
+	/OnStack growabledict def
+
+	% We need to visit the starting point outside the loop.
+	% Then for each neighbour of the starting point with no nearby mines,
+	% we need to visit three of its neighbours - the other neighbours
+	% are already done, or will be included in one of the three
+	% neighbours from another direction.
+
+	% Note: this hex has not been visited, is not yet in PlacesBeen.
+	% Note: this hex has no nearby mines.
+
+	% swallow arguments:
+	/C exch def /R exch def
+
+	PlacesBeen R C RowColToKey true put
+
+	gsave
+	    % set things up for drawing the hexagons with the minimum
+	    % of colour and linewidth changes:
+
+	    DefaultOutlineWidth setlinewidth FG setcolor
+	    /NeedFill 0 def
+	    newpath
+
+	    R C GetNeighbours				% G
+	    0 1 5 {
+		/Dir exch def				% G
+		dup Dir get
+		dup null eq {
+		    pop					% G
+		} {
+		    aload pop				% G R C
+		    2 copy CoordsToPoint		% G R C x y
+		    4 2 roll				% G x y R C
+		    2 copy MineRows mul add		% G x y R C key
+		    PlacesBeen 1 index known {		% G x y R C key 
+			%% already visited.
+			pop pop pop pop pop		% G
+		    } {					% G x y R C key
+			3 1 roll GetNearbyMines		% G x y Key n
+			4 2 roll			% G key n x y
+			NeedFill 0 eq {			
+			    /NeedFill 1 def
+			} {
+			    /NeedFill NeedFill 1 add def
+			} ifelse
+			2 copy AddHexToPath		% G key n x y
+
+			3 -1 roll dup 0 eq {		% G Key x y 0
+			    pop pop pop
+			    OnStack exch Dir put	% G
+			} {				% G Key x y n
+			    %% Assert: NeedFill 0 gt
+			    gsave % @@ -- 1
+				BG2 setcolor fill	% G Key x y n
+			    grestore % @@ ++ 1
+			    newpath
+			    /NeedFill 0 def		% H Key x y n
+			    DrawHexGlyphAt		% G Key 
+			    PlacesBeen exch true put	% G
+			} ifelse
+		    } ifelse				% G
+		} ifelse				% G
+	    } for					% G
+	    pop						% -
+
+	    NeedFill 0 ne {
+		gsave
+		    BG2 setcolor fill
+		grestore
+		/NeedFill 0 def
+		newpath
+	    } if
+
+	    {
+		OnStack length 0 eq { exit } if
+
+		%   Extract one item from the OnStack dict.
+		%
+		%   Note:   We can't just forall over the OnStack dict
+		%   because changing the contents of a dict while forall'ing
+		%   over it has unpredictable (and undesirable) effects...
+		%
+
+		OnStack {
+		    /Dir exch def			% n value key
+		    exit
+		} forall
+		/NAME exch def			%  -
+
+		PlacesBeen NAME true put
+
+		/C NAME MineRows div cvi def
+		/R NAME MineRows mod     def
+
+		R C GetNeighbours			% arr
+
+		% In the following loop, 5 6 and 7 are -1, 0 and 1 (mod 6):
+		5 1 7 {
+		    Dir add 6 mod 			% arr i
+		    2 copy get				% arr i elem
+		    dup null eq {			% arr i elem
+			% no neighbour in this direction
+			pop pop				% arr
+		    } {
+			aload pop			% arr i r c
+			2 copy MineRows mul add		% arr i r c n
+			OnStack 1 index known		% arr i r c n ?
+			PlacesBeen 2 index known	% arr i r c n ? ?
+			or { % already visited		% arr i r c n
+			    pop pop pop pop		% arr
+			} {				% arr i r c n
+			    NeedFill 0 eq {		% arr i r c n
+				/NeedFill 1 def
+			    } {
+				/NeedFill NeedFill 1 add def
+			    } ifelse
+			    3 1 roll 2 copy		% arr i n r c r c
+			    CoordsToPoint		% arr i n r c x y
+			    2 copy AddHexToPath		% arr i n r c x y
+			    4 2 roll			% arr i n x y r c
+			    GetNearbyMines		% arr i n x y mines
+			    dup 0 eq {			% arr i n x y 0
+				pop pop pop		% arr i n
+				OnStack exch		% arr i dict n
+				3 -1 roll put		% arr
+			    } {				% arr i n x y mines
+				gsave
+				    BG2 setcolor fill	% arr i n x y mines
+				grestore
+				/NeedFill 0 def		% arr i n x y mines
+				newpath
+				DrawHexGlyphAt		% arr i n
+				PlacesBeen exch true put pop % arr
+			    } ifelse			% arr
+			} ifelse			% arr
+		    } ifelse				% arr
+		} for					% arr
+		    
+		pop					% -
+
+		% draw the 2-d hexes queued up for filling:
+		NeedFill NeedFillThreshold ge {
+		    gsave
+			BG2 setcolor fill
+		    grestore
+		    /NeedFill 0 def
+		} if
+
+		OnStack NAME undef
+		pause
+
+	    } loop
+
+	    NeedFill 0 ne {
+		BG2 setcolor fill
+		/NeedFill 0 def
+	    } if
+	grestore
+    end
+    /basic /setcursor Parent send
+} def
+
+pause
+
+/DrawHexGlyphAt { % x y n => -
+    gsave % ++ 1
+	newpath
+	GlyphArray exch get				% x y DisplayItem
+	3 1 roll					% DI x y
+	2 copy AddHexToPath				% DI x y
+	% the outline:
+	% DefaultOutlineWidth setlinewidth FG setcolor % must be done by caller
+	closepath stroke				% DI x y
+	exch HexWidth 2 div add exch			% (n) x' y
+	moveto						% (n)
+	dup DisplayItemSize				% (n) width height
+	2 div neg exch 2 div neg exch rmoveto		% (n)
+	gsave % @@ ++ 2
+	    DisplayItemPaint				% -
+	grestore % @@ -- 2
+    grestore % @@ -- 1
+} def
+
+/GetNeighboursDict 10 dict def
+GetNeighboursDict begin
+    /IsTop? { Row MineRows 1 sub ge } def
+    /IsRight? { Col MineCols 1 sub ge } def
+end
+
+/GetNeighbours { % row col => [ [x y] null null null null null ]
+    GetNeighboursDict begin
+	/Col exch def
+	/Row exch def
+
+	Col 0 eq {
+	    Row 0 eq { % bottom left corner:
+		[ null [ 1 0 ] [ 0 1] null null null ]
+	    } { % left edge:
+		IsTop? { % top left corner (assumes MineRows >= 2)
+		    [ null null [ MineRows 1 sub 1 ]
+		      [ MineRows 2 sub  1 ] [ MineRows 2 sub 0 ] null ]
+		} { % only get here if MineRows > 2
+		    [ null [Row 1 add 0 ] [ Row 1 ]
+		      [ Row 1 sub 1 ] [ Row 1 sub 0 ] null ]
+		} ifelse
+	    } ifelse
+	} { % col is non-zero, so not Left
+	    Row 0 eq {
+		% bottom row, but not on the left edge
+		/Z Col 2 mod def
+		IsRight? { % bottom right corner
+		    Z 0 eq {
+			[ [ 0 Col 1 sub ] [ 1 Col ] null null null null ]
+		    } {
+			[ [ 1 Col 1 sub ] [ 1 Col ] null null null
+			  [ 0 Col 1 sub ] ]
+		    } ifelse
+		} { % bottom edge but not at a corner:
+		    Z 0 eq {
+			[ [ 0 Col 1 sub ] [ 1 Col ] [ 0 Col 1 add ]
+			  null null null ]
+		    } {
+			[ [ 1 Col 1 sub ] [ 1 Col ] [ 1 Col 1 add ]
+			  [ 0 Col 1 add ] null [ 0 Col 1 sub ] ]
+		    } ifelse
+		} ifelse
+	    } {
+		% col non-zero, row non-zero
+		/Z Col 2 mod def
+		IsTop? { %  Top row, possibly top right corner
+		    Z 0 eq {
+			IsRight? { % top right hand corner (even):
+			    [ [ Row Col 1 sub ] null null null
+			      [ Row 1 sub Col ] [ Row 1 sub Col 1 sub ] ]
+			} { % top in the middle somewhere, even
+			    [ [ Row Col 1 sub ] null [ Row Col 1 add ]
+			      [ Row 1 sub Col 1 add ] [ Row 1 sub Col ]
+			      [ Row 1 sub Col 1 sub ] ]
+			} ifelse
+		    } {
+			IsRight? { % top right hand corner (odd):
+			    [ null null null null
+			      [ Row 1 sub Col ] [ Row Col 1 sub ] ]
+			} { % in the middle at the top, odd
+			    [ null null null [ Row Col 1 add ]
+			      [ Row 1 sub Col ] [ Row Col 1 sub ] ]
+			} ifelse
+		    } ifelse
+		} { % In the middle (or right edge)
+		    Z 0 eq {
+			IsRight? { % right edge, even
+			    [ [ Row Col 1 sub ] [ Row 1 add Col ] null null
+			      [ Row 1 sub Col ] [ Row 1 sub Col 1 sub ] ]
+			} { % central, even
+			    [
+				[ Row Col 1 sub ] [ Row 1 add Col ]
+				[ Row Col 1 add ] [ Row 1 sub Col 1 add ]
+				[ Row 1 sub Col ] [ Row 1 sub Col 1 sub ]
+			    ]
+			} ifelse
+		    } {
+			IsRight? { % right edge middle, odd
+			    [ [ Row 1 add Col 1 sub ] [ Row 1 add Col ]
+			      null null [ Row 1 sub Col ] [ Row Col 1 sub] ]
+			} {
+			    [
+				[ Row 1 add Col 1 sub ] [ Row 1 add Col ]
+				[ Row 1 add Col 1 add ] [ Row Col 1 add ]
+				[ Row 1 sub Col ] [ Row Col 1 sub]
+			    ]
+			} ifelse
+		    } ifelse
+		} ifelse
+	    } ifelse
+	} ifelse
+    end
+    % dup length 6 ne { BadLengthError } if % for debugging
+} def
+
+pause
+
+/CoordsToPoint { % Row Col => x y of western point
+    dup 2 mod 0 eq {					% Row Col
+	exch HexHeight mul HexDHeight add
+    } {
+	exch HexHeight mul HexHeight add
+    } ifelse						% Col y
+    exch						% y Col
+    HexHDelta mul exch					% x y
+} def
+
+/ShowMines { % - => -
+    10 dict begin
+	gsave % @@ ++ 1
+	    SetBombFont
+	    1 0 0 rgbcolor setcolor
+	    BombGlyph DisplayItemSize			% w h
+	    2 div neg /dy exch def			% w
+	    2 div neg /dx exch def			% -
+
+	    MineBoard {					% /Key Value
+		aload pop CoordsToPoint			% /key x y
+		exch HexWidth 2 div add exch		% /Key hex centre
+		dx dy xyadd moveto			% /Key
+		BombGlyph DisplayItemPaint		% /Key
+		pop % get rid of Key
+		pause
+	    } forall
+
+	grestore % @@ -- 1
+    end
+} def
+
+/IsThereAMineHere? { % Row Col => bool
+    RowColToKey						% name 
+    MineBoard exch known				% bool
+} def
+
+% TODO make this a method of HexCanvas:
+/LayMines { % n_mines => -
+    10 dict begin					% n
+	1 max /n exch def				% -
+	(New Game...) (%...)[n] sprintf /setfooter window1 send
+	/MineCount n def
+
+	{
+	    n 0 eq { exit } if
+
+	    % Lay one mine
+	    random MineRows mul  cvi
+	    random MineCols mul  cvi			% Row Col
+	    2 copy RowColToKey dup			% Row Col key key
+
+	    MineBoard exch known {			% r c key key
+		% It's already there...			% Row Col key
+		pop pop pop				% -
+	    } {						% Row Col key
+		3 1 roll 2 copy				% key r c r c
+		2 array astore				% key r c [r c]
+		MineBoard exch				% key r c dict [r c]
+		5 -1 roll exch				% r c dict key [r c]
+		put					% Row Col
+    %% 2 copy exch (R % C %\n) sprintf console exch fprintf
+
+		% Add one nearby mine to each neighbour:
+		GetNeighbours {
+		    dup null eq {
+			pop					% -
+		    } {
+			aload pop				% r c
+			MineRows mul add			% index
+			MineDict /NearbyMines get		% index array
+			exch 2 copy				% a i a i
+			get					% a i val
+			1 add put				% -
+		    } ifelse
+		} forall
+		/n n 1 sub def
+		n 32 mod 17 eq {
+    (New Game...) (Laying % Mines)[n] sprintf /setfooter window1 send
+		} if
+	    } ifelse
+
+	    % let other things run in case we're checking the same cell a lot:
+	    pause
+	} loop
+
+	MineDict /MineCount MineCount put
+	MineDict /TotalMines MineCount put
+    end
+    (New Game...) () /setfooter window1 send
+} def
+
+pause
+
+/HighScoreCanvas ClassCanvas
+dictbegin
+    /EntryCount 0 def
+    /MyScore 0 def
+    /HighScores 0 def
+    /f 0 def % file handle
+    /FilePath 0 def
+    /FileName (hexsweeper.scores) readonly def
+    /MyWidth 200 def
+    /MyHeight 40 def
+    /WidestScore 550 def
+    /ScoreTextSize 16 def
+    /OnTheBoard false def
+    % MyScoreGlyph is a right-pointing arrow:
+    /MyScoreGlyph [ (\355) /ZapfDingbats findfont ScoreTextSize scalefont ]
+    readonly def
+dictend
+classbegin
+    /SetFilePath {
+	/FilePath exch promote
+    } def
+
+    /minsize {
+	100 40
+    } def
+
+    %% read the high score table
+    /ReadScoreFile { % - => -
+	self setcanvas
+
+	[
+	    (/usr/games/lib)
+	    (/usr/local/games/lib)
+	    { (HOME) getenv } stopped { (/tmp) } if
+	] /SetFilePath self send
+
+	FileName FilePath (r) filepathopen {
+	    /f exch promote % got a file
+	    % filepathopen left the correct path on the stack:
+	    % 1 array astore /SetFilePath self send
+	    pop
+
+	    pause
+
+	    % first, the number of entries:
+	    f 20 string readline {
+		/EntryCount exch cvi def
+	    } {
+		/EntryCount 0 def
+	    } ifelse
+
+	    % Allow a maximum of 30 entries:
+	    EntryCount 30 gt {
+		/EntryCount 30 def
+	    } if
+
+	    /EntryCount EntryCount promote
+
+	    /HighScores EntryCount 1 add array def
+	    /HighScores HighScores promote
+
+	    /n 0 def
+	    % now the actual entries
+
+	    /GillSans findfont ScoreTextSize scalefont setfont
+
+	    /WidestScore 0 promote
+
+	    0 1 EntryCount 1 sub {
+		f 200 string readline {				% int string   
+		    dup % check to see if the string is wider than the max
+		    dup stringwidth pop				% s s width
+		    exch cvi 1 add log cvi % add 1 to avoid "0 log"
+		    10 exch sub (0) stringwidth pop mul add
+		    WidestScore max /WidestScore exch promote
+		    HighScores 3 1 roll put
+		    /n n 1 add def
+		} {
+		    pop pop exit
+		} ifelse
+		pause
+	    } for
+
+	    /EntryCount n def
+	    /EntryCount n promote
+
+	    f closefile
+	    /f 0 promote
+	    /WidestScore
+		WidestScore MyScoreGlyph DisplayItemSize pop 1.2 mul add
+	    promote
+	} {
+	     pop
+	     /EntryCount 0 promote
+	    /HighScores 1 array promote
+	} ifelse
+    } def
+
+    /preferredsize {
+	WidestScore 20 add
+	31 18 mul 20 add % 31 is max No. of high scores + 1
+    } def
+
+    /WriteScoreFile {
+	FileName FilePath (w) filepathopen {
+	    /f exch promote
+	    EntryCount 30 gt {
+		/EntryCount 30 promote
+	    } if
+	    f  EntryCount 10 string cvs  writestring
+	    f (\n) writestring
+	    0 1 HighScores length 1 sub {
+		HighScores exch get
+		dup null ne {
+		    dup MyScore eq {
+			/OnTheBoard true promote
+		    } if
+		    f exch writestring
+		    f (\n) writestring
+		} if
+		pause
+	    } for
+	    f closefile
+	    /f 0 promote
+	    % filepathopen left the correct path on the stack:
+	    (Wrote score file %) sprintf
+	    Score (Score: %) sprintf
+	    /setfooter window1 send
+	} {
+	    (Couldn't write score file %) sprintf  (oops)
+					2 copy /setfooter Parent send
+					/setfooter window1 send
+	    % handle errors (urp)
+	} ifelse
+    } def
+
+    /SetHighScore {
+	ReadScoreFile
+	%% who am I?
+	/UserName
+	    { (LOGNAME) getenv } stopped {
+		{ (USER) getenv } stopped {
+		    (unknown) % unknown user...
+		} if
+	    } if
+	def
+
+	%% Score:
+	%% metric is
+	%% Number Of Mines ^ 2/ ( Row * Cols * max(Time, 0.25) )
+	/Score
+	    MineDict /TotalMines get  MineRows MineCols mul
+	    /GetDifficulty canvas1 send mul  mul
+	    MineDict /SecondsSoFar get dup 0 eq { pop 0.25 } if
+	    div
+	    36 mul % well, lots of sixes in Hexsweeper :-)
+	    cvi
+	def
+
+	% \320 is an em dash (---)
+	(% \320 % \320 Mines: %; Time: %; Grid: % x %; Difficulty %) [
+	    Score
+	    UserName
+	    MineDict /TotalMines get
+	    MineDict /SecondsSoFar get
+	    MineCols MineRows
+	    /GetDifficulty canvas1 send
+	] sprintf % leave the string on the stack
+	/MyScore exch promote
+	/HighScores HighScores dup EntryCount MyScore put promote
+
+	/e EntryCount 1 add array def
+
+	EntryCount 30 lt {
+	    /EntryCount EntryCount 1 add promote
+	} if
+
+	0 1 e length 1 sub {
+	    dup HighScores exch get % n score
+	    dup null eq {
+		pop exit
+	    } { % n score
+		e 3 1 roll put
+	    } ifelse
+	    pause
+	} for
+
+	/HighScores e { cvi exch cvi exch lt } quicksort promote
+
+	WriteScoreFile
+
+	OnTheBoard {
+	    ShowHighScores
+	} if
+
+    } def
+
+    /Paint {
+	self setcanvas
+	gsave % @@ ++ 1
+	    Update
+	grestore % @@ -- 1
+    } def
+
+    /Update { % update high score table on screen
+	/OnTheBoard false promote
+	gsave % @@ ++ 1
+	    self setcanvas
+	    BackgroundColor FillCanvas
+
+	    pause
+	    ReadScoreFile
+
+	    /GillSans findfont ScoreTextSize scalefont setfont
+	    FG setcolor
+	    /bbox self send /MyHeight exch def /MyWidth exch def pop pop
+	    10 MyHeight 10 sub moveto
+	    0 1 EntryCount 1 sub {
+		HighScores exch get % array
+		dup null eq { pop pop exit } if
+		currentpoint exch pop 10 exch moveto
+		0 -18 rmoveto
+		gsave % @@ ++ 2
+		    currentpoint 3 -1 roll % x y string
+		    dup MyScore eq {
+			MyScoreGlyph DisplayItemPaint
+			(You made the high score!) () /setfooter Parent send
+			/OnTheBoard true promote
+		    } if
+		    3 1 roll
+		    MyScoreGlyph DisplayItemSize pop 1.2 mul 0 xyadd moveto
+		    % allow room for 10 digits
+		    dup cvi log cvi
+		    10 exch sub (0) stringwidth pop mul 0 rmoveto
+		    show
+		    pause pause
+		grestore % @@ -- 2
+	    } for
+	grestore % @@ -- 1
+    } def
+classend def
+
+pause
+
+/ShowHighScores {
+    highscore_can setcanvas
+    /Update highscore_can send
+    /reshaped? highscore_win send not {
+	/place highscore_win send
+    } if
+    /pin highscore_win send
+    /totop highscore_win send
+    /Footer? true /setattribute highscore_win send
+    /map highscore_win send
+} def
+
+/HelpCanvas ClassCanvas
+dictbegin
+    /vspace 18 def
+    /textsize 16 def
+dictend
+classbegin
+    % stolen shamelessly from $OPENWINHOME/demo/fontview
+    /minsize {
+	300 425
+    } def
+
+    /firstline {
+	/size self send exch pop 10 exch vspace sub moveto
+    } def
+
+    /NL {
+	currentpoint exch pop
+	vspace sub 10 exch moveto
+    } def
+
+    % /BackgroundColor {
+	% Color {
+	    % BG
+	% } {
+	    % 1 1 1 rgbcolor
+	% } ifelse
+	% dup /BackgroundColor exch promote
+    % } def
+
+    %% Screen One - Intro
+    /PaintOne {
+	firstline (HexSweeper) show
+	NL /Symbol findfont textsize scalefont setfont (\343) show
+	/Palatino-Roman findfont textsize scalefont setfont
+	( Liam Quin, 1992     \(lee@sq.com\)) show
+
+	NL ( ) show
+	NL (HexSweeper  is a version of the VMS) show
+	NL (minesweeper game for OpenWindows 3.) show
+	NL ( ) show
+
+	NL (The game window shows a number of) show
+	NL (hexagons.  There are explosive mines) show
+	NL (under some of them.  You must put a) show
+	NL (Mark \(`m' or middle button\) over every) show
+	NL (mine, but ) show
+	currentfont
+	/Palatino-Italic findfont textsize 1 add scalefont setfont
+	(not) show
+	setfont
+	( over any empty hexagons.) show
+	NL (In order to help you, when you step on) show
+	NL (a hexagon \(press the left mouse button) show
+	NL (over a it, or press the space bar\) the) show
+	NL (number of mines under the adjoning) show
+	NL (hexagons will be shown.  If there are no) show
+	NL (nearby mines, you could step safely on) show
+	NL (all of the nearby hexagons, but that) show
+	NL (would be tedious, so HexSweeper does) show
+	NL (it for you.) show
+	NL (Press `s' to see the high scores, and) show
+	NL (`q' to quit.   Oh, and have fun!) show
+    } def
+
+    %% Screen Two - Keys and Buttons
+
+    %% Screen Three - Worked Example
+
+    %% Screen Four - Strategy & Tactics
+
+    /Paint {
+	BackgroundColor FillCanvas
+	ForegroundColor setcolor
+	/Palatino-Roman findfont textsize scalefont setfont
+	PaintOne
+    } def
+classend def
+
+pause
+
+/ShowHelp {
+    /reshaped? help_win send not {
+	/place help_win send
+    } if
+    /pin help_win send
+    /totop help_win send
+    /map help_win send
+} def
+
+/HexCanvas ClassCanvas nulldict
+classbegin
+    /Transparent false def
+    /Retained true def
+
+    /canvasWidth HexHDelta 6 mul def
+    /canvasHeight HexHeight 6 mul def
+    /Difficulty 1 6 div def
+
+    /MineFont /Palatino-Roman findfont HexHWidth 1.5 div scalefont def
+    /OldX -20000 def
+    /OldY -30000 def
+
+    /InNewGame false def
+
+    %% default window size
+
+    /preferredsize {
+	MineCols HexHDelta mul HexDWidth add 3 add % for rounding
+	MineRows HexHeight mul HexDHeight add 3 add % for rounding
+    } def
+
+    /minsize {
+	4 HexHDelta mul HexDWidth add
+	4 HexHeight mul HexDHeight add
+    } def
+
+    /SetDifficulty {
+	dup 0 lt {
+	    pop 0
+	} if
+	dup 1.0 gt {
+	    pop 1
+	} if
+	/Difficulty exch promote
+    } def
+
+    /GetDifficulty { Difficulty } def
+
+    /SetOldXY {
+	self begin
+	    /OldY exch def /OldY OldY promote
+	    /OldX exch def /OldX OldX promote
+	end
+    } def
+
+    /ChangeFont { % fontname => -
+	/HexFont exch 1 array astore cvx def
+	/HexBoldFont HexFont def
+	UseColorGlyphs? SetColorMode
+	% caller should now redraw screen (send PaintAll)
+    } def
+
+    /GetFont {
+	HexFont
+    } def
+
+    /SetGlyphColor { % array(2) => -
+	aload pop 				% whichglyph color
+	GlyphColors 3 1 roll			% array(6) glyph value
+	put
+	UseColorGlyphs? SetColorMode
+    } def
+
+    /SetGlyphColor1 /SetGlyphColor load cvx def
+    /SetGlyphColor2 /SetGlyphColor load cvx def
+    /SetGlyphColor3 /SetGlyphColor load cvx def
+    /SetGlyphColor4 /SetGlyphColor load cvx def
+    /SetGlyphColor5 /SetGlyphColor load cvx def
+    /SetGlyphColor6 /SetGlyphColor load cvx def
+
+    % Note:
+    % We use the built-in canvas timer to generate events every second,
+    % which we use to time the player's progress.
+    % The canvas timer is undocumented in TNT 3.0, but is a supported part
+    % of the API and will be documented in the next release.  Or so said Pat.
+
+    /StartTimer {
+	MineDict /Counting get {
+	    StopTimer
+	} if
+	MineDict begin
+	    /Counting true def
+	    /SecondsSoFar 0 def
+            [ 1 0 ] dup /startcanvastimer self send
+	end
+    } def
+
+    /StopTimer {
+	/stopcanvastimer self send
+	MineDict /GameInProgress false put
+	MineDict /Counting false put
+    } def
+
+    % override
+    %   Handle the timer events
+    %
+    %   event  =>  -
+    /HandleTimer {  %   event  =>  -
+        MineDict begin
+            Counting {
+                /SecondsSoFar SecondsSoFar 1 add def
+ 
+		MineCount 1 eq {
+		    (Only one Mine left!)[MineCount] sprintf
+		} {
+		    (% Mines left)[MineCount] sprintf
+		} ifelse
+		SecondsSoFar 1 eq {
+		    (% second)[SecondsSoFar] sprintf
+		} {
+		    SecondsSoFar 120 ge {
+			(% minutes % )[
+			    SecondsSoFar 60 div cvi SecondsSoFar
+			] sprintf
+		    } {
+			(% seconds)[SecondsSoFar] sprintf
+		    } ifelse
+		} ifelse
+                /setfooter Parent send
+            } if
+        end
+ 
+        pop
+    } def
+
+    /MarkHex { % x y MarkHex => -
+	MineDict /Counting get not {
+	    StartTimer
+	} if
+	self setcanvas
+	gsave % @@ ++ 1
+	    2 copy Draw3DHexAt
+	    2 copy exch % x' y' y' x'
+	    HexWidth 2 div add exch % x' y' x+ y'
+	    MarkGlyph DisplayItemSize % x y x' y' w h
+		2 div neg exch 2 div neg exch
+	    % x y x y w h
+	    xyadd moveto
+	    % x y of leftmost corner
+	    FG setcolor
+	    MarkGlyph DisplayItemPaint
+	    % x y
+	    2 copy PointToCoords IsThereAMineHere? {
+		%  x y
+		2 copy
+		PointToCoords RowColToKey PlacesBeen exch true put % -
+		MineDict begin
+		    /MineCount MineCount 1 sub def
+		    MineCount
+		end % MineCount
+		0 eq {
+		    StopTimer
+		    MineDict /SecondsSoFar get dup 1 le {
+			pop
+			() (A one-second win!) /setfooter Parent send
+		    } {
+			% time
+			(You won in % seconds) sprintf () exch
+						/setfooter Parent send
+		    } ifelse
+		    /Busy /setvisualstate Parent send
+		    DoCloud
+		    unblockinputqueue
+		    /SetHighScore highscore_can send
+		    /Active /setvisualstate Parent send
+		} {
+		    pop pop
+		} ifelse
+	    } {
+		2 copy % x y
+		WrongMarkGlyph DisplayItemSize % x y x y w h
+		    2 div neg exch 2 div neg HexWidth 2 div add exch
+		xyadd moveto
+		WrongMarkGlyph DisplayItemPaint
+		StopTimer
+		% x y
+		DoBang
+		% -
+		ShowMines
+	    } ifelse
+	grestore % @@ -- 1
+    } def
+
+    % private
+    %   Create a temporary canvas.
+    %
+    %   Since `Retained' is only a hint, and we don't want these
+    %   canvases to be visible on the screen (unless debugging),
+    %   they are normally built as orphans.  But for debugging
+    %   we build them as children of the framebuffer.
+    %
+    %   width  height  =>  canvas
+    /BuildTmpCanvas {   %   width  height  =>  canvas
+        DebugDrawing? {                                     %  w h
+            framebuffer  self /Colormap get newcanvas       %  w h can
+            dup /Retained true put                          %  w h can
+ 
+            0 0  5 3 roll  rectpath                         %  can
+            dup reshapecanvas                               %  can
+        } {                                                 %  w h
+            self /Colormap get                              %  w h cm
+            dup /Visual get /BitsPerRGB get                 %  w h cm d
+            matrix  null  4 -1 roll                         %  w h d m proc cm
+            buildimage                                      %  can
+        } ifelse
+    } def
+
+    /DrawBoard { % width height DrawBoard -
+	(New Game...) (Drawing Board) /setfooter Parent send
+	18 dict begin
+	    /BoardHeight exch def
+	    /BoardWidth exch def
+	    % We will use an off-screen canvas to hold two columns of hexes -
+	    % actually from the middle of one through all of another and on to
+	    % the middle of a third.  We can then repeat this canvas to draw the
+	    % game board quickly.
+
+	    /TmpWid HexWidth HexHWidth add def
+	    /TmpCan
+		TmpWid 0.5 add cvi
+		MineRows HexHeight mul HexDHeight add 0.5 add cvi
+		BuildTmpCanvas
+	    def
+
+	    self setcanvas
+	    gsave
+		BG FillCanvas
+	    grestore
+
+	    % draw Cols 0 to 2 inclusive on the main canvas:
+	    self setcanvas
+	    gsave % @@ ++ 1
+		% 0 HexDHeight translate
+		% row 0 on the main screen:
+		% 0 1 MineRows 2 sub {
+		    % TinyCan imagecanvas
+		    % pop 0 HexHeight translate
+		% } for
+		/x 0 def
+		0 0 moveto
+		/Indent HexDHeight def
+		0 1 2 {
+		    /Col exch def
+		    /y Indent def
+		    0 1 MineRows 1 sub {
+			/Row exch def
+			x y Draw3DHexAt
+			/y y HexHeight add def
+		    } for
+		    /x x HexHDelta add def
+		    /Indent
+			Indent HexDHeight eq {
+			    HexHeight
+			} {
+			    HexDHeight
+			} ifelse
+		    def
+		} for
+	    grestore % @@ -- 1
+
+	    MineCols 5 gt {
+		% copy the resulting 3 columns to the off-screen canvas:
+		gsave % @@ ++ 1
+		    TmpCan setcanvas
+		    BG FillCanvas
+
+		    HexWidth 2 div neg 0 translate
+		    self imagecanvas
+		grestore % @@ -- 1
+
+		self setcanvas
+
+		% draw central columns:
+		gsave % @@ ++ 1
+		    HexWidth 2 div 0 translate
+		    MineCols 2 div cvi 2 sub dup {
+			TmpWid 0 translate
+			TmpCan imagecanvas
+		    } repeat					% npairs
+		grestore % @@ -- 1
+		/Col exch 2 mul 2 add def
+		/Indent HexDHeight def
+	    } {
+		/Col 3 def % column to start drawing
+		/Indent HexHeight def
+	    } ifelse
+
+	    % draw rightmost half or one-and-a-half columns
+	    gsave % @@ ++ 1
+		/x Col HexHDelta mul def
+		x 0 moveto
+		Col  1  MineCols 1 sub {
+		    /Col exch def
+		    /y Indent def
+		    0 1 MineRows 1 sub {
+			/Row exch def
+			x y Draw3DHexAt
+			/y y HexHeight add def
+		    } for
+		    /x x HexHDelta add def
+		    /Indent
+			Indent HexDHeight eq {
+			    HexHeight
+			} {
+			    HexDHeight
+			} ifelse
+		    def
+		} for
+	    grestore % @@ -- 1
+	end
+    } def
+
+    /NewGame { % Rows Cols => -
+	InNewGame not { % prevent migration of window.. 
+	    /InNewGame true promote
+	    self setcanvas
+	    MineDict /GameInProgress false put
+	    /Busy /setvisualstate Parent send
+
+	    % set the cursor to a stopwatch:
+	    /busy /setcursor Parent send
+
+	    (New Game...) (Stopping timer) /setfooter Parent send
+
+	    MineDict /Counting get {
+		StopTimer
+	    } if
+	    MineDict /MineCount 0 put
+
+	    2 copy % Rows Cols Rows Cols
+
+	    2 copy MineCols ne
+	    exch MineRows ne or {
+		(New Game...) (recomputing) /setfooter Parent send
+		2 copy
+		/MineCols exch def
+		/MineRows exch def
+		% Rows Cols
+		4 lt exch 4 lt or {
+		    /MineCols MineCols 4 max def
+		    /MineRows MineRows 4 max def
+
+		    % The following will cause a call to /Paint, which,
+		    % if it were not for /InNewGame, would call NweGame...
+		    framebuffer setcanvas
+		    0 0 /preferredsize Parent send /reshape Parent send
+		    self setcanvas
+		} if
+	    } {
+		pop pop
+	    } ifelse
+
+	    MineRows MineCols ClearMines
+	    % Row Col
+	    mul Difficulty mul cvi LayMines
+
+	    MineCols HexHDelta mul
+	    MineRows HexHeight mul
+	    DrawBoard
+
+	    /basic /setcursor Parent send
+	    MineDict /GameInProgress true put
+	    /Active /setvisualstate Parent send
+	    -10000 -10003 /SetOldXY canvas1 send
+	    (Ready!)() /setfooter Parent send
+	    /InNewGame false promote
+	    userdict /MineRows MineRows put
+	    userdict /MineCols MineCols put
+	} if
+    } def
+
+    /MakeBangPath {
+	newpath
+	296 240 moveto 248 320 lineto 200 232 lineto 144 320 lineto 144 232
+	lineto 56 312 lineto 104 232 lineto 0 200 lineto 104 192 lineto 48 64
+	lineto 136 144 lineto 152 0 lineto 176 128 lineto 264 8 lineto 280
+	120 lineto 392 8 lineto 368 120 lineto 488 80 lineto 416 144 lineto
+	512 224 lineto 424 208 lineto 472 272 lineto 360 232 lineto 376 320
+	lineto closepath
+    } def
+
+    /DoBang { % x y => -
+	pop pop % don't really need the x y
+	{
+	    12 dict begin
+		gsave % @@ ++ 1
+		    newpath
+		    /TmpCan framebuffer newcanvas def
+
+		    framebuffer setcanvas
+		    0 0 moveto
+		    2.5 2.5 scale TmpCan MakeBangPath reshapecanvas
+		    pause
+
+		    TmpCan /Transparent false put
+		    TmpCan /Retained true put
+		    TmpCan /Mapped true put
+		    TmpCan setcanvas
+
+		    1 1 1 rgbcolor FillCanvas pause
+		    .9 .2 .2 rgbcolor FillCanvas pause
+		    1 1 1 rgbcolor FillCanvas pause
+		    .9 .2 .2 rgbcolor FillCanvas pause
+		    .9 .9 0 rgbcolor FillCanvas % a strong yellow
+		    pause
+		    % draw a red border
+		    .9 .2 .2 rgbcolor setcolor 10 setlinewidth
+		    MakeBangPath stroke
+
+		    110 160 moveto
+		    /Rockwell-Bold findfont 70 scalefont setfont
+		    (B A N G !) show
+
+		    [0 500000] sleep
+
+		    % TmpCan /Mapped false put
+
+		    pause
+		grestore % @@ -- 1
+	    end
+	} fork
+	% give the child a chance to run:
+	pause
+	[ 0 1000000 20 div cvi ] sleep
+    } def
+
+    /MakeCloudPath {
+	newpath
+	/c /curveto load def
+	99 232 moveto 97 231 lineto 95 230 95 230 93.5 229 c 92 228 92 228 91
+	226 c 90 224 90 224 89 216 c 88 208 88 208 90 202 c 92 196 92 196 92
+	194 c 92 192 92 192 91 194 c 90 196 90 196 84 200 c 78 204 78 204 73
+	208 c 68 212 68 212 62 215 c 56 218 56 218 49 220 c 42 222 42 222 30
+	222 c 18 222 18 222 15 221 c 12 220 12 220 7 212 c 2 204 2 204 1 198
+	c 0 192 0 192 0 185 c 0 178 0 178 1 173 c 2 168 2 168 5 160 c 8 152 8
+	152 14 145 c 20 138 20 138 25 135 c 30 132 30 132 34 131 c 38 130 38
+	130 39 130 c 40 130 40 130 37 129 c 34 128 34 128 28 121 c 22 114 22
+	114 20 107 c 18 100 18 100 17 92 c 16 84 16 84 18 74 c 20 64 20 64 22
+	57 c 24 50 24 50 27 46 c 30 42 30 42 34 38 c 38 34 38 34 45 33 c 52
+	32 52 32 60 36 c 68 40 68 40 76 46 c 84 52 84 52 94 61 c 104 70 104
+	70 106 72 c 108 74 108 74 110 77 c 112 80 112 80 111 78 c 110 76 110
+	76 110 62 c 110 48 110 48 116 35 c 122 22 122 22 127 15 c 132 8 132 8
+	138 5 c 144 2 144 2 149 1 c 154 0 154 0 159 3 c 164 6 164 6 169 15 c
+	174 24 174 24 178 34 c 182 44 182 44 184 53 c 186 62 186 62 190 71 c
+	194 80 194 80 197 85 c 200 90 200 90 200 87 c 200 84 200 84 201 77 c
+	202 70 202 70 204 66 c 206 62 206 62 212 49 c 218 36 218 36 224 29 c
+	230 22 230 22 238 19 c 246 16 246 16 254 15 c 262 14 262 14 268 15 c
+	274 16 274 16 282 21 c 290 26 290 26 298 36 c 306 46 306 46 315 57 c
+	324 68 324 68 331 79 c 338 90 338 90 339 92 c 340 94 340 94 340 93 c
+	340 92 340 92 343 86 c 346 80 346 80 350 71 c 354 62 354 62 361 51 c
+	368 40 368 40 378 33 c 388 26 388 26 395 25 c 402 24 402 24 412 24 c
+	422 24 422 24 429 27 c 436 30 436 30 442 35 c 448 40 448 40 453 49 c
+	458 58 458 58 465 70 c 472 82 472 82 473 86 c 474 90 474 90 474 92 c
+	474 94 474 94 475 92 c 476 90 476 90 481 86 c 486 82 486 82 489 80 c
+	492 78 492 78 500 74 c 508 70 508 70 517 68 c 526 66 526 66 536 67 c
+	546 68 546 68 551 70 c 556 72 556 72 566 77 c 576 82 576 82 580 85 c
+	584 88 584 88 589 95 c 594 102 594 102 596 111 c 598 120 598 120 599
+	129 c 600 138 600 138 600 142 c 600 146 600 146 597 151 c 594 156 594
+	156 589 159 c 584 162 584 162 580 163 c 576 164 576 164 566 164 c 556
+	164 556 164 555 163 c 554 162 554 162 555 162 c 556 162 556 162 563
+	165 c 570 168 570 168 577 173 c 584 178 584 178 587 182 c 590 186 590
+	186 593 195 c 596 204 596 204 597 213 c 598 222 598 222 597 226 c 596
+	230 596 230 595 233 c 594 236 594 236 589 243 c 584 250 584 250 578
+	256 c 572 262 572 262 568 265 c 564 268 564 268 557 271 c 550 274 550
+	274 545 274 c 540 274 540 274 537 273 c 534 272 534 272 532 272 c 530
+	272 530 272 526 268 c 522 264 522 264 519 262 c 516 260 516 260 511
+	256 c 506 252 506 252 505 251 c 504 251 504 251 503 256 c 502 261 502
+	261 502 264 c 502 267 502 267 499 276 c 496 285 496 285 494 289 c 492
+	293 492 293 491 296 c 490 299 490 299 489 301 c 488 303 488 303 486
+	304 c 484 305 484 305 480 309 c 476 313 476 313 473 315 c 470 317 470
+	317 464 320 c 458 323 458 323 451 323 c 444 323 444 323 437 319 c 430
+	315 430 315 428 313 c 426 311 426 311 424 308 c 422 305 422 305 421
+	303 c 420 301 420 301 417 294 c 414 287 414 287 413 283 c 412 279 412
+	279 410 275 c 408 271 408 271 407 267 c 406 263 406 263 405 261 c 404
+	259 404 259 404 262 c 404 265 404 265 403 269 c 402 273 402 273 402
+	275 c 402 277 402 277 401 279 c 400 281 400 281 399 284 c 398 287 398
+	287 397 289 c 396 291 396 291 396 293 c 396 295 396 295 392 298 c 388
+	301 388 301 384 305 c 380 309 380 309 376 311 c 372 313 372 313 371
+	313 c 370 313 370 313 368 314 c 366 315 366 315 364 315 c 362 315 362
+	315 361 314 c 360 313 360 313 358 313 c 356 313 356 313 349 306 c 342
+	299 342 299 341 295 c 340 291 340 291 338 287 c 336 283 336 283 332
+	274 c 328 265 328 265 325 259 c 322 253 322 253 322 255 c 322 257 322
+	257 321 259 c 320 261 320 261 319 262 c 318 263 318 263 318 265 c 318
+	267 318 267 316 271 c 314 275 314 275 313 278 c 312 281 312 281 307
+	287 c 302 293 302 293 293.5 299 c 285 305 285 305 277 306 c 269 307
+	269 307 265.5 306 c 262 305 262 305 259 301 c 256 297 256 297 255 294
+	c 254 291 254 291 253 287 c 252 283 252 283 250 278 c 248 273 248 273
+	246 267 c 244 261 244 261 243 257 c 242 253 242 253 242 250 c 242 247
+	242 247 241 247 c 240 247 240 247 241 248 c 242 249 242 249 241 251 c
+	240 253 240 253 240 256 c 240 259 240 259 238 263 c 236 267 236 267
+	234 270 c 232 273 232 273 230 275 c 228 277 228 277 227 281 c 226 285
+	226 285 223 287 c 220 289 220 289 218 290 c 216 291 216 291 199 292 c
+	182 293 182 293 179 292 c 176 291 176 291 174 290 c 172 289 172 289
+	170 287 c 168 285 168 285 167 283 c 166 281 166 281 166 278 c 166 275
+	166 275 165 272 c 164 269 164 269 164 261 c 164 253 164 253 163 249 c
+	162 245 162 245 162 243 c 162 241 162 241 161 242 c 160 243 160 243
+	160 245 c 160 247 160 247 159 248 c 158 249 158 249 156 253 c 154 257
+	154 257 153 260 c 152 263 152 263 151 264 c 150 265 150 265 149 267 c
+	148 269 148 269 145 272 c 142 275 142 275 140 276 c 138 277 138 277
+	135 278 c 132 279 132 279 131 280 c 130 281 130 281 128 281 c 126 281
+	126 281 124 282 c 122 283 122 283 120 283 c 118 283 118 283 117 282 c
+	116 281 116 281 114 281 c 112 281 112 281 107 274 c 102 267 102 267
+	101 263 c 100 259 100 259 100 255 c 100 251 100 251 99 247 c 98 243
+	98 243 98 235.5 c
+
+	closepath
+    } def
+
+    /DoCloud { % x y => y
+	pop pop
+	{
+	    12 dict begin
+		gsave
+		    newpath
+		    /TmpCan framebuffer newcanvas def
+
+		    0 0 moveto TmpCan MakeCloudPath reshapecanvas
+		    pause
+
+		    TmpCan /Transparent false put
+		    TmpCan /Retained true put
+		    TmpCan setcanvas
+		    TmpCan /Mapped true put
+
+		    random 0.5 gt {
+			/BorderColor .2 .2 1 rgbcolor def
+			/BackColor .7 .7 1 rgbcolor def % a strong yellow
+			/TextColor .2 .2 1 rgbcolor def
+		    } {
+			/BorderColor .7 .7 1 rgbcolor def
+			/BackColor .2 .2 1 rgbcolor def
+			/TextColor .7 .7 1 rgbcolor def
+		    } ifelse
+		    /FlashColor1 TextColor def
+		    /FlashColor2 BackColor def
+		    FlashColor1 FillCanvas pause
+		    FlashColor2 FillCanvas pause
+		    FlashColor1 FillCanvas pause
+		    BackColor FillCanvas
+
+		    pause
+
+		    % draw a red border
+		    BorderColor setcolor 20 setlinewidth
+		    MakeCloudPath stroke
+		    pause
+
+		    TextColor setcolor 0 setlinewidth
+		    0 0 moveto 7 rotate
+		    90 110 moveto
+		    /Rockwell-Bold findfont 60 scalefont setfont
+		    (Congratulations) show
+
+		    [1 500000] sleep
+		    pause
+		grestore 
+	    end
+	} fork
+	% give the child a chance to run:
+	pause
+	[ 0 1000000 20 div cvi ] sleep
+    } def
+
+    /StepGingerly {  % x y => -
+	self setcanvas
+	gsave % @@ ++ 1
+	    % Draw a flat (2D) hex here:
+	    FindHexWestPoint					% c y
+	    2 copy PreviewFootstep				% x y
+	    % side effect: flattens the hex in BG, (but no glyph drawn)
+	    % draw the proper 2D hex
+	    DefaultOutlineWidth setlinewidth FG setcolor
+	    newpath 2 copy AddHexToPath BG2 setcolor fill
+	    OldX OldY PointToCoords				% x y r c
+	    2 copy IsThereAMineHere? {				% x y r c
+		StopTimer pop pop				% x y
+		DoBang						% -
+		ShowMines					% -
+		-10000 -10007 /SetOldXY self send
+	    } {							% x y r c
+		2 copy GetNearbyMines				% x y r c n
+		dup 0 eq {					% x y r c n
+		    pop 4 2 roll pop pop			% r c
+		    unblockinputqueue
+		    DoAutoWalk					% -
+		} {						% x y r c n
+		    5 1 roll pop pop				% n x y
+		    2 copy 5 -1 roll				% x y x y n
+		    gsave
+			DefaultOutlineWidth setlinewidth FG setcolor
+			DrawHexGlyphAt				% x y
+		    grestore
+		    PointToCoords RowColToKey			% key
+		    PlacesBeen exch true put			% -
+		} ifelse
+
+		MineDict /Counting get not {
+		    StartTimer
+		} if
+
+	    } ifelse
+	grestore % @@ -- 1
+	-10000 -10003 /SetOldXY self send
+    } readonly def
+
+    /CancelPreviewFootstep { % - => -
+	OldX -1000 ge {
+	    OldX OldY PointToCoords RowColToKey
+	    PlacesBeen exch known not {
+		OldX OldY Draw3DHexAt % restore old hex
+	    } if
+	    -10000 -10000 /SetOldXY self send
+	} if
+    } def
+
+    /PreviewFootstep {  % x y => -
+	% x y of western point
+	2 copy PointToCoords RowColToKey		% x y name
+	PlacesBeen exch known not {
+	    2 copy Draw2DHexAt				% x y
+	} if
+	2 copy						% x y x y
+	OldY ne exch OldX ne or {			% x y
+	    CancelPreviewFootstep			% x y
+	    /SetOldXY self send				% -
+	} {						% x y
+	    pop pop					% -
+	} ifelse
+    } def
+
+    % override
+    %   Handle a mouse-down event
+    %
+    %   event  =>  - 
+    /TrackStart {
+	/E exch def
+	self setcanvas
+	E /Name get dup (LeftMouseButton) eq exch (MiddleMouseButton) eq or {
+	    -10001 -10002 /SetOldXY self send
+	    MineDict /GameInProgress get {
+		E /Coordinates get aload pop CheckInRange {
+		    E /Coordinates get aload pop
+		    FindHexWestPoint PreviewFootstep
+		    [/TrackCrossing /TrackMotion /TrackStop] true
+		} {
+		    nullarray true
+		} ifelse
+	    } {
+		(n/new game h/help)() /setfooter Parent send
+		nullarray true
+	    } ifelse
+	} {
+	    false
+	} ifelse
+    } def
+
+    % override
+    %   Handle the mouse moving to another screen
+    %
+    %   event  =>  - 
+    /TrackCrossing {
+	/TrackCancel self send
+    } def
+
+    % override
+    %   Handle mouse motion (while button is down)
+    %
+    %   event  =>  - 
+    /TrackMotion {
+	dup /E exch def begin
+	    E /Coordinates get aload pop
+	    2 copy CheckInRange {
+		gsave % @@ ++ 1
+		    self setcanvas
+		    FindHexWestPoint PreviewFootstep
+		grestore % @@ -- 1
+	    } {
+		gsave % @@ ++ 1
+		    self setcanvas
+		    CancelPreviewFootstep
+		grestore % @@ -- 1
+	    } ifelse
+	end
+	% /TrackMotion super send
+    } def
+
+    % override
+    %   Handle mouse up event
+    %
+    %   event  =>  - 
+    /TrackStop {
+	/E exch def
+	self setcanvas
+	E /TrackStop super send
+	E /Coordinates get aload pop CheckInRange {
+	    E /Name get {
+		(LeftMouseButton) {
+		    E /Coordinates get aload pop
+		    2 copy FindHexWestPoint
+		    PointToCoords RowColToKey
+		    PlacesBeen exch known {
+			pop pop %% beep % (too irritating to have a beep here)
+		    } {
+			StepGingerly
+		    } ifelse
+		}
+
+		(MiddleMouseButton) {
+		    E /Coordinates get aload pop 2 copy CheckInRange {
+			FindHexWestPoint
+			2 copy PointToCoords RowColToKey
+			PlacesBeen exch known {
+			    beep pop pop
+			} {
+			    MarkHex
+			} ifelse
+		    } {
+			pop pop
+		    } ifelse
+		} 
+
+		/Default {
+		    (Unknown Event) E /Name get /setfooter Parent send
+		} 
+	    } case
+	} {
+	    CancelPreviewFootstep
+	} ifelse
+    } def
+
+    % override
+    %   Handle cancellation of mouse tracking operation (e.g. via STOP key)
+    %
+    %   event  =>  - 
+    /TrackCancel {
+	/E exch def
+	CancelPreviewFootstep
+	E /TrackCancel super send
+    } def
+
+    %% Input events (key presses):
+    /StandardKeyUp {
+	/E exch def
+	self setcanvas
+	E /Name get {
+	    1 { % control-A - show array (for debugging!)
+		E /Coordinates get aload pop
+		20 dict begin
+		    /i 0 def
+		    FindHexWestPoint PointToCoords GetNeighbours {
+			dup null eq {
+			    pop
+			} {
+			    aload pop
+			    gsave
+				DefaultOutlineWidth setlinewidth FG setcolor
+				CoordsToPoint i DrawHexGlyphAt
+			    grestore
+			} ifelse
+			/i i 1 add def
+		    } forall
+		end
+	    }
+
+	    12 18 {  % control-L, control-R --> redraw
+		/Paint self send
+	    }
+
+	    32 { % space --> StepGingerly
+		E /Coordinates get aload pop
+		FindHexWestPoint 2 copy
+		PointToCoords RowColToKey PlacesBeen exch known {
+		    beep pop pop
+		} {
+		    MineDict /GameInProgress get {
+			StepGingerly
+		    } {
+			pop pop beep
+		    } ifelse
+		} ifelse
+	    }
+
+	    72 104 56 77 28 { % h, ? = help
+		ShowHelp
+	    }
+
+	    77 109 { % M, m = mark
+		E /Coordinates get aload pop
+		FindHexWestPoint
+		2 copy PointToCoords RowColToKey PlacesBeen exch known {
+		    beep pop pop
+		} {
+		    MineDict /GameInProgress get {
+			MarkHex
+		    } {
+			pop pop beep
+		    } ifelse
+		} ifelse
+	    }
+
+	    78 110 { % N, n - new game
+		MineRows
+		MineCols
+		NewGame
+	    }
+
+	    16 80 112 { % ^p, P, p, properties
+		/ShowProps self send
+	    }
+
+	    17 81 113 { % ^Q, Q, q --> quit
+		/QuitFromUser Parent send
+	    }
+
+	    19 83 115 { % ^S, s, S - show high scores
+		ShowHighScores
+	    }
+
+	    /Default {
+		beep
+	    }
+	} case
+    } def
+    
+    /FunctionKeyUp {
+	/Name get dup /FunctionL3 eq {
+	    % Props. I wish I got a "Properties" event instead, though.
+	    % But you need to have selections if you do that.
+	    /ShowProps self send
+	    pop
+	} {
+	    % console exch (HexSweeper doesn't understand the % key\n) fprintf
+	} ifelse
+    } def
+
+    /KeyStart {
+	pop
+	[ /StandardKeyUp /FunctionKeyUp ] true
+    } def
+
+    %% Startup code:
+    /NewInit {
+	/OldX -10341 promote
+	/OldY -10342 promote % unusual numbers for easy spotting...
+
+	% Arrange to be allowed focus:
+	MineFont /setfont self send
+
+        /NewInit super send
+    } def
+
+    /Paint {
+	/Busy /setvisualstate Parent send
+	InNewGame not { % prevent mutual recursion
+	    self setcanvas
+
+	    userdict /IconReshaped? known {
+		newpath userdict /IconReshaped? get setpath
+		/reshapecanvas self send
+		userdict /IconReshaped? null put
+		newpath userdict /IconReshaped? get setpath
+		/reshapecanvas Parent send
+		/initclip Parent send
+
+		initclip
+		%setpath clipcanvaspath
+		self setcanvas
+	    } if
+
+	    (Drawing...) ( ) /setfooter Parent send
+	    gsave % @@ ++ 1
+		BG FillCanvas
+	    grestore % @@ -- 1
+
+	    % canvas size -- TNT 3.0 Ref. p. 49
+	    bbox /canvasHeight exch def /canvasWidth exch def pop pop
+	    /Rows canvasHeight HexDHeight 2 div sub HexHeight div cvi def
+	    /Cols canvasWidth HexHDelta div cvi def
+
+	    Rows Cols NewGame
+
+	    (Type h for help...) ( ) /setfooter Parent send
+	} if
+	/Active /setvisualstate Parent send
+    } def
+
+classend def
+
+pause
+
+/ClassHexPreview [ClassCanvas ClassControl] []
+classbegin
+    /SetDepth {
+	/MyHexDepth exch promote
+    } def
+
+    /SetFlat {
+	/MyHexHWidth exch promote
+    } def
+
+    /minsize {
+	200 250
+    } def
+
+    /preferredsize {
+	200 200
+    } def
+
+    /Paint {
+	save
+	    gsave
+		% simple double-buffered animation:
+		BufferCanvas setcanvas
+		BG FillCanvas
+		MyHexHWidth SetHexSizeFromFlat
+		MyHexDepth SetHexDepthByProportion
+		0 150 Draw3DHexAt
+
+		self setcanvas
+		BufferCanvas imagecanvas
+	    grestore
+	restore
+    } def
+
+    % NewInit creates an off-screen canvas:
+    /NewInit {
+	/BufferCanvas
+	    /preferredsize self send
+            self /Colormap get                              %  w h cm
+            dup /Visual get /BitsPerRGB get                 %  w h cm d
+            matrix  null  4 -1 roll                         %  w h d m proc cm
+            buildimage                                      %  can
+	% promote
+	def
+	/NewInit super send
+    } def
+
+classend def
+
+pause % let other things run while we're loading
+
+/ClassHexPropsPanel ClassPanel []
+classbegin
+    /ChangeSelectedHexSize { % value slider-instance => -
+	pop dup					% value value
+	/SetFlat hexpreviewcanvas send		% value
+	/PaintAll hexpreviewcanvas send		% value
+	PendingPropertiesDict			% value dict
+	/SetHexSizeFromFlat 3 -1 roll put	% -
+	PropertiesDict				% dict
+	/ChangeShownHexSize HexHWidth put	% -
+	PendingPropertiesDict /SetHexDepthByProportion known not {
+	    /value hexdepthslider send hexdepthslider
+	    /ChangeSelectedHexDepth self send
+	} if
+    } def
+
+    /ChangeShownHexSize { % int -> -
+	dup /setvalue hexflatslider send
+    } def
+
+    /HexSliderSizePreviewer { % size-value slider-instance => -
+	pop
+	/SetFlat hexpreviewcanvas send
+	/PaintAll hexpreviewcanvas send
+    } def
+
+    /ChangeSelectedDifficulty { % value slider-instance => -
+	2 copy					% value slider value slider
+	/ChangeShownDifficultyMessage self send	% value slider
+	pop PendingPropertiesDict		% value dict
+	/SetDifficulty 3 -1 roll put		% -
+	PropertiesDict				% dict
+	/ChangeShownDifficulty			% dict key
+	/GetDifficulty canvas1 send put		% -
+    } def
+
+    /ChangeShownDifficulty { % n => -
+	dup /setvalue difficultyslider send	% n
+	null /ChangeShownDifficultyMessage self send	% -
+    } def
+
+    /ChangeShownDifficultyMessage  { % n slider => -
+	pop dup 0 eq { 				% n
+		pop (\(Only one mine!\))	% str
+	    } {					% n=0..1
+		dup
+		1 exch div 100 mul cvi 100 div	% 0..1 1/0..1
+		exch MineRows mul MineCols mul cvi
+		(% mines \(about 1 in % hexes\)) sprintf	% str
+	    } ifelse				% value /method string
+	/setvalue oneinhowmanymessage send
+    } def
+
+    /ChangeSelectedFont { % menuitem => -
+	/item exch send 			% [ string ]
+	aload pop				% string
+	cvn dup					% string name
+	% store the old font
+	PropertiesDict /ChangeShownFont HexFont put
+	PendingPropertiesDict /ChangeFont	% string name dict /ChangeFont
+	3 -1 roll put				% string
+	% show the new value:
+	ChangeShownFont				% -
+    } def
+
+    /ChangeShownFont { % fontname => -
+	% change the shown font name
+	200 string cvs /setvalue selectedfontvalue send
+    } def
+
+    /ChangeSelectedHexDepth { % n slider-instance => -
+	pop					% number
+	dup /SetDepth hexpreviewcanvas send
+	PendingPropertiesDict /SetHexDepthByProportion 3 -1 roll put
+	/PaintAll hexpreviewcanvas send
+	PropertiesDict /ChangeShownHexDepth HexDepth HexDHeight div put
+	PendingPropertiesDict /SetHexSizeFromFlat known not {
+	    /value hexflatslider send hexflatslider
+	    /ChangeSelectedHexSize self send
+	} if
+    } def
+
+    /ChangeShownHexDepth { % int => -
+	/setvalue hexdepthslider send
+    } def
+
+    /HexSliderDepthPreviewer { % depth-value slider-instance => -
+	pop
+	/SetDepth hexpreviewcanvas send
+	/PaintAll hexpreviewcanvas send
+    } def
+
+    /ChangeGlyphColor0 { % [n true] menu => -
+	4 dict begin
+	    /GLYPHINDEX 0 def % Change the DUP calls below if you alter this!
+	    exch aload pop pop				% menu n
+	    exch /item exch send			% [[ (n) font color ]]
+	    aload pop					% [ (n) font color ]
+	    2 get					% color
+	    GLYPHINDEX exch				% n color
+	    2 array astore 				% [ n color ]
+
+	    % update the displayed menu color:
+	    dup ChangeShownGlyphColor
+
+	    % arrange for Reset to work:
+	    dup 0 get dup				% [n c] n n
+	    GlyphColors exch get 			% [n c] n oldc
+	    exch (ChangeShownGlyphColor%)  sprintf cvn	% [n c] oldc /key
+	    exch
+	    PropertiesDict 3 1 roll			% [n c] dict /key val
+	    put
+
+	    PendingPropertiesDict			% array(2) dict
+	    (SetGlyphColor%) [GLYPHINDEX] sprintf cvn	% a(2) dict key
+	    3 -1 roll put
+	end
+    } def
+
+    /ChangeShownGlyphColor { % [whichglyph color] => -
+	aload pop 				% whichglyph color
+	exch					% color index
+	1 sub % the menus go from 1 to 6, not 0 to 5 
+	% get the menu item
+	/item colorbuttons send
+	aload pop pop				% color array
+	exch					% array array color
+	1 exch put				% -
+	self setcanvas
+	/PaintAll colorbuttons send
+    } def
+
+    /ChangeShownGlyphColor1 { [ 1  3 1 roll ] ChangeShownGlyphColor } def
+    /ChangeShownGlyphColor2 { [ 2  3 1 roll ] ChangeShownGlyphColor } def
+    /ChangeShownGlyphColor3 { [ 3  3 1 roll ] ChangeShownGlyphColor } def
+    /ChangeShownGlyphColor4 { [ 4  3 1 roll ] ChangeShownGlyphColor } def
+    /ChangeShownGlyphColor5 { [ 5  3 1 roll ] ChangeShownGlyphColor } def
+    /ChangeShownGlyphColor6 { [ 6  3 1 roll ] ChangeShownGlyphColor } def
+
+
+    /DUP {
+	load dup length array copy dup
+    } def
+
+    /ChangeGlyphColor1 /ChangeGlyphColor0 DUP 4 1 put cvx def
+    /ChangeGlyphColor2 /ChangeGlyphColor0 DUP 4 2 put cvx def
+    /ChangeGlyphColor3 /ChangeGlyphColor0 DUP 4 3 put cvx def
+    /ChangeGlyphColor4 /ChangeGlyphColor0 DUP 4 4 put cvx def
+    /ChangeGlyphColor5 /ChangeGlyphColor0 DUP 4 5 put cvx def
+    /ChangeGlyphColor6 /ChangeGlyphColor0 DUP 4 6 put cvx def
+
+    /DUP null def
+
+    /SetWhetherColor {
+	pop aload pop exch pop				% bool
+	PendingPropertiesDict /SetColorMode 2 index put	% bool
+	pop
+	PropertiesDict /ShowColorMode
+	GlyphColors BrightGlyphColors eq {
+	    [ 0 ]
+	} {
+	    [ ]
+	} ifelse
+	put
+    } def
+
+    /ShowColorMode {
+	/setvalue whetherincolor send
+    } def
+
+    /ApplyProperties {
+	% if the window is not pinned, dismiss the popup:
+	/pinned? PropsWindow send not {
+	    /close PropsWindow send
+	} if
+
+	PendingPropertiesDict {
+	    exch canvas1 send
+	} forall
+
+	/PendingPropertiesDict 50 dict def
+	/PropertiesDict 50 dict def
+
+	/value hexflatslider send /SetFlat hexpreviewcanvas send
+	/value hexdepthslider send /SetDepth hexpreviewcanvas send
+	/PaintAll hexpreviewcanvas send
+	/PaintAll canvas1 send
+    } def
+
+    /ResetProperties {
+	/PendingPropertiesDict 50 dict def
+	PropertiesDict {
+	    exch self send
+	} forall
+	/PropertiesDict 50 dict def
+	/value hexflatslider send /SetFlat hexpreviewcanvas send
+	/value hexdepthslider send /SetDepth hexpreviewcanvas send
+	/PaintAll hexpreviewcanvas send
+    } def
+
+    /NewInit {
+	/PendingPropertiesDict 50 dict def
+	/PropertiesDict 50 dict def
+
+        /NewInit super send
+    } def
+
+classend def
+
+pause
+
+%% Beware of in-line expansions of this in DoAutoWalk.
+/RowColToKey {  %   row  col  =>  key
+    MineRows mul add
+} def
+
+
+% Make the main window:
+/canvas1 framebuffer /new HexCanvas send def
+/window1 canvas1 framebuffer /new ClassBaseWindow send def
+
+MyName /setlabel window1 send
+
+{
+    /PaintIcon {
+	HexDepth HexHWidth % save so we can restore them later...
+
+	25 SetHexSizeAndDepthFromFlat
+	20 dict begin
+	    gsave % @@ ++ 1
+		IconFont setfont
+
+		/s (SWEEPER) def
+		/t [ (HEX) IconFont 2 scalefont 0 0.5 0.5 rgbcolor ] def
+		t DisplayItemSize /ty exch def /tx exch def
+		[ s currentfont] DisplayItemSize /sy exch def /sx exch def
+
+		userdict /IconReshaped? known not {
+		    userdict /IconReshaped? 
+			clipcanvaspath currentpath
+		    put
+		    % make the canvas the right size
+		    self
+			newpath
+			HexWidth sx sub 2 div 0 sx sy rectpath
+			0 sy HexDHeight add AddHexToPath
+		    reshapecanvas
+		} if
+
+		gsave
+		    framebuffer /BackgroundColor get FillCanvas
+		grestore
+
+		HexWidth sx sub 2 div 0 moveto
+		s show
+
+		% Move above the icon name and draw a hex:
+		0 sy translate
+		0 HexDHeight Draw3DHexAt
+
+		% move to middle of bottom left diagonal:
+		HexDWidth 2 div HexDHeight 2 div translate
+
+		% draw the word HEX rotated to fit:
+		30 rotate 0 0 moveto
+		% centre of the hex is at (HexHWidth) * sqrt3 / 2, 0
+		HexHWidth sqrt3 mul 2 div  0	% centre of hex on stack...
+		tx 2 div neg  ty 2 div neg xyadd % ...adjusted by size of "HEX"
+		moveto t DisplayItemPaint
+	    grestore % @@ -- 1
+	end
+	% used the saved sizes on the stack:
+	SetHexSizeFromFlat SetHexDepth
+    } installmethod
+
+    /QuitFromUser {
+	currentprocess killprocess
+    } installmethod
+} window1 send
+
+% Make a props panel for the Properties window controls:
+/PropsPanel /Calculated framebuffer /new ClassHexPropsPanel send def
+
+% Make a window to house the properties:
+/PropsWindow PropsPanel framebuffer /new ClassPopupWindow send def
+/Footer? true /setattribute PropsWindow send
+/Reshape? false /setattribute PropsWindow send
+(HexSweeper Properties) /setlabel PropsWindow send
+PropsWindow /addsubwindow window1 send
+
+/FontNameCaseOK { % s => bool
+    {
+	findfont begin
+	    FontType {
+		1 3 99 {
+		    true
+		}
+		/Default {
+		    false
+		}
+	    } case
+	end
+    } stopped {
+	false
+    } if
+} def
+
+/OldFontNameCaseOK {
+    10 dict begin					% s
+	/s exch def					% -
+	/NameIsGood false def				% -
+	/Upper (ABCDEFGHIJKLMNOPQRSTUVWXYZ) def		% -
+	/UnwantedFonts 50 dict def			% -
+
+	UnwantedFonts begin
+	    /Circles false def /Icon false def
+	    /Kanji false def % it's not scaled
+	    /NeWSCursor false def /Screen false def
+	    /Screen-Bold false def /StippleFont false def
+	    /Terminal false def /Terminal-Bold false def
+	    /Terminal-Bold-Normal false def /Terminal-Normal false def
+	    /ZapfDingbats false def
+	end
+
+	% We invalidate names that are all lower case, as these are usually
+	% X11 bitmap font names and don't scale.  Most of them are
+	% simply aliases for PostScript of F3 fonts in any case.
+
+	0 1 25 {					% i
+	    Upper exch 1 getinterval			% ([A-Z])
+	    s exch search {				% post match pre
+		pop pop pop				% -
+		/NameIsGood true def
+		% console (Accept [has upper] %\n) [s] fprintf
+		exit
+	    } {						% s
+		pop					% -
+	    } ifelse
+	} for
+
+	NameIsGood {					% -
+	    UnwantedFonts s known {			% -
+		/NameIsGood false def
+		% console (Reject [not scaleable text font] %\n) [s] fprintf
+	    } if					% -
+	} if						% -
+
+	NameIsGood {
+	    s length 2 gt {				% -
+		Upper s 1 1 getinterval  search {	% post match pre
+		    pop pop pop				% -
+		    % console (Reject [uppercase 2nd] %\n) [s] fprintf
+		    /NameIsGood false def
+		} {					% Upper
+		    pop					% -
+		} ifelse
+	    } if
+	} if
+
+	% we return true iff the font is plausible:
+	NameIsGood
+    end
+} def
+
+/MakeFontMenu {
+    20 dict begin
+	/HexFontName HexFont 100 string cvs def
+	/ThisOne 0 def
+	/nFonts 0 def
+	/Grid framebuffer /new ClassMenu send
+	[
+	    FontDirectory {
+		type /nametype eq {
+		    pop
+		} {
+		    255 string cvs
+		    % ignore the Hershey plotter fonts:
+		    (Hershey) search { pop pop pop } {
+			dup FontNameCaseOK not { pop } {
+			    /nFonts nFonts 1 add store
+			} ifelse
+		    } ifelse
+		} ifelse
+	    } forall
+	] /gt quicksort /setitemlist 2 index send
+
+	/ChangeSelectedFont /setnotifier 2 index send
+	[ true nFonts 3 add 4 idiv 4 ] /setlayoutparameters 2 index send
+	% draw the menu in a small size
+	% /textfont 1 index send /FontName get
+	% findfont 11 scalefont /settextfont 2 index send
+	ThisOne /setdefault 2 index send
+    end
+} def
+
+pause
+
+%% Things to go in the props window:
+
+%% Scale - hexagon size
+/hexflatsliderLabel
+    (Hexagon Size:) framebuffer /new ClassLabel send 2 copy def
+
+    [  /NorthWest { /NorthWest PARENT POSITION 10 -10 xyadd } ]
+    /addclient PropsPanel send
+
+/hexflatslider framebuffer /new ClassHSlider send 2 copy def
+    5 100 /setrange 3 index send
+    7 /setdelta 2 index send
+    20 /settickmarks 2 index send
+    true /setendboxes 2 index send
+    /HexSliderSizePreviewer /setpreviewer 2 index send
+    /ChangeSelectedHexSize /setnotifier 2 index send
+    { 0.5 add cvi } /setnormalizer 2 index send % do this before setvalue!
+    HexHWidth /setvalue 2 index send % initial value
+    PropsPanel /settarget 2 index send
+    /preferredsize 1 index send % x y
+    exch 2 mul exch % make it wider for smoother animation
+    /preferredsize 3 1 roll 2 array astore cvx /installmethod 3 index send
+    [  /West { /East /hexflatsliderLabel POSITION 10 0 xyadd } ]
+    /addclient PropsPanel send
+
+% labels for the slider:
+/hexflatsliderMinLabel
+    (Welsh Cottage) framebuffer /new ClassLabel send 2 copy def
+    [  /North { /MinTick /hexflatslider POSITION 0 5 xysub } ]
+    /addclient PropsPanel send
+
+/hexflatsliderMaxLabel
+    (Texas) framebuffer /new ClassLabel send 2 copy def
+    [  /North { /MaxTick /hexflatslider POSITION 0 5 xysub } ]
+    /addclient PropsPanel send
+
+%% Scale - hexagon depth
+
+/hexdepthsliderLabel
+    (3D Depth:) framebuffer /new ClassLabel send 2 copy def
+    [
+	/NorthEast {
+	    % x:
+	    /East /hexflatsliderLabel POSITION pop
+	    % y:
+	    /South /hexflatsliderMaxLabel POSITION exch pop 30 sub
+	}
+    ] /addclient PropsPanel send 
+
+/ClassDepthSlider ClassHSlider []
+classbegin
+    /preferredsize {
+	/preferredsize super send
+	/preferredsize hexflatslider send
+	xymax
+    } def
+
+    /minsize {
+	/minsize super send
+	/minsize hexflatslider send
+	xymax
+    } def
+classend def
+
+pause
+
+
+/hexdepthslider framebuffer /new ClassDepthSlider send 2 copy def
+    1 16 div /setdelta 2 index send
+    % set range:
+    0 1 /setrange 3 index send
+    % add ticks:
+    1 8 div /settickmarks 2 index send
+    % allow end boxes:
+    true /setendboxes 2 index send
+    % previewer: 
+    /HexSliderDepthPreviewer /setpreviewer 2 index send
+    % notifier - set the size
+    /ChangeSelectedHexDepth /setnotifier 2 index send
+    % set the value:
+    HexDepth HexHWidth div /setvalue 2 index send
+    % target
+    PropsPanel /settarget 2 index send
+    [  /West { /East /hexdepthsliderLabel POSITION 10 0 xyadd } ]
+    /addclient PropsPanel send
+
+% labels for the slider:
+/hexdepthsliderMinLabel
+    (Flat) framebuffer /new ClassLabel send 2 copy def
+    [  /North { /MinTick /hexdepthslider POSITION 0 5 xysub } ]
+    /addclient PropsPanel send
+
+/hexdepthsliderMaxLabel
+    (Cone) framebuffer /new ClassLabel send 2 copy def
+    [  /North { /MaxTick /hexdepthslider POSITION } ]
+    /addclient PropsPanel send
+
+%% Scale - preview
+/hexpreviewcanvas
+    framebuffer /new ClassHexPreview send 2 copy def
+    PropsPanel /settarget 2 index send
+    [
+	/NorthWest {
+	    % x:
+	    /East hexdepthslider POSITION pop
+	    /East hexdepthsliderMaxLabel POSITION pop max 30 add
+	    % y:
+	    /North PARENT POSITION exch pop 10 sub
+	} 
+    ] /addclient PropsPanel send
+
+% Initialise the previewer:
+/value hexflatslider send /SetFlat hexpreviewcanvas send
+/value hexdepthslider send /SetDepth hexpreviewcanvas send
+
+%% Difficulty - proportion of mines
+
+/difficultysliderLabel
+    (Difficulty:) framebuffer /new ClassLabel send 2 copy def
+    [
+	/NorthEast {
+	    % x:
+	    /East /hexdepthsliderLabel POSITION pop
+	    % y:
+	    /South /hexdepthsliderMaxLabel POSITION exch pop 30 sub
+	}
+    ] /addclient PropsPanel send 
+
+pause
+
+/difficultyslider framebuffer /new ClassDepthSlider send 2 copy def
+    1 16 div /setdelta 2 index send % 8 steps, as it only goes to 0.5
+    0 0.5 /setrange 3 index send % set range
+    1 16 div /settickmarks 2 index send % add ticks
+    true /setendboxes 2 index send % allow end boxes
+    /ChangeSelectedDifficulty /setnotifier 2 index send
+    /ChangeShownDifficultyMessage /setpreviewer 2 index send
+    /GetDifficulty canvas1 send /setvalue 2 index send
+    PropsPanel /settarget 2 index send
+    [  /West { /East /difficultysliderLabel POSITION 10 0 xyadd } ]
+    /addclient PropsPanel send
+
+% labels for the slider:
+/difficultysliderMinLabel
+    (Dan Quayle) framebuffer /new ClassLabel send 2 copy def
+    [  /North { /MinTick /difficultyslider POSITION 0 5 xysub } ]
+    /addclient PropsPanel send
+
+/difficultysliderMaxLabel
+    (Suicidal) framebuffer /new ClassLabel send 2 copy def
+    [  /North { /MaxTick /difficultyslider POSITION 0 5 xysub } ]
+    /addclient PropsPanel send
+
+% a little more feedback:
+/oneinhowmanymessage
+    /GetDifficulty canvas1 send dup 0 eq { 
+	pop (\(Only one mine!\))
+    } {
+	dup
+	1 exch div 100 mul cvi 100 div
+	exch MineRows mul MineCols mul cvi
+	(% mines \(about 1 in % hexes\)) sprintf	% str
+    } ifelse  framebuffer /new ClassLabel send 2 copy def
+    [
+	/NorthWest {
+	    % x:
+	    /West /difficultyslider POSITION pop
+	    % y:
+	    /South /difficultysliderMaxLabel POSITION exch pop 30 sub
+	}
+    ] /addclient PropsPanel send 
+
+%% View - digit font
+
+% Font: [v] ______________
+/fontnamelabel
+    (Font:) framebuffer /new ClassLabel send 2 copy def
+    [
+	/NorthEast {
+	    % x:
+	    /East /difficultysliderLabel POSITION pop
+	    % y:
+	    %/South /difficultysliderMaxLabel POSITION exch pop 30 sub
+	    /South /oneinhowmanymessage POSITION exch pop 30 sub
+	}
+    ] /addclient PropsPanel send 
+
+/fontmenubutton
+    /Grid framebuffer /new ClassMenuButtons send 2 copy def
+    [ [ () MakeFontMenu ] ] /setitemlist 2 index send
+    0 true /setabbreviated 3 index send
+    [ /SouthWest { /SouthEast /fontnamelabel POSITION 10 -2 xyadd } ]
+    /addclient PropsPanel send
+    PropsPanel /settarget fontmenubutton send
+
+/selectedfontvalue
+    HexFont 200 string cvs
+    dup stringwidth pop (                              ) stringwidth pop lt {
+	% string
+	dup (%                                            ) sprintf
+	% str str-with-spaces
+	exch length 40 max % str-with-spaces n
+	0 exch getinterval
+    } if
+    framebuffer /new ClassLabel send 2 copy def
+    [ /SouthWest { /SouthEast /fontmenubutton POSITION 10 2 xyadd } ]
+    /addclient PropsPanel send
+
+%% View - hex colors
+
+% whether color or not
+
+/whetherincolor
+    /Grid framebuffer /new ClassCheckBoxes send 2 copy def
+    [ [ (Use Color for Numbers) ] ] /setitemlist 2 index send
+    UseColorGlyphs? { [ 0 ] } { [] } ifelse /setvalue 2 index send
+    % /NonExclusive /choicemode 2 index send
+    PropsPanel /settarget 2 index send
+    /SetWhetherColor /setnotifier 2 index send
+    [ /NorthWest { /SouthWest /fontmenubutton POSITION 0 10 xysub } ]
+    /addclient PropsPanel send
+
+pause
+
+% define a color chooser
+/MakeColorChooser { % - => menu
+    12 dict begin
+	/CCRows 3 def
+	/CCCols 8 def
+	/Grid framebuffer /new ClassMenu send			% m
+	/Exclusive /setchoicemode 2 index send			% m
+	/palette CCRows CCCols mul array def
+	/zf /ZapfDingbats findfont 24 scalefont def
+
+	0 1 CCCols 1 sub {					% m c
+	    /c exch def						% m
+
+	    /h c CCCols div def
+	    /s 1 def
+	    /b 1 def
+
+	    0 1 CCRows 1 sub {					% m r
+		/r exch def 
+
+		/s r 3 mul CCRows 4 mul div 0.25 add def
+		palette r CCCols mul c add [ [ (n) zf h s b hsbcolor ] ] put
+	    } for
+	} for							% m
+	palette /setitemlist 2 index send
+	[ true CCRows CCCols ] /setlayoutparameters 2 index send
+    end								% m
+} def
+
+/glyphcolorlabel
+    (Colors:) framebuffer /new ClassLabel send 2 copy def
+    [ /NorthEast { /SouthWest /whetherincolor POSITION 0 30 xysub } ]
+    /addclient PropsPanel send
+
+% define buttons for the colors:
+/MakeButton {
+    4 dict begin
+	/n exch def
+	/label (ChangeGlyphColor%) [ n ] sprintf def
+	[
+	    n 1 string cvs
+	    GlyphColors n get
+
+	    /textfont PropsPanel send /FontName get
+	    findfont 18 scalefont 
+	]
+	MakeColorChooser label cvn /setnotifier 2 index send
+    end
+} def
+
+pause
+
+/colorbuttons /Grid PropsPanel /new ClassMenuButtons send 2 copy def
+    [
+	[ 1 MakeButton ]
+	[ 2 MakeButton ]
+	[ 3 MakeButton ]
+	[ 4 MakeButton ]
+	[ 5 MakeButton ]
+	[ 6 MakeButton ]
+    ] /setitemlist 2 index send
+    10 0 /setgaps 3 index send
+    [ /West { /East /glyphcolorlabel POSITION 10 -2 xyadd } ]
+    /addclient PropsPanel send
+    PropsPanel /settarget colorbuttons send
+
+pause
+
+%% File - High Score file directory
+
+%% File - High Score file name
+
+%% Command Buttons:
+
+/Buttons /Grid PropsPanel /new ClassButtons send 2 copy def
+    [
+	[ (Apply) /ApplyProperties ]
+	[ (Reset) /ResetProperties ]
+    ] /setitemlist 2 index send
+    0 /setdefault 2 index send
+    30 0 /setgaps 3 index send
+    [
+	/North  {
+	    % x:
+	    /South PARENT POSITION pop
+	    % y:
+	    /South /glyphcolorlabel POSITION exch pop 50 sub
+	}
+    ] /addclient PropsPanel send
+
+PropsPanel /settarget Buttons send
+
+%% How to make the props window visible:
+
+pause
+/ShowProps {
+    /reshaped? PropsWindow send not {
+	/place PropsWindow send
+    } if
+    % /pin PropsWindow send
+    /totop PropsWindow send
+    % HexHWidth /SetFlat hexpreviewcanvas send
+    % HexDepth HexDHeight div /SetDepth hexpreviewcanvas send
+    /PaintAll hexpreviewcanvas send
+    /map PropsWindow send
+} def
+
+pause
+
+/new ClassEventMgr send dup /ProcessName (Hex) put
+
+pause
+
+/help_can framebuffer /new HelpCanvas send def
+/help_win help_can framebuffer /new ClassPopupWindow send def
+help_win /addsubwindow window1 send
+(HexSweeper Help) /setlabel help_win send
+  
+pause
+
+/highscore_can framebuffer /new HighScoreCanvas send def
+/highscore_win highscore_can framebuffer /new ClassPopupWindow send def
+highscore_win /addsubwindow window1 send
+(HexSweeper High Scores) /setlabel highscore_win send
+ 
+pause
+
+/menu /Grid framebuffer /new ClassMenu send def
+[
+    [
+	(New game) {
+	    pop pop
+	    /PaintAll canvas1 send
+	}
+    ]
+    [ (Properties...) { ShowProps } ]
+
+    [ (Help...) { ShowHelp } ]
+
+    [ (High Scores...) { ShowHighScores } ]
+
+    [ (Quit) { pop pop /QuitFromUser window1 send } ]
+] /setitemlist menu send
+true /setpinnable menu send
+menu /setmenu canvas1 send
+true /setmenuable canvas1 send
+true /setkeyable canvas1 send
+true /settrackable canvas1 send
+% canvas1 /Retained true put
+window1 /Retained true put
+
+pause
+
+/activate window1 send
+/place window1 send
+/map canvas1 send
+/map window1 send
+
+pause
+
+%   Finally, detach from the psh that invoked us
+/Interactive? where {
+    pop
+} {
+    newprocessgroup
+    currentfile closefile
+} ifelse
+barefoot_boy

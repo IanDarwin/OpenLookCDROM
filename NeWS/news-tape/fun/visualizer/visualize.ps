@@ -1,0 +1,508 @@
+%!
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 
+% The NeWS Pseudo-Scientific Visualizer
+%   -- the class browser for the other half of your brain.
+% Copyright (C) 1988 by Don Hopkins (don@brillig.umd.edu)
+% 
+% You are free to redistribute this program.  Please leave the comments
+% intact, add your own views and hallucinations, and pass it on to
+% friends!  The author is not responsible for any time or brain cells
+% wasted with this software.  (Has anybody ever actually gotten sued for
+% that?)
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% We've got to have the classes PieMenu and PulloutPieMenu are defined.
+systemdict /PieMenu known not {
+  (NeWS/piemenu.ps) LoadFile not {
+    currentcursorlocation
+    [(Need) (piemenu.ps)] popmsg pop
+    currentprocess killprocess
+  } if
+} if
+
+systemdict /PulloutPieMenu known not {
+  (NeWS/pullout.ps) LoadFile not {
+    currentcursorlocation
+    [(Need) (pullout.ps)] popmsg pop
+    currentprocess killprocess
+  } if
+} if
+
+systemdict begin
+
+/PSVisualizerWindow DefaultWindow
+dictbegin
+  /hfrob .3 def
+  /sfrob .5 def
+  /bfrob .3 def
+
+  /procs 1 def
+  /maxprocs 10 def
+  /maxdrawdepth 0 def
+  /maxtargetdepth 0 def
+
+  /thing null def
+
+  /highmark 10 def
+
+  /pp null def
+
+  /FrameLabel (The NeWS Pseudo-Scientific Visualizer!) def
+  /IconLabel (PS Visualizer) def
+  /IconImage /eye def
+
+  /Canvases null def
+
+  /Items null def
+
+  /BorderBottom 32 def
+
+dictend
+classbegin
+
+  /new {
+    /new super send begin
+      /thing exch def
+      /maxdrawdepth countdictstack 3 add def
+      /maxtargetdepth countdictstack 3 add def
+      currentdict
+    end
+  } def
+
+  /destroy { % clean up
+    drain
+    pp type /processtype eq { 
+      pp killprocessgroup
+      /pp null def
+      /thing null def
+    } if
+    Canvases null ne {
+	Canvases {pop /Interests get
+	dup length 0 eq {(zip ) [] dbgprintf} if % XXX
+	{revokeinterest} forall} forall
+    } if
+    /destroy super send
+  } def
+
+  /drain {
+      maxdrawdepth
+      /maxdrawdepth 0 def
+      50 { pause procs 0 eq {exit} if } repeat
+      /maxdrawdepth exch def
+  } def
+
+  /PaintClient {
+    gsave ClientCanvas setcanvas
+     {
+      clear
+      newprocessgroup
+      drain
+      pp null ne {
+	pp killprocessgroup % why doesn't this kill all of 'em???
+      } if
+      /pp currentprocess def
+      Canvases dup type /dicttype eq {
+	Canvases { pop
+	  dup /Interests get
+	  dup length 0 eq {(zip ) [] dbgprintf} if % XXX
+	  {revokeinterest} forall
+	  /Mapped false put
+        } forall
+      } if
+      /Canvases 2048 dict def
+      erasepage
+      random random random sethsbcolor
+      /highmark countdictstack def
+      /procs 1 def
+      clippath pathbbox scale pop pop
+      .5 .5 translate .05 .05 scale
+      {/thing load visualize} fork waitprocess pop
+      300 { procs 1 le {exit} if .1 sleep } repeat
+      ClientCanvas setcanvas
+      [ Canvases { pop
+	  [ PointButton AdjustButton MenuButton /EnterEvent /ExitEvent ]
+	  /target-event null 4 -1 roll eventmgrinterest
+        } forall
+	PointButton /point-background null ClientCanvas eventmgrinterest
+      ] forkeventmgr
+      /pp exch def
+    } fork pop
+   grestore
+  } def
+
+  /PaintFrame {
+    /PaintFrame super send
+    Items paintitems
+  } def
+
+  /activate {
+    /Items 10 dict dup begin
+      /message_item () () /Right
+        nullproc
+        FrameCanvas /new MessageItem send
+        BorderLeft 4 330 0 /reshape 5 index send def
+      end def
+      Items forkitems pop
+      map
+      ClientCanvas /Retained true put
+  } def
+
+  /reshape {
+    /reshape super send
+    Items null ne {
+      BorderLeft 4 /move Items /message_item get send
+    } if
+  } def
+
+  /toggle-can {
+    setcanvas
+    0 setgray  5 setrasteropcode
+    clippath fill
+  } def
+
+  /point-background {
+    gsave
+      Canvases { pop toggle-can } forall
+    grestore
+  } def
+
+  /target-event-names 10 dict def
+  target-event-names begin
+    PointButton {
+      CurrentEvent /Action get /DownTransition eq {
+	Canvases
+	CurrentEvent /Canvas get get /obj get
+	gsave fboverlay setcanvas getclick grestore
+	3 -1 roll dup (%) sprintf exch
+	framebuffer
+	start_browser
+      } {
+      } ifelse
+    } def
+    AdjustButton {
+      CurrentEvent /Action get /DownTransition eq {
+	Canvases
+	CurrentEvent /Canvas get get /obj get
+	/thing exch store
+	PaintClient
+      } {
+      } ifelse
+    } def
+    MenuButton {
+      CurrentEvent /Action get /UpTransition eq {
+      } {
+      } ifelse
+    } def
+    /EnterEvent {
+      Canvases 
+      CurrentEvent /Canvas get
+      dup toggle-can
+      get /obj get (%) sprintf /printstring Items /message_item get send
+    } def
+    /ExitEvent {
+      CurrentEvent /Canvas get toggle-can
+    } def
+  end
+
+  /target-event {
+    gsave
+      target-event-names CurrentEvent /Name get get exec
+    grestore
+  } def
+
+  /ignorekeys 20 dict def
+  ignorekeys begin
+    /TopCanvas dup def
+    /BottomCanvas dup def
+    /CanvasAbove dup def
+    /Parent dup def
+    /FrameMenu dup def
+    /IconMenu dup def
+    /ParentDict dup def
+    /ParentDictArray dup def
+  end
+
+  /cvfixed {
+    16384 mul floor cvi -14 bitshift
+  } def
+
+  /wrap {
+    dup floor sub cvfixed
+  } def
+
+  % This is useful for finding core leaks ... (Really!)
+  /context-string { % => (string)
+    ()
+    currentprocess /DictionaryStack get 
+    dup length 2 sub 2 exch getinterval
+    { dup /obj known {
+	begin i obj 3 -1 roll (%/%:%) sprintf end
+      } {pop} ifelse
+    } forall
+    1 index exch (%	=	%) sprintf
+  } def
+
+  /make-target {
+    countdictstack maxtargetdepth lt {
+      /can ClientCanvas newcanvas def
+      0 0 1 0 360 arc can reshapecanvas
+      can /Transparent true put
+      can /Mapped true put
+      Canvases can currentdict put
+    } if
+  } def
+
+  /visualize { % obj => -
+%     count 5 gt {/foo dbgbreak} if
+    pause
+    countdictstack maxdrawdepth ge {
+       countdictstack highmark gt {
+% Uncomment this to hunt for core leaks. 
+% 	context-string (High water: %\n) [3 -1 roll] dbgprintf
+	 /highmark countdictstack store
+       } if
+       pop
+    } { 
+     { gsave
+      currenthsbcolor
+      3 -1 roll random hfrob mul add wrap
+      3 -1 roll random sfrob mul add wrap
+      sqrt % Crank up the saturation!
+      3 -1 roll random bfrob mul add wrap
+      sqrt % Crank up the brightness!
+
+      sethsbcolor
+      dup type {
+  %      /canvastype
+	/dicttype {
+	  newpath
+	  0 0 1 0 360 arc closepath
+	  0 0 .9 0 360 arc closepath
+	  0 0 .2 0 360 arc closepath
+	  eofill
+	  10 dict begin
+	      make-target
+	      /obj exch cvlit def
+	      /pieces obj length def
+	      pieces 0 ne {
+		/step 360 pieces div def
+		obj {
+		  pause
+		  countdictstack maxdrawdepth ge {pop pop exit} if
+		  /thing exch cvlit def
+		  /i exch cvlit def
+		  gsave
+		    2.5 0 translate
+		    .6 .6 scale
+		    i visualize
+		    2.5 0 translate
+		    ignorekeys i known not { thing } { /triangle } ifelse
+		    visualize
+		  grestore
+		  step rotate
+		} forall
+	      } if
+	  end
+	} 
+	/arraytype {
+	  newpath
+	  0 0 1 0 360 arc closepath
+	  0 0 .9 0 360 arc closepath
+	  eofill
+	  10 dict begin
+	      make-target
+	      /obj exch cvlit def
+	      /pieces obj length def
+	      pieces 0 ne {
+		/step 360 pieces div def
+		/i -1 def
+		obj {
+		  pause
+		  countdictstack maxdrawdepth ge {pop exit} if
+		  /thing exch cvlit def
+		  /i i 1 add def
+		  gsave
+		    2.5 0 translate
+		    .6 .6 scale
+		    thing visualize
+		  grestore
+		  step rotate
+		} forall
+	      } if
+	  end
+	}
+	/stringtype {
+	  length 1 add
+	  newpath
+	  -.5 -.1 % x y
+	  3 -1 roll 5 div .5 add .2 % x y w h
+	  rectpath
+	  fill
+	} 
+	/realtype /integertype {
+	  dup 100 div wrap  1 index 10 div wrap  3 -1 roll wrap
+	  setrgbcolor
+	  -.4 -.4 .8 .8 rectpath
+	  fill
+	}
+	/eventtype {
+	  pop
+	  -.8 -.8 1.6 1.6 rectpath
+	  -.8 .8 moveto
+	  0 0 lineto
+	  -.8 -.8 lineto
+	  stroke
+	}
+	/nulltype {
+	  pop
+	  gsave
+	    -90 rotate
+	    -1 -.3 translate
+	    2 2 scale
+	    newpath % Nick Turner's finger
+	    .2 0 moveto
+	    0 .3 lineto
+	    .1 .5 lineto
+	    .2 .5 lineto
+	    .2 .55 lineto
+	    .3 .6 lineto
+	    .4 .55 lineto
+	    .4 .95 lineto
+	    .5 1 lineto
+	    .6 .95 lineto
+	    .6 .55 lineto
+	    .7 .6 lineto
+	    .8 .55 lineto
+	    .8 .5 lineto
+	    .9 .55 lineto
+	    1 .5 lineto
+	    1 .3 lineto
+	    .8 0 lineto
+	    closepath
+	    fill
+	  grestore
+	}
+	/operatortype {
+	  pop
+	  -.2 -.2 .4 .4 rectpath
+	  0 0 .5 0 360 arc
+	  eofill
+	}
+	/processtype {
+	  pop
+	  newpath
+	  -.5 -.5 moveto
+	  1 -.4 lineto
+	  1 -.2 lineto
+	  .8 -.2 lineto
+	  1 .4 lineto
+	  1 1 lineto
+	  .5 .3 lineto
+	  -.5 .5 lineto
+	  closepath
+	  eofill
+	}
+% 	/canvastype {
+% 	  -.5 -.5 translate
+% 	  imagecanvas
+% 	}
+	/Default {
+	  pop
+	  newpath
+  % 	-.5 -.5 1 1 rectpath
+	  0 -.5 moveto
+	  1 0 lineto
+	  0 .5 lineto
+	  closepath
+  %         stroke
+  % 	-.4 -.4 .8 .8 rectpath
+	   eofill
+	}
+      } case
+     grestore } % A verb, Senator Kennedy, we need a verb!
+     random .6 lt  procs maxprocs lt and {
+       /procs procs 1 add store
+       { exec
+	 /procs procs 1 sub store
+       } fork pop pop pop
+     } {
+       exec 
+     } ifelse % mumble frotz ...
+    } ifelse
+  } def
+
+% Menu definitions
+
+  /ColorFrobMenu [
+    [(0.0) (0.02) (0.05)
+     (0.1) (0.2) (0.3) (0.4) (0.5) (0.6) (0.7) (0.8) (0.9) (1.0) (99)]
+  ] [
+    (HueFrob) { ThisWindow /hfrob getmenuarg cvr put }
+    (BrightnessFrob) { ThisWindow /bfrob getmenuarg cvr put }
+    (SaturationFrob) { ThisWindow /sfrob getmenuarg cvr put }
+  ] /new PulloutPieMenu send def
+
+  /ThingMenu [
+    (SendContexts) {
+      ThisWindow /thing currentprocess /SendContexts get put }
+    (UI_private) {
+      ThisWindow /thing UI_private put }
+    (foo) {
+      ThisWindow /thing /foo load put }
+    (rootmenu) {
+      ThisWindow /thing rootmenu put }
+    (DefaultMenu) {
+      ThisWindow /thing DefaultMenu put }
+    (userdict) {
+      ThisWindow /thing userdict put }
+    (bar) {
+      ThisWindow /thing /bar load put }
+    (Item) {
+      ThisWindow /thing Item put }
+  ] /new PieMenu send def
+
+  /ClientMenu [
+    []
+    [(1) (2) (3) (4) (5) (6) (7) (8) (9) (10) (9999)]
+    [(1) (2) (3) (4) (5) (6) (7) (8) (9) (10) (9999)]
+    []
+    [(1) (2) (3) (4) (5) (6) (7) (8) (9) (10)
+     (11) (12) (13) (14) (15) (16) (17) (18) (19) (20)]
+    []
+  ] [
+    (Thing...) ThingMenu
+    (DrawDepth) { 
+      getmenuarg cvi 
+      { countdictstack add /maxdrawdepth exch def } ThisWindow send }
+    (TargetDepth) { 
+      getmenuarg cvi 
+      { countdictstack add /maxtargetdepth exch def } ThisWindow send }
+    (ColorFrob...) ColorFrobMenu
+    (MaxProcs) { ThisWindow /maxprocs getmenuarg cvi put }
+    (Foo) { currentcursorlocation [(Bar)] popmsg pop}
+  ] /new PulloutPieMenu send def
+
+  % Hurray for you -- you're reading the source code!
+  % You can run a psh, and change foo and bar in systemdict to whatever
+  % you want to look at! (warning: systemdict gets "unregistered" errors!)
+  % To find core leaks, visualize objects in your application's userdict, 
+  % and look for the infinite regression of circular references.
+  systemdict /foo ClientMenu put
+  systemdict /bar UserProfile put
+
+classend def
+
+/start_visualizer { % thing =>
+  { framebuffer setcanvas
+    newprocessgroup
+    framebuffer /new PSVisualizerWindow send
+    /reshapefromuser 1 index send
+    /activate exch send
+  } fork pop
+} def
+
+end % systemdict
+
+% rootmenu start_visualizer

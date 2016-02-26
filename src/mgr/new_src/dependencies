@@ -1,0 +1,103 @@
+#!/bin/ksh
+#                        Copyright (c) 1987 Bellcore
+#                            All Rights Reserved
+#       Permission is granted to copy or use this program, EXCEPT that it
+#       may not be sold for profit, the copyright notice must be reproduced
+#       on copies, and credit should be given to Bellcore where it is due.
+#       BELLCORE MAKES NO WARRANTY AND ACCEPTS NO LIABILITY FOR THIS PROGRAM.
+
+#	$Header: /home/sau/mgr/nsrc/RCS/dependencies,v 1.1 91/03/01 11:06:08 sau Exp Locker: sau $
+#	$Source: /home/sau/mgr/nsrc/RCS/dependencies,v $
+
+#	For each file name given, produce the set of dependencies
+#	on the standard output, suitable for inclusion in a makefile.
+#	Files not named *.c are ignored.
+
+if [ $# -lt 1 ]
+then
+	echo "Usage:  $0 file ...
+For each file name given, produce the set of dependencies
+on the standard output, suitable for inclusion in a makefile.
+Files not named *.c are ignored."
+	exit 255
+fi
+
+for file 
+do
+	case ${file} in
+	*[a-zA-Z0-9]/* )
+		continue
+		;;
+	*.c )
+		;;
+	* )
+		continue
+	esac
+
+	object=`basename ${file} .c`.o
+
+	cc -Iblit -I../lib -E ${file}  |
+		grep '^# 1 "[^/]'  |
+		sed '
+			s/# 1 "\(.*\)".*/\1/
+			s;^\./;;
+			s;\.\./lib;$(INCL);
+			s;blit;$(BLITDIR);
+			1s/^/	/
+		'  |
+		( tr '\012' ' '
+		  echo ''
+		)  |
+		sed "
+1i\\
+${object}: \\\\
+s/ *$//
+s/....................................................... /&\\\\|	/g
+"		|
+		tr '|' '\012'
+
+	echo ''
+done
+
+echo >&2 'Creating the checkout command.'
+exec >checkout
+
+echo 'make -f - <<\!'
+
+echo "all:  $*"  |
+	sed '
+	s/....................................................... /&\\|	/g
+	'  |
+	tr '|' '\012'
+echo ''
+
+for file
+do
+	vfile=${file},v
+	if [ -f ${vfile} ]
+	then
+		echo ${file}:	${vfile}
+		echo "		co ${file}"
+		echo ''
+		continue
+	fi
+	vfile=RCS/${vfile}
+	if [ -f ${vfile} ]
+	then
+		echo ${file}:	${vfile}
+		echo "		co ${file}"
+		echo ''
+		continue
+	fi
+	vfile=`echo ${file} | sed 's;/[^/]*$;/RCS&,v;'`
+	if [ -f ${vfile} ]
+	then
+		echo "${file}:	${vfile}"
+		echo "		cd `dirname ${file}`; co `basename ${file}`"
+		echo ''
+		continue
+	fi
+done
+echo '!'
+chmod +x checkout
+exit 0

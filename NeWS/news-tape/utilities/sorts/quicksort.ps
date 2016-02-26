@@ -1,0 +1,65 @@
+%
+% quicksort by Don Woods at Sun Microsystems, Inc.
+%
+/quicksort { % array proc => array (sorted, reuses same storage)
+10 dict begin
+    /Bigger? exch cvx def               % a b bigger? => t if a<b
+    dup quickrecur                      % start recursion
+end
+} def % quicksort
+
+/quickrecur { % array => --  sorts array in place, using Bigger? for comparisons
+    dup length dup 2 gt {               % A N
+	% the next lines (until but not incl /Key...) subsort three elements
+	% so we can use the median as the partitioning element; this improves
+	% performance for the case where the array is initially nearly sorted,
+	% but is not strictly necessary for the algorithm to work (it does
+	% seem to improve average runtime by about 10%)
+	2 copy 1 sub 2 copy 2 idiv 1 index 0    % A N A N-1 A (N-1)/2 A 0
+	6 copy get 5 1 roll get 3 1 roll get    % above & A[N-1] A[(N-1)/2] A[0]
+	2 copy Bigger? {exch} if                % subsort for three elements
+	3 1 roll 2 copy Bigger? {exch} if       %   ... (call them min mid max)
+	3 -1 roll 2 copy Bigger? {exch} if      %   ... subsort finished
+	9 index % A N A N-1 A (N-1)/2 A 0 min mid max N
+	3 eq {
+	    5 2 roll put 4 1 roll put put       % store min/mid/max back
+	    pop pop                             % pop A & N
+	} { % else store mid at 0, max at N-1, min at (N-1)/2, then partition
+	    3 -1 roll 5 2 roll put exch 4 1 roll put put        % A N
+	    /Key 2 index 0 get def              % partitioning value
+	    0                                   % A N 0, also known as A j i
+	    {   % main partitioning loop
+		% incr i until i=j or A[i]>=A[0]; note A[j] is rangecheck
+		{   1 add 2 copy gt {           % i++; A j i j>i?
+			dup 3 index exch get    % A j i A[i]
+			Key exch Bigger? not {exit} if
+		    } {exit} ifelse
+		} loop
+		% decr j until A[j]<=A[0]; happens at j=i-1 if not sooner
+		exch {                          % A i j
+		    1 sub dup 3 index exch get  % A i j A[j]
+		    Key Bigger? not {exit} if
+		} loop
+		2 copy gt {exit} if             % if i>=j, finished partition
+		% swap A[j] & A[i]; stack has: A i j
+		2 index 4 copy exch get         % A i j A A i A[j]
+		4 1 roll get                    % A i j A[j] A A[i]
+		3 index exch put                % A i j A[j]
+		4 copy exch pop put pop exch    % A j i
+	    } loop
+	    % finish partition by exchanging A[j] with A[0]; stack has: A i j
+	    exch pop 2 copy 4 copy get          % A j A j A j A[j]
+	    exch pop 0 exch put Key put         % A j
+	    % now recur on A[0..j-1] and A[j+1..N-1]
+	    2 copy 1 add 1 index length 1 index sub     % A j A j+1 N-1
+	    getinterval 3 1 roll 0 exch getinterval     % A[j+1..N-1] A[0..j-1]
+	    2 copy length exch length gt {exch} if      % put smaller on top
+	    quickrecur quickrecur       % tail recursion avoids deep stack
+	} ifelse % =3 or >3 elements
+    } { % handle 1- and 2-element cases specially for efficiency
+	2 eq {
+	    dup aload pop Bigger? {aload 3 1 roll exch 3 -1 roll astore} if
+	    } if
+	pop     % pop the array
+    } ifelse
+} def % quickrecur

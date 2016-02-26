@@ -1,0 +1,259 @@
+%!
+% 
+% Date: Thu, 14 Jul 88 23:04:54 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Icon Gravity resource
+% From: dennis@boulder.colorado.edu
+% 
+% Previously I posted a version of LiteWindow that allowed
+% for Icon gravity.  Following is a modified version
+% that moves the gravity assignment code into a separate
+% globally accessible dictionary called Icongravity
+% The hope is that this dictionary would be accessed as decribed below
+% to assign the initial coordinates for all programs that create icons.
+% Thus, icon gravity would operate universally.
+% 
+% At the end of this file is a modified version of GravityWindows
+% that uses the icon gravity resource.
+% --------------------------------------------------
+
+% Define a resource that allows for the specification
+% of gravity for icons.
+% To use it, load it in your user.ps file
+% and initialize it with
+% one of four arguments: /leftgravity, /rightgravity, /topgravity,
+% or /bottomgravity, and the height and width of icons.
+% E.g.:
+% 	(gravity.ps) run % assume code is in this file
+%	IconGravity begin /topgravity 64 64 initgravity end
+% Changing gravity in midstream is possible, but will produce strange results.
+
+% The gravity stuff is intended to be used by all icon creators.
+% To do this, we build a dictionary that has all the gravity state
+% and place it in the system dict with the name /IconGravity.
+% IconGravity contains all the operators as well: /topgravity ...
+%
+% All icon builders should do the following:
+%	1. On icon create:
+%		IconGravity begin setgravity end
+%	   This will leave the icon identifier and the (x,y) for your icon
+%	   on the stack.
+%	2. On icon destroy:
+%		IconGravity begin iconid unsetgravity end
+%	   This will free up the icon space for your icon.
+%
+
+systemdict begin
+
+/IconGravity 100 dict def
+
+IconGravity begin
+
+    % constants
+
+    gsave
+	framebuffer setcanvas clippath pathbbox % 0 0 w h
+	4 -2 roll pop pop % w h
+    grestore
+    /frameheight exch def
+    /framewidth exch def
+
+    /iconheight null def
+    /iconwidth null def
+
+    /DefaultGravity /rightgravity def
+
+    /DefaultIconWidth 64 def
+    /DefaultIconHeight 64 def
+
+    % Gravity State Variables
+
+    /gravityvec null def % array of locs to record in-use positions
+    /gravitylen null def % size of gravityvec
+    /gravityincr null def % size of gravity locs in loc dimension
+    /gravitysign null def % direction of increment (down (-1) or across (+1))
+    /gravityoffset null def % (constant) size of gravity locs in
+			    % non-incrementing dimension
+    /gravitybase null def    % starting value for gravity locations
+    /currentgravity null def  % default gravity direction
+
+    /gravitymonitor createmonitor def % to control access to gravity
+
+
+    % internal gravity procedures
+
+    % fill an array with a value
+    /fillarray { % array length value => array
+	exch 0 exch 1 exch 1 sub	% a v 0 1 L-1
+	{ % loop body			% a v i
+	    3 copy			% a v i a v i
+	    exch			% a v i a i v
+	    put				% a v i
+	    pop				% a v
+	}
+	for
+	pop pop
+    } def
+
+    /leftgravity { % - => - (establish parameters for leftgravity)
+	% For left gravity, we will increment down the y dimension
+	% and our offset will be 0 (=> left side)
+	/leftgravity
+	frameheight
+	0
+	iconheight
+	-1
+	% since we use lower left, base must start one incr down
+	frameheight iconheight sub
+	startgravity
+    } def
+
+    /topgravity { % - => - (establish parameters for topgravity)
+	% For top gravity, we will increment across the x dimension
+	% and our offset will be (frameheight - iconheight)
+	/topgravity
+	framewidth
+	frameheight iconheight sub
+	iconwidth
+	1
+	0
+	startgravity
+    } def
+
+    /rightgravity { % - => - (establish parameters for rightgravity)
+	% For right gravity, we will increment down the y dimension
+	% and our offset will be (framewidth-iconwidth)
+	/rightgravity
+	frameheight
+	framewidth iconwidth sub
+	iconheight
+	-1
+	frameheight iconheight sub
+	startgravity
+    } def
+
+    /bottomgravity { % - => - (establish parameters for bottomgravity)
+	% For bottom gravity, we will increment across the x dimension
+	% and our offset will be 0.
+	/bottomgravity
+	framewidth
+	0
+	iconwidth
+	1
+	0
+	startgravity
+    } def
+
+    /startgravity { % Gravitykind Framedim Offset Incr Sign Base => -
+		  %	(set various gravity parameters)
+	/gravitybase exch store
+	/gravitysign exch store
+	/gravityincr exch store
+	/gravityoffset exch store	% Kind Fd
+	% calculate # of chunks along this dimension
+	gravityincr idiv	% Kind n
+	dup /gravitylen exch store	% Kind n
+	% make a locs array of right size
+	array /gravityvec exch store		% Kind
+	gravityvec gravitylen 0			% Kind a n 0
+	fillarray				% Kind
+	/currentgravity exch store		% -
+    } def
+
+    % find the index of an unassigned loc in the current loc array
+    /findloc { % - => i (index of free loc)
+	0 gravityvec { 0 eq {exit} {1 add} ifelse} forall % i
+	% if all are taken, start reusing bottom loc
+	gravitylen 1 sub min dup		% i i
+	gravityvec exch 2 copy	% i a i a i
+	% loc value is really reference count, so increment it
+	get 1 add put			% i
+    } def
+
+    % exported  gravity procedures
+
+    % Return iconid and  IconX IconY
+    /setgravity { % - => id x y
+	gravitymonitor {
+	% make sure gravity is initialized
+	currentgravity null eq
+		{DefaultGravity DefaultIconWidth DefaultIconHeight initgravity}
+		if
+	findloc dup	% id(=loc) loc
+	gravityincr gravitysign mul mul gravitybase add	% id loc*sign*incr+base
+	gravityoffset			% id loc*sign*incr+base offset
+	currentgravity {
+	    /leftgravity
+	    /rightgravity
+		{ exch } % Want y coordinate on top
+	} case
+	} monitor
+    } def
+
+    /unsetgravity { % iconid => -
+	gravitymonitor {
+	% make sure gravity is initialized
+	currentgravity null eq
+		{DefaultGravity DefaultIconWidth DefaultIconHeight initgravity}
+		if
+	% Decrement reference count for this location
+	gravityvec exch 2 copy	% a i a i
+	get 1 sub 0 max put % prevent ref count lt zero
+	} monitor
+    } def
+
+    /initgravity { % direction iconwidth iconheight => -
+	% stash iconwidth and height
+	/iconheight exch store
+	/iconwidth exch store
+	{ % branch on direction argument
+	    /leftgravity {leftgravity}
+	    /rightgravity {rightgravity}
+	    /topgravity	{topgravity}
+	    /bottomgravity {bottomgravity}
+	    /Default {DefaultGravity load exec}
+	} case
+    } def
+
+end % IconGravity
+
+%--------------------------------------------------
+
+% Build a subclass of window that initializes its icon location
+% using IconGravity.
+
+/GravityWindow DefaultWindow
+dictbegin % new instance variables
+/gravityid null def % id for my icon
+dictend
+classbegin
+
+    % override
+    /destroy { % - => -
+	gravityid IconGravity begin unsetgravity end % release our location
+	/gravityid null store
+	/destroy super send
+    } def
+
+    /new {
+      /new super send begin
+	% set gravity for this window
+	IconGravity begin setgravity end
+	% Store the results
+	/IconY exch store
+	/IconX exch store
+	/gravityid exch store
+	% Make sure the Icon canvas knows about this
+	/Iconic? Iconic?
+		/Iconic? true store
+		IconX IconY /move super send
+	store % Restore sate of Iconic? flag.
+	currentdict
+      end
+    } def
+
+classend def % GravityWindow
+
+/DefaultWindow GravityWindow store
+
+end %  systemdict

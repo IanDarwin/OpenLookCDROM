@@ -1,0 +1,286 @@
+%!
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Copyright (C) 1989 by Don Hopkins. All rights reserved.
+% This program is provided for unrestricted use, provided that this 
+% copyright message is preserved. There is no warranty, and no author 
+% or distributer accepts responsibility for any damage caused by this 
+% program. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Menus that can be changed while they're popped up.
+% Don Hopkins
+%
+% Instructions:
+%
+% This file defines a subclass of DefaultMenu called SoftMenu, which
+% it then installs as DefaultMenu. 
+% It allows you to cut & paste menu keys around dynamically from menu
+% to menu, using the PointButton. (The left mouse button on a Sun.)
+% This should work with most menu classes. (hopefully...) Just don't
+% load it in on top of itsself. 
+% 
+% While making a selection from a menu:
+%    PointButton
+%        Copy the highlighted menu item to PrimarySelection.
+%	 (i.e. like "copy" on the Mac)
+%    Shift PointButton
+%        "Insert" the menu item from PrimarySelection before the
+%	 highlighted item. If no items are highlighted, it's appended
+%	 to the end of the menu.
+%    Control PointButton
+%       "Delete" the highlighted menu item.
+%    Meta PointButton
+%       "Edit" the highlighted menu item. (Coming soon. Suggestions?)
+%
+% To make a new menu item, you can select a string or array
+% subinterval which will push a menu key and an action on the stack
+% when executed, and insert it into a menu. Note that everything is
+% executed in the context of the menu you're inserting into.
+%
+% It's your responsibility to avoid circularities!
+%
+% If you select a (dict,key) pointer in cyberspace, and insert it 
+% into a menu, the key name will be the menu key and the value 
+% "dict key get" will be the action. 
+%
+% Examples: (just select the following and paste them:)
+{
+
+    (--------) {} % separator
+
+    (Frame...) /FrameMenu ThisWindow send
+
+    (Hello, Sailor!) { gsave framebuffer setcanvas
+                         currentcursorlocation
+		         [(Nothing) (happens) (here.)] popmsg pop
+		       grestore }
+
+    (Be Gone!) { /flipiconic ThisWindow send
+	         /tobottom ThisWindow send }
+
+    (rootmenu) rootmenu
+
+    (psload) { (NEWSHOME) getenv (/bin/psload) forkunix }
+
+} pop
+
+systemdict begin
+
+/SoftMenu DefaultMenu
+dictbegin
+  /Changed? true def
+  /MenuLock null def
+  /ChangedEvent null def
+  /ChangeDelay .25 60 div def
+  /Control false def
+  /Shift false def
+  /Meta false def
+dictend
+classbegin
+
+  /new {
+    /new super send begin
+      /MenuLock createmonitor def
+    currentdict end
+  } def
+
+  /layout {
+    MenuLock {
+	/layout super send
+	/Changed? false def
+    } monitor
+  } def
+
+  /paint {
+    MenuLock {
+	/paint super send
+    } monitor
+  } def
+
+  /insertitem {
+    MenuLock {
+      /insertitem super send
+      change
+    } monitor
+  } def
+
+  /deleteitem {
+    MenuLock {
+      /deleteitem super send
+      change
+    } monitor
+  } def
+
+  /showat {
+    MenuLock {
+      /showat super send
+    } monitor
+  } def
+
+  /change {
+    /Changed? true def
+    /MenuValue null def
+    /PaintedValue null def
+    MenuCanvas null ne {
+	ChangedEvent null eq {
+	    /ChangedEvent createevent def
+	    ChangedEvent /Name /MenuChanged put
+	} {
+	    ChangedEvent recallevent
+	} ifelse
+	ChangedEvent /Canvas MenuCanvas put
+	ChangedEvent /TimeStamp currenttime ChangeDelay add put
+	ChangedEvent sendevent
+    } if
+  } def
+
+  /makeinterests {
+    /makeinterests super send
+    /MenuInterests [
+	MenuInterests {
+	  dup /Name get PointButton eq { pop } if
+	} forall
+	/MenuChanged /ChangeProc null MenuCanvas eventmgrinterest
+	PointButton /PointProc /DownTransition MenuCanvas eventmgrinterest
+    ] def
+  } def
+
+  /DragProc {
+    Changed? { ChangeProc } if
+    /DragProc super send
+  } def
+
+  /PaintMenuValue {
+    Changed? { ChangeProc } if
+    /PaintMenuValue super send
+  } def
+
+  /ChangeProc {
+    ChangedEvent recallevent
+    Changed?  MenuCanvas null ne  MenuEventMgr null ne  and and {
+      gsave
+        framebuffer setcanvas
+	MenuCanvas getcanvaslocation
+	/MenuValue null def
+        /PaintedValue null def
+	layout
+	reshape
+	MenuCanvas setcanvas
+	movecanvas
+%	clippath extenddamage
+%	/MenuEventMgr null def
+%	{ clear MenuX MenuY MenuHeight add showat } fork pop
+%	currentprocess killprocess
+      grestore
+    } if
+  } def
+
+  /UpdateShifts {
+    /Shift false def /Control false def /Meta false def
+    CurrentEvent /KeyState get {
+      { /Shift /Control /Meta }
+      { 1 index eq { dup true def exit } if } forall
+      pop
+    } forall
+  } def
+
+  /PointProc {
+    UpdateShifts
+    Control {
+      PointDelete
+    } {
+      Shift {
+	PointInsert
+      } {
+	Meta {
+	  PointEdit
+	} {
+	  PointSelect
+	} ifelse
+      } ifelse
+    } ifelse
+  } def
+
+  /PointDelete {
+    PointSelect % Select it so we can insert it again
+    % Menus break with 0 items...
+    MenuValue null ne  MenuItems length 1 gt  and {
+      MenuValue deleteitem
+    } if
+  } def
+
+  /PointInsert {
+    MenuValue dup null eq { pop MenuItems length } if % index
+
+    /PrimarySelection getselection % sel
+    dup null eq { pop pop } {
+      dup /ContentsPostScript known {
+	dup /ContentsPostScript get exch % obj sel
+	dup /SelectionStartIndex known not { pop } {
+	  dup /SelectionLastIndex known {
+	    dup /SelectionStartIndex get % obj sel start
+	    exch /SelectionLastIndex get % obj start last
+	    1 index sub 1 add % obj start len
+	    getinterval % interval
+	  } { % obj sel
+	    /SelectionStartIndex get % obj index
+	    exch 1 index get % index val
+	    exch (%) sprintf exch % key val
+	    2 array astore % [ key action ]
+	  } ifelse
+	} ifelse
+      } {
+	/ContentsAscii get
+      } ifelse
+      { count 1 roll
+	count 1 sub {pop} repeat
+	{ cvx exec } errored pop
+	count 2 ne { (Bad MenuKey) {} } if
+	2 array astore
+      } fork waitprocess
+      exch pop
+      aload pop % index key proc
+
+      insertitem %
+    } ifelse
+  } def
+
+  /PointEdit {
+    % Pop up dialog box?
+  } def
+
+  /PointSelect {
+    MenuValue null ne {
+      MenuItems MenuValue get begin
+	20 dict begin
+	  /ContentsPostScript [
+	    [ /Key load
+	      Menu dup null eq { pop /Action load } if
+	    ] /aload cvx /pop cvx
+	  ] def
+	  /ContentsAscii
+	    ContentsPostScript 0 get aload pop exch (MenuItem[% %]) sprintf
+	  def
+	  /SelectionObjSize 1 def
+	  /SelectionResponder null def
+	  /Canvas MenuCanvas def
+	  /SelectionHolder MenuEventMgr def
+	  currentdict
+	end % SelectionDict
+	/PrimarySelection setselection
+      end % ItemDict
+    } if
+  } def
+
+classend def
+
+/setdefaultmenu { % class => -
+  /DefaultMenu exch store
+  systemdict /rootmenu known {
+    /rootmenu /flipstyle rootmenu send store
+  } if 
+} def
+
+SoftMenu setdefaultmenu
+
+end % systemdict

@@ -1,0 +1,146 @@
+#! /usr/NeWS/bin/psh
+%
+% (c) 1988 Sun Microsystems, Inc. and Martha Zimet. All rights reserved.
+% This program is provided for unrestricted use, provided that this 
+% copyright message is preserved. There is no warranty, and no author 
+% or distributer accepts responsibility for any damage caused by this 
+% program. 
+%
+%  Spiro-graph window.
+%  A slider and menu adjusts the number of circles. 
+%
+
+systemdict /Item known not { (NeWS/liteitem.ps) run } if
+
+% initializations
+	
+	/circles { % ColorDisplay? {dup 1 1 sethsbcolor} if 
+		   newpath 0 360 arc stroke 
+	} def 
+
+	/spiro { 
+		/ncircles exch def 
+		0 setlinewidth
+		300 300 translate
+		0.7 fillcanvas
+
+		.6 monochromecanvas {setgray} {.7 .9 sethsbcolor} ifelse
+         
+		ncircles { 
+		    120 0 150 circles 360 ncircles div rotate
+	        } repeat 
+	    } def 
+    
+	        
+   	/icon_spiro { 
+		/ncircles exch def 
+		0 setlinewidth
+		0.7 fillcanvas
+		.6 monochromecanvas {setgray} {.7 .9 sethsbcolor} ifelse	
+ 		100 100 translate			         
+		ncircles { 
+		    120 0 150 circles 360 ncircles div rotate
+	        } repeat 
+	    } def 
+		   	
+/main {
+
+    % Define a new window that has a slider item and a spirograph subwindow.
+
+    /SpiroWindow DefaultWindow 
+
+    dictbegin
+
+        /SpiroCanvas	null def	% the 2 sub windows
+        /SpiroItem	null def
+	/SpiroCount	50 def		% number of circles in Spiro Canvas
+	/MIN		50 def 
+        /MAX 		100 def  
+
+	/FrameLabel (Spiro___Slide!) def
+	/PaintClient {
+	    PaintSliderToo? {/paint SpiroItem send} if
+	    SpiroCanvas setcanvas
+	    SpiroCount spiro
+	    FrameBorderColor strokecanvas
+	} def
+	/PaintIcon {50 icon_spiro 0 strokecanvas} def
+	/IconLabel (Spiro!) def
+
+	/ClientMenu
+	    [ (50) (60) (70) (80) (90) (100) ]
+	    [ {currentkey cvi /Spiroset win send} ] /new DefaultMenu send def
+
+    dictend
+
+    classbegin
+
+        % Two class variables for defining the subwindow geometry
+
+        /SpiroItemHeight 30 def   % Height of the slider area
+        /SpiroInset	 20 def   % Inset of the SpiroCanvas from ClientCanvas
+
+ 
+        /PaintSliderToo? true def
+
+	% if SpiroCount != ItemValue, repaint SliderItem
+
+        /Spiroset {   
+	    /PaintSliderToo? false def
+	    dup SpiroCount ne {
+		/SpiroCount exch def
+		SpiroCount SpiroItem /ItemValue get ne {
+		    SpiroItem /ItemValue SpiroCount put
+		    /paint SpiroItem send
+		} if
+	        /paintclient self send
+	        pause	% let PaintSliderToo? take effect!
+	        /PaintSliderToo? true def
+	    } {pop} ifelse
+        } def
+
+	% Override two methods: the Client create & shape methods
+
+    	/CreateClientCanvas {
+    	    % create the ClientCanvas:
+    	    /CreateClientCanvas super send
+    	    
+    	    % Create the slider item: 
+	    /SpiroItem (Number of circles: ) [ MIN MAX SpiroCount ]
+		/Right {ItemValue /Spiroset win send}
+		ClientCanvas 400 0 /new SliderItem send
+		dup /ItemFrame 2 put
+		20 5 /move 3 index send store 
+	    % Activate the slider:
+	    [SpiroItem] forkitems pop
+	    
+	    % Create the Spiro subwindow:
+	    /SpiroCanvas ClientCanvas newcanvas store
+	    SpiroCanvas /Mapped true put
+    	} def
+
+    	/ShapeClientCanvas {
+	   
+    	    % [Re] Shape the ClientCanvas:
+	    /ShapeClientCanvas super send
+	    ClientCanvas setcanvas 
+	    
+	    % Move the slider:
+	    20 5 /move SpiroItem send
+	    
+	    % [Re] Shape the Spiro subwindow:
+	    gsave
+	    ClientCanvas setcanvas clippath pathbbox
+	    SpiroInset SpiroItemHeight translate
+	    SpiroItemHeight sub SpiroInset sub exch SpiroInset 2 mul sub exch
+	    rectpath SpiroCanvas reshapecanvas      
+	    grestore
+    	} def
+    classend def
+    
+    /win framebuffer /new SpiroWindow send def		% Create a window
+    /reshapefromuser win send				% Shape it.
+    /map win send  % Map the window. (Damage causes PaintClient to be called)
+} def
+
+main

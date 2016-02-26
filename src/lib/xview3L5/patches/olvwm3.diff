@@ -1,0 +1,355 @@
+diff -c olvwm3.org//Imakefile olvwm3//Imakefile
+*** olvwm3.org//Imakefile	Sun Dec 20 04:36:41 1992
+--- olvwm3//Imakefile	Sun Feb 14 06:20:06 1993
+***************
+*** 48,57 ****
+  DEFINES = -DSHAPE -DAIXV3 -DSYSV $(XPM) $(IDENT)
+  SYS_LIBRARIES = -ll -lm
+  #else
+! DEFINES =  -DOW_I18N_L3 -DSUNDAE -DSHAPE $(SVR) $(XPM) $(IDENT)
+! SYS_LIBRARIES = -ll
+  #endif
+! INCLUDES = -I$(HEADER_DEST) -I$(TOP) $(XPMINCDIR) 
+  DEPLIBS = 
+  LOCAL_LIBRARIES = $(OLGXLIB) $(XLIB) $(XPMLIB)
+  
+--- 48,57 ----
+  DEFINES = -DSHAPE -DAIXV3 -DSYSV $(XPM) $(IDENT)
+  SYS_LIBRARIES = -ll -lm
+  #else
+! DEFINES =  -DSHAPE $(SVR) $(XPM) $(IDENT)
+! SYS_LIBRARIES =
+  #endif
+! INCLUDES = -I/usr/openwin/include -I$(HEADER_DEST) -I$(TOP) $(XPMINCDIR) 
+  DEPLIBS = 
+  LOCAL_LIBRARIES = $(OLGXLIB) $(XLIB) $(XPMLIB)
+  
+***************
+*** 106,115 ****
+  #endif
+  
+  parse.c: parse.l
+! 	lex -t parse.l > parse.c
+  
+  olvwmrc.c: olvwmrc.y
+! 	yacc olvwmrc.y
+  	mv y.tab.c olvwmrc.c
+  
+  olvwmrc.o: parse.c olvwmrc.c
+--- 106,115 ----
+  #endif
+  
+  parse.c: parse.l
+! 	flex -t parse.l > parse.c
+  
+  olvwmrc.c: olvwmrc.y
+! 	bison -y olvwmrc.y
+  	mv y.tab.c olvwmrc.c
+  
+  olvwmrc.o: parse.c olvwmrc.c
+diff -c olvwm3.org//evbind.c olvwm3//evbind.c
+*** olvwm3.org//evbind.c	Sun Dec 20 04:37:02 1992
+--- olvwm3//evbind.c	Sat Sep  4 18:37:27 1993
+***************
+*** 23,28 ****
+--- 23,29 ----
+  #include <X11/Xlib.h>
+  #include <X11/Xutil.h>
+  #include <X11/keysym.h>
++ #include <X11/Intrinsic.h>
+  
+  #include "i18n.h"
+  #include "ollocale.h"
+Only in olvwm3/: lex.yy.c
+diff -c olvwm3.org//mem.c olvwm3//mem.c
+*** olvwm3.org//mem.c	Sun Dec 20 04:37:29 1992
+--- olvwm3//mem.c	Sun Feb 14 04:50:45 1993
+***************
+*** 18,23 ****
+--- 18,27 ----
+  #include <stdio.h>
+  #include <sys/types.h>
+  
++ #ifdef __STDC__
++ #include <stdlib.h>
++ #endif
++ 
+  #include "i18n.h"
+  
+  #ifdef MEMDEBUG
+diff -c olvwm3.org//olvwmrc.y olvwm3//olvwmrc.y
+*** olvwm3.org//olvwmrc.y	Sun Dec 20 04:37:43 1992
+--- olvwm3//olvwmrc.y	Sun Feb 14 05:53:37 1993
+***************
+*** 12,18 ****
+  #include <ctype.h>
+  #include <stdlib.h>
+  #include <string.h>
+! #ifdef SVR4
+  #include <sys/types.h>
+  #include <sys/stat.h>
+  #endif
+--- 12,18 ----
+  #include <ctype.h>
+  #include <stdlib.h>
+  #include <string.h>
+! #if defined(SVR4) || defined(linux)
+  #include <sys/types.h>
+  #include <sys/stat.h>
+  #endif
+diff -c olvwm3.org//olwm.c olvwm3//olwm.c
+*** olvwm3.org//olwm.c	Sun Dec 20 04:37:44 1992
+--- olvwm3//olwm.c	Sun Feb 14 06:24:13 1993
+***************
+*** 49,54 ****
+--- 49,58 ----
+  
+  #include "patchlevel.h"
+  
++ #if defined(linux) && !defined(MAXPID)
++ #define MAXPID 32767
++ #endif
++ 
+  typedef	void	(*VoidFunc)();
+  
+  /*
+***************
+*** 660,666 ****
+  	 * Following is only neede for SYSV but it doesn't hurt in BSD
+  	 * Okay, it's needed for SVR3 but not SVR4
+  	 */
+! #ifdef SYSV
+  #ifndef SVR4
+  	signal(SIGCHLD, handleChildSignal);
+  #endif
+--- 664,670 ----
+  	 * Following is only neede for SYSV but it doesn't hurt in BSD
+  	 * Okay, it's needed for SVR3 but not SVR4
+  	 */
+! #if defined(SYSV) || defined(linux)
+  #ifndef SVR4
+  	signal(SIGCHLD, handleChildSignal);
+  #endif
+***************
+*** 674,682 ****
+  void
+  ReapChildren()
+  {
+! #if defined (SYSV) && !defined(_BSD)
+          int status;
+          pid_t pid;
+  #else
+  	int oldmask;
+  	int pid;
+--- 678,689 ----
+  void
+  ReapChildren()
+  {
+! #if (defined (SYSV) && !defined(_BSD)) || defined(linux)
+          int status;
+          pid_t pid;
++ #ifdef linux
++ 	int oldmask;
++ #endif
+  #else
+  	int oldmask;
+  	int pid;
+diff -c olvwm3.org//parse.l olvwm3//parse.l
+*** olvwm3.org//parse.l	Sun Dec 20 04:37:46 1992
+--- olvwm3//parse.l	Sun Feb 14 04:50:45 1993
+***************
+*** 52,57 ****
+--- 52,61 ----
+  \}	{ return CLOSEBRACE; }
+  
+  \"[^"]*\"	{
++ #ifdef FLEX_SCANNER
++ #undef yymore()
++ #define yymore() (yy_more_flag = 1)
++ #endif
+  	    if (yytext[yyleng - 1] == '\\')
+  		yymore();
+  	    else {
+diff -c olvwm3.org//resources.c olvwm3//resources.c
+*** olvwm3.org//resources.c	Sun Dec 20 04:37:52 1992
+--- olvwm3//resources.c	Sun Feb 14 05:57:33 1993
+***************
+*** 67,72 ****
+--- 67,77 ----
+  /* internationalization stuff */
+  
+  #ifdef OW_I18N_L3
++ 
++ #if defined(linux) && !defined(LC_MESSAGES)
++ #define LC_MESSAGES LC_RESPONSE
++ #endif
++ 
+  static Bool OLLCUpdated = False;
+  
+  static void GRVLCInit();
+diff -c olvwm3.org//services.c olvwm3//services.c
+*** olvwm3.org//services.c	Sun Dec 20 04:37:54 1992
+--- olvwm3//services.c	Sun Feb 14 05:59:47 1993
+***************
+*** 41,46 ****
+--- 41,50 ----
+  #include "mem.h"
+  #include "resources.h"
+  
++ #ifdef linux
++ #define SYSV
++ #endif
++ 
+  extern	char		*getenv();
+  extern	unsigned int	FindModifierMask();
+  extern	void		ReInitUserMenu();
+diff -c olvwm3.org//slave.c olvwm3//slave.c
+*** olvwm3.org//slave.c	Sun Dec 20 04:37:57 1992
+--- olvwm3//slave.c	Sun Feb 14 06:04:32 1993
+***************
+*** 89,95 ****
+  		else
+  			maxfd = rlimit.rlim_cur;	
+  #else
+! #if defined (ultrix) || defined (AIXV3)
+  		maxfd = getdtablesize();
+  #else
+  		maxfd = NOFILE;
+--- 89,95 ----
+  		else
+  			maxfd = rlimit.rlim_cur;	
+  #else
+! #if defined (ultrix) || defined (AIXV3) || defined(linux)
+  		maxfd = getdtablesize();
+  #else
+  		maxfd = NOFILE;
+diff -c olvwm3.org//states.c olvwm3//states.c
+*** olvwm3.org//states.c	Sun Dec 20 04:37:59 1992
+--- olvwm3//states.c	Mon Sep  6 20:50:49 1993
+***************
+*** 24,29 ****
+--- 24,30 ----
+  #include <X11/Xutil.h>
+  #include <X11/Xatom.h>
+  #include <X11/keysym.h>
++ #include <X11/Intrinsic.h>
+  
+  #include "i18n.h"
+  #include "ollocale.h"
+diff -c olvwm3.org//usermenu.c olvwm3//usermenu.c
+*** olvwm3.org//usermenu.c	Sun Dec 20 04:37:59 1992
+--- olvwm3//usermenu.c	Sun Feb 14 07:54:41 1993
+***************
+*** 1723,1728 ****
+--- 1723,1729 ----
+  {
+  #ifdef OW_I18N_L3
+          windowTitle = gettext(windowTitle);
++ #endif
+  
+          openButton.label[0].string = gettext("Open");
+          openButton.label[1].string = gettext("Close");
+***************
+*** 1770,1776 ****
+          moveDownLeftButton.label[0].string = gettext("Move SouthWest");
+  
+          moveHomeButton.label[0].string = gettext("Move Home");
+- #endif
+  }
+  
+  initMenuButtons(dpy, scrInfo)
+--- 1771,1776 ----
+diff -c olvwm3.org//virtual.c olvwm3//virtual.c
+*** olvwm3.org//virtual.c	Sun Dec 20 04:38:03 1992
+--- olvwm3//virtual.c	Sun Feb 14 06:06:43 1993
+***************
+*** 29,34 ****
+--- 29,35 ----
+  #include "vdm.icon"
+  #include "vdm.mask"
+  
++ #ifndef _GNU_SOURCE
+  #define INIT   register char *sp = instring;
+  #define GETC() (*sp++)
+  #define PEEKC()     (*sp)
+***************
+*** 38,43 ****
+--- 39,45 ----
+  #define TRUE 1
+  #define FALSE 0
+  #include <regexp.h>
++ #endif
+  
+  #ifdef IDENT
+  #ident "@(#)virtual.c	1.5 olvwm version 12/7/92"
+***************
+*** 2053,2058 ****
+--- 2055,2114 ----
+      }
+  }
+  
++ #ifdef _GNU_SOURCE
++ #include <regex.h>
++ 
++ static struct re_pattern_buffer expbuf;
++ 
++ static
++ rexMatch(string)
++     char *string;
++ {
++     return (re_match(&expbuf, string, strlen(string), 0, 0) != -1);
++ }
++ 
++ static
++ rexInit(pattern)
++     char *pattern;
++ {
++ int i, j, n;
++ char newPattern[256],tmp[256];
++ char *s;
++ 
++     n = strlen(pattern);
++     newPattern[0] = '^';
++     for(i = 0, j = 1; i < n; i++) {
++ 	switch(pattern[i]) {
++ 	    case '?':
++ 		newPattern[j++] = '.';
++ 		break;
++ 	    case '*':
++ 		newPattern[j++] = '.';
++ 		newPattern[j++] = '*';
++ 		break;
++ 	    case '.':
++ 		newPattern[j++] = '\\';
++ 		newPattern[j++] = '.';
++ 		break;
++ 	    default:
++ 		newPattern[j++] = pattern[i];
++ 	}
++     }
++     newPattern[j++] = '$';
++     if (expbuf.allocated == 0) {
++ 	expbuf.buffer = MemAlloc(256);
++ 	expbuf.allocated = 256;
++     }
++     expbuf.translate = 0;
++     s = re_compile_pattern(newPattern, strlen(newPattern), &expbuf);
++     if (s) {
++ 	sprintf(tmp, "DIRMENU: %s", s);
++ 	ErrorWarning(s);
++     }
++ }
++ 
++ #else /* _GNU_SOURCE */
++ 
+  static char expbuf[256];
+  
+  static
+***************
+*** 2094,2096 ****
+--- 2150,2154 ----
+      newPattern[j++] = '\0';
+      compile(newPattern, expbuf, &expbuf[256], '\0');
+  }
++ 
++ #endif /* _GNU_SOURCE */

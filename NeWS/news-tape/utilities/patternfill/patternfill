@@ -1,0 +1,175 @@
+#!/usr/NeWS/bin/psh
+%
+% From spectral!sjs@bellcore.com Wed Sep  6 21:10:28 1989
+% Date: Sun, 3 Sep 89 18:48:42 -0400
+% To: NeWS-makers@brillig.umd.edu
+% Subject: Filling an area with a pattern
+% From: spectral!sjs@bellcore.com  (Stan Switzer)
+% 
+% Filling an area with a pattern is one of part of PostScript
+% programming that you'd probably rather not think about.
+% 
+% However, it turns out that there are a few games you can play with
+% "image[mask]canvas" to do just that.
+% 
+% To be truly "production quality," the code would have to do something
+% reasonable with the "phase" of the pattern repeat.
+% 
+% Anyone wondering how to force a color server to do monochrome-style
+% halftoning and dithering will be interested in the "can2image"
+% procedure.
+% 
+% As always, enjoy,
+% 
+% Stan Switzer sjs@bellcore.com
+% -----------
+%
+% patternfill: demonstrate how to fill areas with a pattern
+%
+% Copyright (C) 1989 by Stan Switzer. All rights reserved.
+% This program is provided for unrestricted use, provided that this 
+% copyright message is preserved. There is no warranty, and no author 
+% or distributer accepts responsibility for any damage caused by this 
+% program.
+%
+% Stan Switzer   sjs@bellcore.com
+
+/Ichthycon 64 64 1 [ 64 0 0 -64 0 64 ] { <
+    8080410004004000C004400200020109E820482020400401E001200200000423
+    F110210000008707F0042000001001FFB800100F2200200DF84410308001001F
+    FC0108C04000143FDC0001082090007DFE002200200020EFF6110C00140003FF
+    7F051C89102106DFFF003C0008000FFDFF00761008403FFFF790FE00060C7077
+    FF80FE0001F1CF9DDF81FF008003EFEFFFC3EF00200FFBEFFBC77F08081EFFF7
+    6FCFFF81003FFEF6FFBFFB8000FFEFFBFF7EFFC801B87FFBDCEFBEC043F7BFBD
+    F3F6F7E007EFDFFE0FF7FFE20FECDBFFFF7BFFF11FECDFBDBFFBBBF01EEFDFFF
+    FFFBFFF83FF7BFFFDDFDFEF87FF87B6FFFBDEFFC6DDFFFFFFFFDFFBEFFFFFFFF
+    FEFDFFFEFFBBBBFFDFFDDFFC5FBFFFDFFFFDFDD83E37FFFB7FFBEFF800FF6FFF
+    FBFAFFF11FDFFF7FFF7BBEF21FFF7FF70FF7FFE00FFBFFFFF3F7EFC0477FF7DE
+    BCEFFBC003F7FFFDFF7FBFC401FFFDFBFFBBFF8110EEBF7BFFCFF780023FFFF7
+    F6C7FB00001FF7F7BFD3FB00400F7F6FF781BF120003FFEFDD88FE0081F1CF9F
+    FF82F680060C707DBB207E0008003FEFFF003C1008100FFFDF001C80900047BF
+    F7090C00108003EBFE400200200800FFBE0041042001E077F60008C04242143F
+    FC0912308004081D7800100F0804C80FF8A020200084C887F014210040040807
+    E100200400021023E00048001101E201C9124041000000518000400000101000
+> } buildimage def
+
+% a slower version, but less memory intensive
+/patternfill1 { % bool canvas -> -
+    0 begin
+	/Pattern exch def
+	/Flag exch def
+	gsave Pattern setcanvas clippath pathbbox
+	/IH exch def /IW exch def pop pop grestore
+	gsave
+	initmatrix
+	pathbbox points2rect
+	/H exch def /W exch def /Y exch def /X exch def
+	clip
+	X Y H add IH sub translate
+	/Across W IW add 1 sub IW idiv def
+	/Down H IH add 1 sub IH idiv def
+	IW IH scale
+	Across Down
+	{
+	    gsave dup {
+		Flag Pattern imagemaskcanvas
+		1 0 translate
+	    } repeat grestore
+	    0 -1 translate
+	} repeat
+	pop
+	grestore
+	newpath
+    end
+} dup 0 20 dict put def
+
+/patternfill { % bool canvas -> -
+    0 begin
+	/Pattern exch def
+	/Flag exch def
+	gsave Pattern setcanvas clippath pathbbox
+	/IH exch def /IW exch def pop pop grestore
+	gsave
+	%defaultmatrix setmatrix
+	initmatrix
+	pathbbox points2rect
+	/H exch def /W exch def /Y exch def /X exch def
+	clip
+	/Across W IW add 1 sub IW idiv def
+	/Down H IH add 1 sub IH idiv def
+	/WW IW Across mul def
+	/PP WW IH 1 [ WW 0 0 IH neg 0 IH ] (
+	This is just a bunch of text.  It serves no useful purpoes
+	except to speed up the process of building this canvas which we
+	overwrite soon anyway.  We'd just use "newcanvas" except that
+	only unmapped canvases which are retained have useful data in them
+	and only parentless canvases are guaranteed to be retained.
+	Buildimage seems to be the only way (other than "createdevice")
+	to get a parentless canvas.
+	) buildimage def
+	gsave PP setcanvas IW IH scale
+	Across { Pattern imagecanvas 1 0 translate } repeat grestore
+	X Y H add IH sub translate
+	WW IH scale
+	Down {
+	    Flag PP imagemaskcanvas
+	    0 -1 translate
+	} repeat
+	grestore
+	newpath
+    end
+} dup 0 20 dict put def
+
+/can2image { % canvas -> canvas
+    0 begin
+	/Can exch def
+	gsave Can setcanvas clippath pathbbox
+	/H exch def /W exch def pop pop grestore
+	/Image W H 1 [ W 0 0 H neg 0 H ] (
+	A bunch of silly text to speed up this operation.  The previous
+	example explained it all, but I need to wax loquatious here.  Blah
+	blah, blah...
+	) buildimage def
+	gsave Image setcanvas
+	W H scale Can imagecanvas grestore
+	Image
+    end
+} dup 0 20 dict put def
+
+/picimage { [ exch false exch readcanvas can2image ] cvx } def
+/readface where { pop } { % read UUNET face files
+    % If you want to know about this, mail me at sjs@bellcore.com
+    % I figure if you are reading the code you are worth the trouble.
+    % Trouble is that a lot of my outbound mail bounces...
+    /readface { (NeWS/readface.ps) run readface } def
+} ifelse
+/faceimage { readface pop pop pop pop flipface can2image } def
+
+/Image { true Ichthycon } def
+
+% or try some of these:
+
+% /Image (/usr/NeWS/smi/mona-face.im8) picimage def
+% /Image (/usr/NeWS/smi/man.im8) picimage def
+% /Image (/usr/NeWS/smi/stormy.im8) picimage def
+
+% you'll need "readface.ps" for these:
+
+% /Image [ false (faces/brillig.umd.edu/don) faceimage ] cvx def
+% /Image [ false (faces/people/timmy) faceimage ] cvx def
+
+{
+    /PaintClient {
+	FrameTextColor setcolor
+	ClientWidth ClientHeight scale .5 .5 .5 0 360 arc closepath
+	Image patternfill
+    } def
+    /PaintIcon {
+	gsave IconCanvas setcanvas IconFillColor fillcanvas
+	IconTextColor setshade clippath Image patternfill1
+	grestore
+    } def
+    /FrameLabel (Pattern Fill) def
+    reshapefromuser
+    map
+} framebuffer /new DefaultWindow send send

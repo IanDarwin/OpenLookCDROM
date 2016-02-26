@@ -1,0 +1,1635 @@
+From: jwarring@aol.net (Jeff Warrington)
+Newsgroups: comp.unix.aix,comp.answers,news.answers
+Subject: AIX Frequently Asked Questions (Part 2 of 4)
+Date: 13 May 1995 05:17:35 GMT
+Organization: America Online, Inc.
+Approved: news-answers-request@MIT.EDU
+Expires: 28 Jun 95 01:23:45 GMT
+Message-ID: <4031@aol.net>
+Reply-To: jwarring@aol.net
+Summary: This posting contains AIX Frequently Asked Questions 1.200 - 1.6
+         and their answers.  AIX is IBM's version of Unix.
+Keywords: AIX RS/6000 questions answers
+
+Archive-name: aix-faq/part2
+Last-modified: May 12, 1995
+Version: 4.30
+
+
+Frequently Asked Questions about AIX and the IBM RS/6000 Section 2
+__________________________________________________________________
+
+1.200: Some info about tape backups
+From: Craig Anderson
+
+The following supplements the information on rmt devices in
+InfoExplorer. It is based on my own personal experience with IBM tape
+drives running on AIX 3.1. No warranty is expressed or implied.
+
+CONFIGURING THROUGH SMIT:
+    BLOCK size (0=variable length)		(ALL)
+	Sets the tape block size.  When reading, the block size must be
+	set to the block size set when the tape was written.  When
+	using some commands, tapes written with ANY block size can be
+	read if the block size is set to 0 (variable length) (see
+	"BLOCK SIZES" below).
+
+    Use DEVICE BUFFERS during writes		(ALL)
+	Set to yes, the device will buffer data internally on writes.
+	This greatly improves performance, but under certain cases may
+	be undesirable since the data is not written to tape before
+	returning a good indication.
+
+    Use EXTENDED file marks			(8mm only)
+	Extended file marks take up much more space than short (or
+	non-extended) file marks.  But extended file marks can be
+	overwritten, allowing data not at the beginning of tape to be
+	overwritten (see "FILE MARKS" below).
+
+    RETENSION on tape change or reset		(1/4" only)
+	If set to "no" then the tape will not be retentioned
+	automatically when the tape is inserted.  Note that this will
+	take effect only after the device is used.
+
+
+FILE MARKS:
+     Tape devices support multiple tape files.  Tape files are the
+     result of a backup/cpio/tar/dd type command, where the device is
+     opened, written to, and closed.  Because tapes allow large
+     quantities of data to be written on a single tape, several backups
+     (that is, tape files), may be combined on one physical tape.
+     Between each tape file is a "tape file mark" or simply "file
+     mark".  These file marks are used by the device driver to indicate
+     where one tape file ends and another begins.
+
+                              B       E
+                   <-------   O       O   ------->
+                              T       T
+              __ ____________________________ _______________
+     physical | \            |       |      \             |physical
+     beginning|  \           | tape  |       \            | end
+       of     |   \          | file  |        \           |  of
+      tape    |    \         | mark  |         \          | tape
+              |_____\________|_______|__________\_________|
+ 
+     Note that there is a distinction between the beginning of tape
+     (BOT) side of a file mark and the end of tape (EOT) side of a file
+     mark.  If the head is on the BOT side of a file- mark, "tctl fsf
+     1" command will move only to the EOT side of the same file mark.
+
+     With the 1/4" tape drive, writing can only take place
+     sequentially, or after blank tape has been detected.  You cannot
+     write over data on the tape (except at BOT).  If you wish to add
+     data to a tape which has been written and then rewound you should
+     space forward file mark until an error occurs.  Only then can
+     you start writing again.
+
+     With an 8mm tape drive, writing can only take place before blank
+     tape, an EXTENDED file mark, or at BOT.  Thus if several backups
+     have been made on one tape and you wish to overwrite one of the
+     backups, position the tape to the place you wish to start writing
+     and issue the following commands:
+	tctl bsf 1
+	tctl eof 1
+     The first command skips back to the BOT side of the same file
+     mark.  The second command rewrites the file mark (writing is
+     allowed before extended file marks).  The erase head will erase
+     data ahead of the write head, so that after writing the file mark
+     the head will be positioned before blank tape.  Only after this
+     may you start writing over data in the middle of the tape.  (All
+     data beyond where you are currently writing will be lost).  Note
+     that you cannot write over short file marks.  In order for this to
+     work, the tape must have been written with extended file marks
+     (use smit to change this).
+
+     With the 9-track drive writing can take place anywhere on the
+     tape although overwriting single blocks of data is not supported.
+
+     On the 8mm drive extended filemarks use 2.2 megabytes of tape and
+     can take up to 8.5 seconds to write.  Short filemarks use 184K
+     and take up to 1.5 seconds to write.
+
+BLOCK SIZES:
+     When data is written to tape it is written in blocks.  The blocks
+     on a tape are separated by inter-record gaps.  It is important to
+     understand the structure of the written tape in order to
+     understand the problems which can occur with changing block
+     sizes.
+
+     In fixed block size mode all blocks on the tape are the same
+     size.  They are the size of the block size set in the device
+     configuration.  All read()s and write()s to the tape drive must be
+     a multiple of the fixed block size.
+
+     In fixed block mode a read() will return as many blocks as needed
+     to satisfy the read() request.  If a file mark is encountered
+     while reading the tape only the data up until the file mark will
+     be returned.
+
+     It is not possible for the tape drive to read a tape whose block
+     size is not the same as the block size in the device
+     configuration.  (Unless the device configuration is in variable
+     size blocks.)
+
+     In variable block size (0) mode, the blocks written on the tape
+     are the size of the read() and write() requests to the device
+     driver.  In this case, the actual block sizes on the tape can be
+     changed using the options to the backup commands (tar -C, cpio -C,
+     backup -C).
+
+     In variable mode, read() requests greater than size of the block
+     on the tape will return only the data from the next block on the
+     tape.  It is this feature that allows tapes written in any block
+     size (fixed or variable) to read with the dd command (the output
+     from the dd command may be piped to restore, tar, or cpio for
+     example.)  Note that backup, tar, and cpio cannot read all tapes
+     by using a large block size because they assume there is an error
+     if they get a short read().
+		dd ibs=128k obs=16k if=/dev/rmt0 | ...
+
+     The tape head is always positioned at an inter-record gap, file
+     mark, or blank tape after reading or writing.
+
+     With the 8mm tape drive, using a fixed block size which is not a
+     multiple of 1K is inefficient.  The 8mm tape drive always writes
+     internally in 1K blocks.  It simulates the effect of variable
+     block sizes, but, for example, using a fixed block size of 512
+     bytes (or using variable block size and write()ing 512 bytes at a
+     time) wastes one half of the tape capacity and gives only one half
+     the maximum transfer rate.
+
+     To figure out a tape's actual block size try:
+
+     1). Set the tape to variable block size.
+     2). "dd if=<tape> of=/tmp/dummy bs=128k count=1"
+     3). "ls -l /tmp/dummy"
+     4). The number of bytes in "/tmp/dummy" is the physical block size.
+
+EXCHANGING DATA WITH NON-UNIX AND OTHER VENDORS MACHINES:
+     Many tape drives support both variable and fixed block sizes.
+
+     Variable block mode writes block sizes the size of the write
+     command issued (tar and backup specify this with the -b option). 
+     In fixed mode, block sizes are fixed and all writes must be a
+     multiple of the fixed block size.
+
+     Unix often internally chops larger reads and writes up into
+     manageable pieces (often 65535, 65534, or 65532 bytes) before
+     doing the actual reads and writes.  This means reads and writes of
+     64K bytes are often broken up into a 65535 byte record and a 1
+     byte record (In fixed mode the write will fail).  Block sizes >=
+     64K (-C128 and greater) should be avoided for this reason.  AIX
+     does not break up read and write requests, but be aware of the
+     situation on other machines.
+
+     If the tape is written in an unknown block size then set the
+     device configuration in smit to use variable size blocks, use the
+     "dd" command with a large input block size, and pipe it to the
+     restore command.  For example:
+	  chdev -l rmt0 -a block_size=0
+	  dd if=/dev/rmt0 ibs=128k obs=16k | tar -tvf-
+
+
+1.201: How do I do remote backup?
+
+There seems to be several ways of doing this.  The first approach is a
+one-liner to allow tar to reference another machine's device.  The
+second is more complete but uses a similar approach.  The latest
+edition to this section claims to be able to support mksysb on a
+remote machine.  Thanks to all the contibutors.
+
+  tar -b1 -cf - . | rsh REMOTEHOST "dd ibs=512 obs=1024 of=/dev/TAPEDEVICE"
+
+
+From: kraemerf@franvm3.VNET.IBM.COM (Frank Kraemer)
+
+[Ed.: I've verified this script works fine. However, it may be slow for
+ large filesystems since it creates a temp file of filenames in /tmp.]
+
+#!/bin/ksh
+# @(#) Create a backup tape of the private user data.
+#=================================================================#
+#   Script :  usave.sh                                            #
+#   Author :  F. Kraemer                                          #
+#   Date   :  92/02/19                                            #
+#   Update :  92/10/29                                            #
+#   Info   :  the ultimative backup script                        #
+#   Example:  usave.sh /dev/rmt0      -  save to local tape       #
+#             usave.sh /save/save.me  -  save to local file       #
+#             usave.sh /tmp/pipe      -  save to remote tape      #
+#-----------------------------------------------------------------#
+PS4="(+) "
+#set -x
+PROG=$(basename $0)
+HOST=$(hostname)
+TODAY=$(date +%H:%M:%S)
+#
+# cleanup
+#
+cleanup ()
+{
+ec=$1
+error=$2
+case "$ec"
+in
+   "$USAGE_EC")    # usage error
+     error="Usage:\t$PROG DeviceName\n" 1>&2
+    ;;
+   "$NOTAP_EC")    # Tape error
+     error="error:\t$PROG: $DEVICE is not available on the system.\n" 1>&2
+    ;;
+   "$LISTE_EC")    # list error
+     error="error:\t$PROG: could not create tar list for $LOGNAME.\n" 1>&2
+    ;;
+   "$NOTAR_EC")    # tar command error
+     error="error:\t$PROG: tar command failed.\n" 1>&2
+    ;;
+   "$PIPEP_EC")    # pipe error
+     error="error:\t$PROG: mknod command failed.\n" 1>&2
+    ;;
+   "$NORSH_EC")    # rsh error
+     error="error:\t$PROG: rsh - Remote Shell command failed.\n" 1>&2
+    ;;
+   "$RHOST_EC")    # remote host error
+     error="error:\t$PROG: Remote Host unknown.\n" 1>&2
+    ;;
+   *)
+   ;;
+esac
+case "$DEVICE"
+in
+    #
+    # Fix the block size if $DEVICE is a tape device
+    #
+    /dev/rmt[0-9]*)
+        echo "\n\t$PROG: Rewinding tape to begin.........(please wait)\n"
+        tctl -f $DEVICE rewind 2>/dev/null
+        ;;
+    *) ;;
+esac
+rm -f ${LIST} ${PIPE} 2>/dev/null
+[ -n "$error" ] && echo "\n${error}\n"
+trap '' 0 1 2 15
+exit "$ec"
+}
+#
+# Variables
+#
+USAGE_EC=1                         # exit code for usage error
+NOMNT_EC=2                         # exit code wrong device name
+NOTAP_EC=3                         # exit code no tape available
+LISTE_EC=4                         # exit code backup list error
+NOTAR_EC=5                         # exit code for wrong tar
+TRAPP_EC=6                         # exit code for trap
+PIPEP_EC=7                         # exit code for pipe
+RHOST_EC=8                         # exit code for bad ping
+NORSH_EC=9                         # exit code for bad rsh
+DEVICE="$1"                        # device to tar into
+LIST="/tmp/.tar.$LOGNAME.$$"       #
+REMOTEH=""                         # Remote host for backup
+REMOTET=""                         # Remote tape for backup
+tapedev=                           #
+PIPE="/tmp/pipe"                   # Pipe for remote backup
+#
+# main()
+#
+tput clear
+echo "\n\t$PROG started from $LOGNAME@$HOST on $TERM at $TODAY.\n"
+rm -f $LIST 2>/dev/null
+#
+# Trap on exit/interrupt/break to clean up
+#
+trap "cleanup $TRAPP_EC \"Abnormal program termination. $PROG"\"  0 1 2 15
+#
+# Check command options
+#
+[ "$#" -ne 1 ]  &&  cleanup "$USAGE_EC" ""
+#
+# Check device name
+#
+[ `expr "$DEVICE" : "[/]"` -eq 0 ] && cleanup "$NOMNT_EC" \
+        "$PROG: Backup device or file name must start with a '/'."
+#
+# Check tape device
+#
+case "$DEVICE"
+in
+    #
+    # Fix the block size if $DEVICE is a tape device
+    #
+    /dev/rmt[0-9]*)
+        #
+        echo "\n\t$PROG: Verify backup media ($DEVICE)............\n"
+        #
+        # see if a low or high density tape device was specified
+        # (eg rmt0.1)
+        density="`expr $DEVICE : \
+                "/dev/rmt[0-9]*\.\([0-9]*\)"`"
+        #
+        # strip /dev/ from device name and
+        # get the base name (eg translate:
+        # /dev/rmt0.2 to rmt0)
+        #
+        tapedev="`expr $DEVICE : \
+                "/dev/\(rmt[0-9]*\)[\.]*[0-9]*"`"
+        #
+        # Check if the tape is defined in the system.
+        lsdev -C -c tape -S Available -F "name" | grep $tapedev >/dev/null 2>&1
+        rc=$?
+        [ "$rc" -ne 0 ] && cleanup "$NOTAP_EC" ""
+        #
+        # Restore old tape name.
+        #
+        [ "${density:-1}" -lt 4 ] && density=1 || density=5
+        DEVICE="/dev/${tapedev}.${density}"
+        echo "\n\t$PROG: Insert a tape in ($DEVICE)........(press enter)\n"
+        read TEMP
+        echo "\n\t$PROG: Rewinding tape to begin...........(please wait)\n"
+        tctl -f $DEVICE rewind 2>/dev/null
+        ;;
+    #
+    # Backup is done on remote host. The remote shell facility
+    # must be set up and running.
+    #
+    ${PIPE}*)
+        #
+        echo "\n\t$PROG: Assuming remote backup via network.\n"
+        echo "\t$PROG: Enter name of Remote Host   ===> \c"
+        read REMOTEH
+        echo "\n\t$PROG: Pinging Remote Host to test connection.\n"
+        ping ${REMOTEH} 1 1 >/dev/null 2>&1
+        rc=$?                                    # give up unknown host
+        [ "$rc" -ne 0 ] && cleanup "$RHOST_EC" ""
+        JUNK=$(rsh ${REMOTEH} "/usr/sbin/lsdev -C -c tape -S Available")
+        rc=$?                                    # give up rsh failed
+        [ "$rc" -ne 0 ] && cleanup "$NORSH_EC" ""
+        echo "\t$PROG: Available Tapes on ${REMOTEH} are :\n\n\t\t${JUNK}\n"
+        echo "\t$PROG: Enter name of Remote Tape (e.g. /dev/rmt0) ===> \c"
+        read REMOTET
+        echo "\n\t$PROG: Insert tape on ${REMOTEH} in ${REMOTET}..(press enter)"
+        read TEMP
+        echo "\t$PROG: Rewinding Remote Tape ${REMOTET} on ${REMOTEH}.\n"
+        rsh ${REMOTEH} "tctl -f ${REMOTET} rewind"
+        rc=$?                                    # give up rsh failed
+        [ "$rc" -ne 0 ] && cleanup "$NOTAP_EC" ""
+        rm -f ${PIPE} 2>/dev/null
+        mknod ${PIPE} p
+        rc=$?                                    # give up mknod failed
+        [ "$rc" -ne 0 ] && cleanup "$PIPEP_EC" ""
+        cat ${DEVICE} | rsh ${REMOTEH} "dd of=${REMOTET} obs=100b 2>/dev/null" &
+        ;;
+    *)  ;;
+esac
+#
+# Prepare the list
+#
+echo "\n\t$PROG: Create list of files to be saved...."
+find $HOME -print > $LIST
+rc=$?
+[ "$rc" -ne 0 ] &&  cleanup "$LISTE_EC" ""
+#
+# tar the files
+#
+echo "\n\t$PROG: Changing current directory to (/)...."
+cd / > /dev/null 2>&1
+echo "\n\t$PROG: Running tar format backup from user ($LOGNAME)...."
+tar -cvf "$DEVICE" -L "$LIST"
+rc="$?"
+[ "$rc" -ne 0 ]  && cleanup "$NOTAR_EC" ""
+#
+# Backup completed
+#
+TODAY=$(date +%H:%M:%S)
+echo "\n\t$PROG ended at $TODAY............................\n\n"
+cleanup 0
+
+1.201: How do I do remote backup?  (Continued)
+From: Henk van Doorn <hvdoorn@xs4all.nl>
+
+#!/bin/ksh
+#######################################################################
+#     rmksysb                                                         #
+#######################################################################
+#                                                                     #
+# Description:                                                        #
+#       creates a bootable mksysb backup of a remote system running   #
+#	AIX 3.x or lists the Table of Contents of the current tape    #
+#                                                                     #
+# Usage:                                                              #
+#       ./rmksysb $1 [$2] 					      #
+#		$1 - remote host to be backed up		      #
+#		$2 - optional: local tape device (default: rmt0)      #
+#	or:							      #	
+#	./rmksysb -l [$2]                                             #
+#		to list Table of Contents saveset on tape in $2	      #
+#		(only useful on tapes created by rmksysb)	      #
+#                                                                     #
+# Output:                                                             #
+#       a bootable mksysb of the remote system                        #
+#	or a listing of the TOC saveset on the current tape	      #
+#                                                                     #
+# Remarks:							      #
+#	. rmksysb can only be used by root			      #	
+#	. this script will use tapedevice .1, so if 	  	      #
+#	  a >2.3GB drive is used: check density_set_1	              #
+#	. the remote host needs /.rhosts to include the local host    #
+#	  for root access (+ shell enabled in /etc/inetd.conf)        #	
+#	. you will need some room (>1.5MB) on /tmp on the remote host #
+#	  for standard mksysb .archive.list.* etc.		      #
+#	. remote standard output & standard error (except dd/chdev)   #
+#	  will go to local stdout & stderr			      #
+#	. redirecting stdout can create quite large log-files (2MB)   #
+#	. AIX versions should not be too far apart as the boot-saveset#
+#	  comes from the local system & the rest from the remote      #
+#	  (tested on AIX 3.2.5, AIX 4+ definitely won't work!!!)      #
+#	. most likely this script will fail with multi-tape mksysb's: #
+#	  another incentive to keep rootvg as small as possible!      #
+#								      #
+# Author:							      #
+#	Henk van Doorn						      #
+#	Email: hvdoorn@xs4all.nl       				      #
+#								      #
+#	Thanks to all who contributed. Esp. Paul Wynn (AIXpert '93),  #
+#	my colleagues Dominic Dinardo & Douwe van Terwisga	      #
+#	+ the input from Usenet were stimulating; thanks folks!	      #
+#	I would welcome any additions & changes for the better...     # 
+#                                                                     #
+#######################################################################
+#         CHANGES                                                     #
+#######################################################################
+#                                                                     #
+# ID	 WHO   DATE                        DESCR                      #
+# --	 ---   -------  --------------------------------------------- #
+# X000	 HvD   6Jan95   Created this file.                            #
+# X001	 HvD   2Feb95   Final version                                 #
+#######################################################################
+
+set +u
+
+# Global variable definitions.
+UMASK=`umask`
+BLK_SZ=1024
+BOOT_BLK_SZ=512
+HOST=${1}
+
+# TAPE = $2 with /dev/ & .* removed, defaulting to rmt0
+TAPE=${2:-rmt0}
+TAPE=${TAPE#/dev/}
+TAPE=${TAPE%.*}
+
+usage()
+{
+    echo "Usage: ./rmksysb <remote_host_name> [<tape_device>] or" >&2
+    echo "       ./rmksysb -l [<tape_device>]" >&2
+    echo "                 with <tape_device>= e.g. rmt1" >&2
+    echo "Default <tape_device>=rmt0" >&2
+    return
+}
+
+check_parms()
+{
+if [ "${HOST}" = "" ]
+then
+	usage
+	exit 1
+fi
+
+if [ "${HOST}" = "-l" ]
+then
+# show TOC block which contains some backup details on rmksysb tapes
+	get_tape_block_size
+	chdev -l ${TAPE} -a block_size=${BOOT_BLK_SZ} >/dev/null 2>&1
+	mt -f /dev/${TAPE} rewind
+	mt -f /dev/${TAPE}.1 fsf 2
+	dd if=/dev/${TAPE} count=1 2>/dev/null
+	chdev -l ${TAPE} -a block_size=${OLD_BLK_SZ} >/dev/null 2>&1
+	exit 
+fi
+}
+
+check_host()
+{
+rsh ${HOST} hostname >/dev/null 2>&1
+if [ $? -ne 0 ]
+then
+	echo "Check hostname & rsh access" >&2
+	exit 1
+fi
+}
+
+get_tape_block_size()
+{
+VALID=
+`lsdev -Cc tape | cut -f1 -d" " | grep ${TAPE} 2>&1 >/dev/null` && 
+	{
+        OLD_BLK_SZ=`lsattr -El ${TAPE} -a block_size | cut -f2 -d" "`
+        VALID=true
+        }
+
+if  [ "$VALID" = "" ]
+then
+	echo "Tape drive $TAPE is not a valid local drive!" >&2
+	exit 1
+fi
+}
+
+#
+# The main procedure is analogous to its C counterpart,
+# This is the basic driver routine.
+#
+main()
+{
+
+if [ "`id | grep 'uid=0'`" = "" ]
+then 
+	echo "rmksysb can only be run as root!" >&2
+	exit 2 
+fi
+umask 022
+
+check_parms
+check_host
+get_tape_block_size
+
+# display some info on this rmksysb session
+echo "`date`\n\nRemote System Backup from remote ${HOST} to local `hostname` on device:\n`lscfg -v -l ${TAPE} | sed -n '3,6p' | grep "[a-z]" `\n" 
+
+# Here the action starts
+rsh $HOST -n /usr/bin/mkszfile
+rsh $HOST -n "echo ${BLK_SZ} > /tapeblksz"
+
+rsh $HOST -n "rm -f /tmp/pipe.rmksysb"
+rsh $HOST -n "rm -f /tmp/pipe.rmksysb.out"
+rsh $HOST -n "rm -f /tmp/pipe.rmksysb.err"
+
+rsh $HOST -n "/etc/mknod /tmp/pipe.rmksysb p"
+rsh $HOST -n "/etc/mknod /tmp/pipe.rmksysb.out p"
+rsh $HOST -n "/etc/mknod /tmp/pipe.rmksysb.err p"
+
+# create remote startup file for mkinsttape
+rsh $HOST -n "echo '#!/bin/ksh\nexport PATH=$PATH ; /usr/sbin/mkinsttape /tmp/pipe.rmksysb >/tmp/pipe.rmksysb.out 2>/tmp/pipe.rmksysb.err &' > /tmp/mkinsttape.start "
+rsh $HOST -n "chmod 700 /tmp/mkinsttape.start"
+
+chdev -l $TAPE -a block_size=${BOOT_BLK_SZ} >/dev/null 2>&1
+tctl -f /dev/${TAPE} retension
+
+echo
+echo
+echo ">>> SAVESET 1: BOS boot image from `hostname`"
+echo
+bosboot -d /dev/${TAPE}.1 -a 
+
+echo
+echo
+echo ">>> SAVESET 2: BOS install utilities from ${HOST} (backup format)"
+echo
+rsh $HOST -n "nohup /tmp/mkinsttape.start" &
+
+# get remote standard out & err to local stdout & err
+rsh $HOST -n "dd if=/tmp/pipe.rmksysb.out 2>/dev/null" | dd 2>/dev/null &
+rsh $HOST -n "dd if=/tmp/pipe.rmksysb.err 2>/dev/null" | ( dd 2>/dev/null ) >&2 &
+
+# get remote mkinsttape to local tape device
+rsh $HOST -n "dd if=/tmp/pipe.rmksysb 2>/dev/null" | dd 2>/dev/null | dd of=/dev/${TAPE}.1 conv=sync 2>/dev/null
+
+echo
+echo
+echo ">>> SAVESET 3: Backup information (list with ./rmksysb -l [<tapedevice>])"
+echo
+# add dummy TOC to tape with some backup information
+echo "`date`\n\nRemote System Backup from remote ${HOST} to local `hostname` on device:\n`lscfg -v -l ${TAPE} | sed -n '3,6p' | grep "[a-z]" `\n" | dd of=/dev/${TAPE}.1 conv=sync 2>/dev/null
+
+# change blocksize to 1024 for better performance
+chdev -l ${TAPE} -a block_size=${BLK_SZ} >/dev/null 2>&1
+
+# rewind & skip first 3 savesets
+mt -f /dev/${TAPE} rewind
+mt -f /dev/${TAPE}.1 fsf 3
+
+echo
+echo
+echo ">>> SAVESET 4: mksysb (rootvg backup) from ${HOST} (tar format)"
+echo
+# start the actual remote mksysb
+echo "The contents of the /.fs.size file on ${HOST} are:"
+rsh $HOST -n "cat /.fs.size"
+echo
+
+rsh $HOST -n "nohup /usr/bin/mksysb /tmp/pipe.rmksysb >/tmp/pipe.rmksysb.out 2>/tmp/pipe.rmksysb.err &" &
+
+# get remote standard out & err to local stdout
+rsh $HOST -n "dd if=/tmp/pipe.rmksysb.out 2>/dev/null" | dd 2>/dev/null &
+rsh $HOST -n "dd if=/tmp/pipe.rmksysb.err 2>/dev/null" | ( dd 2>/dev/null ) >&2 &
+ 
+# get remote mksysb to local tape device
+rsh $HOST -n "dd if=/tmp/pipe.rmksysb 2>/dev/null" | dd obs=${BLK_SZ} 2>/dev/null | dd of=/dev/${TAPE} bs=${BLK_SZ} conv=sync 2>/dev/null
+
+# cleaning up
+rsh $HOST -n "rm -f /tmp/pipe.rmksysb"
+rsh $HOST -n "rm -f /tmp/pipe.rmksysb.out"
+rsh $HOST -n "rm -f /tmp/pipe.rmksysb.err"
+rsh $HOST -n "rm -f /tmp/mkinsttape.start"
+
+chdev -l ${TAPE} -a block_size=${OLD_BLK_SZ} >/dev/null 2>&1
+umask $UMASK
+
+# display some closing info on this rmksysb session
+echo "Remote System Backup from remote ${HOST} to local `hostname` is finished.\n`date`\n" 
+
+} #end of main
+
+# Call the driver
+main 
+
+
+
+1.202: How do I backup a multi-disk volume group?
+From: pack@acd.ucar.edu (Daniel Packman)
+
+[ Ed.: I have not verified this procedure. I would actually recommend
+  NOT to have one volume group span multiple disks unless you really
+  need such big logical volumes. ]
+
+  1. If you have a set of three or more disks in a volume group
+     (typically 3 for 5xx machines with three internal drives;
+     with only two, the procedures outlined here have to be modified
+     to ignore the fact that you don't have a quorum in the volume group)
+
+  2. If one drive has failed (usually only one fails at a time :-) )
+
+It is possible to go through a service boot (the volume group is called
+rootvg and one of the 2 good disks on it is called hdisk0):
+
+  importvg -y rootvg hdisk0
+  varyonvg -f -n -m1 rootvg
+
+These commands will work, but give error messages. If you wish to mount
+a user filesystem, say /u on logical volume /dev/lv00, then
+
+  mount -f /dev/lv00 /v
+
+will work only if jfslog, the journaled file system log device, is not
+on the damaged disk. If it is, you must (and can in any case) mount the
+filesystem read-only:
+
+  mount -f -r /dev/lv00 /v
+
+This crucial and rather obvious point baffled several level 3 support
+personnel at Austin as well as myself for almost a week. Once the file
+system(s) of interest are available, they can be saved to tape for
+restoration later. Of course, one can expect only about two thirds of a
+filesystem to be recoverable if it spans all 3 physical disks. One
+other point to remember is that the standard boot procedure from floppy
+includes the restore command but does not include the backup command.
+
+*****************************************************************************
+* If you do not have other RS6000 machines at your site it is imperative    * 
+* that you either build a bootable tape which includes either restore or    * 
+* tar or cpio (a bootable floppy set will not have enough space) or at the  *
+* very least copy onto a spare floppy backup, cpio, or tar.  The floppy     *
+* should be created with backup -ivq so that its contents can be read into  *
+* the memory resident system after booting.                                 *
+*****************************************************************************
+
+All is not lost if tar, cpio or backup are available on an undamaged
+disk that can be mounted. Since tar and cpio are in /bin, they may both
+very well be unavailable.
+
+It is a very good idea for those who have tape devices to build a
+bootable tape with their desired extra commands in it. Follow the
+instructions from IBM but add your desired commands to the following
+three files:
+
+    /usr/lpp/bosinst/tape2
+    /usr/lpp/bosinst/diskette/boot2
+    /usr/lpp/bosinst/diskette/inslist
+
+If you have anything other than a minimum memory configuration, you
+should be able to add many commands.
+
+
+1.203: How do I put multiple backups on a single 8mm tape?
+From: kerm@mcnc.org (Cary E. Burnette)
+
+There are two possible solutions to this, both of which use /dev/rmt0.1
+which is non-rewinding.
+
+SOLUTION #1
+-----------
+
+To put multiple backups on a single tape, use /dev/rmt0.1, which is a
+no-rewind device, using either rdump or backup (both by name & inode
+work). Using rdump or backup "byinode" both generate the message that
+the tape is rewinding but actually do not. This is an example that
+works on my system:
+
+# rsh remote1 -l root /etc/rdump host:/dev/rmt0.1 -Level -u /u
+# rsh remote2 -l root /etc/rdump host:/dev/rmt0.1 -Level -u /u
+# tctl -f /dev/rmt0.1 rewind       # rewinds the tape
+
+where I am implementing the command from host.
+To restore a table of contents of the first I would use 
+
+# restore -f /dev/rmt0.1 -s1 -tv
+
+where the -s1 flag tells restore to go to the first record on the tape. 
+Type the exact command again to get the second record. The -s(Number)
+means go to Number record from this spot. It works pretty well.
+
+
+SOLUTION #2
+-----------
+
+Steve Knodle
+Educational Resources Center
+Clarkson University
+
+I use:
+------------------- Dump.sh --------------------
+CONTENTSFILE=`date |dd conv=lcase |sed -e 's/19//' |awk '{print $6 $2 $3}'`
+set -x
+LEVEL=$1
+shift
+
+backup -c -b 56 -$LEVEL -uf /dev/rmt0.1 /
+backup -c -b 56 -$LEVEL -uf /dev/rmt0.1 /usr
+backup -c -b 56 -$LEVEL -uf /dev/rmt0.1 /u
+tctl -f /dev/rmt0 rewind
+
+touch /usr/local/dumps/Contents.$CONTENTSFILE
+echo "Dumping /" >>/usr/local/dumps/Contents.$CONTENTSFILE
+restore -t -s 1 -f /dev/rmt0.1 >>/usr/local/dumps/Contents.$CONTENTSFILE
+echo "Dumping /usr" >>/usr/local/dumps/Contents.$CONTENTSFILE
+restore -t -q -s 1 -f /dev/rmt0.1 >>/usr/local/dumps/Contents.$CONTENTSFILE
+echo "Dumping /u" >>/usr/local/dumps/Contents.$CONTENTSFILE
+restore -t -q -s 1 -f /dev/rmt0.1 >>/usr/local/dumps/Contents.$CONTENTSFILE
+tctl -f /dev/rmt0 rewind
+
+I process the table-of-contents first by a little program that does
+common prefix encoding, and then compress.
+
+This gives a table of contents file I can keep on-line until the tape
+is reused.
+
+
+1.204: How can I make an exact duplicate of a tape over the network?
+
+The challenge here is not to have to create a temporary file (disk space
+limitation) and work across heterogeneous networks.
+
+This script might work:
+
+LOCAL=/dev/tape_dev
+REMOTE=/dev/tape_dev
+dd if=$LOCAL ibs=64k obs=512 | rsh remote_host dd ibs=512 obs=64k of=$REMOTE
+
+
+From: pack@acd.ucar.edu (Daniel Packman)
+
+Daniel provides the following perl script to convert from the known
+world's function codes to AIX for compatibility.
+
+#!/bin/perl
+# Wrapper to convert input rmt requests to
+# AIX 3.2 ioctl numbers.  We pass on all commands we don't understand
+# I0 MTWEOF -> I10  STWEOF write and end-of-file record
+# I1 MTFSF  -> I11  STFSF  forward space file
+# I2 MTBSF  -> I12  STRSF  reverse space file
+# I3 MTFSR  -> I13  STFSR  forward space record
+# I4 MTBSR  -> I14  STRSR  reverse space record
+# I5 MTREW  -> I6   STREW  rewind
+# I6 MTOFFL -> I5   STOFFL rewind and unload tape
+# I7 MTNOP  -> I0   (no-op? should ignore following count)
+# I8 MTRETEN-> I8   STRETEN retension tape, leave at load point
+# I9 MTERASE-> I7   STERASE erase tape, leave at load point
+#I10 MTEOM (position to end of media ... no ibm equivalent?)
+#I11 MTNBSF  (backward space file to BOF ... no ibm equivalent?)
+@iocs = (10,11,12,13,14,6,5,0,8,7);
+open(RMT,"|/usr/sbin/rmt") || die "Can't open pipe to rmt\n";
+select(RMT);
+$| = 1;
+while (<STDIN>) {
+  s/(^I)(\d$)/I$iocs[$2]/;
+  exit 0 if $_ =~ /^[Qq]/;
+  print RMT $_ ; }
+exit 0;
+
+
+1.205: What is tape block size of 0?
+From: benson@odi.com (Benson I. Margulies)
+
+Tape devices are generally split into two categories: fixed block and
+variable block.  1/4" tape is the fixed block, and 8mm is variable.
+
+On a fixed block size device, the kernel always sends data to the device
+in suitable block size lumps, and varying the size passed to write(2)
+(e.g., via the bs option to dd) gives the kernel more data to stream. 
+On a variable block size device, the kernel writes to the device
+whatever passed to it. On an 8mm, it had better be a multiple of 1024
+to get efficient tape usage.
+
+AIX has the World's Only Variable Block Size 1/4" tape drive. If you
+use SMIT to set the block size to a nonzero value, AIX treats the device
+as fixed block size, whether it is or not. By default, 8mm drives are
+set to the same size as 1/4", 512 bytes. This is wasteful, but
+otherwise mksysb and installp would fail.
+
+If you set the block size to 0, the device is treated as variable block
+size, and the size passed to write becomes the physical block size. 
+Then if you use a sensible block size to dd, all should be wonderful.
+
+
+1.206: Resetting a hung tape drive
+From: Craig_Anderson@kcbbs.gen.nz (Craig Anderson)
+
+A process accesses the tape drive. The process stops, exits, or whatever,
+but still hold on to the drive. When this happens, the process cannot be
+killed by any signal and the tape drive cannot be used by any other
+process until the machine is rebooted.
+
+The following should help:
+
+RESET:
+
+AIX, like most UNIX systems has no reset function for tape drives. You
+can however send a Bus Device Reset (a standard SCSI message) to the
+tape drive using the following piece of code. If the tape drive does
+not respond to the BDR, then a SCSI Bus Reset will be sent (and this
+will reset every device on the SCSI Bus). SCSI Bus resets are rather
+extreme so you should refrain from using this program unnecessarily. 
+But there are times (like after you've inserted a jammed/old/bad tape in
+an 8mm drive), when there's no other way to reset the device other than
+to shutdown and reboot (obviously you can power down and up an external
+drive to reset it - and this would be the better choice).
+
+This is actually documented in info, but can be hard to find and
+there's no complete program.
+
+/* taperst: resets the tape drive by sending a BDR to the drive. */
+#include <stdio.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/scsi.h>
+
+int main(int argc, char **argv)
+{
+         /* This can be run only by root */
+
+         if (argc != 2) {
+             fprintf(stderr, "Usage: %s /dev/rmt#\n", argv[0]);
+             return 1;
+         }
+
+         if (openx(argv[1], O_RDONLY, 0, SC_FORCED_OPEN) < 0) {
+             perror(argv[0]);
+             return 2;
+         }
+         return 0;
+}
+
+1.207: How do I read a mksysb tape with tar?
+From: Marc Pawliger (marc@sti.com)
+
+To recover specific files from a backup made with mksysb, try
+$ tctl fsf 3
+$ tar xvf/dev/rmt0.1 ./your/file/name
+
+
+1.208: How do I read a 5Gbyte tape on a 2Gbyte drive?
+Posted by: bobmet@clam.com (Robert Metcalf)
+
+To read a 5Gbyte tape on a 2Gbyte drive, the
+tape needs to have been created with a density setting of 20.
+
+The following is from IBM's electronic ASKSUPPORT repository:
+  
+   R: The 7208 011 5 GB tape drive has various density settings which are
+      as follows:
+  
+     +-------+--------------------------+
+     | DENSIT| DESCRIPTION              |
+     | SETTIN|                          |
+     +-------+--------------------------+
+     | 140   | Writes in 5.0GB mode and |
+     |       | will enable data com-    |
+     |       | pression; also, to do    |
+     |       | compression you must use |
+     |       | "DATA COMPRESSION = yes" |
+     +-------+--------------------------+
+     | 21    | Writes in 5.0GB mode and |
+     |       | will NOT do data com-    |
+     |       | pression                 |
+     +-------+--------------------------+
+     | 20    | Writes in 2.3GB mode and |
+     |       | will NOT do data com-    |
+     |       | pression                 |
+     +-------+--------------------------+
+     | 00    | Factory power-on default |
+     |       | for 5.0GB data com-      |
+     |       | pression mode            |
+     +-------+--------------------------+
+  
+     The density setting of the 7208 011 must be 20 for it to make a tape
+     that is readable by the 7208 001.
+
+
+1.209: What can Sysback do for me?
+From: johnsont@austin.ibm.com (Tony Johnson)
+
+Sysback provides the flexibility of restoring onto the same system in
+the exact same manner, or onto a completely different system with
+differnet disk configuration, platform type, kernel, etc, while
+reporting any inconsistencies and allowing you to adjust to fit. For
+instance, you will get warnings if a particular volume group cannot be
+created because the original disks to not exist, or that mirroring
+cannot be accomplished because there is no longer enough disk space
+because the disks are smaller. You can then select the disks for each
+volume group, reduce or add space to filesystems and LVs, exclude
+entire VGs or filesystems, etc.  You can even add and delete mirrors,
+stripe or un-stripe logical volumes, etc.
+
+In addition, all of the Sysback functions can be performed across the
+network, including network boot and network install, and you can
+perform striped backups across multipel tape drives, use sequential
+tape autoloaders, and perform unattended multi-volume backups with
+cron.
+
+ON AIX 3.2, mksysb does not retain paging space config, disk LV
+placement, mirroring, etc.
+
+On AIX 4.1, it does these on an EXACT same configuration, but does not
+allow any flexibility, and still does not retain non-rootvg volume
+groups (although you can now use additional commands to backupa nd
+restore these).  mksysb also does not allow you to clone onto
+different platforms (i.e.  rspc -> rs6k -> rs6ksmp).
+
+
+______________________________________________________________________________
+1.300: Some info about the memory management system
+From: Michael Coggins (MCOG@CHVM1.VNET.IBM.COM).
+
+1. Does AIX use more paging space than other unix systems?
+
+Under many scenarios, AIX requires more paging space than other unix
+systems. The AIX VMM implements a technique called "early allocation of
+paging space". When a page is allocated in RAM, and it is not a
+"client" (NFS) or a "persistent" (disk file) storage page, then it is
+considered a "working" storage page. Working storage pages are commonly
+an application's stack, data, and any shared memory segments. So, when
+a program's stack or data area is increased, and RAM is accessed, the
+VMM will allocate space in RAM and space on the paging device. This
+means that even before RAM is exhausted, paging space is used. This
+does not happen on many other unix systems, although they do keep track
+of total VM used.
+
+Example 1: 
+Workstation with 64mb RAM is running only one small application that
+accesses a few small files. Everything fits into RAM, including all
+accessed data. On AIX, some paging space will already be used. On
+other unix systems, paging space will be 100% free. Clearly, this is an
+example that shows where we use more paging space than the other machines.
+
+Example 2:
+
+Same machine as above, except we are in an environment where many
+applications are running with inadequate RAM. Also, the system is
+running applications that are started, run, left idle, and not in
+constant use. A session of FRAME running in a window, for example. 
+What happens is that eventually (theoretically) all applications will be
+paged out at least once. On the AIX system and the other systems the
+total paging requirements will be the same (assuming similar malloc
+algorithm). The major difference is that the AIX system allocated the
+paging space pages before they were actually needed, and the other
+systems did not allocate them until they were needed. However, most
+other systems have an internal variable that gets incremented as virtual
+memory pages are used. AIX does not do this. This can cause the AIX
+system to run out of paging space (virtual memory), even though malloc()
+continues to return memory. This "feature" allows sparse memory
+segments to work, but requires that all normal users of malloc()
+(sbrk()) know how much virtual memory will be available (actually
+impossible), and to handle a paging space low condition. A big problem. 
+There are some pretty obvious pros and cons to both methods of doing
+Virtual Memory.
+
+2. How much paging space do I need?
+
+Concerning the rule of thumb of having 2 times RAM for paging space:
+this is rather simplistic, as are most rules of thumb.  If the machine
+is in a "persistent storage environment", meaning that they have a few
+small programs, and lots of data, they may not need even as much as 1
+times RAM for paging space.  For example, a 1GB database server running
+on a 6000 with 256MB of RAM, and only running about 50MB of "working"
+storage does not need 512MB of paging space, or even 256MB.  They only
+need the amount of paging space that will allow all their working
+storage to be paged out to disk.  This is because the 1GB database is
+mostly "persistent storage", and will require little or no paging space. 
+Excessive paging space may simply mean wasted disk space.  However,
+avoid insufficient paging space.  Tip: Don't have more than one paging
+space per disk.  Tip: Put lots of RAM in your system - it will use it.
+
+3. Why does vmstat show no free RAM pages?
+
+AIX uses RAM as a possibly huge disk buffer.  If you read a file in the
+morning, that file is read into RAM, and left there.  If no other
+programs need that RAM, that file will be left in RAM until the machine
+is halted.  This means that if you need the file again, access will be
+quick.  If you need that RAM, the system will simply use the pages the
+file were using. The pages were flushed back to disk earlier.  This
+means that you can get a huge speedup in disk access if you have enough
+RAM.  For example, a 200MB database will just ease into RAM if you have
+a 256MB system.
+
+4. Since vmstat shows no free RAM pages, am I out of RAM?
+
+Probably not. Since disk files will be "mapped" into RAM, if vmstat
+shows lots of RAM pages FREE, then you probably have too much RAM (not
+usual on a RISC System/6000)!
+
+5. Shouldn't the "avm" and the "fre" fields from vmstat add up to something?
+
+No. The "avm" field tells you how much "Active Virtual Memory" AIX
+thinks you are using. This will closely match the amount of paging
+space you are using. This number has *ABSOLUTELY* nothing to do with
+the amount of RAM you are using, and does *NOT* include your mapped
+files (disk files).  The amount of RAM can be determined with
+/usr/sbin/bootinfo -r
+
+6. Why does the "fre" field from vmstat sometimes show lots of free
+   RAM pages?
+
+This will happen after an application that used a lot of RAM via
+"working" storage (not NFS storage, and not disk file or "persistent"
+storage) exits. When RAM pages that were used by working storage (a
+program's stack and data area) are no longer needed, there is no need to
+leave them around. AIX completely frees these RAM pages. The time to
+access these pages versus a RAM page holding a "sync'd" mapped file is
+almost identical. Therefore, there is no need to periodically "flush" RAM.
+
+7. Is the vmstat "fre" field useful?
+
+The vmstat "fre" field represents the number of free page frames.  If
+the number is consistently small (less than 500 pages), this is normal. 
+If the number is consistently large (greater than 4000 pages), then you
+have more memory than you need in this machine.
+
+
+1.301: How much should I trust the ps memory reports?
+From: chukran@austin.VNET.IBM.COM
+
+Using "ps vg" gives a per process tally of memory usage for each running
+process.  Several fields give memory usage in different units, but these
+numbers do not tell the whole story on where all the memory goes.
+
+First of all, the man page for ps does not give an accurate description
+of the memory related fields.  Here is a better description:
+
+RSS - This tells how much RAM resident memory is currently being used
+for the text and data segments for a particular process in units of
+kilobytes.  (this value will always be a multiple of 4 since memory is
+allocated in 4 KB pages).
+
+%MEM - This is the fraction of RSS divided by the total size of RAM for
+a particular process.  Since RSS is some subset of the total resident
+memory usage for a process, the %MEM value will also be lower than actual.
+
+TRS - This tells how much RAM resident memory is currently being used
+for the text segment for a particular process in units of kilobytes. 
+This will always be less than or equal to RSS.
+
+SIZE - This tells how much paging space is allocated for this process
+for the text and data segments in units of kilobytes.  If the executable
+file is on a local filesystem, the page space usage for text is zero. 
+If the executable is on an NFS filesystem, the page space usage will be
+nonzero.  This number may be greater than RSS, or it may not, depending
+on how much of the process is paged in.  The reason RSS can be larger is
+that RSS counts text whereas SIZE does not.
+
+TSIZ - This field is absolutely bogus because it is not a multiple of 4
+and does not correlate to any of the other fields.
+
+These fields only report on a process text and data segments.  Segment
+size which cannot be interrogated at this time are:
+
+       Text portion of shared libraries (segment 13)
+
+       Files that are in use. Open files are cached in memory as
+       individual segments.  The traditional kernel cache buffer
+       scheme is not used in AIX 3.
+
+       Shared data segments created with shmat.
+
+       Kernel segments such as kernel segment 0, kernel extension
+       segments, and virtual memory management segments.
+
+Speaking of kernel segments, the %MEM and RSS report for process zero
+are totally bogus for AIX 3.1.  The reason why RSS is so big is that the
+kernel segment zero is counted twice.  For AIX 3.2, this has been
+changed, but the whole story is still not known.  The RSS value for
+process 0 will report a very small number of the swapper private data
+segment.  It does not report the size of the kernel segment 0, where the
+swapper code lives.
+
+In summary, ps is not a very good tool to measure system memory usage. 
+It can give you some idea where some of the memory goes, but it leaves
+too many questions unanswered about the total usage.
+
+
+1.302: Which simms do RS6000's use?
+
+This answer is under construction... I'm trying to collect details
+about compatable simms.
+
+RS/6000 220,230 USE 2 pair 70ns PS/2 style simms
+RS/6000 250,C10 USE 4 pair 70ns PS/2 style simms
+
+
+1.303+ What is kproc?
+
+kproc (always PID 514?) is the kernel's idle process.
+
+
+______________________________________________________________________________
+1.400: How do I make an informative prompt in the shell?
+
+In the Korn Shell (ksh), the PS1 variable is expanded each time it is
+printed, so you can use:
+
+$ export myhost=`hostname`
+$ PS1='$LOGNAME@$myhost $PWD \$ '
+
+to get, e.g. 
+
+bengsig@ieibm1 /u/bengsig $
+
+In the C-shell, use:
+
+% set myhost=`hostname`
+% alias cd 'chdir \!* > /dev/null; set prompt="$LOGNAME@$myhost $cwd % "'
+% cd
+
+to get, e.g.
+
+bengsig@dkunix9 /u/bengsig/aixfaq %
+
+There is no easy solution in the Bourne Shell.  Use the Korn Shell instead.
+
+
+1.401: How do I set up ksh for emacs mode command line editing?
+
+The ksh has an undocumented way of binding the arrowkeys to the emacs
+line editing commands. In your .kshrc, add:
+
+alias __A=`echo "\020"`   # up arrow = ^p = back a command
+alias __B=`echo "\016"`   # down arrow = ^n = down a command
+alias __C=`echo "\006"`   # right arrow = ^f = forward a character
+alias __D=`echo "\002"`   # left arrow = ^b = back a character
+alias __H=`echo "\001"`   # home = ^a = start of line
+
+Type "set -o emacs" or put this line in your .profile.
+
+Also, you MUST have PTF U406855 for this to work in AIX 3.2.  The APAR #
+for the problem is IX25982, which may have been superseded.
+
+
+1.402: Listing files with ls causes a core dump
+From: John F Haugh II
+
+Scenario: a directory that is shared by N users (N >= 200).
+Run 'ls -l' in that directory.  It goes for a while, then
+Seg fault(coredump)!
+
+It only occurs when the usernames are displayed (almost every file is
+owned by a different person).  The -g and -n options work fine; only -l
+and -o (which shows owner and not group) cause it. 
+
+I believe that this problem was corrected by U407548.  If you have that
+many users that you are having core dump problems (it took over 200),
+you might also want to look into getting the PTF that fixes IX31403. 
+That APAR deals with large numbers of accounts and performance problems
+associated with looking them up.
+
+
+1.403: How do I put my own text into InfoExplorer?
+
+With AIX 3.1, you cannot do it.  AIX 3.2 has a product called
+InfoCrafter that allows you to do that.
+
+
+1.404: InfoExplorer ASCII key bindings 
+From: mycroft@hal.gnu.ai.mit.edu (Charles Hannum)
+
+If you just press 'Return' when it starts up, with 'Basic Screen
+Operations' highlighted, you'll get some help.
+
+If you look long enough, you'll find a page named 'Using Keys and Key
+Sequences in the InfoExplorer ASCII Interface'.  It describes the key
+sequences and actions.  Here are a few to get you started.
+
+Keys       Action
+
+Ctrl-W     Moves between the Navigation screen and the Reading screen.
+If the Navigation screen is displayed, you can press Ctrl-W to display
+the Reading screen.  If the Reading screen is displayed, you can press
+Ctrl-W to display the Navigation screen.
+
+Ctrl-O     Makes the menu bar active or inactive.  If your text cursor is
+located in the text area of the screen, you can press Ctrl-O to make the
+menu bar active.  If the menu bar is already active, you can press
+Ctrl-O to make it inactive, which moves the text cursor to the text area.
+
+Tab     Moves to the next menu bar option in the menu bar.  If a pull-down
+menu is not displayed and you press the Right Arrow key, the next menu
+bar option is displayed in reverse video.
+ 
+
+1.405: How can I add new man pages to the system?
+From: horst@faui63.informatik.uni-erlangen.de (Horst Luehrsen)
+
+Put the man pages in /usr/man, e.g. /usr/man/man1/tcsh.1 for the tcsh
+man page.  Unter AIX 3.1.10, /usr/lib/makewhatis can be used to update
+the makewhatis-database /usr/man/whatis so apropos and whatis know about
+the added manpages.  /usr/lib/makewhatis should be available on all 3.2
+versions.
+
+
+1.406: Why can't I read man pages?  Where is nroff?
+
+Nroff and troff aren't in the base installation.  It is shipped as
+part of AIX 3.2.5 but may not be installed.  Use smit to install a
+software package called txtfmt.tfs.obj from your 3.2.5 distribution
+media.
+
+
+1.407: Why is my enviornment only loaded once?
+
+The .profile file is only loaded once (for you login shell) subsequent
+shells should be initialized by setting ENV=$HOME/.kshrc (for ksh).
+
+Bash users can use $HOME/.bash_profile for the login shell environment
+and $HOME/.bashrc.
+
+
+1.408: Where is the 'nawk' command on my AIX system?
+(From: Jeff Wang      hjiwa@nor.chevron.com)
+
+The /bin/nawk that exists on many UNIX flavors is a superset of the
+'awk' command, revised by the same original authors to include added
+functionality.  All the extra options normally associated with 'nawk'
+on other UNIXes have been incorporated into the AIX version of 'awk';
+the AIX 'awk' InfoExplorer or man pages include nawk-specific features
+such as the "-v" command line option and atan2(), rand(), srand(),
+match(), sub(), gsub(), system(), close(), getline functions.
+
+If your AIX version is missing /bin/nawk (as are most AIX 3.x
+versions), the simplest way to get around this and maintain script
+portability between UNIX platforms is to make a /bin/nawk link to
+/bin/awk (as root, of course).  If you do not have root privilege or
+do not want to create a /bin/nawk link, to make the script work on
+different UNIXes, you may have to test `uname` first and set all
+'nawk' references on AIX runs to /bin/awk.  If your script is to only
+run on AIX systems, you can just change all references of 'nawk' to
+'awk' and everything should still work okay...but check the AIX awk
+script on test data prior to making actual runs.
+
+1.409: How do I copy InfoExplorer (manpages and more) to my hard drive?
+
+While this is documented in one of the AIX manuals and covered in
+/usr/lpp/bos/bsdadm, it comes up often enough I thought I would
+include it here.
+
+From: unilink@online.rednet.co.uk (David Alexander)
+
+Not all the Info databases are required, so do not copy them all unless the 
+customer specifically requests them, or has asked for the software they 
+refer to.  These instructions assume you have enough space on /usr.
+
+	Install and mount the InfoExplorer CD-ROM as for use of Info 
+	from CD-ROM.
+
+	Log in as Root
+	umount /usr/lpp/info/lib/$LANG
+	mkdir /mnt/$LANG
+	mount -v cdrfs -r /dev/cd0 /mnt/$LANG
+
+	cd /
+	cd /mnt/$LANG
+	cp -r aix /usr/lpp/info/lib/$LANG
+	cp -r aix2 /usr/lpp/info/lib/$LANG
+	cp -r compnav /usr/lpp/info/lib/$LANG
+	cp -r hardware /usr/lpp/info/lib/$LANG
+	cp -r nav /usr/lpp/info/lib/$LANG
+	cp -r prog /usr/lpp/info/lib/$LANG
+	cp -r uiprog /usr/lpp/info/lib/$LANG
+
+	Other sections can be copied if required:
+	Section						Size
+	cp -r ada /usr/lpp/info/lib/$LANG		7.2  Mb
+	cp -r assemb /usr/lpp/info/lib/$LANG		5.23 Mb
+	cp -r cxx /usr/lpp/info/lib/$LANG		6.52 Mb
+	cp -r dce /usr/lpp/info/lib/$LANG		3.8  Mb
+	cp -r encina /usr/lpp/info/lib/$LANG		2.67 Mb
+	cp -r fortran /usr/lpp/info/lib/$LANG		6.85 Mb
+	cp -r graph /usr/lpp/info/lib/$LANG		9.75 Mb
+	cp -r graph2 /usr/lpp/info/lib/$LANG		4.1  Mb
+	cp -r pascal /usr/lpp/info/lib/$LANG		3.23 Mb
+
+	umount /mnt/$LANG
+	eject the CD-ROM
+
+
+1.410: Why can't I set my default shell to one we've just installed?
+
+When adding new shells to the system, add them to the "shells=" line
+in /etc/security/login.cfg so they can be used during ftp and rlogin
+by users who use them as their default shell.
+
+ 
+1.411: Why do I get the "Unable to connect socket: 3" starting Info-Explorer?
+
+It's a bug in the way infod sets the initial permission on the            
+/tmp/.info-help socket. Do a chmod 777 on /tmp/.info-help and the
+message will go away. (Charlie McGuire, mcguire@cs.umt.edu)
+
+This problem was fixed by APAR IX43230, PTF U432315
+(Paul Sitz, psitz@empros.com)
+
+
+1.500  Which release of X11 do I have?
+
+Run 'lslpp -h X11rte.obj'.
+If your output has a line similar to:
+
+            01.02.0000.0000 COMPLETE   COMMIT     03/04/93   02:05:11 root
+
+you have X11 R4. If your output has a line similar to:
+
+    U491068 01.02.0003.0000 COMPLETE   COMMIT     07/28/93   12:50:42 root
+
+you have X11 R5. Some people also call these AIXwindows 1.2.0 and 1.2.3.
+
+
+1.501: How to prevent ctrl-alt-backspace from killing the X session
+
+Start X with 'xinit -T' to disable ctrl-alt-backspace from stopping X.
+
+
+1.502: Who has a termcap/terminfo source for the HFT console?
+
+The console used on the RISC System/6000, PS/2 and RT can be used as a
+terminal on another system with the termcap below.  You can find this
+and other termcaps in /lib/libtermcap/termcap.src, including IBM
+specific ones.  The terminfo sources are stored in /usr/lib/terminfo/*.ti.
+This termcap can also be used from an aixterm window.
+
+hf|hft|hft-c|ibm8512|ibm8513|IBM_High_Function_Terminal:\
+	:co#80:li#25:am:ht:\
+	:cm=\E[%i%d;%dH:ti=\E[25;1H:te=\E[20h:\
+	:nd=\E[C:up=\E[A:do=^J:ho=\E[H:\
+	:bs:sf=\E[S:ec=\E[%dX:\
+	:cl=\E[H\E[J:cd=\E[J:ce=\E[K:\
+	:AL=\E[%dL:DL=\E[%dM:al=\E[L:dl=\E[M:\
+	:im=\E[4h:ei=\E[4l:mi:\
+	:dm=\E[4h:ed=\E[4l:\
+	:so=\E[7m:se=\E[m:ul=\E[4m:ue=\E[m:\
+	:md=\E[1m:mr=\E[7m:mb=\E[5m:me=\E[m:\
+	:as=^N:ae=^O:sc=\E[s:rc=\E[u:\
+	:kl=\E[D:kb=^H:kr=\E[C:ku=\E[A:kd=\E[B:kh=\E[H:\
+	:kn#10:k1=\E[001q:k2=\E[002q:k3=\E[003q:k4=\E[004q:k5=\E[005q:\
+	:k6=\E[006q:k7=\E[007q:k8=\E[008q:k9=\E[009q:k0=\E[010q:\
+	:is=\Eb\E[m^O\E[?7h:rs=\Eb\E[m^O\E[?7h\E[H\E[J:
+
+
+1.503: How can I look at PostScript files?  Why is "dpsexec" so lousy?
+From Marc Pawliger (marc@sti.com)
+
+showps comes with the 1.2.3 (X11R5) version of the X11rte.ext.obj LPP.
+Very nice PS file previewer from Adobe.  Replaces xpsview which came
+with pre-1.2.3 Installed as /usr/lpp/DPS/showps/showps
+
+From: VRBASS@ATLVMIC1 (Vance R. Bass)
+
+You can look at PostScript files using either "xpreview" (in the
+optionally installable text formatting services) or you can get
+Ghostscript and Ghostview from a comp.sources.x server and build it
+yourself.
+
+>From the "xpreview" man page:
+The xpreview command is an AIXwindows 1.2- and Motif 1.1-based
+application that displays output from the troff command on an AIXwindows
+display.  The troff command output file must be prepared for any one of
+the devX100, devX100K or devpsc devices.  The xpreview command also
+displays PostScript language files that begin with %!.
+
+"dpsexec" is NOT intended to be a full-service document browser, but
+rather a simple DPS code debugger.  If you insist on using it, you can
+edit your PS code to remove the "showpage" (which will reset dpsexec
+and clear the window) to view single-page files.  It does not handle
+multi-page files gracefully.
+
+
+1.504: unix:0 vs `hostname`:0
+
+1.) Is there any way to get the machine to check its local host table
+    first without renaming resolv.conf?
+
+PTF U412845 implements an environment variable to set the resolver
+time out in AIX 3.2.  This allows you to set RES_TIMEOUT to the number
+of seconds before it times out, a failing a DNS query the machine will
+consult /etc/hosts.  
+
+2.) How do you tell X applications where you are if the console display 
+    is unix:0?
+
+From: crow@waterloo.austin.ibm.com (David L. Crow)
+
+  I would suggest that if you have R5, use ":<display>.<screen>".  I do
+  not believe that R4 clients will understand :0, so I would suggest
+  unix:0 for them.
+
+  Without specifying unix or the hostname, you will get the fastest
+  transport mechanism.  While currently there are only two transport
+  methods in the AIXwindows X server (Unix sockets and TCP sockets),
+  many vendors are looking at using shared memory as a transport method. 
+  If you use :0 (or :0.0 or :1, etc.), then you should get the best
+  performance regardless of the available transport methods.
+
+From Marc Pawliger (marc@sti.com)
+  Using "unix:0" or "hostname:0" when the X11 Shared Memory Transport
+(SMT) is installed as part of the 1.2.3 X11rte.obj (X11R5) will incur
+a penalty vs. using ":0" See /usr/lpp/X11/README.SMT
+
+3.) Is there a significant performance penalty incurred by using
+    `hostname`:0 as DISPLAY?
+
+  Yes! Using unix:0, you are using Unix sockets.  These are much faster
+  than their TCP socket counterparts.
+
+
+1.505: VT100 key bindings for aixterm
+From: haedener@iac.unibe.ch (Konrad Haedener)
+
+Add this to your .Xdefaults file and start your VAX session with
+'aixterm -v -name vt100 -e telnet MYVAXHOST'
+
+-----
+vt100.foreground: Wheat
+vt100.background: MidnightBlue
+vt100.font: Rom14.500
+vt100.geometry: 80x25+0+0
+vt100.vt102: true
+vt100.fullcursor: false
+vt100.pointerColor: coral
+vt100.cursorColor: gray100
+vt100.translations:    <Key>F1: string(0x1b) string("OP") \n\
+                       <Key>F2: string(0x1b) string("OQ") \n\
+                       <Key>F3: string(0x1b) string("OR") \n\
+                       <Key>F4: string(0x1b) string("OS") \n\
+                       <Key>KP_0: string(0x1b) string("Op") \n\
+                       <Key>KP_1: string(0x1b) string("Oq") \n\
+                       <Key>KP_2: string(0x1b) string("Or") \n\
+                       <Key>KP_3: string(0x1b) string("Os") \n\
+                       <Key>KP_4: string(0x1b) string("Ot") \n\
+                       <Key>KP_5: string(0x1b) string("Ou") \n\
+                       <Key>KP_6: string(0x1b) string("Ov") \n\
+                       <Key>KP_7: string(0x1b) string("Ow") \n\
+                       <Key>KP_8: string(0x1b) string("Ox") \n\
+                       <Key>KP_9: string(0x1b) string("Oy") \n\
+                       <Key>KP_Divide: string(0x1b) string("OQ") \n\
+                       <Key>KP_Multiply: string(0x1b) string("OR") \n\
+                       <Key>KP_Subtract: string(0x1b) string("OS") \n\
+                       <Key>KP_Add: string(0x1b) string("Om") \n\
+                       <Key>KP_Enter: string(0x1b) string("OM") \n\
+                       <Key>KP_Decimal: string(0x1b) string("On") \n\
+                       <Key>Next: string(0x1b) string("Ol") \n\
+                       <Key>Left: string(0x1b) string("OD") \n\
+                       <Key>Up: string(0x1b) string("OA") \n\
+                       <Key>Right: string(0x1b) string("OC") \n\
+                       <Key>BackSpace : string(0x7f) \n\
+                       <Key>Down: string(0x1b) string("OB")
+
+You should also add
+
+XENVIRONMENT=$HOME/.Xdefaults
+export XENVIRONMENT
+
+to your .profile.
+
+
+1.506: Is there a screen saver that does not use excessive CPU?
+
+From: buchholz@ese.ogi.edu (Don Buchholz)
+
+Try using xlock with these options:
+
+	xlock -mode life -count 1500 -nice 20 -root
+
+
+From: pranav@evolving.com (Pranav Vakil)
+
+Use mlock -hide to hide the background. You can also modify the mlock
+(/usr/local/tools/mlock) code to allow the standard X screen saver to
+take effect. The timeout value is originally set to 0 which means the
+screen saver is off. Modify this to be 120 (2 minutes) and set the
+interval time to be 60 (1 minute). Using these intervals, I have found
+that over a 24 hour period, it uses only .3 cpu minutes.
+
+1.507: Where are the colors, availible for an X session, listed.
+
+/usr/lpp/x_st_mgr/bin/rgb.txt
+
+
+1.508: Why does my app hang the X server but not an X station?
+From: brox@corena.no (Bjorn P. Brox)
+
+/usr/lpp/X11/README.SMT X client/server communication uses a 64k
+buffer by default.  The size of this buffer is controled by the
+X_SHM_SIZE environment variable increasing the size of the buffer has
+been used to prevent some applications from hanging the X server :)
+
+1.509: How do I switch the control and caps lock key bindings?
+
+If you are running the X window system, you can put the following into
+.xmodmaprc
+
+  remove Lock = Caps_Lock
+  remove Control = Control_L
+  keysym Control_L = Caps_Lock
+  keysym Caps_Lock = Control_L
+  add Lock = Caps_Lock
+  add Control = Control_L
+
+Hidden Hint: Use (xmodmap -e "pointer = 3 2 1") to make the mouse
+lefty friendly.
+
+
+1.510: Missing fonts?
+
+If your Xserver supports X11R5 try running a font server (edit
+/usr/lib/X11/fs/config and run fsconf && startsrc -s fs) Consult your
+Xserver instructions on how to include a font server in your font
+path.
+
+1.511: What's the termcap entry for an IBM 3151 look like?
+
+#
+# Written by Aleksandar Milivojevic, alex@srce.hr
+# 24.09.1994
+#
+I2|ibm3151|3151|IBM 3151 terminal:\
+	:am:mi:cr=^M:sf=^J:co#80:li#24:cd=\EJ:ce=\EI:cm=\EY%+\040%+\040:\
+	:cl=\EH\EJ:dc=\EQ:dl=\EO:do=\EB:le=\ED:mb=\E4$a:md=\E4(a:\
+	:me=\E4@\E>B:mr=\E4!a:nd=\EC:se=\E4>b:so=\E4!a:ue=\E4=b:up=\EA:\
+	:us=\E4"a:kb=^H:kd=\EB:kh=\EH:kl=\ED:kr=\EC:ku=\EA:\
+	:k1=\Ea\r:k2=\Eb\r:k3=\Ec\r:k4=\Ed\r:k5=\Ee\r:\
+	:k6=\Ef\r:k7=\Eg\r:k8=\Eh\r:k9=\Ei\r:k0=\Ej\r:\
+	:ti=\E>B:te=\E>B:ms:ho=\EH:bl=^G:al=\EN:ta=^I:
+
+
+1.512: Errors starting X11 application binaries from aixpdslib.
+From: <URL:ftp://aixpdslib.seas.ucla.edu/pub/README_X11R5_Stuff>
+
+We have been aware of the problem people have with dynamic links
+when running the prebuilt of X-stuffs from this library.
+
+The typical error messages will be:
+
+    Could not load program [program_name]
+    Member shr4.o not found or file not an archive
+    Member shr4.o not found or file not an archive
+    Could not load library libXt.a[shr4.o]
+    Error was: No such file or directory
+
+It's because that we built the programs using X11 libraries of MIT
+which are not compatible with those of IBM.  If this is the case,
+then please get the compressed tarred file of the source code instead,
+and recompile them on your system using your libraries.
+
+
+1.513: .XShm* Link errors building Xwindows applications.
+
+Link errors that refer to .XShm* often times are a result of compiling
+applications to take advantage of the Shared Memory extension of the X
+server.  You may either compile without shared memory or load the
+shared memory extensions. (see /usr/lpp/X11/README and README.SMT) A
+script for rebuilding your X server with the shared memory can be found
+in /usr/lpp/X11/Xamples/server.
+
+
+1.514: How do I set my DISPLAY when I login to another machine?
+
+Though this is not a question specific to AIX, it appears often enough
+to warrant an answer here.  There are lots of approaches, some of which
+are described in the X Windows FAQ.  Most involve a little login shell
+programing to parse the output of `who` or `who am i`.
+<URL:ftp://boogle.uchicago.edu/pub/aix/src/hostwhence.tar.Z> by
+e-siebert@uchicago.edu will help if you are willing/able to install it
+suid.  See the X Windows FAQ and newsgroup for more information.
+
+
+1.515:  Why does Netscape Navigator fail with errors about _XmStrings?
+(stolen from the Netscape FAQ http://home.mcom.com/eng/mozilla/1.1/faq.html)
+
+This version of Netscape Navigator was linked against AIX X11R5 and
+Motif 1.2. You are probably running X11R4 and/or Motif 1.1. The
+suggested solution is to upgrade to AIXWindows 1.2.3.
+

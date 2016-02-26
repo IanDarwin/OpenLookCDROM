@@ -1,0 +1,174 @@
+#! /usr/NeWS/bin/psh
+%
+%       15puzzle.ps
+%
+% (c) 1988 Sun Microsystems 
+%  James Gosling 
+%
+%  A game where the challenge is to to place the numbered cards in order.
+%
+	/SetPuzzleSize {
+	    userdict begin
+		4 div ceiling 4 mul 1 sub /PuzzleSize exch def
+		/bits [ 0 1 PuzzleSize { } for ] def
+		/targetbits [
+		    PuzzleSize 2 sub -4 1 { 
+			 dup 1 add dup 1 add dup 1 add PuzzleSize 1 add mod
+		    } for
+		] def
+	    end
+	} def
+	/SetPuzzleSizeReshape { 
+	    SetPuzzleSize
+	    /setframelabel win send
+	    scramble
+	    gsave
+	    /FrameCanvas win send setcanvas clippath extenddamage
+	    grestore
+	} def
+	25 SetPuzzleSize
+	/shdict 20 dict def
+	/scramble { 
+	    //shdict begin
+	    0 1 PuzzleSize { /cv exch def
+		/cv2 random PuzzleSize mul floor def
+		bits cv get
+		bits cv bits cv2 get put
+		bits exch cv2 exch put
+	    } for
+	    0 1 PuzzleSize { /cv exch def
+		bits cv get 0 eq { 
+		    /emptyy cv 4 div floor def
+		    /emptyx cv emptyy 4 mul sub def
+		    exit
+		} if
+	    } for
+	    end
+	} def
+	scramble
+	/cw 1 def
+	/ch 1 def
+	/TextBaseline 0 def
+	/bkgcolor 1 1 1 rgbcolor def
+	/fgcolor 0 0 0 rgbcolor def
+	/bdcolor .5 .5 .5 rgbcolor def
+	/emptyx 3 def
+	/emptyy 3 def
+	/fnt currentfont def
+	/drawcvat { 	% x y
+	    gsave
+	        translate
+		bkgcolor setcolor
+		0 0 moveto cw ch rect fill
+		cv 0 ne {
+		    /s cv (  ) cvs def
+		    bdcolor setcolor
+		    1 2 moveto cw 3 sub ch 3 sub rect stroke
+		    fgcolor setcolor
+		    cw s stringwidth pop sub 2 div TextBaseline moveto s show
+		} if
+	    grestore
+	} def
+	/show1 {
+		/cv bits x y 4 mul add get def
+		x cw mul y ch mul drawcvat
+	} def
+	/showmid {
+	    gsave
+		fnt setfont
+		bkgcolor setcolor
+		x cw mul y ch mul moveto cw ch rect fill
+		/cv bits x y 4 mul add get def
+		x emptyx add 2 div cw mul
+		y emptyy add 2 div ch mul drawcvat
+	    grestore
+	} def
+	/showall { 
+	    //shdict begin
+	    	0 1 PuzzleSize 4 div {
+		    /y exch def 0 1 3 { /x exch def show1 } for } for
+	    end
+	} def
+	/win framebuffer /new DefaultWindow send def
+	{
+		/setframelabel {
+			/FrameLabel PuzzleSize (  ) cvs
+			( Puzzle) append def
+		} def
+		setframelabel
+		/PaintIcon { PaintClient 0 strokecanvas } def
+		/PaintClient {
+%		    /ClientCanvas win send setcanvas
+		    clippath pathbbox
+		    PuzzleSize 1 add 4 div div /ch exch store
+		    4 div /cw exch store
+		    pop pop
+		    /fnt /Times-Roman findfont ch cw min .9 mul scalefont store
+		    fnt setfont
+		    /TextBaseline ch currentfont fontascent sub 2 div store
+		    showall
+		} def
+		/ClientMenu
+		    [ (7) (11) (15) (23) (27) ]
+		    [ {currentkey cvi SetPuzzleSizeReshape} ] /new DefaultMenu send def
+
+	} win send
+	750 600 200 200 /reshape win send
+	/map win send
+{
+	createevent dup begin
+		/Name 4 dict dup begin
+			/LeftMouseButton dup def
+			/MiddleMouseButton dup def
+		end def
+		/Canvas /ClientCanvas win send def
+	end
+	expressinterest
+	//shdict begin
+	 { /this awaitevent def
+%	   this /Canvas get setcanvas
+	   this /Interest get /Canvas get setcanvas % Fixed for X11/NeWS -Don
+	   this /Action get /DownTransition eq { 
+		/x this /XLocation get cw div floor def
+		/y this /YLocation get ch div floor def
+		/validpos x emptyx eq { 
+		    y emptyy 1 sub eq
+		    y emptyy 1 add eq or
+		} { 
+		    y emptyy eq
+		    x emptyx 1 sub eq
+		    x emptyx 1 add eq or and
+		} ifelse def
+		validpos { showmid } if
+	   } { 
+		validpos
+		{/cv emptyx emptyy 4 mul add def
+		 /cv1 x y 4 mul add def
+		 bits cv bits cv1 get put
+		 bits cv1 0 put
+		 fnt setfont
+		 show1
+		 x y emptyx emptyy
+		 /y exch def /x exch def
+		 /emptyy exch def /emptyx exch def
+		 show1
+		 /done true def
+		 0 1 PuzzleSize { dup
+		     bits exch get
+		     exch targetbits exch get ne { 
+			 /done false def
+			 exit
+		     } if
+		 } for
+		 done { 
+		     5 setrasteropcode
+		     clippath fill
+		     clippath fill
+		     scramble
+		     fnt setfont showall
+		 } if
+		}  if
+	   } ifelse
+	   clear
+	 } loop
+} fork

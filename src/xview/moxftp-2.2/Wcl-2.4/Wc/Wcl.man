@@ -1,0 +1,1303 @@
+.COMMENT SCCS_data: @(#) Wcl.man 1.4 92/11/02 08:35:47
+.TH "Wcl" 3 "2 November 1992"
+.SH NAME
+Wcl \- Widget Creation Library
+.SH SYNOPSIS
+.ta 1.5i 2.5i
+.nf
+.ft B
+#include <X11/Intrinsic.h>
+#include <X11/Wc/WcCreate.h>
+
+/* All Wcl applications should provide at least the Wcl options:
+*/
+static XrmOptionDescRec options[] = {
+    ... application specific command line options ...
+    WCL_XRM_OPTIONS
+};
+
+main ( argc, argv )
+    int    argc;
+    char*  argv[];
+{
+    /*  -- Intialize Toolkit creating the application shell
+    */
+    Widget appShell = XtInitialize (
+        argv[0], WcAppClass( argc, argv ),      /* app name & class  */
+        options, XtNumber(options),             /* argv option descr */
+        &argc, argv
+    );
+    XtAppContext app = XtWidgetToApplicationContext(appShell);
+
+    /*  -- Register application specific callbacks and widget classes
+    */
+    RegisterApplication ( app );
+
+    /*  -- Register all widget classes and constructors
+    */
+    ...
+
+    /*  -- Create widget tree below toplevel shell using Xrm database
+    */
+    if ( WcWidgetCreation ( appShell ) )
+        exit(1);
+
+    /*  -- Realize the widget tree
+    */
+    XtRealizeWidget ( appShell );
+
+    /*  -- and finally, enter the main application loop
+    */
+    XtMainLoop ( );
+}
+.fi
+.ft R
+
+.SH LINK BY
+.RS
+.nf
+.ft B
+example% ld -o prog prog.o <widgetLib> -lWc <dynLinkLib> -lXmu -lXt -lX11
+.ft R
+.RE
+.LP 
+On SunOS or SVR4 machines, the <dynLinkLib> is named -ldl.
+Other architectures cannot use the dynamic linking capabilites of
+Wcl, and therefore do not need any dynamic link library.
+.SH DEPENDENCIES
+.LP
+.I Wcl
+is dependent upon the implementation version of Xt and X11.  It works
+on X11R3 and later systems, but more features are available with more
+recent releases of the Xt and X11 libraries.  Specifically, the
+template and resource database dumping capabilities are only available
+if using X11R5 or later systems.
+.SH FOR SPECIFIC DETAIL
+.LP
+The include files WcCreate.h and WcCreateP.h are heavily commented and
+provide prototypes for all functions.  In fact, much of the infomation
+in this file is taken directly from the include and source files.  The
+include files and the source are the final arbiter of truth.
+
+Also, you may want to look at the many example resource files installed
+under ...app-defaults/Ari, ...app-defaults/Cri, ...app-defaults/Mri, and
+...app-defaults/Ori to see how Wcl can be used to describe live interfaces
+for the Athena, Cornell, Motif, and OpenLook widget sets.
+.SH DESCRIPTION
+.LP
+.I Wcl
+is a library which allows the complete look and feel of a widget based
+application to be specified in Xrm resource files.  Wcl itself is widget
+set independent: it can be used to create and manipulate user interfaces
+which are made up of Athena, Cornell, Motif, OpenLook, or any other Xt-based
+widgets.
+
+A program which uses Wcl consists of two parts: a
+.I main()
+function and the set of
+.I XtCallbackProcs
+and
+.I XtActionProcs
+which respond to events from the user interface.  In general, these
+callback and action procs are methods of the objects implemented
+by the application.  The 
+.I main()
+function of the typical Wcl client program is given in the synopsis
+above.
+
+Several libraries are provided with Wcl to make it easy to use the
+widget sets available on your machine.  
+.I Xp(3)
+provides the procedure
+.I XpRegisterAthena()
+which registers all of the Athena widgets with Wcl.
+.I Xcp(3)
+provides the procedure
+.I XcpRegisterCornell()
+which registers all of the Cornell widgets with Wcl.
+.I libXmp(3)
+provides the procedure
+.I XmpRegisterMotif()
+which registers all of the Motif widgets with Wcl.
+.I Xop(3)
+provides the procedure
+.I XopRegisterOpenLook()
+which registers all of the OpenLook widgets with Wcl.
+Each of these widget set specific libraries also provide useful
+callbacks, converters, and constructors which make using these
+widget sets a little bit easier.  See their manual pages for more
+information.
+.SH RESOURCES
+.LP
+.I Wcl
+is controlled entirely by the Xrm resource database of the client
+application.  Command line options can be used to set some values in
+the resource database (see below) but normally, resource values come
+from one or more resource files read by Xt and Xrm.
+.LP
+Three distinct sets of resources are used by Wcl.  First, there is a
+set of application wide resources which are fetched exactly once for
+each application.  Second, there are resources fetched for a widget
+instance before it is created.  Third, there are resources fetched for
+a widget instance after the instance is created.
+.LP
+The application wide resources all start with the letters "wcl", with
+resource class names starting with the letters "Wcl".  The pre- and 
+post-creation widget resources all start with the letters "wc", with
+resource class names starting with the letters "Wc".
+.LP
+All of the Wcl resources are introduced here.  Each is discussed in more
+detail in the next three sections.
+.LP
+Application Wide Resources:
+.nf
+.ft B
+
+<App>.wclErrorDatabaseFile:     <file>
+<App>.wclResFiles:              <file> [<file> ...]
+<App>.wclTemplateFiles:         <file> [<file> ...]
+<App>.wclTraceTemplateDef:      True | False
+<App>.wclDynamicLibs:           <file> [<file> ...]
+<App>.WcNwclVerboseWarnings:	True | False
+<App>.wclWidgetResourceFiles:   <file> [<file> ...]
+
+.ft
+.fi
+.LP
+Pre-Creation Instance Resources:
+.nf
+.ft B
+
+<inst>.wcPreCreateDumpResources:     True | False
+<inst>.wcTemplate:                   <template name>
+<inst>.wcTraceTemplate:              True | False
+<inst>.wcPostTemplateDumpResources:  True | False
+<inst>.wcCreate:                     <class or constructor>
+
+.ft
+.fi
+.LP 
+Post-Creation Instance or Class Resources:
+.nf
+.ft B
+
+<inst|class>.wcTrace:                   True | False
+<inst|class>.wcPostCreateDumpResources: True | False
+<inst|class>.wcCallback:                <Callback> [<Callback> ...]
+<inst|class>.wcPopups:                  <popup> [<popup> ...]
+<inst|class>.wcAfterPopups:             <Callback> [<Callback> ...]
+<inst|class>.wcChildren:                <child> [<child> ...]
+<inst|class>.wcAfterChildren:           <Callback> [<Callback> ...]
+<inst|class>.wcAfterManageChildren:     <Callback> [<Callback> ...]
+<inst|class>.wcManaged:                 True | False
+
+.ft
+.fi
+.SH APPLICATION WIDE WCL RESOURCES
+.LP
+Application wide resources are fetched exactly once per XtApplicationContext.
+These resources are fetched by WcInitialize() which is invoked by
+WcWidgetCreation().  Most applications never need to call WcInitialize()
+directly, however some do:  one case is when your application never uses
+the application shell, but creates other top level shells which are
+children of this "invisible" application shell.  In this case, you
+probably want to pass the application shell created by XtInitialize()
+to WcInitialize().
+.LP
+The following resources are fetched from the application shell initially
+passed to WcWidgetCreation (or, alternatively, to WcInitialize).
+.TP
+wclErrorDatabaseFile - WclErrorDatabaseFile
+Name of resource file containing alternate error and warning messages
+for Wcl.  Each line in the resource file contains <ProcName>.<MessageName>:<MessageValue>
+You probably need to look at the Wcl sources to determine the names to
+use, and the number of
+.B %s
+arguments to include.  Wcl uses procedures named 
+.B WcWARN*
+internally for generating these messages, 
+.B grep
+the source to see the use and default messages.
+.TP
+wclResFiles - WclResFiles
+List of files to load into the application's Xrm resource database.  The
+resulting resources will be used by Wcl to create widgets, and by the
+widgets themselves to determine their appearance and behavior.
+.TP
+wclTemplateFiles - WclTemplateFiles
+List of files, each is loaded into a separate Xrm database.  The file names
+are used as names of templates.  Templates can be thought of as 
+constructors (for creating modular trees of widgets) or as look and feel
+templates, for applying certain defaults to portions of a widget tree.
+Templates are applied before widgets are created (discussed more below).
+.TP
+wclTraceTemplateDef - WclTraceTemplateDef
+True or False, this causes the loading of the template databases to be
+traced to stderr.
+.TP
+wclDynamicLibs - WclDynamicLibs
+List of libraries which can be dynamically linked by Wcl using the
+.I ld(1)
+style of library naming: 
+.I \-lName
+can then be mapped to a full name of a library
+.I /...path.../libName.extention .
+Libraries do not need to be named in this list in order to be linked,
+only in order to enable the use of the name abbreviation.  See
+.I WcDynamicCallback
+and
+.I WcDynamicAction
+below for details.
+.TP
+wclWidgetResourceFiles - WclWidgetResourceFiles
+List of files containing resource names and types for widgets in a 
+widget set.  Normally, this is not needed.  However, certain widgets
+have resources which are not reported by 
+.I XtGetConstraintResourceList
+nor by 
+.I XtGetResourceList .
+These resources can be specified in resource files used especially by
+Wcl for setting values on widgets.  NOT YET IMPLEMENTED.
+.TP
+wclVerboseWarnings - WclVerboseWarnings
+By default this is false.  Switching this on causes Wcl to give warning
+messages where you may not really need or want warning messages.
+.SH PRE-CREATION RESOURCES
+.LP
+The following resources are fetched for each widget instance name
+before Wcl creates the instance.  Since the widget has not been created
+yet, there is no meaning of "widget class" so these resources are ONLY
+found when specified for an instance name.  Instance names are obtained
+by Wcl either from the wcPopups and wcChildren resources of a parent
+widget, or by an explicit list of names provided to
+WcCreateNamedChildren(), WcCreateChild(), WcCreateChildFromTemplate(),
+WcCreateNamedPopups(), WcCreatePopup(), WcCreatePopupFromTemplate(), or
+WcCreateRoot().
+.TP
+wcPreCreateDumpResources - WcDumpResources
+True or False, this dumps resources extracted from the Xrm database
+which apply to the instance before any template is applied.
+.TP
+wcTemplate - WcTemplate 
+The name of a template to apply to the instance before creation.  The
+template name is one of the names of one of the template files loaded
+due to a WclTemplateFiles specification.  The resources are combined in
+such a way that template resources do NOT overwrite existing resources
+in the database, they simple augment them.  The template resources are
+applied to the resource database which the widget will use during its
+creation.  Templates can only provide resources to the instance and
+the children of the instance, they cannot effect resource values of
+any other widgets in the widget tree.  You can consider templates a
+mechanism for resource scoping.
+.TP
+wcTraceTemplate - WcTraceTemplate
+True or False, this can be used to trace the resources as they are
+applied to the resource database.  The trace is written to stderr.
+.TP
+wcPostTemplateDumpResources - WcDumpResources
+True or False, this dumps resources extracted from the Xrm database
+which apply to the instance after a template has been sucessfully
+applied to the resource database for the widget instance.
+.TP
+wcCreate - WcCreate
+The class name (XmLabel), name of the WidgetClass pointer
+(xmLabelWidgetClass), or a constructor (XmCreateLabel) can be named as
+the value of this resource.
+.TP
+wcClassName - WcClassName
+OBSOLETE: This works for the sake of backward compatibility, but you
+will find WcCreate more convenient to use in practice.
+.TP
+wcClass - WcClass
+OBSOLETE: This works for the sake of backward compatibility, but you
+will find WcCreate more convenient to use in practice.
+.TP
+wcConstructor - WcConstructors
+OBSOLETE: This works for the sake of backward compatibility, but you
+will find WcCreate more convenient to use in practice.
+.SH POST_CREATION RESOURCES
+.LP
+The following resources are fetched for each instance after the widget
+is created.  Since the widget actually exists at this time, these
+resource values may apply to classes of widgets (XmLabel).
+.LP
+CAUTION: Certain widget constructors can introduce additional widgets
+into the widget tree.  For example, XmCreatePopupMenu causes a menu
+shell to be created first, and then a menu (a row column) to be created
+as a child of this widget.  Therefore, when using such constructors it
+is essential that you preceed the instance name with either the name of
+the menu shell, or with an asterisk, for all resource specification
+which should apply to the instance, and to all post-creation resources
+fetched by Wcl.
+.LP
+Also, note that these resources (along with the Wcl Application Wide resources
+discussed above) are fetched for the initial application shell passed
+to WcWidgetCreation.
+.TP
+wcTrace - WcTrace
+True or False, this causes the creation of the widget to be traced to
+stderr.
+.TP
+wcPreCreateDumpResources - WcDumpResources
+True or False, this dumps resources extracted from the Xrm database
+which apply to the instance as it was created: both the instance name
+and the instance class can now be used.
+.TP
+wcCallback - WcCallback
+The name of one or more callback procedures which are invoked as soon
+as the widget is created, before any of its children are created.  This
+can be used to create application object instances which are then
+mapped to the newly created widget.  See WcAttachThisToWidget() and
+"Method Support" below.
+.TP
+wcPopups - WcPopups
+List of names of popup children to be created.  Any type of widget may
+have popup children.  The children are created in left to right, depth
+first order.
+.TP
+wcAfterPopups - WcAfterPopups
+This resource is only evaluated if the widget has children named in its
+WcPopups resource.  The name of one or more callback procedures which
+are invoked after all of the popup children are created.  This can be
+used to cause some of all of the popups to appear on the screen, if
+desired.
+.TP
+wcChildren - WcChildren
+List of names of children to be created.  Only composite widgets may
+have non-popup widget children.  The children are created in left to
+right, depth first order.
+.TP
+wcAfterChildren - WcAfterChildren
+This resource is only evaluated if the widget has children named in its
+WcChildren resource.  The name of one or more callback procedures which
+are invoked after all of the non-popup widget children are created, but
+before any of them are managed.
+.TP
+wcAfterManageChildren - WcAfterManageChildren
+This resource is only evaluated if the widget has children named in its
+WcChildren resource.  The name of one or more callback procedures which
+are invoked after all of the non-popup widget children are created and
+any which are to be managed have been managed (even if none are managed).
+.SH TEMPLATES
+.LP
+The original intent of Templates was to allow constructors to be defined 
+in resource files.  In fact, the Wcl 2.0 implementation of templates 
+provides a true scoping mechanism for resource specifications.  One
+can use templates to apply any set of resources to all widgets below any
+widget.
+
+Templates are defined in separate resource files: the name of the file
+is the name of the template.  Template file names are specified using
+the WclTemplateFiles resource discussed above.  The template resource
+files are all loaded during Wcl initialization.  Each template gets put
+into its own unique resource database.  This means each template can
+define resources which conflict with resources defined in the main
+resource database, or in other templates, without concern about
+collisions.
+
+Before a widget is created by Wcl, the wcTemplate resource is fetched.
+If a value is provided, the value is assumed to be the name of a template
+(If the named template has not been defined, a warning is issued, and
+the creation of the widget may be rather bizarre or may fail due to
+missing resources - the resources which should have been provided by
+the template).
+
+The template resources are copied from the unique and separate template
+database into the database used by Wcl and Xt to create and describe
+widgets.  The template resources are put into the main resource database
+under the node named by the widget which is to be created.  This means
+the resource values from templates cannot influence any widgets except
+the one about to be created and its descendents.
+
+Template files consist of resource specifications which will be
+appended to a widget name.  For example, here is "PT_ColumnLabel"
+which is use for the labels above each column in the Mri "PerTem" 
+demonstration of using templates for the Motif Periodic Table:
+.nf
+  .wcCreate:              XmpTable
+  .wcChildren:            filler label
+  .layout:                filler 0 0 ; label 0 1 hH
+  .borderWidth:           0
+  *WcCreate:              XmLabel
+  *filler.labelString:
+.fi
+.LP
+This template is applied to widget a widget named "It" like this:
+.nf
+  Mri.wclTemplateFiles:   PT_ColumnLabel PT_DisplayBox
+   ...
+  *It.wcTemplate:         PT_ColumnLabel
+  *It.label.labelString:  Ia
+.fi
+.LP
+Template resources can be easily overridden in instances of widgets (or
+widget trees) which use templates: simply start the overriding resource
+specification with the application name (no leading asterisk).  In the
+previous example, to change the borderWidth for widget "It" we can say:
+.nf
+  Mri*It.borderWidth:	2
+.fi
+.LP
+The existing implementation of templates is fairly useful, but there is
+an unfortunate limitation.  The implementation is being refined to do
+away with this problem, and this problem is easy to avoid, so templates
+in the current (2.0) implementation are still useful.
+
+The problem with Wcl 2.0 templates can best be illustrated with an
+example.  Below is a template specification file:
+.nf
+  .wcCreate: 	XmRowColumn
+  .wcChildren:	one two three four
+  *wcCreate: 	XmPushButton
+.fi
+.LP
+One may expect that this template would create a row column with
+four push button children.  Unfortunately, it might work sometimes,
+and not other times.  The problem is that the order of resources
+enumerated by XrmEnumerateDatabase() is indeterminate.  Wcl
+currently uses XrmQPutResource() to write the template values into the
+database used by Xt, and XrmQPutResource() replaces anything
+it finds at a path location without respecting the bindings which
+preceed the location.  Therefore, if ".wcCreate" is first copied into
+the target Xrm database, and then "*wcCreate" is enumerated, then
+the "*wcCreate" resource value replaces the ".wcCreate" value.  In
+any case, only one or the other value will appear in the target
+database!
+
+The first example avoided this problem by using "*WcCreate" instead
+of "*wcCreate" to differenciate the tight from the loose binding.
+Note that you must use BOTH the "*" and the class name of the
+resource for this obscure but useful technique.
+
+If you are going to use templates (and they are useful - I use them),
+then you must take care that you do not use tight and loose bindings to
+differenciate on the same path.  It simply will not be reliable until
+some time in the near future.
+
+
+.SH OPTIONS
+.LP
+.I Wcl 
+provides a macro named
+.I WCL_XRM_OPTIONS
+which can be used by a Wcl application to provide consistent access to
+common Wcl resources.  The command line options available are:
+.TP
+.B \-rf resourceFileName
+Same as "<App>.wclResFiles: resourceFileName" in a resource file, this
+loads the specified resource file into the application's Xrm resource
+database before creating any children of the initial application
+shell.  This file can contain Wcl application wide resources, including
+a WclResFiles resource specification to load additional resource files
+before Wcl itself creates any widgets (the initial shell is generally
+obtained by a call to XtInitialize).
+.TP
+.B \-tr
+Same as "*wcTrace: True" in a resource file, this turns on creation
+time tracing: each widget created by Wcl is then reported to stderr: if
+it is a popup, normal, or root widget, if it is managed or unmanaged,
+its name, and its widget class name.
+.TP
+.B -trtd
+Same as "<App>.wclTraceTemplateDef: True" in a resource file, this
+turns on template definition tracing.
+.TP
+.B -trtx
+Same as "*wcTraceTemplate: True" in a resource file, this turns on
+template expansion tracing.
+.SH REGISTRATION ROUTINES
+.LP
+.I Wcl
+must be told the names of all widgets, widget constructors, and
+XtCallbackProc procedures exported by the application.  The application
+must register these names with Wcl.  Also, the application needs
+to register any XtActionProc procedures with Xt.
+.LP
+The widget set specific libraries libXp, libXcp, libXmp, and libXop
+which are distributed with Wcl perform the registration of all widgets
+in the related widget set.  Wcl registers its own callbacks and
+actions when WcWidgetCreation() is first called (or when WcInitialize()
+is called).  Therefore, an application usually only needs to register
+its own application specific widgets, callbacks, and actions.
+.TP
+.B void WcRegisterClassPtr( XtAppContext, char* name, WidgetClass )
+This is used to map a name ("xmLabelWidgetClass" and "XmLabel") to a
+specific widget class pointer (xmLabelWidgetClass).  One should
+generally register both the widget pointer name and the widget class
+name of any application specific widget for the sake of consistency
+with the provided widget set specific libraries.
+.TP
+.B void WcRegisterConstructor( XtAppContext, char* name,  Widget (*)() )
+This is used to register a name ("XpCreateTableDialog") to a widget 
+constructor function.  The constructor function returns a widget,
+and takes the parent widget, new child name, and ArgList, and a
+Cardinal as arguments.  The returned value, by strange convention,
+is often a child of a shell widget.
+.TP
+.B void WcRegisterMethod(XtAppContext,char*,char*,XtCallbackProc,XtPointer)
+This is used to register a class name ("Paragraph") and a method name
+("Justify") to an XtCallbackProc.  The first char* is the class name,
+the second is the method name.  The callback proc is passed a pointer
+to a WcMethodDataRec struct.  This struct contains an object pointer or
+NULL, the registration time client data, and the characters which appear
+between parenthsis in the resource specification.  See "Method Support"
+below for more detail.
+.TP
+.B WcFindObjectFunc WcSetFindObjectFunc( WcFindObjectFunc )
+This is used to change the function used to find an object of a named
+class from a widget.  The default Wcl provided method tries to find
+the appropriate object by traversing up the widget heirarchy.
+.TP
+.B void WcRegisterCallback(XtAppContext, char*, XtCallbackProc, XtPointer)
+This registers the name of a callback procedure.  The final argument is
+the default client data.  This data is only passed to the callback
+procedure if no parenthesis follow the callback name in the resource
+specification.  Therefore, you CANNOT safely use this value to provide
+pointers to arbitrary data.  You really should use mapping agents or
+a similar scheme to go from the widget to whatever application data
+is related to the widget.
+.TP
+.B void WcRegisterAction( XtAppContext, char*, XtActionProc )
+This procedure is provided to balance WcRegisterCallback().  If your
+application provides many action procedures, you really should use
+XtAppAddActions().
+.TP
+.B XtCallbackProc WcSetUndefinedCallback( XtCallbackProc )
+This allows the application to provide a callback which is invoked when
+an un-recognized callback procedure is named as a callback resource.
+The previous callback procedure is returned.  Wcl provides a
+default procedure which prints the name of the widget and
+the callback procedure which was named in the resource specification. 
+.SH  WIDGET CREATION ROUTINES
+.LP
+Many prototype applications will only call WcWidgetCreation() within
+the simple main() procedure provided in the synopsis above.  However,
+as the application eveolves from the prototype, it often becomes
+necessary to dynamically create widgets.
+
+One should be aware of a quirk: the creation time callbacks
+(wcCallback, wcAfterChildren, etc) are not called for the parent widget
+except in the case of WcWidgetCreation().  Why?  Because the creation
+time callbacks would have already been invoked in all other cases,
+assuming the parent widgets were created using Wcl.  For
+WcWidgetCreation(), the parent widget (the application shell) must be
+created by XtInitialize, hence WcWidgetCreation() must invoke the
+application shell's creation time callbacks.
+
+Since the application is invoking the the creation procedures, the
+application already has control, and can perform any processing
+required without Wcl invoking it via creation time callbacks.
+.TP
+.B int WcWidgetCreation( Widget )
+Many Wcl client applications pass the top level shell created with
+XtAppInitialize() or XtInitialize() to WcWidgetCreation() within
+the main() procedure.  WcWidgetCreation() returns 1 if no children
+or popup children were created.  WcWidgetCreation() invokes
+WcInitialize() to initialize Wcl and to evaluate the application-wide
+resources such as WclResFiles.
+.TP
+.B void WcInitialize( Widget )
+WcWidgetCreation() calls this procedure, so many Wcl clients never need
+to call WcInitialize() directly.  However, WcInitialize() must be
+called before the application can invoke any Wcl procedures besides the
+registration procedures and of cource WcWidgetCreation().
+.TP
+.B void WcCreateNamedChildren( Widget, char* )
+The string argument provides names of widgets to be created as children
+of the Widget passed as the first argument, which must of course be
+some sort of composite Widget.  Each child may or may not be managed as
+controlled by the value of each child's WcManaged resource (which
+defaults to True).  However, the parent's
+.TP
+.B Widget WcCreateChild( Widget, char* )
+A new widget named by the string argument is created as a child of the
+Widget passed as the first argument, which must of course be some sort
+of composite Widget.  All of the statically defined children of the
+named widget are also created recursively.  The newly created widget is
+returned.  A NULL is returned if the child could not be created.
+.TP
+.B Widget WcCreateChildFromTemplate( Widget, char*, char* )
+A new widget named by the string argument is created as a child of the
+Widget passed as the first argument, which must of course be some sort
+of composite Widget.  The third string argument is the name of a
+template which must first be applied before creating the new widget.
+All of the statically defined children of the named widget are also
+created recursively.  The newly created widget is returned.  A NULL is
+returned if the child could not be created.
+.TP
+.B void WcCreateNamedPopups( Widget, char* )
+The string argument provides names of widgets to be created as children
+of the Widget passed as the first argument.  Each child may or may not
+be managed as controlled by the value of each child's WcManaged
+resource (which defaults to True).  However, the parent's
+.TP
+.B Widget WcCreatePopup( Widget, char* )
+A new widget named by the string argument is created as a child of the
+Widget passed as the first argument.  All of the statically defined
+children of the named widget are also created recursively.  The newly
+created widget is returned.  A NULL is returned if the child could not
+be created.
+.TP
+.B Widget WcCreatePopupFromTemplate( Widget, char*, char* )
+A new widget named by the string argument is created as a child of the
+Widget passed as the first argument.  The third string argument is the
+name of a template which must first be applied before creating the new
+widget.  All of the statically defined children of the named widget are
+also created recursively.  The newly created widget is returned.  A
+NULL is returned if the child could not be created.
+.TP
+.B Widget WcCreateRoot( Display*, char* )
+A new application shell is created on the named display.  The name of
+the application shell is the second argument.  The name of the
+application class of the new application shell is created from the name
+using WcAppNameToAppClass() - the first character of the name is
+capitalized, or the first and second if the first is already
+capitalized.  All of the statically defined children of the named
+widget are also created recursively.  The newly created widget is
+returned.  A NULL is returned if the shell could not be created.  The
+class of the new shell is topLevelShellWidgetClass, and it is created
+using XtAppCreateShell().
+.IP
+NOTE: The Xt standard is NOT clear regarding the legaility of having
+multiple application shells for a single application on a single
+display.  Therefore, you MAY have problems using WcCreateRoot to open
+multiple application shells on a single display.  For a single display,
+you are better off to create multiple topLevelShellWidgets as popup
+children of your application shell (or any other convenient widget in
+the interface).
+.SH WIDGET NAME ROUTINES
+.LP
+Wcl generally uses WcFullNameToWidget() to find widgets given a name.
+WcFullNameToWidget() supports the concept of relative widget names.
+Relative widget names begin with some widget which we will call the
+reference widget.
+
+Relative names have prefixes which are strings of the following
+characters:  `this' which means "the reference widget", `^' means "the
+parent widget", `~' means "shell ancestor widget".  Any of these
+prefixes can be separated by `.' for readability.
+
+Examples: A child of the reference widget could be named with
+"this*child" or with ".*child", a sibling could be named with
+"^sibling" or "this.^.sibling" or "this^sibling", a child of the
+grandparent of the shell ancestor could be named with "this~^^*child"
+or "~^^*child".  The characters are scanned left to right.
+
+If a name begins with "*" then the search begins at the root of the
+widget tree containing the reference widget.  This means that the same
+pattern which names a widget in a resource specification can name a
+widget in WcFullNameToWidget().
+
+If a name beginning with "*" is not found under the root, then the next
+root is searched.   Yes, it is sometimes convenient for a single
+application to have several root widgets.  Wcl keeps track of each of
+these root widgets.  Generally, these are topLevelShell widgets,
+created using XtAppCreateShell, or the application shell initially
+passed to WcWidgetCreation().  Often, a Wcl client application will use
+WcCreateRoot() to create new root widgets, in which case Wcl adds the
+new widget to its list of root widgets.  WcInitialize, invoked by
+WcWidgetCreation, registers the application shell as a root widget
+within Wcl.  If the application creates a root widget itself or some
+other way, then it needs to invoke WcRootWidget() to let Wcl know about
+this new root widget.
+.TP
+.B Widget WcFullNameToWidget( Widget, char* )
+The widget named by the second argument is returned.  The name can be a
+relative name as discussed above.
+.TP
+.B Widget WcChildNameToWidget( Widget, char* )
+This is an alias for XtNameToWidget, but the name is more explicit.
+.TP
+.B char* WcWidgetToFullName( Widget )
+This returns the full path name of the widget.  The string is in a
+buffer allocated with XtMalloc.  The client must pass this buffer to
+XtFree when it no longer needs the name.
+.SH PARSING CONVENIENCE ROUTINES
+.LP
+The following procedures are provided to make it easier to implement
+callback procedures which parse their client data strings.  The Wcl
+provided callbacks and action routines make heavy use of these
+functions.
+.TP
+.B char* WcAppClass( int, char** )
+This takes argc and argv and generates an application class name.  The
+first character of argv[0] is capitalized, or the first and second
+characters if the first is already capitalized.  The string returned
+is newly allocated with XtMalloc, and so the client application should
+free the storage by passing it to XtFree().  However, if you use
+this function to get the application class which is passed to 
+XtInitialize or XtAppInititialize (which is how it is intended to be
+used) then you do not really need to worry about freeing the storage.
+.TP
+.B char* WcAppNameToAppClass( char* )
+This does the same as WcAppClass with a different calling convention.
+.TP
+.B char* WcSkipWhitespace( char* )
+Advances the character pointer passed as an argument over any whitespace.
+The returned pointer is NULL or the first character which is not whitespace.
+.TP
+.B char* WcSkipWhitespace_Comma( char* )
+Similar to WcSkipWhitespace, but this also skips an optional comma and
+any whitespace which follows.
+.TP
+.B char* WcCleanName( char*, char* )
+This function is ugly, but effective.  The first argument is the string
+to find a name surrounded by whitespace.  The second is a buffer provided
+by the caller into which WcCleanName builds a null terminated string.
+The return value points at the next character WcCleanName should process
+if continuing to get names from the same initial string.
+.TP
+.B XrmQuark WcStringToQuark( char* )
+Returns the XrmQuark of a lower case version of the string argument.
+.TP
+.B XrmQuark WcSubStringToQuark( char*, char* )
+Returns the XrmQuark of a lower case version of the characters in
+a single contiguous character array between the two character pointer
+arguments.
+.TP
+.B char* WcStrStr( char*, char* )
+Finds the first string in the second string.  A safe implementation
+of ANSI strstr().
+.TP
+.B char* WcStrCpy( char*, char* )
+A safe strcpy().
+.TP
+.B char* WcStrCat( char*, char* )
+A safe strcat().
+.TP
+.B int WcStrCmp( char*, char* )
+A safe strcmp().
+.TP
+.B int WcStrCmpN( char*, char*, int )
+A safe strncmp().
+.TP
+.B int WcPrintfFormatStrings( char* )
+Returns the number of "%s" printf() string substitution characters
+in the passed in string.  If there are none, or if there are any
+other types of printf() substiution characters, like %d, then the
+return value is 0.  This is used by Wcl to be certain that warning
+message strings have the appropriate number of substitution characters.
+.TP
+.B int WcNonNull( char* )
+Implementer as a macro, returns true if the character pointer is
+not equal to 0, and if the character pointer dereferences a non-null
+character.
+.TP 
+.B int WcNull( char* )
+Implemented as a macro, returns true if the character pointer is
+equal to zero, or if the character pointer is not zero but the
+character pointed to by the pointer is a null character.
+.TP 
+.B int WcStrLen( char* )
+Implemented as a macro, a safe form of strlen().
+.TP                                                             
+.B int WcStrEq( char*, char* )
+Implemented as a macro, a safe form of !strcmp().
+.TP                                                             
+.B int WcStrEqN( char*, char*, int )
+Implemented as a macro, a safe form of !strncmp().
+.SH METHOD SUPPORT
+.LP
+Callback resource value specifications can now name methods instead of
+only simple callbacks.  A method specification in a callback resource
+value looks like this:
+.nf
+  *foo.activateCallback:	Paragraph::Justify()
+.fi
+.LP
+The callback method gets a pointer to a special struct as the client
+data.  The struct has three elements: a pointer to the "object" of the
+appropriate class or NULL, an arbitrary pointer which is provided at
+registration time, and th characters inside of parenthesis in the
+resource value (leading and trailing whitespace stripped, at least a
+pointer to a null character, never a null pointer).
+
+Note that this makes the registration-time client data much more useful than
+the original Wcl callback registration mechanisms: the original callback
+mechanism only provides the registration-time client data if there is nothing
+between parens in the resource file.  The new method mechanism ALWAYS
+provides the registration-time client data.
+
+Class names CANNOT begin with the two characters "-l" in order to avoid
+ambiguities with the Dynamic Linking Support (see below).
+
+Wcl uses late binding to invoke methods.  At invocation time, Wcl resolves
+the method address, and it attempts to find an object of the appropriate
+class.  The run-time overhead is kept low: about 20 lines of C are executed
+for typical method invocations.
+
+Wcl provides a default mechanism for finding object which is based on the
+following observations:  Often, an object in the application is mapped 1:1
+with some shell or manager widget, and the children of that shell or manager
+widget provide ways to display or set attributes on the object, and invoke
+methods on the object.  Imagine a dialog box for a text editor which is used
+to display and manipulate paragraph properties.  The application changes the
+"Paragraph" object related to the dialog as the insertion point moves from
+paragraph to paragraph.  Pressing a button labeled "Right Justify" may
+invoke the RightJustify method of the current paragraph.  The resource
+specification would look like this:
+.nf
+  *parProp*rightJustify.callback: Paragraph::RightJustify()
+.fi
+.LP
+The default object resolution mechanism uses WcAttachThisToWidget() and
+WcDetachThisFromWidget() to allow the application to set and change the
+objects related to widgets in the interface.
+
+An application can get the address of the default object resolution function
+and provide its own which replaces or envelopes the default resolution logic.
+Use WcSetFindObjectFunc() to get the old resolution function and provide a
+replacement which will be called to get the object pointer.
+
+NOTE: it is very possible that no object of the appropriate type is found
+by an object resolution procedure.  Wcl can optionally issue a warning
+message if this occurs, BUT THE METHOD IS INVOKED ANYWAY!  This means that
+methods MUST detect NULL object pointers and handle them reasonably.
+
+Some methods do not need object pointers: object constructors are a common
+and useful example.
+.SH DYNAMIC LIBRARY SUPPORT
+.LP
+Callback resource value specifications can now
+name dynamic libraries which can be used to resolve callback procedure
+addresses.  Both "old-fashioned" Wcl style callbacks and "new-fangled"
+Wcl style methods can be bound using this mechanism.  The resolution of
+addresses is done once, before the first invocation of a callback or a
+method.  Callback resource specification which use dynamic libraries look
+like this:
+.nf
+   -l<library_abbreviation>::<callback_name>(<opt_args>)
+or
+   -l<library_abbreviation>::<class_name>::<method_name>(<opt_args>)
+.fi
+.LP
+Note that the initial "-l" of library specifications eliminated any
+ambiguity between library names and class names used for methods.
+
+The library abbreviation is the same as that used by the "ld" command:
+the library /usr/X11R5/lib/libXop.so.2.2 can be named by "-lXop".
+
+Libraries must be registered with Wcl before they are needed (before the
+first callback invokation which names the library).  Libraries may be
+registered using the function below, and by using the application-wide
+resource "wclDynamicLibs" which is fetched and evaluated during Wcl
+initialization.  Multiple libraries can be registered at once: each full
+pathname is separated by whitespace and/or a comma.
+
+.SH INVOCATION SUPPORT
+.LP
+It is typically desirable to provide application functionality as both
+callback and action procedures.  Wcl itself provides every convenience
+callback as both an XtActionProc and an XtCallbackProc.  The
+capability is implemented in whichever form is simpler: if complex
+parsing is required (like WcSetValues), then it is implmented as an 
+XtCallbackProc.  If the arguments are simply words (like WcCreateChildren)
+then it is implemented as an XtActionProc.  Wcl uses the following
+procedures to invoke the appropriate version from the less appropriate
+implementation:
+.TP
+.B void WcInvokeAction( XtActionProc, Widget, char* )
+This invokes the action procedure passing the first two arguments
+obtained by an XtCallbackProc.
+.TP
+.B void WcInvokeNamedAction( char*, Widget, char* )
+This invokes the named  action procedure passing the first two arguments
+obtained by an XtCallbackProc.  This is only supported by Wcl libraries
+built on Xt release 4 or later.
+.TP
+.B void WcInvokeCallback(XtCallbackProc, Widget, char**, Cardinal*)
+This invokes the callback procedure, passing the arguments received
+by an XtActionProc.
+.LP
+For example, here is the implementation of WcManageCB:
+.nf
+void WcManageCB( w, client_data, unused )
+    Widget     w;
+    XtPointer  client_data, unused;
+{
+    WcInvokeAction( WcManageACT, w, client_data );
+}
+.fi
+.LP
+And here is the implmentation of WcSetValueACT:
+.nf
+void WcSetValueACT( w, unused, params, num_params )
+    Widget    w;
+    XEvent*   unused;
+    char**    params;
+    Cardinal* num_params;
+{
+    WcInvokeCallback( WcSetValueCB, w, params, num_params );
+}
+.fi
+.SH CHANGING RESOURCE VALUES
+.LP
+As you certainly know, setting resource values using Xt is both
+labor intensive (alot of typing), ugly to look at, and error
+prone.  Wcl provides several procedures which make it easy to let the
+widgets convert data into their desired internal types from strings
+within the application.
+.TP
+.B void WcSetValue( Widget, char* )
+The first argument is NOT necessarily the widget to be changed: it is
+the reference widget used to find the target widget or widgets given
+the target widget names in the resource specifications.  The second
+argument is a resource specification, or a list of resource
+specifications, each in parenthesis.  The syntax of the resource
+specification is very similar to that of an Xrm resource file, with the
+following differences: 1) a target widget must be specifically named,
+and it can be a relative name, and 2) the type of the resource can be
+specified (although it is dangerous to do so: only use this feature
+when the widget does not report a resource type via XtGetResourceList
+nor by XtGetConstraintResourceList).  The syntax is:
+.nf
+<client_data>   ::=     <res_spec>
+                |       <res_spec_list>
+
+<res_spec>      ::=     <targetName>.<resName>: <resValue>
+                |       <targetName>.<resName>(<resType>): <resValue>
+
+<res_spec_list> ::=     ( <res_spec> )
+                |       <res_spec_list> ( <res_spec> )
+
+<targetName>    ::=     <empty>
+                |       this
+                |       <relative_opt><widget_path>
+.fi
+.TP
+.B void WcSetValueFromString( Widget, char*, char* )
+This allows a single resource to be set on a widget.  The widget argument
+is the widget to be changed.  The second argument names the resource,
+and the third provides the string representation of the value.
+.TP
+.B void WcSetValueFromStringAndType( Widget, char*, char*, char* )
+This allows a single resource to be set on a widget.  The widget argument
+is the widget to be changed.  The second argument names the resource,
+the third provides the string representation of the value, and the fourth
+provides the type of the resource.
+.TP
+.B char* WcGetResourceType( Widget, char* )
+This returns the type of the specified resource of the widget.
+.TP
+.B void WcSetTranslations( Widget, char* )
+Set translations on a widget based on a translation string which includes
+#augment, #replace, or #override directives (default to #replace).
+.SH CALLBACKS
+.LP
+Wcl provides a rich set of callback procedures which can be used
+to provide common behaviors to prototypes and applications.  All of the
+following procedures are available as XtCallbackProcs which can be
+bound to callback resources of widgets, and as XtActionProcs which
+can be invoked due to translations and accelerators on widgets.
+.TP
+.B WcManage( widget [, widget] ... )
+Manages the named list of widgets.  The separating commas are
+optional.  The names are parsed by WcFullNameToWidget, so relative
+names are usually used.  The reference widget is the widget invoking
+the callback or action.
+.TP
+.B WcUnmanage( widget [, widget] ... )
+Unmanages the named list of widgets.  The separating commas are
+optional.  The names are parsed by WcFullNameToWidget, so relative
+names are usually used.  The reference widget is the widget invoking
+the callback or action.
+.TP
+.B WcManageChildren( parent, child [, child] ... )
+Manages the named list of widgets.  The separating commas are
+optional.  The names must be of children of the parent widget, and are
+parsed by WcChildNameToWidget() - i.e., XtNameToWidget, so relative
+names cannot be used.
+.TP
+.B WcUnmanageChildren( parent, child [, child] ... )
+Unmanages the named list of widgets.  The separating commas are
+optional.  The names must be of children of the parent widget, and are
+parsed by WcChildNameToWidget() - i.e., XtNameToWidget, so relative
+names cannot be used.
+.TP
+.B WcDestroy( name [, name] ... )
+Destroys the named list of widgets.  The separating commas are
+optional.  The names are parsed by WcFullNameToWidget, so relative
+names are usually used.  The reference widget is the widget invoking
+the callback or action.
+.TP
+.B WcSetSensitive( name [, name] ... )
+Causes the named widgets to become sensitive.  As per the Xt
+specification, this is how widgets should be made sensitive, NOT by
+setting the sensitive resource of the widget.  The separating commas
+are optional.  The names are parsed by WcFullNameToWidget, so relative
+names are usually used.  The reference widget is the widget invoking
+the callback or action.   N.B.:  If the named widget is a Gadget, then
+the parent of the Gadget becomes sensitive.  Oh, the joys of those
+&$@&%Q* gadgets...
+.TP
+.B WcSetInsensitive( name [, name] ... )
+Causes the named widgets to become insensitive.  As per the Xt
+specification, this is how widgets should be made insensitive, NOT by
+setting the sensitive resource of the widget.  The separating commas
+are optional.  The names are parsed by WcFullNameToWidget, so relative
+names are usually used.  The reference widget is the widget invoking
+the callback or action.  N.B.:  If the named widget is a Gadget, then
+the parent of the Gadget becomes insensitive.  Oh, the joys of those
+&$@&%Q* gadgets...
+.TP
+.B WcPopup( name [, name] ... )
+Invoke XtPopup() on each of the named widgets.  The grab kind is set to
+XtGrabNone.  The separating commas are optional.  The names are parsed
+by WcFullNameToWidget, so relative names are usually used.  The
+reference widget is the widget invoking the callback or action.
+.TP
+.B WcPopupGrab( name [, name] ... )
+Invoke XtPopup() on each of the named widgets.  The grab kind is set to
+XtGrabExclusive.  The separating commas are optional.  The names are
+parsed by WcFullNameToWidget, so relative names are usually used.  The
+reference widget is the widget invoking the callback or action.
+.TP
+.B WcPopdown( name [, name] ... )
+Invoke XtPopdown() on each of the named widgets.  The separating commas
+are optional.  The names are parsed by WcFullNameToWidget, so relative
+names are usually used.  The reference widget is the widget invoking
+the callback or action.
+.TP
+.B WcMap( name [, name] ... )
+Invoke XtMapWidget() on each of the named widgets.  The separating
+commas are optional.  The names are parsed by WcFullNameToWidget, so
+relative names are usually used.  The reference widget is the widget
+invoking the callback or action.
+.TP
+.B WcUnmap( name [, name] ... )
+Invoke XtUnmapWidget() on each of the named widgets.  The separating
+commas are optional.  The names are parsed by WcFullNameToWidget, so
+relative names are usually used.  The reference widget is the widget
+invoking the callback or action.
+.TP
+.B WcInstallAccelerators( dest, src [, src] ... )
+Invoke XtInstallAccelerators( dest, src) for each of the src widgets
+named.  The separating commas are optional.  The names are parsed by
+WcFullNameToWidget, so relative names are usually used.  The reference
+widget is the widget invoking the callback or action.
+.TP
+.B WcInstallAllAccelerators( dest, src )
+Invoke XtInstallAllAccelerators( dest, src ).  The separating commas
+are optional.  The names are parsed by WcFullNameToWidget, so relative
+names are usually used.  The reference widget is the widget invoking
+the callback or action.
+.TP
+.B WcCreateRoot( shell [on: display] [shell [on: display]] ... )
+Creates the named shell.  A display name can optionally be specified,
+in which case a new display connection is created using XtOpenDisplay().
+WcCreateRoot() is used to create the new shell.  As stated under 
+WcCreateRoot() above, you MAY have problems if you do NOT specify another
+display connection, as the Xt specification is unclear as to the legality
+of having multiple application shells on a single display connection.  I
+have seen environments where this certainly does NOT work.
+.TP
+.B WcSpawn( cmd line )
+The command line is passed to execvp within a subprocess.
+.TP
+.B WcLoadResourceFile( file [, file] )
+This is potentially a very dangerous capability.  Do NOT use this
+callback to load any widget resources.  It may work, but you are
+counting on the widgets to consistently and completely copy all data
+from the resource database: often, they do not.  You can safely use
+this capability to load application specific data, as long as your
+application makes copies of the data from the resource database,
+and does not simply reference resource database storage.  Why? because
+changing the value within the resource database causes the previous
+value to be free'd, invalidating any pointers to that data.  Beware!
+.TP
+.B WcPrintTree( name [, name] )
+Prints the widget tree below the named widgets.  The separating commas
+are optional.  The names are parsed by WcFullNameToWidget, so relative
+names are usually used.  The reference widget is the widget invoking
+the callback or action.
+.TP
+.B WcExit( [exitVal] )
+Invokes exit() passing the integer value (obtained with atoi) of the
+argument.
+.TP
+.B WcCreateChildren( parent, child [,child] ... )
+Dynamically create children from the Xrm database.  This invokes
+WcCreateNamedChildren().  The parent of the children must already
+exist, and must be a composite widget.  The separating commas are
+optional.  The children are created left-to-right.
+.TP
+.B WcCreatePopups( parent, child [,child] ... )
+Dynamically create popup children from the Xrm database.  This invokes
+WcCreateNamedPopups().  The parent of the children must already exit,
+and can be any kind of widget.  The separating commas are optional.
+The children are created left-to-right.
+.TP
+.B WcPositionTransient()
+Takes no arguments.  This is intended to be used as a popupCallback on
+a popup-shell widget.  This causes the shell to be centered over the
+widget which it is transient for, or for its parent widget.  This is
+useful for causing pop-up dialogs to come up centered over an
+application window.
+.TP
+.B WcSameSize( child, child [,child] ... )
+Resizes two or more widgets so they all have the same width, height,
+and border width.  The maximum of each is used.  I frequently use this
+to make all the buttons of a custom dialog be the same size regardless
+of the length of their strings.
+.TP
+.B WcSetValue( resSpecs )
+Allows resources to be set on widgets.  The syntax of the client data
+is that accepted by WcSetValue which this callback invokes.  The client
+data can either be a single resource specification, or can be a list of
+resource specifications, each inside parenthesis.  A resource
+specification consists of a target widget name, followed by the
+resource name, followed by an optional resource type in parenthesis,
+followed by a colon.  No whitespace can exist from the first character
+in the target widget name until the colon.  Whitespace can then
+optionally occur before the resource value.  The resource value is a
+string representation of a resource value of the appropriate type.  In
+other words, the client data looks very, very much like any other
+resource specification, with the following exceptions: 1) the taget
+widget must be a specific, unambiguous widget name, and 2) the resource
+type can be specified inside of parenthesis before the colon.
+.TP
+.B WcTrace( annotation )
+Causes a message to be printed to stderr with the full name of the
+invoking widget, followed by the annotation.
+.TP
+.B WcSystem( shell command line )
+Any command legal to the shell can be passed to the shell using the
+system() standard C interface.  See the system() man page for details.
+Note that a subprocess is NOT spawned, so the invoking application will
+block until system() returns.  You can append an `&' to cause the shell
+to execute in background.
+.TP
+.B WcAddCallbacks( widget callbackName CallbackProc( args ) ... )
+The first argument is the relative name of the widget which is to get
+the callback or callbacks.  The second argument is the name of the
+callback list, like popupCallback.  The rest are one or more callback
+names, each with optional callback argumments.  This invokes
+XtAddCallbacks(), and is the correct way to add additional callbacks to
+widgets.  You should NOT use XtSetValues (or WcSetValues) to change
+callback lists on widgets, as these procedures REPLACE callback lists.
+You never know when someone else is interested in a callback besides
+you!
+.TP
+.B WcRemoveCallbacks( widget callbackName CallbackProc( args ) ... )
+This can be used to remove callbacks from widget callback lists.  The
+callbacks can be added using WcAddCallbacks or XtAddCallbacks, but the
+arguments must match character for character.  This invokes
+XtRemoveCallbacks().
+.TP
+.B WcTranslations( widget translationString )
+This can be used to easily add or augment translations on widgets
+without having to specify the entire translation string.  XtR5 provides
+even better support than this callback, but this callback will continue
+to be supported for backward compatibility and to make it easier to
+port Wcl applications to funky old platforms.
+.TP
+.B WcDynamicAction( sharedLibrary entryPointName([optArgs]) )
+This can be used to invoke an XtActionProc within a shared library.
+The name of the shared library can be specified as a full path name, or
+can be something like -lName if the full pathname of the library has
+been registered with Wcl via the WclDynamicLibs resource.  The optional
+arguments are passed exactly as if they had been specified as arguments
+to a translation in a resource file.
+.TP
+.B WcDynamicCallback( sharedLibrary entryPointName([optArgs]) )
+This can be used to invoke an XtCallbackProc within a shared library.
+The name of the shared library can be specified as a full path name, or
+can be something like -lName if the full pathname of the library has
+been registered with Wcl via the WclDynamicLibs resource.  The optional
+arguments are passed exactly as if they had been specified as arguments
+to a callback in a resource file.
+.SH "SEE ALSO"
+.BI Ari (1),
+.BI Cri (1),	
+.BI Mri (1),	
+.BI Ori (1),	
+.BI X (1)
+.SH BUGS
+.LP
+realizeCallback, destroyCallback, popupCallback, and popdownCallback
+MUST NOT be specified using resource values for shell widgets derived
+from Motif Vendor Shell in most releases of Motif.  Sorry, there is no
+way I can see for Wcl to work around this bug in the list of resources
+fetched by the Motif Vendor Shell Extension VendorExtInitialize()
+procedure.
+.LP
+If you want to specify these resources, specifiy a wcCallback resource
+and add the callbacks using WcAddCallbacks().
+.LP
+Explanation for Xt and Motif gurus with source code: Xt has fetched
+these resources for the shell, and compiled the XtCallbackRec array
+generated by WcCvtStringToCallback into the
+InternalCallbackRec/XtCallbackRec "thang."  This happens in
+Xt'Create.c'_XtCreate in R5.  _XtCreate then allows the widget to
+initialize itself, calling CallInitialize().  This eventually invokes
+the Motif Vendor Shell initialization, which invokes the Motif Vendor
+Shell Extension initialization.  Here, Motif incorrectly fetches again
+the above callback resources, applying the resources straight into the
+"new" widget with its already compiled callback lists.  This causes the
+compiled callback list storage to be overwritten with the original,
+uncompiled form previously generated by WcCvtStringToCallback.  The
+next XtAddCallback or XtCallAllCallbacks or XtSetValues on these
+resources will (or should!) fail due to mis-interpreting the callback
+list (the first element will again be an XtCallbackRec instead of an
+InternalCallbackRec).  The fix is messy:  somehow treat the callback
+resources as uniquely as Xt does everywhere else: fetch into a
+different (local) Widget instead of new, and then traverse the list of
+callbacks, invoking XtAddCallback( new, <callbackName>, cb->callback,
+cb->closure ), and then free up that locally allocated dummy widget.
+Yuck!
+.SH AUTHORS
+Wcl is truly the result of an international cooperative effort.
+The people involved include
+Randy Brown,
+Martin Brunecky,
+John Coyne,
+Kim Gillies,
+Olaf Grabatin,
+David Harrison,
+Jordan Hayes,
+Richard Hesketh,
+Kee Hinkley,
+David B. Lewis,
+Ron Newman,
+Andrew Peebles,
+Chris D. Peterson,
+Art Poley,
+David E. Smyth,
+Bo Thide,
+Rod Whitby,
+Ken Yap,
+and Mike Yee.
+
+At the X Technical Conference in Boston in January 1990, Mr. Smyth
+asked the assembled audience "Why does UIL exist? Can't we just use Xrm?"
+This point was discussed on comp.windows.x, with the consensus being
+that Xrm is almost sufficient, except that widget types, hierarchies, and 
+callbacks could not be specified.  Also, the need for a widget creation time
+callback was mentioned.
+
+Mr. Brunecky at Auto-trol Technology, Denver (marbru@auto-trol.com)
+wrote some simple code which demonstrated how the Xt and Xrm libraries
+provide efficient mechanisms which can be used to specify widget types,
+hierarchies, and callbacks from resource files.  This code was named
+WsXc and was posted in early 1990 to comp.windows.x with the title
+"POOR MAN's UIL - WsXc".
+
+Mr. Smyth, then at NASA JPL in California, developed Wcl, and
+provided support for the Athena and Motif widget sets with the
+companion libraries Xmp and Xp, and the resource interpreters Ari and
+Mri.  The original implementation of Wcl was based loosly on WsXc.
+
+The Table widget written by David Harrison was incorporated early on,
+with Kee Hinkley (nazgul@alfalfa.com) providing a Motif version.  The
+Table widget has since been re-written, but maintains much of the
+external interfaces and behavior of Mr. Harrison's original Table
+widget.
+
+Kim Gillies provided companion libraries, resource interpreters, and
+many very useful demonstration resource files for the Cornell and
+OpenLook widget sets.
+
+Mr. Smyth (David.Smyth@sniap.mchp.sni.de) is currently at at Siemens
+Nixdorf Informationssysteme AG, Munich Germany, where he is continuing
+the development of the Wcl distribution with numerous enhancements,
+examples, documentation, integration, testing, and overall support.

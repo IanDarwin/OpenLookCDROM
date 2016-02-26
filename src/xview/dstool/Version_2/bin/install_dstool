@@ -1,0 +1,601 @@
+#!/bin/csh -f
+
+echo '################################################################'
+echo '                     dstool installation script'
+echo ''       
+echo '                         Cornell University '
+echo '                   Center for Applied Mathematics '
+echo '################################################################'
+echo ''
+
+echo ' '
+echo 'Throughout this script, answering with a carriage return'
+echo 'will produce the same results as giving the default answer,'
+echo 'usually yes. Defaults are capitalized.'
+
+echo ' '
+echo 'Should problems arise in this script, after unpacking, installation'
+echo 'can usually be completed by the sequence of steps'
+echo '	cd $DSTOOL/src'
+echo '	make dstool'
+echo '	make dslibs'
+echo '	make dstool_nowin'
+echo ' '
+#
+# step 1:  check for the proper environment variables
+#          ( DSTOOL, OPENWINHOME )  
+#
+set stop_switch = 0
+set reminder = 1
+set printername = lp
+set version = 2.0
+
+#
+# run this shellscript from within the directory it resides
+#
+if ( -e install_dstool != 1 ) then
+  echo 'You must run the installation shellscript from the directory it resides.'
+  echo 'Please change directories.'
+  exit(0)
+endif
+
+set current_dir = $cwd
+cd ..
+set head_dir = $cwd
+
+echo ' '
+echo 'Several steps are involved in installing a copy of dstool onto a Sun'
+echo 'or other workstation:'
+echo ' ' 
+echo '    1.  Check that the environment variables DSTOOL and OPENWINHOME '
+echo '        have been defined.'
+echo '        If you are using FORTRAN, the environment variable FORTHOME'
+echo '        giving the location of FORTRAN library files should also be defined.'
+echo '    2.  If this is a new installation, extract the source code '
+echo '        from the distribution fiile. '
+echo '    3.  Check that the paths defined in step 1 are sufficient to'
+echo '        build a working program.'
+echo '    4.  Change program characteristics that are specific to your'
+echo '        working environment (printer name, etc..).'
+echo '    5.  Compile and link the dstool executable'
+echo ' '
+echo 'This installation program automates the installation of dstool, using'
+echo 'responses from the user. '
+echo ' '
+
+echo ' '
+echo The installation directory for dstool is controlled  by the
+echo environment variable DSTOOL.  You MUST have DSTOOL defined to
+echo proceed with the program installation.
+echo ' '
+while( $stop_switch == 0 )
+    if (${?DSTOOL}) then
+       echo Currently, DSTOOL is set to the path:
+       echo "            "$DSTOOL
+       echo Do you want to proceed to install the dstool program in $DSTOOL"?":
+       echo -n "(YES or no)? "; set ans = $<
+       if ( $ans == "" || $ans =~ [yY]* ) then
+	 set reminder = 0
+         set stop_switch  = 1
+       else 
+	 echo ' '
+         echo Do you want to quit the installation program, or define a new
+         echo directory for dstool installation"?"
+         echo -n "(quit or continue): "; set ans = $<
+         if ( $ans == "" || $ans =~ [qQ]* ) then
+	   echo The installation script is terminated.
+           exit(0)
+         else
+	   echo ' '
+	   echo -n "Enter path to installation directory: "; set pathquery = $<
+	   setenv  DSTOOL $pathquery
+         endif
+       endif
+    else
+       echo Currently, DSTOOL has NOT been set.  Do you want to temporarily
+       echo set this environment variable for the purpose of installing the
+       echo dstool program"?"
+       echo -n "(YES or no)? "; set ans = $<
+       if ( $ans == "" || $ans =~ [yY]* ) then
+         echo ' ' 
+         echo -n "Enter path to installation directory: "; set pathquery = $<
+	 setenv  DSTOOL pathquery
+       else
+	 echo The installation script is terminated.
+	 exit(0)
+       endif
+    endif
+    echo ' ' 
+end
+
+echo ' '
+echo 'During the process of compiling dstool, several files and libraries are required'
+echo 'from the OpenWindows (xview) package.  The search for these files is controlled '
+echo 'by the environment variable OPENWINHOME and the addition of: '
+echo '                     $OPENWINHOME/lib '
+echo 'to the library search path (LD_LIBRARY_PATH).  '
+
+if (${?OPENWINHOME}) then
+   echo ' '
+   echo OPENWINHOME is set to:  $OPENWINHOME
+   echo ' '
+   if ( -e $OPENWINHOME/include/xview/xview.h != 1 )  then
+      echo  'File $OPENWINHOME/include/xview/xview.h not found.'
+      echo 'Reset OPENWINHOME or check with your system administrator where'
+      echo 'xview include files are found on your system.'
+      echo 'The installation script is terminated.'
+      exit(0)
+   endif
+   if ( -e $OPENWINHOME/lib != 1 )  then
+      echo  The OpenWindows libraries do not appear to reside in $OPENWINHOME.  Please
+      echo 'consult the dstool installation manual for more information.'
+      echo 'The installation script is terminated.'
+      exit(0)
+   endif
+   echo 'If this is not correct, please exit and consult the dstool installation document'
+   echo 'or the OpenWindows users guides for more information on setting up your'
+   echo 'environment.'
+   echo ' '
+   echo -n "Continue with the installation (YES or no)? "; set ans = $<
+   if ( ! ( $ans == "" || $ans =~ [yY]* ) ) then
+      echo The installation script is terminated.
+      exit(0)
+   endif 
+else
+   echo 'Please check the dstool installation manual on instructions for setting the'
+   echo 'OpenWindows environment.  Installation terminated.'
+endif
+
+
+echo ' '
+echo -n 'Are you using gcc (yes or NO) ?'
+set ans = $<
+if (( $ans == "") || ($ans =~ [nN]* ) ) then
+	set using_gcc = 0
+else
+	set using_gcc = 1
+endif
+
+
+echo ' '
+echo 'The DsTool LOCBIFF panel requires the use of FORTRAN as well as C.'
+echo -n 'Do you wish to use FORTRAN (YES or no) ?'
+set ans = $<
+if ( ! ( $ans == "" || $ans =~ [yY]* ) ) then
+	set using_fortran = 0
+	goto AFTER_FORTRAN
+else
+	set using_fortran = 1
+endif
+
+
+if (${?FORTHOME}) then
+   echo ' '
+   echo FORTHOME is an environment variable whose value should be
+   echo a directory containing the relevant FORTRAN libraries.
+   echo ' '
+   echo FORTHOME is set to:  $FORTHOME
+   echo ' '
+   if ( -d $FORTHOME != 1 ) then
+      echo  'The directory ' $FORTHOME ' does not appear to exist.'
+      echo 'Please restart this script and either:'
+      echo '        a) Define the environment variable FORTHOME before you start.'
+      echo '    or'
+      echo '        b) Answer no when asked about whether you want to use FORTRAN.'
+      echo 'The installation script is terminated.'
+      exit(0)
+   endif
+   if ( -e $FORTHOME/libF77.a != 1 )  then
+      echo  'File $FORTHOME/libF77.a not found.'
+   endif
+   echo -n "Continue with the installation (YES or no)? "; set ans = $<
+   if ( ! ( $ans == "" || $ans =~ [yY]* ) ) then
+      echo The installation script is terminated.
+      exit(0)
+   endif 
+else
+      echo 'Please restart this script and either:'
+      echo '        a) Define the environment variable FORTHOME before you start.'
+      echo '    or'
+      echo '        b) Answer no when asked about whether you want to use FORTRAN.'
+      echo 'The installation script is terminated.'
+      exit(0)
+endif
+
+
+AFTER_FORTRAN:
+
+
+
+echo ' '
+echo 'The DsTool Tcl panel requires the use of the Tool Command Language  '
+echo 'library of John Ousterhout. This is available from '
+echo 'ftp.cs.berkeley.edu in the directory ucb/tcl.'
+echo -n 'Do you wish to use Tcl (YES or no) ?'
+set ans = $<
+if ( ! ( $ans == "" || $ans =~ [yY]* ) ) then
+	set using_tcl = 0
+	goto AFTER_TCL
+else
+	set using_tcl = 1
+endif
+
+
+if (${?TCLHOME}) then
+   echo ' '
+   echo TCLHOME is set to:  $TCLHOME
+   echo ' '
+   if ( -e $TCLHOME != 1 ) then
+      echo  'The directory ' $TCLHOME ' does not appear to exist.'
+      echo 'Please restart this script and either:'
+      echo '        a) Define the environment variable TCLHOME before you start.'
+      echo '    or'
+      echo '        b) Answer no when asked about whether you want to use TCLRAN.'
+      echo 'The installation script is terminated.'
+      exit(0)
+   endif
+   echo -n "Continue with the installation (YES or no)? "; set ans = $<
+   if ( ! ( $ans == "" || $ans =~ [yY]* ) ) then
+      echo The installation script is terminated.
+      exit(0)
+   endif 
+else
+      echo 'Please restart this script and either:'
+      echo '        a) Define the environment variable TCLHOME before you start.'
+      echo '    or'
+      echo '        b) Answer no when asked about whether you want to use Tcl.'
+      echo 'The installation script is terminated.'
+      exit(0)
+endif
+
+AFTER_TCL:
+
+set using_pvm = 0
+
+AFTER_PVM:
+
+# in case cp, mv, rm  are aliased to use the " -i" option
+unalias cp mv rm
+
+#
+# step 2:  extract the dstool source files
+#
+if ( -e $DSTOOL/src != 1 ) then
+   echo 'Extracting the dstool source...please wait.'
+   if ( -e $head_dir/install/dstool_${version}_src.tar.Z ) then 
+      uncompress $head_dir/install/dstool_${version}_src.tar.Z
+   endif
+   if ( -e $head_dir/install/dstool_${version}_src.tar ) then
+      tar -xvf $head_dir/install/dstool_${version}_src.tar
+   else 
+      echo 'An error has occurred during extraction of the distribution source.'
+      echo 'Please check the dstool installation guide for more information.'
+   endif
+else
+   echo The source files exist already in $DSTOOL.  Do you want to overwrite
+   echo 'the current contents of the source subdirectories?'
+   echo -n "(YES or no)? "; set ans = $<
+   if ( $ans == "" || $ans =~ [yY]* ) then
+      echo 'Extracting the dstool source...please wait.'
+#      tar -xvf $head_dir/install/dstool_${version}_src.tar
+#	re-installation problem in version 1 script ?
+   	if ( -e $head_dir/install/dstool_${version}_src.tar.Z ) then 
+      		uncompress $head_dir/install/dstool_${version}_src.tar.Z
+   	endif
+   	if ( -e $head_dir/install/dstool_${version}_src.tar ) then
+      		tar -xvf $head_dir/install/dstool_${version}_src.tar
+   	else 
+      		echo 'An error has occurred during extraction of the distribution source.'
+     		echo 'Please check the dstool installation guide for more information.'
+   	endif
+   else
+      echo ' '
+      echo -n "Do you want to continue (YES or no) ? "
+      set ans = $<
+      if ( ! ($ans == "" || $ans =~ [yY]* ) ) then
+	echo 'Installation program is terminated.'
+	exit(0)
+      endif
+      echo ' '
+   endif 
+endif
+
+
+# Try to determine OS type
+cd $DSTOOL/site_specific
+set osname = `uname`
+set osver = `uname -r`
+
+if ($osname == "SunOS" && $osver =~ 4*) then
+	set osflag = sunos4
+	set ostype = bsd
+	mv -f $DSTOOL/contrib/locbif/loclbf/Makefile $DSTOOL/contrib/locbif/loclbf/Makefile.res
+	cp  $DSTOOL/contrib/locbif/loclbf/Makefile.sunos4 $DSTOOL/contrib/locbif/loclbf/Makefile
+else if ($osname == "SunOS" && $osver =~ 5*) then
+	set osflag = sunos5
+	set ostype = sysV
+	mv -f $DSTOOL/contrib/locbif/loclbf/Makefile $DSTOOL/contrib/locbif/loclbf/Makefile.res
+	cp $DSTOOL/contrib/locbif/loclbf/Makefile.sunos5 $DSTOOL/contrib/locbif/loclbf/Makefile
+else if ($osname == "IRIX" && $osver =~ 5*) then
+	set osflag = irix5
+	set ostype = sysV
+	setenv SGI_CC -cckr
+else if ($osname == "Linux") then
+	set osflag = linux
+	set ostype = bsd
+else
+	set osflag = unsupported
+	set ostype = bsd
+endif
+endif
+endif
+endif
+
+# in case cp is aliased to cp -i
+unalias cp
+
+if ($osflag != "unsupported") then
+	cp $DSTOOL/site_specific/$osflag/* $DSTOOL/site_specific
+endif
+
+if ( ! $using_fortran || ! $using_tcl || $using_gcc || ! $using_pvm || ($ostype == "sysV") ) then
+	cp $DSTOOL/site_specific/lib_incl.mk $DSTOOL/site_specific/lib_incl.mk.orig
+	cp $DSTOOL/src/Makefile $DSTOOL/src/Makefile.orig
+endif
+
+if (! $using_tcl) then
+	$DSTOOL/install/fix_for_no_tcl $DSTOOL $DSTOOL/src install_dstool
+endif
+
+if (! $using_fortran) then
+	$DSTOOL/install/fix_for_no_fortran $DSTOOL $DSTOOL/src install_dstool
+endif
+
+if (! $using_pvm) then
+	$DSTOOL/install/fix_for_no_pvm $DSTOOL $DSTOOL/src install_dstool
+endif
+
+if ($using_gcc) then
+	$DSTOOL/install/fix_for_gcc $DSTOOL $DSTOOL/src install_dstool
+endif
+
+
+if ($ostype == "sysV") then
+	$DSTOOL/install/fix_for_no_ranlib $DSTOOL $DSTOOL/src install_dstool
+endif
+
+if ($using_fortran) then
+	echo ' '
+	echo 'Please check the F_LIBS entry in the file'
+	echo '		$DSTOOL/site_specific/lib_incl.mk '
+	echo 'to make sure the proper FORTRAN libraries are specified.'
+	echo 'You will likely need to customize this line while running this script'
+	echo 'Previous edits will generally be overwritten by this script'
+	echo 'using files in a subdirectory of $DSTOOL/site_specific .'
+	echo 'Our SunOS 4 defaults are based on Sun Fortran 1.4'
+	echo 'and SunOS 5 defaults are based on Sun Fortran 2.01.'
+	echo 'Please edit this file before answering yes to the next question.'
+	echo ' '
+endif
+
+echo -n "Continue with the installation (YES or no)? "; set ans = $<
+if ( ! ( $ans == "" || $ans =~ [yY]* ) ) then
+      echo The installation script is terminated.
+      exit(0)
+endif 
+
+cd $DSTOOL
+
+if (-e $DSTOOL/install/dstool_${version}_src.tar) then
+	compress $DSTOOL/install/dstool_${version}_src.tar
+endif
+
+#
+# step 3:  check to see if the paths defined for the includes and libraries
+#          are sufficient to build a release
+#
+
+echo ' '
+echo 'Checking the paths and libraries...please wait.'
+echo ' '
+set stop_switch = 0
+cd $DSTOOL/install 
+\rm -f *.o libtest >& /dev/null
+make libtest
+set mk_stat = $status
+if ($mk_stat == 0)  then
+   libtest &
+   sleep 5
+else
+   echo ''
+   echo ''
+   echo '   The automatic test of the system library paths has FAILED.  '
+   echo '  Please refer to the installation manual for further instructions.'
+   echo ''
+   echo ''
+#   exit (-1 )
+endif   
+
+echo 'The automatic test of the system library paths is completed.  '
+echo "Do you want to continue (YES or no) ? "
+set answer = $<
+switch ($answer)
+case 'n*':
+case 'N*':
+   set stop_switch = 1
+   breaksw
+endsw
+
+if ($mk_stat == 0) then
+   set index = 1
+   if ($ostype == bsd) then
+	set testid = `ps -aux | grep libtest | grep -v grep | awk '{print $2}'`
+   else
+	set testid = `ps -ef | grep libtest | grep -v grep | awk '{print $2}'`
+   endif
+   endif
+   
+   if ($#testid != 0) then
+      while ($index <= $#testid)
+   	   kill -9 $testid[$index]
+	   @ index ++
+      end
+   endif
+endif
+if ( $stop_switch == 1 ) exit( -1 )
+
+
+#
+# step 4:  change site_specific characteristics ( printer name, etc.)
+#
+set stop_switch  = 0
+while ($stop_switch  == 0) 
+    echo ' '
+    echo The default printer name is currently: $printername.  Do you want to 
+    echo use this printer name"?"
+    echo -n "(YES or no)? "; set ans = $<
+    if ( $ans == "" || $ans =~ [yY]* ) then
+      set stop_switch  = 1
+    else 
+      echo -n "Enter new printer name: "; set printername = $<
+    endif
+end
+mv -f $DSTOOL/src/include/defaults.h $DSTOOL/src/include/defaults.h.BAK
+set file1 = $DSTOOL/src/include/defaults.h
+sed '1,$s/PRINTER_NAME.*/PRINTER_NAME	"'$printername'"/' < $file1.BAK > $file1
+
+mv -f $DSTOOL/scripts/dstool $DSTOOL/scripts/dstool.orig
+sed "s?default_dstool_dir?$DSTOOL?" < $DSTOOL/scripts/dstool.orig > $DSTOOL/scripts/dstool.rev
+sed "s?default_openwin_dir?$OPENWINHOME?" < $DSTOOL/scripts/dstool.rev > $DSTOOL/scripts/dstool
+rm $DSTOOL/scripts/dstool.rev
+chmod +x $DSTOOL/scripts/dstool
+
+
+
+#
+# step 5:  make the dstool installation
+#
+echo ' '
+df -a
+echo ' '
+echo ' '
+echo You may select one of the following installation options:
+echo ' '
+echo '   full          Installs all of the dstool source and library files.'
+echo '                 This option requires approximately 15 Mbytes of disk space.'
+echo ' ' 
+echo '   small         Installs only the libraries and essential dstool source '
+echo '                 required to add new dynamical systems.'
+echo ' '
+
+cd $DSTOOL
+echo -n "Enter installation type: (full or small)"; set ans = $<
+if ( $ans =~ [sS]* ) then
+   echo ' '
+   make dstool
+   if ($status != 0) then
+	goto EXIT
+   endif
+   if (! -d libraries) then
+   	mkdir libraries
+   endif
+   make dslibs
+   if ($status != 0) then
+	goto EXIT
+   endif
+   make dstool_nowin
+   if ($status != 0) then
+	goto EXIT
+   endif
+   cd src
+   foreach i (complib eigenlib fixptlib main math_utilities memory mult postmaster pvm saveload tcl twoD utilities windows) 
+	find $i -name '*.[oac]' -exec rm {} \;
+	find $i -name Makefile -exec rm {} \;
+   end
+   cd ../contrib
+   find . -name '*.[oac]' -exec rm {} \;
+   find . -name Makefile -exec rm {} \;
+   rm $head_dir/install/dstool_${version}_src.tar.Z
+   rm $head_dir/dstool*.tar
+else
+   echo ' '
+   make dstool
+   if ($status != 0) then
+	goto EXIT
+   endif
+   if (! -d libraries) then
+   	mkdir libraries
+   endif
+   make dslibs
+   if ($status != 0) then
+	goto EXIT
+   endif
+   make dstool_nowin
+   if ($status != 0) then
+	goto EXIT
+   endif
+endif
+
+
+ln -s $DSTOOL/contrib/parserwin/doc $DSTOOL/doc/parserwin
+ln -s $DSTOOL/contrib/browser/doc $DSTOOL/doc/browser
+ln -s $DSTOOL/contrib/locbif/doc $DSTOOL/doc/locbif
+ln -s $DSTOOL/src/models/contrib/doc $DSTOOL/doc/models
+
+# set appropriate modes on all files 
+cd $DSTOOL 
+
+chmod -R 555 *
+find . -name '*.[hcoa]' -exec chmod 444 {} \;
+
+if( $reminder == 1) then
+  echo ' '
+  echo REMEMBER...You must set the environment variable DSTOOL permanently  to
+  echo be the file $DSTOOL by changing your .login or .cshrc file.  For further
+  echo information, please consult the dstool installation document.
+endif
+
+set no_mail = 0
+echo ' '
+echo 'We would like to know who is using dstool.'
+echo ' '
+echo 'If you do not object, a mail message will be sent' 
+echo 'to dstool-list@macomb.tn.cornell.edu mentioning this'
+echo 'installation. If you do not wish such a message to'
+echo 'be sent, please enter "no".'
+set ans = $<
+if ($ans =~ *no) then
+	set no_mail = 1
+	goto EXIT
+endif
+
+chmod -R u+w install
+cp install/mail_template install/mail_message
+echo 'Please enter the e-mail address of a contact person at your site: '
+set ans = $<
+echo 'Contact person e-mail address is: ' $ans >> install/mail_message
+echo ' '
+echo 'Please enter the name of the contact person at your site: '
+set ans = $<
+echo 'Contact person name is: ' $ans >> install/mail_message
+echo ' '
+echo 'Would you like to be added to the dstool mailing list'
+echo 'to receive information about updates, future releases,'
+echo 'and  bug fixes ? (YES or no)? '
+set ans = $<
+if ($ans =~ [yY]*) then
+	echo 'Please add to mailing list' >> install/mail_message
+endif
+
+echo ' '
+echo 'Thank you. Mail is now being sent.'
+mail -s 'New Installation' dstool-list@macomb.cam.cornell.edu < install/mail_message
+\rm -f install/mail_message
+
+echo ' '
+echo ' '
+echo ' '
+echo 'Installation of dstool is complete. '
+echo ' '
+
+EXIT:

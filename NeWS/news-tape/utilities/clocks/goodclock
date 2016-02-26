@@ -1,0 +1,188 @@
+#!/bin/sh
+# 
+# Date: Sat, 23 Jul 88 22:15:33 EDT
+# To: NeWS-makers@brillig.umd.edu
+# Subject: Can't Keep a Good Clock Down.
+# From: frame!gergle!greg@Sun.COM
+# 
+# I always litter my screen with windows, and have to uncover my
+# clock to read it. I decided I was going to write a clock which would
+# be smart enough to keep itself visible. I thought it was going to be easy,
+# but I found no good way to find a free spot on the root canvas. I stooped
+# to traversing the canvas list, and doing rectangle list calculations
+# in PostScript. If anyone has a better way please let me know. I cringe
+# every time I see the clock change knowing what its doing. If there isn't
+# a better way, others may find the "findplace" routine below usefull.
+# 
+# 	-greg.
+# 
+# 
+# Bugs: This is not an accurate clock, because it relies on a sleep in the
+# shell script to feed the correct time to NeWS.
+# 
+# 
+# ------------------------------------------------------------------------
+
+DATECOMMAND="date +%H:%M"
+trap "echo systemdict /DigitalTime null put | psh;exit" 15 2
+
+# Need to put a non null value in DigitalTime
+echo "systemdict /DigitalTime (`$DATECOMMAND`) put" | psh
+
+psh  <<GIVETONEWS
+{
+/Height 64 def
+/Width 0 def
+/Xpos 10 def
+/Ypos 10 def
+/CX 100 def
+/CY 100 def
+/myfont /Times-Roman findfont Height scalefont def
+/erase { Xpos Ypos Width Height rectpath
+        clipcanvas PaintRoot newpath clipcanvas
+        } def
+myfont setfont
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% The Following code up the next line of % finds the free spot on the
+% root canvas
+
+%
+% Leave the rectangle of a Canvas on the stack.
+%
+/getcanvasrect { % canvas ==> array canvas
+    dup /Mapped get
+        { dup getcanvaslocation [ 3 1 roll
+        gsave
+        3 index setcanvas
+        clippath pathbbox 4 -2 roll pop pop
+        grestore
+        ] exch
+        } if
+    } def
+
+%
+% Get the Rectangles of all the Mapped&Opaque Canvases on the Display.
+% Each is left in an array [x y w h] on the stack
+%
+/getcanvasrects { framebuffer /TopCanvas get getcanvasrect nextcanvas } def
+
+/nextcanvas {
+    /CanvasBelow get dup null ne { getcanvasrect nextcanvas} { pop } ifelse
+    } def
+
+
+%
+% Find the largest rectangle unoccupied in the root canvas which will fit
+% the given width & heigth. Return false if it does not exist.
+%
+/findplace { % w h ==> x y w h bool
+    /outrects [ getcanvasrects ] def
+    /inrects [[ clippath pathbbox ]] def
+
+    outrects { subtractfromall pause } forall
+    /maxarea -1 def
+    /keeper null def
+    inrects { /r exch def r 2 get 2 index gt
+                { r 3 get 1 index gt
+                    { r 2 get r 3 get mul dup maxarea gt
+                        { /maxarea exch store /keeper r store }
+                        { pop }
+                        ifelse
+                    } if
+                } if
+            } forall
+    pause pop pop
+    keeper null eq
+        { false }
+        { keeper aload pop true}
+        ifelse
+    } def
+
+%
+% Subtract this rect from all the inrects.
+%
+/subtractfromall { % [x y w h] ==> -
+    /r exch def
+    /inrects [ inrects { subtractrect } forall ] def
+    } def
+
+%
+% Subtract rectangle r from the rectangle on the stack if it intersects
+%
+/subtractrect { % [x y w h] ==> 1-4 of [x y w h]
+    dup r hitrect
+        { r mungerect } if
+    } def
+
+%
+% check if 2 rects intersect
+%
+/hitrect { % [x y w h] [x y w h] ==> bool
+    /r2 exch def /r1 exch def
+    r1 0 get r1 2 get add r2 0 get ge dup
+        { pop r2 0 get r2 2 get add r1 0 get ge dup
+            { pop r1 1 get r1 3 get add r2 1 get ge dup
+                { pop r2 1 get r2 3 get add r1 1 get ge
+                } if
+            } if
+        } if
+    } def
+%
+% Subtract the top rectangle from the rectangle underneath
+% Rectangles have already been tested, they must intersect.
+%
+/mungerect { % [x y w h] [x y w h ] ==> 1-4 of [x y w h]
+    /r2 exch def /r1 exch def
+        % left piece
+    r2 0 get r1 0 get sub dup 0 gt              % w bool
+        { r1 4 array copy dup 2 4 -1 roll put } % [x y w h]
+        { pop }
+    ifelse
+        % right piece
+    r1 0 get r1 2 get add r2 0 get r2 2 get add sub dup 0 gt  % w bool
+        { [ r2 0 get r2 2 get add r1 1 get 4 -1 roll r1 3 get ] } % [x y w h]
+        { pop }
+    ifelse
+        % bottom piece
+    r2 1 get r1 1 get sub dup 0 gt              % h bool
+        { r1 4 array copy dup 3 4 -1 roll put } % [x y w h]
+        { pop }
+    ifelse
+        % top piece
+    r1 1 get r1 3 get add r2 1 get r2 3 get add sub dup 0 gt  % h bool
+        { [ r1 0 get r2 1 get r2 3 get add r1 2 get 5 -1 roll ] } % [x y w h]
+        { pop }
+    ifelse
+    } def
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    {
+    DigitalTime null ne
+        {
+        /NewWidth DigitalTime stringwidth pop 10 add def
+        NewWidth Height findplace
+            {  2 div 3 -1 roll add 3 1 roll 2 div add   % cy cx
+              dup CX ne 2 index CY ne or       % cy cy bool  have we moved
+                    { erase } if
+            /CX exch store /CY exch store
+            } if
+
+        /Width NewWidth store
+        /Xpos CX Width 2 div sub def
+        /Ypos CY Height 2 div sub def
+        Xpos Ypos Width Height dup 4 div
+        5 1 roll rrectpath
+        0 setgray fill 1 setgray
+        Xpos 5 add Ypos 10 add moveto
+        DigitalTime show
+        }
+        { erase quit } ifelse
+        .5 sleep
+    } loop
+} fork
+GIVETONEWS
+
+while true
+do
+echo "systemdict /DigitalTime (`$DATECOMMAND`) put" | psh
+sleep 55
+done

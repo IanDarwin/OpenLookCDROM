@@ -1,0 +1,5826 @@
+diff -c -r --new-file xvorig/xview3.2//clients/Imakefile xview3.2//clients/Imakefile
+*** xvorig/xview3.2//clients/Imakefile	Tue Jun 29 08:12:15 1993
+--- xview3.2//clients/Imakefile	Sat Aug  7 18:01:58 1993
+***************
+*** 7,13 ****
+  #define IHaveSubdirs 
+  #define PassCDebugFlags 'CDEBUGFLAGS=$(CDEBUGFLAGS)'
+  
+! SUBDIRS = clock cmdtool olwm olwmslave 
+  
+  DIRS_TO_CREATE = $(SRC_DEST) 
+  
+--- 7,13 ----
+  #define IHaveSubdirs 
+  #define PassCDebugFlags 'CDEBUGFLAGS=$(CDEBUGFLAGS)'
+  
+! SUBDIRS = clock cmdtool olwm olwmslave props textedit
+  
+  DIRS_TO_CREATE = $(SRC_DEST) 
+  
+diff -c -r --new-file xvorig/xview3.2//clients/olwm/defaults.c xview3.2//clients/olwm/defaults.c
+*** xvorig/xview3.2//clients/olwm/defaults.c	Tue Jun 29 08:11:43 1993
+--- xview3.2//clients/olwm/defaults.c	Sun Jul 18 21:52:39 1993
+***************
+*** 57,63 ****
+--- 57,65 ----
+      char *homedir = getenv("HOME");
+      char *envfile = getenv("XENVIRONMENT");
+      char hostname[100];
++ #ifndef __linux
+      int namelen;
++ #endif
+  
+      rsrcstr = GetWindowProperty(dpy, RootWindow(dpy, 0), XA_RESOURCE_MANAGER,
+  	0L, 100000000L, /* REMIND: use ENTIRE_CONTENTS */
+***************
+*** 80,86 ****
+--- 82,92 ----
+  	if (homedir != NULL) {
+  	    (void) strcpy(filename, homedir);
+  	    (void) strcat(filename, "/.Xdefaults-");
++ #ifndef __linux
+  	    if (0 == gethostname(hostname, sizeof(hostname), &namelen)) {
++ #else
++ 	    if (0 == gethostname(hostname, sizeof(hostname))) {
++ #endif
+  		(void) strcat(filename, hostname);
+  		fileDB = XrmGetFileDatabase(filename);
+  	    }
+diff -c -r --new-file xvorig/xview3.2//clients/olwm/events.c xview3.2//clients/olwm/events.c
+*** xvorig/xview3.2//clients/olwm/events.c	Tue Jun 29 08:11:46 1993
+--- xview3.2//clients/olwm/events.c	Thu Sep 23 21:51:24 1993
+***************
+*** 579,585 ****
+--- 579,587 ----
+      if (timeout->tv_sec < 0)
+  	return False;
+  
++ #ifndef __linux
+      (void) gettimeofday(&starttime, NULL);
++ #endif
+  
+      while (1) {
+  	FD_ZERO(&rfds);
+***************
+*** 613,622 ****
+--- 615,627 ----
+  	 * return an indication of valid data to the caller, yet also return
+  	 * a value for the time remaining that is less than or equal to zero.
+  	 */
++ #ifndef __linux
++ /* Linux: select does the remaining time calculation for us. */
+  	(void) gettimeofday(&curtime, NULL);
+  	tvdiff(&starttime, &curtime, &diff1);
+  	tvdiff(&diff1, timeout, &diff2);
+  	*timeout = diff2;
++ #endif
+  	starttime = curtime;
+  
+  	/*
+diff -c -r --new-file xvorig/xview3.2//clients/olwm/gettext.c xview3.2//clients/olwm/gettext.c
+*** xvorig/xview3.2//clients/olwm/gettext.c	Tue Jun 29 08:11:46 1993
+--- xview3.2//clients/olwm/gettext.c	Sun Jul 18 22:12:07 1993
+***************
+*** 11,16 ****
+--- 11,20 ----
+  
+  #include "gettext.h"
+  
++ #if defined(__linux) && !defined(LC_MESSAGES)
++ #define LC_MESSAGES LC_RESPONSE
++ #endif
++ 
+  #ifdef SYSV
+  #define bzero(a,b) memset(a,0,b)
+  #endif
+diff -c -r --new-file xvorig/xview3.2//clients/olwm/mem.c xview3.2//clients/olwm/mem.c
+*** xvorig/xview3.2//clients/olwm/mem.c	Tue Jun 29 08:11:45 1993
+--- xview3.2//clients/olwm/mem.c	Sun Jul 25 22:29:45 1993
+***************
+*** 137,142 ****
+--- 137,147 ----
+  {
+      void       *p;
+  
++ #ifdef __linux
++     if (!sz)    /* Linux malloc(0) returns NULL, unlike BSD */
++       sz = 1;
++ #endif
++ 
+      if ((p = malloc(sz)) == NULL)
+  	ErrorGeneral(GetString("Memory allocation failure."));
+  
+diff -c -r --new-file xvorig/xview3.2//clients/olwm/olwm.c xview3.2//clients/olwm/olwm.c
+*** xvorig/xview3.2//clients/olwm/olwm.c	Tue Jun 29 08:11:52 1993
+--- xview3.2//clients/olwm/olwm.c	Thu Sep 23 22:32:28 1993
+***************
+*** 45,50 ****
+--- 45,53 ----
+  #include "error.h"
+  #include "dsdm.h"
+  
++ #if defined(__linux) && !defined(MAXPID)
++ #define MAXPID 32767
++ #endif
+  
+  typedef	void	(*VoidFunc)();
+  
+***************
+*** 611,616 ****
+--- 614,623 ----
+  static void
+  handleChildSignal()
+  {
++ #ifdef __linux
++ /* Reinitialize signal catcher */
++ 	signal(SIGCHLD, handleChildSignal);
++ #endif
+  	deadChildren = True;
+  }
+  
+***************
+*** 633,639 ****
+  
+  	if (!deadChildren)
+  		return;
+- 
+  #ifdef SYSV
+  	sighold(SIGCHLD);
+  #else
+--- 640,645 ----
+diff -c -r --new-file xvorig/xview3.2//clients/olwm/resources.c xview3.2//clients/olwm/resources.c
+*** xvorig/xview3.2//clients/olwm/resources.c	Tue Jun 29 08:11:54 1993
+--- xview3.2//clients/olwm/resources.c	Sun Jul 18 22:15:05 1993
+***************
+*** 40,45 ****
+--- 40,49 ----
+  #include "events.h"
+  #include "error.h"
+  
++ #if defined(__linux) && !defined(LC_MESSAGES)
++ #define LC_MESSAGES LC_RESPONSE
++ #endif
++ 
+  /* static data */
+  
+  static Bool	updateWorkspaceBackground;
+diff -c -r --new-file xvorig/xview3.2//clients/olwm/services.c xview3.2//clients/olwm/services.c
+*** xvorig/xview3.2//clients/olwm/services.c	Tue Jun 29 08:11:57 1993
+--- xview3.2//clients/olwm/services.c	Sun Jul 18 23:00:50 1993
+***************
+*** 39,44 ****
+--- 39,47 ----
+  #include "error.h"
+  #include "dsdm.h"
+  
++ #ifdef __linux
++ #define SYSV
++ #endif
+  
+  extern	char		*getenv();
+  extern	unsigned int	FindModifierMask();
+diff -c -r --new-file xvorig/xview3.2//clients/olwm/slave.c xview3.2//clients/olwm/slave.c
+*** xvorig/xview3.2//clients/olwm/slave.c	Tue Jun 29 08:11:57 1993
+--- xview3.2//clients/olwm/slave.c	Sun Jul 18 23:07:20 1993
+***************
+*** 87,96 ****
+--- 87,100 ----
+  	case 0:				/* Slave */
+  		dup2(input[0],0);
+  		dup2(output[1],1);
++ #ifndef __linux
+  		if (getrlimit(RLIMIT_NOFILE,&rlimit) == -1)
+  			maxfd = 0;
+  		else
+  			maxfd = rlimit.rlim_cur;	
++ #else
++ 		maxfd = sysconf(_SC_OPEN_MAX);
++ #endif
+  		for (fd=3; fd<maxfd ; fd++) {
+  			(void)close(fd);
+  		}
+diff -c -r --new-file xvorig/xview3.2//clients/olwmslave/Imakefile xview3.2//clients/olwmslave/Imakefile
+*** xvorig/xview3.2//clients/olwmslave/Imakefile	Tue Jun 29 08:12:14 1993
+--- xview3.2//clients/olwmslave/Imakefile	Wed Aug 11 01:32:03 1993
+***************
+*** 6,12 ****
+--- 6,16 ----
+  
+  #define HasInfoFiles YES
+  
++ #ifndef __linux
+  DEFINES =  $(XVCLIENTDEFINES)
++ #else
++ DEFINES =  $(XVCLIENTDEFINES) -DOW_I18N_L3
++ #endif
+  INCLUDES = -I$(HEADER_DEST) -I$(TOP) $(XVCLIENTINCLUDES)
+  SYS_LIBRARIES = $(SYSV_CLIENT_LIB)
+  DEPLIBS = 
+***************
+*** 44,50 ****
+  OBJS = 	\
+          cmdstream.o \
+          help_file.o \
+!         helprecv.o \ 
+          helpwin.o \
+          mem.o \
+          olwmslave.o \
+--- 48,54 ----
+  OBJS = 	\
+          cmdstream.o \
+          help_file.o \
+!         helprecv.o \
+          helpwin.o \
+          mem.o \
+          olwmslave.o \
+diff -c -r --new-file xvorig/xview3.2//clients/olwmslave/helpwin.c xview3.2//clients/olwmslave/helpwin.c
+*** xvorig/xview3.2//clients/olwmslave/helpwin.c	Tue Jun 29 08:12:11 1993
+--- xview3.2//clients/olwmslave/helpwin.c	Wed Aug 11 03:20:41 1993
+***************
+*** 493,498 ****
+--- 493,500 ----
+  	xv_set(hw->hwMGlassItem,
+  		PANEL_LABEL_IMAGE,	hw->hwMGlassRender,
+  		NULL);
++ 
++ 	return True;
+  }
+  
+  /* ----------------------------------------------------------------------
+diff -c -r --new-file xvorig/xview3.2//clients/props/Imakefile xview3.2//clients/props/Imakefile
+*** xvorig/xview3.2//clients/props/Imakefile
+--- xview3.2//clients/props/Imakefile	Sun Feb 14 03:53:22 1993
+***************
+*** 0 ****
+--- 1,28 ----
++ #include <XView.tmpl>
++ 
++ /**/#########################################################################
++ /**/# @(#)Imakefile	1.3 10/4/91 SMI
++ /**/# Imakefile for props
++ 
++ #define HasInfoFiles YES
++ 
++ DEFINES = -DSTANDALONE
++ INCLUDES = -I/usr/openwin/include -I$(HEADER_DEST) -I$(TOP)
++ SYS_LIBRARIES =
++ DEPLIBS = XViewClientDepLibs
++ LOCAL_LIBRARIES = XViewClientLibs
++ 
++ HEADERS = props.h color.h image.h l10n_props.h
++ INFOFILES = props.info
++ MANPAGES =
++ SRCS = props.c color_props.c color.c l10n_props.c l10n_read.c
++ OBJS = props.o color_props.o color.o l10n_props.o l10n_read.o
++ 
++ ALLFILES = ${HEADERS} ${INFOFILES} ${MANPAGES} ${SRCS}
++ 
++ AllTarget(props)
++ 
++ NormalProgramTarget(props,$(OBJS),$(DEPLIBS),$(LOCAL_LIBRARIES),$(SYS_LIBRARIES))
++ InstallProgram(props,$(BINDIR))
++ 
++ #include <XView.prog>
+diff -c -r --new-file xvorig/xview3.2//clients/props/color.c xview3.2//clients/props/color.c
+*** xvorig/xview3.2//clients/props/color.c
+--- xview3.2//clients/props/color.c	Sat Oct  5 07:13:31 1991
+***************
+*** 0 ****
+--- 1,246 ----
++ #ifndef lint
++ static char *sccsid = "@(#)color.c 1.3 91/09/14";
++ #endif
++ 
++ /*
++  * Copyright (c) 1990 by Sun Microsystems, Inc.
++  */
++ 
++ /*
++  * Referernce:
++  * Hearn/Baker, "Computer Graphics", Prentice Hall, Section 14-4.
++  */
++ 
++ #include <X11/Xlib.h>
++ #include "color.h"
++ 
++ static int
++ max3(x, y, z)
++     register int x,
++                 y,
++                 z;
++ {
++     if (y > x)
++ 	x = y;
++     if (z > x)
++ 	x = z;
++     return x;
++ }
++ 
++ static int
++ min3(x, y, z)
++     register int x,
++                 y,
++                 z;
++ {
++     if (y < x)
++ 	x = y;
++     if (z < x)
++ 	x = z;
++     return x;
++ }
++ 
++ void
++ hsv_to_rgb(hsv, rgb)
++     HSV        *hsv;
++     RGB        *rgb;
++ {
++     int         h = hsv->h;
++     int         s = hsv->s;
++     int         v = hsv->v;
++     int         r,
++                 g,
++                 b;
++     int         i,
++                 f;
++     int         p,
++                 q,
++                 t;
++ 
++     s = (s * MAXRGB) / MAXSV;
++     v = (v * MAXRGB) / MAXSV;
++     if (h == 360)
++ 	h = 0;
++ 
++     if (s == 0) {
++ 	h = 0;
++ 	r = g = b = v;
++     }
++     i = h / 60;
++     f = h % 60;
++     p = v * (MAXRGB - s) / MAXRGB;
++     q = v * (MAXRGB - s * f / 60) / MAXRGB;
++     t = v * (MAXRGB - s * (60 - f) / 60) / MAXRGB;
++ 
++     switch (i) {
++     case 0:
++ 	r = v, g = t, b = p;
++ 	break;
++     case 1:
++ 	r = q, g = v, b = p;
++ 	break;
++     case 2:
++ 	r = p, g = v, b = t;
++ 	break;
++     case 3:
++ 	r = p, g = q, b = v;
++ 	break;
++     case 4:
++ 	r = t, g = p, b = v;
++ 	break;
++     case 5:
++ 	r = v, g = p, b = q;
++ 	break;
++     }
++     rgb->r = r;
++     rgb->g = g;
++     rgb->b = b;
++ }
++ 
++ void
++ rgb_to_hsv(rgb, hsv)
++     RGB        *rgb;
++     HSV        *hsv;
++ {
++     int         r = rgb->r;
++     int         g = rgb->g;
++     int         b = rgb->b;
++     register int maxv = max3(r, g, b);
++     register int minv = min3(r, g, b);
++     int         h;
++     int         s;
++     int         v;
++ 
++     v = maxv;
++ 
++     if (maxv) {
++ 	s = (maxv - minv) * MAXRGB / maxv;
++     } else {
++ 	s = 0;
++     }
++ 
++     if (s == 0) {
++ 	h = 0;
++     } else {
++ 	int         rc;
++ 	int         gc;
++ 	int         bc;
++ 	int         hex;
++ 
++ 	rc = (maxv - r) * MAXRGB / (maxv - minv);
++ 	gc = (maxv - g) * MAXRGB / (maxv - minv);
++ 	bc = (maxv - b) * MAXRGB / (maxv - minv);
++ 
++ 	if (r == maxv) {
++ 	    h = bc - gc, hex = 0;
++ 	} else if (g == maxv) {
++ 	    h = rc - bc, hex = 2;
++ 	} else if (b == maxv) {
++ 	    h = gc - rc, hex = 4;
++ 	}
++ 	h = hex * 60 + (h * 60 / MAXRGB);
++ 	if (h < 0)
++ 	    h += 360;
++     }
++     hsv->h = h;
++     hsv->s = (s * MAXSV) / MAXRGB;
++     hsv->v = (v * MAXSV) / MAXRGB;
++ }
++ 
++ /*
++  * Load an XColor with an RGB.
++  */
++ void
++ rgb_to_xcolor(r, x)
++     RGB        *r;
++     XColor     *x;
++ {
++     x->red = (unsigned short) r->r << 8;
++     x->green = (unsigned short) r->g << 8;
++     x->blue = (unsigned short) r->b << 8;
++     x->flags = DoRed | DoGreen | DoBlue;
++ }
++ 
++ /*
++  * Load an XColor with an HSV.
++  */
++ void
++ hsv_to_xcolor(h, x)
++     HSV        *h;
++     XColor     *x;
++ {
++     RGB         r;
++     hsv_to_rgb(h, &r);
++     rgb_to_xcolor(&r, x);
++ }
++ 
++ /*
++  * Load an HSV with an XColor.
++  */
++ void
++ xcolor_to_hsv(x, h)
++     XColor     *x;
++     HSV        *h;
++ {
++     RGB         r;
++     r.r = (int) x->red >> 8;
++     r.g = (int) x->green >> 8;
++     r.b = (int) x->blue >> 8;
++     rgb_to_hsv(&r, h);
++ }
++ 
++ /*
++  * Take an HSV and generate the 3 OpenLook 3D colors into XColor structures.
++  */
++ void
++ olgx_hsv_to_3D(bg1, bg2, bg3, white)
++     HSV        *bg1;
++     XColor     *bg2,
++                *bg3,
++                *white;
++ {
++     HSV         hsv;
++     int         h = bg1->h;
++     int         s = bg1->s;
++     int         v = bg1->v;
++ 
++     v = (v * VMUL) / 10;
++     if (v > MAXSV) {
++ 	s /= SDIV;
++ 	v = MAXSV;
++     }
++     if (v < VMIN)
++ 	v = VMIN;
++ 
++     hsv.h = h;
++     hsv.s = s;
++     hsv.v = v;
++     hsv_to_xcolor(&hsv, white);
++ 
++     hsv.h = bg1->h;
++     hsv.s = bg1->s;
++     hsv.v = (bg1->v * 9) / 10;			/* 90% */
++     hsv_to_xcolor(&hsv, bg2);
++ 
++     hsv.h = bg1->h;
++     hsv.s = bg1->s;
++     hsv.v = bg1->v >> 1;			/* 50% */
++     hsv_to_xcolor(&hsv, bg3);
++ }
++ 
++ /*
++  * Take an XColor (BG1) and generate the 3 OpenLook 3D colors into XColor structures.
++  */
++ void
++ olgx_calculate_3Dcolors(fg, bg1, bg2, bg3, white)
++     XColor     *fg;
++     XColor     *bg1,
++                *bg2,
++                *bg3,
++                *white;
++ {
++     HSV         base;
++ 
++     xcolor_to_hsv(bg1, &base);
++     olgx_hsv_to_3D(&base, bg2, bg3, white);
++ }
+diff -c -r --new-file xvorig/xview3.2//clients/props/color.h xview3.2//clients/props/color.h
+*** xvorig/xview3.2//clients/props/color.h
+--- xview3.2//clients/props/color.h	Sat Oct  5 07:13:31 1991
+***************
+*** 0 ****
+--- 1,35 ----
++ /*
++  * @(#)color.h 1.4 91/09/14
++  */
++ 
++ /*
++  * Copyright (c) 1990 by Sun Microsystems, Inc.
++  */
++ 
++ #define	MAXRGB	0xff
++ #define	MAXH	360
++ #define	MAXSV	MAXRGB
++ 
++ #define VMUL		12		/* brighten by 20% (12 = 1.2*10) */
++ #define SDIV		2		/* unsaturate by 50% (divide by 2) */
++ #define VMIN		((4*MAXSV)/10)	/* highlight brightness 40% minimum */
++ 
++ typedef struct {
++     int         r,
++                 g,
++                 b;
++ }           RGB;
++ 
++ typedef struct {
++     int         h,
++                 s,
++                 v;
++ }           HSV;
++ 
++ void hsv_to_rgb();
++ void rgb_to_hsv();
++ void rgb_to_xcolor();
++ void hsv_to_xcolor();
++ void xcolor_to_hsv();
++ void olgx_hsv_to_3D();
++ void olgx_calculate_3Dcolors();
+diff -c -r --new-file xvorig/xview3.2//clients/props/color_props.c xview3.2//clients/props/color_props.c
+*** xvorig/xview3.2//clients/props/color_props.c
+--- xview3.2//clients/props/color_props.c	Sat Oct  5 07:13:25 1991
+***************
+*** 0 ****
+--- 1,707 ----
++ #ifndef lint
++ static char sccsid[] = "@(#)color_props.c 1.11 91/09/14";
++ #endif
++ 
++ /*
++  * color_props.c - Color property sheet for the OpenWindows Properties program.
++  */
++ 
++ #include <stdio.h>
++ #include <ctype.h>
++ #include <string.h>
++ 
++ #include "props.h"
++ #include "color.h"
++ #include "image.h"
++ 
++ #include <xview/cms.h>
++ #include <xview/svrimage.h>
++ 
++ #define	WORKSPACE_STRING	"Workspace"
++ #define	WINDOW_STRING		"Windows"
++ #define	PALETTE_STRING		"Palette"
++ #define	CUSTOM_STRING		"Custom"
++ #define WORKSPACE_CLASS_RES	"OpenWindows.WorkspaceColor"
++ #define WORKSPACE_RES		"openwindows.workspacecolor"
++ #define WORKSPACE_DEFAULT	"#40a0c0"
++ #define WINDOW_CLASS_RES	"OpenWindows.WindowColor"
++ #define WINDOW_RES		"openwindows.windowcolor"
++ #define WINDOW_DEFAULT		"#cccccc"
++ #define BACK_CLASS_RES		"Window.Color.Background"
++ #define BACK_RES		"window.color.background"
++ #define BACK_DEFAULT		"#ffffff"
++ #define FRAME_STYLE_CLASS_RES	"OpenWindows.Use3DFrames"
++ #define FRAME_STYLE_RES		"OpenWindows.use3dframes"
++ 
++ static int  hues[] = {0, 43, 63, 135, 180, 225, 280, 315};	/* 0 - 360 */
++ static int  saturations[] = {200, 400, 600, 800};		/* 0 - 1000 */
++ static int  brightnesses[] = {750, 900};			/* 0 - 1000 */
++ static int  grays[] = {300, 400, 500, 600, 700, 800};		/* 0 - 1000 */
++ 
++ #define NUM_BRIGHTNESSES	(sizeof(brightnesses)/sizeof(int))
++ #define NUM_HUES		(sizeof(hues)/sizeof(int))
++ #define NUM_SATURATIONS		(sizeof(saturations)/sizeof(int))
++ #define NUM_GRAYS		(sizeof(grays)/sizeof(int))
++ #define NUM_COLUMNS		(NUM_HUES+1)
++ #define NUM_CUSTOM		2
++ 
++ #define COLOR_CHOICES (NUM_HUES*NUM_SATURATIONS*NUM_BRIGHTNESSES+NUM_GRAYS+NUM_CUSTOM)
++ #define NUM_RWCOLORS (BlackIndex + 1)
++ 
++ #define COLORMAP_SIZE (COLOR_CHOICES + NUM_RWCOLORS)
++ 
++ #define CUSTOM_INDEX		0
++ #define WORK_INDEX		0
++ #define WIN_INDEX		1
++ 
++ 
++ static XColor xcolors[COLORMAP_SIZE];
++ static HSV  colors[COLOR_CHOICES];
++ static Cms  cms = XV_NULL;
++ static char *image_string;
++ 
++ static Panel_item h_slider;
++ static Panel_item s_slider;
++ static Panel_item v_slider;
++ static Panel_item h_ticks;
++ static Panel_item s_ticks;
++ static Panel_item v_ticks;
++ static Panel_item palette;
++ static Panel_item which;
++ static Panel_item custom;
++ static int  palette_x;
++ 
++ static int  backup_work_index;
++ static int  backup_win_index;
++ static HSV  backup_xact_win;
++ static HSV  backup_xact_work;
++ 
++ static int  slidermode;		/* palette == 0, sliders == 1 */
++ static int  windowmode;		/* workspace == 0, window == 1 */
++ static int  work_index;
++ static int  win_index;
++ static HSV  xact_win;
++ static HSV  xact_work;
++ static HSV  xact_slider;
++ 
++ #define CHIP_HEIGHT	16
++ #define CHIP_WIDTH	16
++ static unsigned short chip_data[] = {
++     0x7FFE, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
++     0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0x7FFE
++ };
++ static Server_image color_chip;
++ 
++ #define IMAGE_WIDTH 64
++ #define IMAGE_HEIGHT 64
++ static char image_data[IMAGE_WIDTH * IMAGE_HEIGHT];
++ 
++ #define FIRST_SLIDER_Y		40
++ #define SLIDER_GAP		40
++ #define SLIDER_TICK_GAP		4
++ #define SLIDER_WIDTH		(NUM_COLUMNS*(CHIP_WIDTH+8))
++ #define SLIDER_MAX		MAXSV
++ #define SLIDER_MAX_H		MAXH
++ 
++ #define SIMAGE_WIDTH (SLIDER_WIDTH - 44)
++ #define SIMAGE_HEIGHT 16
++ static char hue_data[SIMAGE_WIDTH * SIMAGE_HEIGHT];
++ static char sat_data[SIMAGE_WIDTH * SIMAGE_HEIGHT];
++ static char val_data[SIMAGE_WIDTH * SIMAGE_HEIGHT];
++ static Server_image preview;
++ static Server_image hue_image;
++ static Server_image sat_image;
++ static Server_image val_image;
++ static int  huepix[NUM_HUES];
++ static int  satpix[NUM_SATURATIONS];
++ static int  valpix[NUM_GRAYS];
++ 
++ /*
++  * string_to_xcolor()
++  *   string may be:
++  *     color name:   "Blue", "Pink", etc.
++  *     hex color:   #a0bf1e
++  *     sunview decimal color:   100 220 255
++  *
++  * if it is not one of these formats (or if the name cannot be found),
++  * then string_to_xcolor() returns 1, otherwise it returns 0.
++  */
++ static int
++ string_to_xcolor(s, xcolor)
++     char       *s;
++     XColor     *xcolor;
++ {
++     if (!XParseColor(dsp, DefaultColormap(dsp, 0), s, xcolor)) {
++ 	int         red,
++ 	            green,
++ 	            blue;
++ 	if (sscanf(s, "%d %d %d", &red, &green, &blue) == 3) {
++ 	    xcolor->red = red << 8;
++ 	    xcolor->green = green << 8;
++ 	    xcolor->blue = blue << 8;
++ 	    xcolor->flags = DoRed | DoGreen | DoBlue;
++ 	} else
++ 	    return 1;
++     }
++     /*
++      * XParseColor may not have multiplied by 257...
++      */
++     xcolor->red &= 0xff00;
++     xcolor->green &= 0xff00;
++     xcolor->blue &= 0xff00;
++     return 0;
++ }
++ 
++ static void
++ update_colors()
++ {
++     XColor      xcolors[5];
++ 
++     hsv_to_xcolor(&xact_win, &xcolors[BG1Index]);
++     olgx_hsv_to_3D(&xact_win, &xcolors[BG2Index],
++ 		   &xcolors[BG3Index], &xcolors[WhiteIndex]);
++     hsv_to_xcolor(&xact_work, &xcolors[WorkspaceIndex]);
++     xv_set(cms,
++ 	   CMS_COLOR_COUNT, 5,
++ 	   CMS_INDEX, CMS_CONTROL_COLORS + COLOR_CHOICES,
++ 	   CMS_X_COLORS, xcolors,
++ 	   NULL);
++ }
++ 
++ static void
++ update_choices()
++ {
++     if (slidermode) {
++ 	if (windowmode) {
++ 	    xact_slider = xact_win;
++ 	} else {
++ 	    xact_slider = xact_work;
++ 	}
++ 	xv_set(h_slider,
++ 	       PANEL_VALUE, xact_slider.h,
++ 	       NULL);
++ 	xv_set(s_slider,
++ 	       PANEL_VALUE, xact_slider.s,
++ 	       NULL);
++ 	xv_set(v_slider,
++ 	       PANEL_VALUE, xact_slider.v,
++ 	       NULL);
++     } else {
++ 	int         the_index;
++ 
++ 	the_index = (windowmode) ? win_index : work_index;
++ 
++ 	xv_set(palette, PANEL_VALUE, the_index, NULL);
++     }
++ }
++ 
++ static char *
++ hsv_to_string(hsv)
++     HSV        *hsv;
++ {
++     XColor      xcolor;
++     static char s[8];
++ 
++     hsv_to_xcolor(hsv, &xcolor);
++     sprintf(s, "#%02x%02x%02x",
++ 	    xcolor.red >> 8, xcolor.green >> 8, xcolor.blue >> 8);
++     return strdup(s);
++ }
++ 
++ static void
++ store_custom_colors()
++ {
++     if (work_index == WORK_INDEX) {
++ 	colors[WORK_INDEX] = xact_work;
++ 	hsv_to_xcolor(&xact_work, &xcolors[WORK_INDEX]);
++     }
++     if (win_index == WIN_INDEX) {
++ 	colors[WIN_INDEX] = xact_win;
++ 	hsv_to_xcolor(&xact_win, &xcolors[WIN_INDEX]);
++     }
++     xv_set(cms,
++ 	   CMS_COLOR_COUNT, NUM_CUSTOM,
++ 	   CMS_INDEX, CMS_CONTROL_COLORS + CUSTOM_INDEX,
++ 	   CMS_X_COLORS, xcolors,
++ 	   NULL);
++ }
++ 
++ static void
++ backup_colors()
++ {
++     backup_work_index = work_index;
++     backup_win_index = win_index;
++     backup_xact_win = xact_win;
++     backup_xact_work = xact_work;
++ }
++ 
++ static void
++ restore_colors()
++ {
++     work_index = backup_work_index;
++     win_index = backup_win_index;
++     xact_win = backup_xact_win;
++     xact_work = backup_xact_work;
++ }
++ 
++ void
++ apply_colors()
++ {
++     defaults_set_string(WORKSPACE_CLASS_RES, hsv_to_string(&xact_work));
++     defaults_set_string(WINDOW_CLASS_RES, hsv_to_string(&xact_win));
++     backup_colors();
++     store_custom_colors();
++ }
++ 
++ void
++ reset_colors()
++ {
++     restore_colors();
++     update_choices();
++     update_colors();
++ }
++ 
++ static void
++ which_notify(panel_item, choice, event)
++     Panel_item  panel_item;
++     int         choice;
++     Event      *event;
++ {
++     windowmode = choice;
++     update_choices();
++ }
++ 
++ static void
++ color_notify(panel_item, choice, event)
++     Panel_item  panel_item;
++     int         choice;
++     Event      *event;
++ {
++     if (windowmode) {
++ 	win_index = choice;
++ 	xact_win = colors[win_index];
++     } else {
++ 	work_index = choice;
++ 	xact_work = colors[work_index];
++     }
++     update_colors();
++ }
++ 
++ static void
++ slider_notify(panel_item, value, event)
++     Panel_item  panel_item;
++     int         value;
++     Event      *event;
++ {
++     switch (xv_get(panel_item, PANEL_CLIENT_DATA)) {
++     case 1:
++ 	xact_slider.h = value;
++ 	break;
++     case 2:
++ 	xact_slider.s = value;
++ 	break;
++     case 3:
++ 	xact_slider.v = value;
++ 	break;
++     }
++     if (windowmode) {
++ 	xact_win = xact_slider;
++ 	win_index = WIN_INDEX;
++     } else {
++ 	xact_work = xact_slider;
++ 	work_index = WORK_INDEX;
++     }
++     update_colors();
++ }
++ 
++ static void
++ switch_modes()
++ {
++     if (slidermode) {
++ 	xv_set(palette, XV_SHOW, FALSE, NULL);
++ 	update_choices();
++ 	xv_set(h_slider, XV_SHOW, TRUE, NULL);
++ 	xv_set(s_slider, XV_SHOW, TRUE, NULL);
++ 	xv_set(v_slider, XV_SHOW, TRUE, NULL);
++ 	xv_set(h_ticks, XV_SHOW, TRUE, NULL);
++ 	xv_set(s_ticks, XV_SHOW, TRUE, NULL);
++ 	xv_set(v_ticks, XV_SHOW, TRUE, NULL);
++     } else {
++ 	xv_set(h_slider, XV_SHOW, FALSE, NULL);
++ 	xv_set(s_slider, XV_SHOW, FALSE, NULL);
++ 	xv_set(v_slider, XV_SHOW, FALSE, NULL);
++ 	xv_set(h_ticks, XV_SHOW, FALSE, NULL);
++ 	xv_set(s_ticks, XV_SHOW, FALSE, NULL);
++ 	xv_set(v_ticks, XV_SHOW, FALSE, NULL);
++ 	update_choices();
++ 	xv_set(palette, XV_SHOW, TRUE, NULL);
++     }
++ }
++ 
++ 
++ static void
++ custom_notify(panel_item, choice, event)
++     Panel_item  panel_item;
++     int         choice;
++     Event      *event;
++ {
++     if (slidermode && !choice) {
++ 	store_custom_colors();
++     }
++     slidermode = choice;
++     switch_modes();
++ }
++ 
++ Cms 
++ create_palette()
++ {
++     int         i,
++                 h,
++                 s,
++                 v;
++     XColor      winxcolor;
++     XColor      workxcolor;
++     HSV         background;
++ 
++     i = NUM_CUSTOM;		/* leave room for the user's current defaults */
++ 
++     /* make the gray ramp. */
++ 
++     for (v = 0; v < NUM_GRAYS; v++) {
++ 	valpix[v] = i;
++ 	colors[i].h = 0;
++ 	colors[i].s = 0;
++ 	colors[i].v = grays[v] * MAXSV / 1000;
++ 	hsv_to_xcolor(&colors[i], &xcolors[i]);
++ 	i++;
++     }
++ 
++     /* make the color cube. */
++ 
++     for (h = 0; h < NUM_HUES; h++) {
++ 	for (v = 0; v < NUM_BRIGHTNESSES; v++) {
++ 	    for (s = 0; s < NUM_SATURATIONS; s++) {
++ 		if (v == 1 && h == 6)
++ 		    satpix[s] = i;
++ 		if (v == 1 && s == 1)
++ 		    huepix[h] = i;
++ 		colors[i].h = hues[h];
++ 		colors[i].s = saturations[s] * MAXSV / 1000;
++ 		colors[i].v = brightnesses[v] * MAXSV / 1000;
++ 		hsv_to_xcolor(&colors[i], &xcolors[i]);
++ 		i++;
++ 	    }
++ 	}
++     }
++ 
++     /* Create black. */
++ 
++     xcolors[COLOR_CHOICES + BlackIndex].red = 0;
++     xcolors[COLOR_CHOICES + BlackIndex].green = 0;
++     xcolors[COLOR_CHOICES + BlackIndex].blue = 0;
++     xcolors[COLOR_CHOICES + BlackIndex].flags = DoRed | DoGreen | DoBlue;
++ 
++     /* The default custom colors will be the OpenLook default colors. */
++ 
++     string_to_xcolor(WORKSPACE_DEFAULT, &xcolors[WORK_INDEX]);
++     xcolor_to_hsv(&xcolors[WORK_INDEX], &colors[WORK_INDEX]);
++     string_to_xcolor(WINDOW_DEFAULT, &xcolors[WIN_INDEX]);
++     xcolor_to_hsv(&xcolors[WIN_INDEX], &colors[WIN_INDEX]);
++ 
++     /* Create background (window.color.background) of cmdtool preview... */
++ 
++     string_to_xcolor(defaults_get_string(BACK_RES, BACK_CLASS_RES,
++ 					 BACK_DEFAULT),
++ 		     &xcolors[COLOR_CHOICES + BackIndex]);
++ 
++     cms = xv_create(0, CMS,
++ 		    XV_VISUAL, xv_get(frame, XV_VISUAL),
++ 		    CMS_TYPE, XV_DYNAMIC_CMS,
++ 		    CMS_CONTROL_CMS, TRUE,
++ 		    CMS_NAME, "palette",
++ 		    CMS_SIZE, CMS_CONTROL_COLORS + COLORMAP_SIZE,
++ 		    CMS_X_COLORS, xcolors,
++ 		    NULL);
++ 
++     /* look in resources for window and workspace defaults */
++ 
++     string_to_xcolor(defaults_get_string(WORKSPACE_RES, WORKSPACE_CLASS_RES,
++ 					 WORKSPACE_DEFAULT),
++ 		     &workxcolor);
++     xcolor_to_hsv(&workxcolor, &xact_work);
++ 
++     string_to_xcolor(defaults_get_string(WINDOW_RES, WINDOW_CLASS_RES,
++ 					 WINDOW_DEFAULT),
++ 		     &winxcolor);
++     xcolor_to_hsv(&winxcolor, &xact_win);
++ 
++     /* find out if any palette entries match the resource colors exactly */
++ 
++ #ifdef DEBUG
++     printf("workcolor is %04x %04x %04x\n",
++ 	   workxcolor.red, workxcolor.green, workxcolor.blue);
++     printf("wincolor  is %04x %04x %04x\n",
++ 	   winxcolor.red, winxcolor.green, winxcolor.blue);
++ #endif
++ 
++     work_index = WORK_INDEX;
++     win_index = WIN_INDEX;
++     for (i = NUM_CUSTOM; i < COLOR_CHOICES; i++) {
++ 	int         r = xcolors[i].red & 0xff00;
++ 	int         g = xcolors[i].green & 0xff00;
++ 	int         b = xcolors[i].blue & 0xff00;
++ 	if (workxcolor.red == r &&
++ 		workxcolor.green == g &&
++ 		workxcolor.blue == b)
++ 	    work_index = i;
++ 	if (winxcolor.red == r &&
++ 		winxcolor.green == g &&
++ 		winxcolor.blue == b)
++ 	    win_index = i;
++     }
++ 
++     store_custom_colors();
++     return cms;
++ }
++ 
++ 
++ void
++ create_color_panel()
++ {
++     char       *colorstr;
++     int         i,
++                 j;
++ 
++     /* build the preview image... */
++ 
++     if (defaults_get_boolean(FRAME_STYLE_RES, FRAME_STYLE_CLASS_RES, FALSE))
++ 	image_string = image_string_3dframes;
++     else
++ 	image_string = image_string_2dframes;
++ 
++     for (i = 0; i < IMAGE_WIDTH * IMAGE_HEIGHT; i++) {
++ 	j = image_string[i] - '0';
++ 	/* less than 7 is one of my colors, 7 & 8 are CMS_CONTROL colors */
++ 	switch (j) {
++ 	case 7:
++ 	    j = 2;		/* shadow color */
++ 	    break;
++ 	case 8:
++ 	    j = 3;		/* hilight color */
++ 	    break;
++ 	default:
++ 	    j += CMS_CONTROL_COLORS + COLOR_CHOICES;
++ 	    break;
++ 	}
++ 	image_data[i] = j;
++     }
++     preview = xv_create(panel_group[COLOR_PANEL], PANEL_MESSAGE,
++ 			PANEL_LABEL_IMAGE,
++ 			xv_create(XV_NULL, SERVER_IMAGE,
++ 				  SERVER_IMAGE_COLORMAP, "palette",
++ 				  XV_WIDTH, IMAGE_WIDTH,
++ 				  XV_HEIGHT, IMAGE_HEIGHT,
++ 				  SERVER_IMAGE_DEPTH, 8,
++ 				  SERVER_IMAGE_X_BITS, image_data,
++ 				  NULL),
++ 			XV_Y, 20,
++ 			XV_HELP_DATA, "props:AppImageInfo",
++ 			NULL);
++ 
++     which = xv_create(panel_group[COLOR_PANEL], PANEL_CHOICE,
++ 		      PANEL_CHOICE_STRINGS,
++ 		      LOCALIZE(WORKSPACE_STRING), LOCALIZE(WINDOW_STRING),
++ 		      NULL,
++ 		      PANEL_NOTIFY_PROC, which_notify,
++ 		      PANEL_NEXT_ROW, -1,
++ 		      PANEL_CHOICE_NCOLS, 1,
++ 		      PANEL_VALUE, 0,
++ 		      XV_HELP_DATA, "props:ColorChoiceInfo",
++ 		      NULL);
++ 
++     custom = xv_create(panel_group[COLOR_PANEL], PANEL_CHOICE,
++ 		       PANEL_CHOICE_STRINGS,
++ 		       LOCALIZE(PALETTE_STRING), LOCALIZE(CUSTOM_STRING),
++ 		       NULL,
++ 		       PANEL_NOTIFY_PROC, custom_notify,
++ 		       PANEL_NEXT_ROW, -1,
++ 		       PANEL_CHOICE_NCOLS, 1,
++ 		       PANEL_VALUE, 0,
++ 		       XV_HELP_DATA, "props:CustomColorInfo",
++ 		       NULL);
++ 
++     { int a,b,c;
++ 
++ 	a = xv_get(preview, XV_WIDTH);
++ 	b = xv_get(which, XV_WIDTH);
++ 	c = xv_get(custom, XV_WIDTH);
++ 
++ 	palette_x = MAX_VALUE(MAX_VALUE(a,b),c) + 40;
++     }	
++ 
++     xv_set(preview,
++ 	   XV_X, (palette_x - IMAGE_WIDTH) / 2,
++ 	   NULL);
++     xv_set(which,
++ 	   XV_X, (palette_x - xv_get(which, XV_WIDTH)) / 2,
++ 	   NULL);
++     xv_set(custom,
++ 	   XV_X, (palette_x - xv_get(custom, XV_WIDTH)) / 2,
++ 	   NULL);
++ 
++     palette = xv_create(panel_group[COLOR_PANEL], PANEL_CHOICE,
++ 			XV_SHOW, FALSE,
++ 			PANEL_CHOICE_NCOLS, NUM_COLUMNS,
++ 			PANEL_LAYOUT, PANEL_VERTICAL,
++ 			PANEL_NOTIFY_LEVEL, PANEL_ALL,
++ 			PANEL_NOTIFY_PROC, color_notify,
++ 			XV_HELP_DATA, "props:PaletteInfo",
++ 			XV_X, palette_x,
++ 			XV_Y, 10,
++ 			NULL);
++ 
++     h_slider = xv_create(panel_group[COLOR_PANEL], PANEL_SLIDER,
++ 			 XV_SHOW, FALSE,
++ 			 PANEL_LABEL_STRING, LOCALIZE("Hue:"),
++ 			 PANEL_CLIENT_DATA, 1,
++ 			 PANEL_NOTIFY_LEVEL, PANEL_ALL,
++ 			 PANEL_SHOW_RANGE, FALSE,
++ 			 PANEL_SHOW_VALUE, FALSE,
++ 			 PANEL_VALUE, 0,
++ 			 PANEL_MIN_VALUE, 0,
++ 			 PANEL_MAX_VALUE, SLIDER_MAX_H,
++ 			 PANEL_NOTIFY_PROC, slider_notify,
++ 			 XV_HELP_DATA, "props:HueSlider",
++ 			 NULL);
++     for (j = 0; j < SIMAGE_HEIGHT; j++)
++ 	for (i = 0; i < SIMAGE_WIDTH; i++)
++ 	    hue_data[j * SIMAGE_WIDTH + i] = CMS_CONTROL_COLORS +
++ 		huepix[i * NUM_HUES / SIMAGE_WIDTH];
++     hue_image = xv_create(XV_NULL, SERVER_IMAGE,
++ 			  SERVER_IMAGE_COLORMAP, "palette",
++ 			  XV_WIDTH, SIMAGE_WIDTH,
++ 			  XV_HEIGHT, SIMAGE_HEIGHT,
++ 			  SERVER_IMAGE_DEPTH, 8,
++ 			  SERVER_IMAGE_X_BITS, hue_data,
++ 			  NULL);
++     h_ticks = xv_create(panel_group[COLOR_PANEL], PANEL_MESSAGE,
++ 			PANEL_LABEL_IMAGE, hue_image,
++ 			NULL);
++ 
++ 
++     s_slider = xv_create(panel_group[COLOR_PANEL], PANEL_SLIDER,
++ 			 XV_SHOW, FALSE,
++ 			 PANEL_LABEL_STRING, LOCALIZE("Saturation:"),
++ 			 PANEL_CLIENT_DATA, 2,
++ 			 PANEL_NOTIFY_LEVEL, PANEL_ALL,
++ 			 PANEL_SHOW_RANGE, FALSE,
++ 			 PANEL_SHOW_VALUE, FALSE,
++ 			 PANEL_VALUE, 0,
++ 			 PANEL_MIN_VALUE, 0,
++ 			 PANEL_MAX_VALUE, SLIDER_MAX,
++ 			 PANEL_NOTIFY_PROC, slider_notify,
++ 			 XV_HELP_DATA, "props:SaturationSlider",
++ 			 NULL);
++     for (j = 0; j < SIMAGE_HEIGHT; j++)
++ 	for (i = 0; i < SIMAGE_WIDTH; i++)
++ 	    sat_data[j * SIMAGE_WIDTH + i] = CMS_CONTROL_COLORS +
++ 		satpix[i * NUM_SATURATIONS / SIMAGE_WIDTH];
++     sat_image = xv_create(XV_NULL, SERVER_IMAGE,
++ 			  SERVER_IMAGE_COLORMAP, "palette",
++ 			  XV_WIDTH, SIMAGE_WIDTH,
++ 			  XV_HEIGHT, SIMAGE_HEIGHT,
++ 			  SERVER_IMAGE_DEPTH, 8,
++ 			  SERVER_IMAGE_X_BITS, sat_data,
++ 			  NULL);
++     s_ticks = xv_create(panel_group[COLOR_PANEL], PANEL_MESSAGE,
++ 			PANEL_LABEL_IMAGE, sat_image,
++ 			NULL);
++ 
++ 
++     v_slider = xv_create(panel_group[COLOR_PANEL], PANEL_SLIDER,
++ 			 XV_SHOW, FALSE,
++ 			 PANEL_LABEL_STRING, LOCALIZE("Brightness:"),
++ 			 PANEL_CLIENT_DATA, 3,
++ 			 PANEL_NOTIFY_LEVEL, PANEL_ALL,
++ 			 PANEL_SHOW_RANGE, FALSE,
++ 			 PANEL_SHOW_VALUE, FALSE,
++ 			 PANEL_VALUE, 0,
++ 			 PANEL_MIN_VALUE, 0,
++ 			 PANEL_MAX_VALUE, SLIDER_MAX,
++ 			 PANEL_NOTIFY_PROC, slider_notify,
++ 			 XV_HELP_DATA, "props:BrightnessSlider",
++ 			 NULL);
++     for (j = 0; j < SIMAGE_HEIGHT; j++)
++ 	for (i = 0; i < SIMAGE_WIDTH; i++)
++ 	    val_data[j * SIMAGE_WIDTH + i] = CMS_CONTROL_COLORS +
++ 		valpix[i * NUM_GRAYS / SIMAGE_WIDTH];
++     val_image = xv_create(XV_NULL, SERVER_IMAGE,
++ 			  SERVER_IMAGE_COLORMAP, "palette",
++ 			  XV_WIDTH, SIMAGE_WIDTH,
++ 			  XV_HEIGHT, SIMAGE_HEIGHT,
++ 			  SERVER_IMAGE_DEPTH, 8,
++ 			  SERVER_IMAGE_X_BITS, val_data,
++ 			  NULL);
++     v_ticks = xv_create(panel_group[COLOR_PANEL], PANEL_MESSAGE,
++ 			PANEL_LABEL_IMAGE, val_image,
++ 			NULL);
++ 
++ 
++     { int a,b,c;
++ 
++ 	a = xv_get(h_slider, PANEL_LABEL_WIDTH);
++ 	b = xv_get(s_slider, PANEL_LABEL_WIDTH);
++ 	c = xv_get(v_slider, PANEL_LABEL_WIDTH);
++ 
++ 	i = MAX_VALUE(MAX_VALUE(a,b),c);
++     }
++     j = SLIDER_GAP + xv_get(h_slider, XV_HEIGHT);
++     xv_set(h_slider,
++ 	   PANEL_VALUE_X, palette_x + i,
++ 	   PANEL_VALUE_Y, FIRST_SLIDER_Y,
++ 	   PANEL_SLIDER_WIDTH, SLIDER_WIDTH - j,
++ 	   NULL);
++     xv_set(s_slider,
++ 	   PANEL_VALUE_X, palette_x + i,
++ 	   PANEL_VALUE_Y, xv_get(h_slider, PANEL_VALUE_Y) + j,
++ 	   PANEL_SLIDER_WIDTH, SLIDER_WIDTH - j,
++ 	   NULL);
++     xv_set(v_slider,
++ 	   PANEL_VALUE_X, palette_x + i,
++ 	   PANEL_VALUE_Y, xv_get(s_slider, PANEL_VALUE_Y) + j,
++ 	   PANEL_SLIDER_WIDTH, SLIDER_WIDTH - j,
++ 	   NULL);
++ 
++     xv_set(h_ticks,
++ 	   XV_X, palette_x + i,
++ 	   XV_Y, xv_get(h_slider, PANEL_VALUE_Y)
++ 	   + xv_get(h_slider, XV_HEIGHT)
++ 	   + SLIDER_TICK_GAP,
++ 	   NULL);
++     xv_set(s_ticks,
++ 	   XV_X, palette_x + i,
++ 	   XV_Y, xv_get(h_ticks, XV_Y) + j,
++ 	   NULL);
++     xv_set(v_ticks,
++ 	   XV_X, palette_x + i,
++ 	   XV_Y, xv_get(s_ticks, XV_Y) + j,
++ 	   NULL);
++ 
++     color_chip = xv_create(XV_NULL, SERVER_IMAGE,
++ 			   XV_WIDTH, CHIP_WIDTH,
++ 			   XV_HEIGHT, CHIP_HEIGHT,
++ 			   SERVER_IMAGE_DEPTH, 1,
++ 			   SERVER_IMAGE_BITS, chip_data,
++ 			   NULL);
++     for (i = 0; i < COLOR_CHOICES; i++)
++ 	xv_set(palette,
++ 	       PANEL_CHOICE_IMAGE, i, color_chip,
++ 	       PANEL_CHOICE_COLOR, i, CMS_CONTROL_COLORS + i,
++ 	       NULL);
++ 
++     xv_set(custom, PANEL_VALUE, slidermode, NULL);
++     update_colors();
++     switch_modes();
++     backup_colors();
++     window_fit_width(panel_group[COLOR_PANEL]);
++ }
+diff -c -r --new-file xvorig/xview3.2//clients/props/image.h xview3.2//clients/props/image.h
+*** xvorig/xview3.2//clients/props/image.h
+--- xview3.2//clients/props/image.h	Sat Oct  5 07:13:29 1991
+***************
+*** 0 ****
+--- 1,165 ----
++ /*
++  * @(#)image.h 1.3 91/09/14
++  */
++ 
++ /*
++  * image.h - 3D preview window for Color Properties.
++  */
++ 
++ /*
++  * 0 = WorkspaceColor		Desktop	Selected by user
++  * 1 = WindowColor		BG1	Selected by user
++  * 2 = IndentColor		BG2	90% of BG1
++  * 3 = ShadowColor		BG3	50% of BG1
++  * 4 = HighLightColor		White	120% of BG1
++  * 5 = BackgroundColor		This is used in the preview window ttysw.
++  * 6 = Black			Black
++  * 7 = shadow in cms control segment
++  * 8 = hilight in cms control segment
++  */
++ 
++ #define WorkspaceIndex	0
++ #define BG1Index	1
++ #define BG2Index	2
++ #define BG3Index	3
++ #define WhiteIndex	4
++ #define BackIndex	5
++ #define BlackIndex	6
++ 
++ /* Black has to be last since XView CMS_CONTROL_COLORS does not include
++  * black, it expects the last color in a cms to be black... yuck!
++  */
++ 
++ char *image_string_3dframes = "\
++ 7777777777777777777777777777777777777777777777777777777777777777\
++ 7777777777777777777777777777777777777777777777777777777777777778\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000444444444444444444444444444444444444444444444444444488\
++ 7700000000411111111131111111111111111111111111111111111111111188\
++ 7700000000411111111131111111111111111111111111111111111111111188\
++ 7700000000411111111131111111111111111111111111111111111111111188\
++ 7700000000411133333331111111111111111111111111111111111111111188\
++ 7700000000411133333333332444444444444442333333333333333333333388\
++ 7700000000411133222222224111111111111113222222222222222222222288\
++ 7700000000411133222222224111111111111113222222222222222222222288\
++ 7700000000411133222222224111111111111113222222222222222222222288\
++ 7700000000411133222222224111666666611113222222222222222222222288\
++ 7700000000433333222222224111622222411113222222222222222222222288\
++ 7700000000411113222222224111162224111113222222222222222222222288\
++ 7700000000411113222222224111162224111113222222222222222222222288\
++ 7700000000411113222222224111116241111113222222222222222222222288\
++ 7700000000411113222222224111116241111113222222222222222222222288\
++ 7700000000411113222222224111111411111113222222222222222222222288\
++ 7700000000411113222222224111111111111113222222222222222222222288\
++ 7700000000411113222222224111111111111113222222222222222222222288\
++ 7700000000411113222222224111111111111113222222222222222222222288\
++ 7700000000411113222222222333333333333332222222222222222222222288\
++ 7700000000411113444444444444444444444444444444444444444444444488\
++ 7700000000411111111111111111111111111111111111111111111111111188\
++ 7700000000411111111111111111111111111111111111111111111111111188\
++ 7700000000411111111111111111111111111111111111111111111111111188\
++ 7700000000411111111111111111111111111111111111111111111111111188\
++ 7700000000411111111111111111111111111111111111111111111111111188\
++ 7700000000411111144444444444443111666666666666666666666666666688\
++ 7700000000411111141111111111113111655555555555555555555555555588\
++ 7700000000411111141111111111113111655555555555555555555555555588\
++ 7700000000411111141111111111113111655555555665555555555555555588\
++ 7700000000411111141111111111113111655555556556556555555555555588\
++ 7700000000411111143333333333333111655555556556565555555555555588\
++ 7700000000411111111111111111111111655555555665655555555555555588\
++ 7700000000411111111111111111111111655555555556555555555555555588\
++ 7700000000411111111111113111111111655555555565665555555555555588\
++ 7700000000411111111111131311111111655555555656556555555555555588\
++ 7700000000411111111111113111111111655555556556556555555555555588\
++ 7700000000411111111111131311111111655555555555665555555565555588\
++ 7700000000411111111111113111111111655555555555555555555666555588\
++ 7700000000411111111111131311111111655555555555555555555666555588\
++ 7700000000411111111111113111111111655555555555555555556666655588\
++ 7700000000411111111111131311111111655555555555555555556666655588\
++ 7700000000411111111111113111111111655555555555555555566666665588\
++ 7700000000411111111111131311111111655555555555555555566666665588\
++ 7700000000411111111111113111111111655555555555555555555555555588\
++ 7888888888888888888888888888888888888888888888888888888888888888\
++ 8888888888888888888888888888888888888888888888888888888888888888\
++ ";
++ 
++ char *image_string_2dframes = "\
++ 7777777777777777777777777777777777777777777777777777777777777777\
++ 7777777777777777777777777777777777777777777777777777777777777778\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000000000000000000000000000000000000000000000000000000088\
++ 7700000000444444444446666666666666666666666666666666666666666688\
++ 7700000000411111111136666666666666666666666666666666666666666688\
++ 7700000000411111111131111111111111111111111111111111111111111188\
++ 7700000000411111111131111111111111111111111111111111111111111188\
++ 7700000000411133333331111111111111111111111111111111111111111188\
++ 7700000000411133333333332444444444444442333333333333333333333388\
++ 7700000000411133222222224111111111111113222222222222222222222288\
++ 7700000000411133222222224111111111111113222222222222222222222288\
++ 7700000000411133222222224111111111111113222222222222222222222288\
++ 7700000000411133222222224111666666611113222222222222222222222288\
++ 7700000000433333222222224111622222411113222222222222222222222288\
++ 7700000000661113222222224111162224111113222222222222222222222288\
++ 7700000000661113222222224111162224111113222222222222222222222288\
++ 7700000000661113222222224111116241111113222222222222222222222288\
++ 7700000000661113222222224111116241111113222222222222222222222288\
++ 7700000000661113222222224111111411111113222222222222222222222288\
++ 7700000000661113222222224111111111111113222222222222222222222288\
++ 7700000000661113222222224111111111111113222222222222222222222288\
++ 7700000000661113222222224111111111111113222222222222222222222288\
++ 7700000000661113222222222333333333333332222222222222222222222288\
++ 7700000000661113444444444444444444444444444444444444444444444488\
++ 7700000000661111111111111111111111111111111111111111111111111188\
++ 7700000000661111111111111111111111111111111111111111111111111188\
++ 7700000000661111111111111111111111111111111111111111111111111188\
++ 7700000000661111111111111111111111111111111111111111111111111188\
++ 7700000000661111111111111111111111111111111111111111111111111188\
++ 7700000000661111144444444444443111666666666666666666666666666688\
++ 7700000000661111141111111111113111655555555555555555555555555588\
++ 7700000000661111141111111111113111655555555555555555555555555588\
++ 7700000000661111141111111111113111655555555665555555555555555588\
++ 7700000000661111141111111111113111655555556556556555555555555588\
++ 7700000000661111143333333333333111655555556556565555555555555588\
++ 7700000000661111111111111111111111655555555665655555555555555588\
++ 7700000000661111111111111111111111655555555556555555555555555588\
++ 7700000000661111111111113111111111655555555565665555555555555588\
++ 7700000000661111111111131311111111655555555656556555555555555588\
++ 7700000000661111111111113111111111655555556556556555555555555588\
++ 7700000000661111111111131311111111655555555555665555555565555588\
++ 7700000000661111111111113111111111655555555555555555555666555588\
++ 7700000000661111111111131311111111655555555555555555555666555588\
++ 7700000000661111111111113111111111655555555555555555556666655588\
++ 7700000000661111111111131311111111655555555555555555556666655588\
++ 7700000000661111111111113111111111655555555555555555566666665588\
++ 7700000000661111111111131311111111655555555555555555566666665588\
++ 7700000000661111111111113111111111655555555555555555555555555588\
++ 7888888888888888888888888888888888888888888888888888888888888888\
++ 8888888888888888888888888888888888888888888888888888888888888888\
++ ";
+diff -c -r --new-file xvorig/xview3.2//clients/props/l10n_props.c xview3.2//clients/props/l10n_props.c
+*** xvorig/xview3.2//clients/props/l10n_props.c
+--- xview3.2//clients/props/l10n_props.c	Tue Aug 10 19:28:28 1993
+***************
+*** 0 ****
+--- 1,647 ----
++ #ifndef lint
++ static char *sccsid = "@(#)l10n_props.c 1.6 91/09/14";
++ #endif
++ 
++ /*
++  * l10n_props.c - Localization property sheet for the OpenWindows Workspace 
++  *  		  Properties program.
++  */
++ 
++ #include <locale.h>
++ #ifdef OW_I18N
++ #include <widec.h>
++ #endif
++ #include <string.h>
++ #include <stdio.h>
++ #include <sys/param.h>
++ #include <sys/types.h>
++ #include "props.h"	
++ #include "l10n_props.h"
++ 
++ #ifdef SYSV
++ #define bcopy(a,b,c) memmove(b,a,c)
++ #endif
++ 
++ #if defined linux && !defined LC_MESSAGES
++ #define LC_MESSAGES LC_RESPONSE
++ #endif
++ 
++ #ifdef OW_I18N
++ 
++ #ifdef notdef
++ static wchar_t	*l10n_time_convert();
++ #endif
++ 
++ /*
++  * Wide char constant table (this trick necessary until we can get the
++  * ANSI/C compiler.
++  */
++ static wchar_t	_wcs_basic_setting[] =
++ 	{'b', 'a', 's', 'i', 'c', '_', 's', 'e', 't', 't', 'i', 'n', 'g', 0};
++ static wchar_t	_wcs_input_language[] =
++ 	{'i', 'n', 'p', 'u', 't', '_', 'l', 'a', 'n', 'g', 'u', 'a', 'g', 'e',
++ 	0};
++ static wchar_t	_wcs_display_language[] =
++ 	{'d', 'i', 's', 'p', 'l', 'a', 'y', '_', 'l', 'a', 'n', 'g', 'u', 'a',
++ 	'g', 'e', 0};
++ static wchar_t	_wcs_time_format[] =
++ 	{'t', 'i', 'm', 'e', '_', 'f', 'o', 'r', 'm', 'a', 't', 0};
++ static wchar_t	_wcs_numeric_format[] =
++ 	{'n', 'u', 'm', 'e', 'r', 'i', 'c', '_', 'f', 'o', 'r', 'm', 'a', 't',
++ 	0};
++ 
++ #define	CLASS_NAME_LEN	20
++ l10n_config_list_t	l10n_config_basic_setting[] = {
++ #define	BASIC_SETTING		0
++ {_wcs_basic_setting,	"basicLocale",	D_string, NULL},
++ 
++ {0},
++ };
++ 
++ l10n_config_list_t	l10n_config_initial_specific_setting[] = {
++ #define	INPUT_LANGUAGE		0
++ {_wcs_input_language,	"inputLang", 	D_string, NULL},
++ 
++ #define	DISPLAY_LANGUAGE	1
++ {_wcs_display_language, "displayLang",	D_string, NULL},
++ 
++ #define	TIME_FORMAT		2
++ {_wcs_time_format,	"timeFormat",	D_string, NULL},
++ 
++ #define	NUMERIC_FORMAT		3
++ {_wcs_numeric_format,	"numeric",	D_string, NULL},
++ 
++ #define	SS_CATEGORY		4
++ {0}
++ };
++ #else
++ 
++ #define	CLASS_NAME_LEN	20
++ l10n_config_list_t	l10n_config_basic_setting[] = {
++ #define	BASIC_SETTING		0
++ {"basic_setting",	"basicLocale",	D_string, NULL},
++ 
++ {0},
++ };
++ 
++ l10n_config_list_t	l10n_config_initial_specific_setting[] = {
++ #define	INPUT_LANGUAGE		0
++ {"input_language",	"inputLang", 	D_string, NULL},
++ 
++ #define	DISPLAY_LANGUAGE	1
++ {"display_language", "displayLang",	D_string, NULL},
++ 
++ #define	TIME_FORMAT		2
++ {"time_format",	"timeFormat",	D_string, NULL},
++ 
++ 
++ #define	NUMERIC_FORMAT		3
++ {"numeric_format",	"numeric",	D_string, NULL},
++ 
++ #define	SS_CATEGORY		4
++ {0}
++ };
++ #endif OW_I18N
++ 
++ l10n_config_sss_t		*l10n_config_sss = NULL;
++ static l10n_config_sss_t	*l10n_config_sss_cur = NULL;
++ 
++ l10n_config_sss_t		*sss, *sss_past;
++ static char			lc_messages[LOCALE_NAME_LEN];
++ 
++ 
++ static l10n_config_list_item_t	*l10n_config_slot2ptr();
++ static int			l10n_ss_setup();
++ static				l10n_set_choice();
++ 
++ Panel_item	l10n_bs, l10n_ss, l10n_ss_display_language,
++ 		l10n_ss_input_language, l10n_ss_time_format,
++ 		l10n_ss_numeric_format, l10n_ss_il_supplement;
++ 
++ 
++ static l10n_config_list_item_t *
++ l10n_config_slot2ptr(list, slotno)
++ 	l10n_config_list_t	*list;
++ 	register int		slotno;
++ {
++ 	register l10n_config_list_item_t	*item;
++ 
++ 
++ 	for (item = list->items; item != NULL; item = item->next)
++ 		if (slotno-- <= 0)
++ 			break;
++ 	if (item == NULL)
++ 		printf("internal error slotno#%d is not there\n", slotno);
++ 	return item;
++ }
++ 
++ static int
++ l10n_ss_setup(locale)
++ 	char	*locale;
++ {
++ 
++ 	for (sss = l10n_config_sss; sss != NULL;
++ 	     sss_past = sss, sss = sss->next)
++ 		if (strcmp(sss->locale, locale) == 0)
++ 			break;
++ 	if (sss != NULL)
++ 		goto display;
++ 	sss = (l10n_config_sss_t *) calloc(1, sizeof(l10n_config_sss_t));
++ 	if (l10n_config_sss == NULL)
++ 		l10n_config_sss = sss;
++ 	else
++ 		sss_past->next = sss;
++ 	sss->locale = strdup(locale);
++ 	sss->list = (l10n_config_list_t *)
++ 			malloc(sizeof(l10n_config_initial_specific_setting));
++ 	bcopy(l10n_config_initial_specific_setting, sss->list,
++ 			sizeof(l10n_config_initial_specific_setting));
++ 
++ 	/* 
++ 	 * Retrieve Specific Settings from configuration files.
++ 	 */
++ 	strcpy(lc_messages, setlocale(LC_MESSAGES, NULL));
++ 	if (l10n_config_read(lc_messages, locale, sss->list) == -1) {
++ 		fprintf(stderr, (char *)LOCALIZE("Invalid Specific Settings for Category: Localization.\n"));
++ 		return (-1);
++ 	}
++ 
++ display:
++ 
++ 	l10n_config_sss_cur = sss;
++ 	return(1);
++ }
++ 
++ static
++ l10n_set_choice(pi, list, xrdb_default)
++ 	Panel_item		pi;
++ 	l10n_config_list_t	*list;
++ 	int			xrdb_default;
++ {
++ 	register l10n_config_list_item_t	*item;
++ 	register int		count;
++ 	char			*texts[MAX_CHOICES];
++ 	int			i;
++ 
++ 
++ 	for (count = 0, item = list->items; item != NULL; item = item->next)
++ 	{
++ 		if (count >= MAX_CHOICES)
++ 		{
++ 			fprintf(stderr, (char *)LOCALIZE("Maximum # of choices in item is [%d] in Category: Localization\n"), MAX_CHOICES);
++ 			break;
++ 		}
++ 
++ #ifdef OW_I18N
++ 		/* Convert mbs to wchar */
++ 		if (item->mbs_label == NULL)
++ 		{
++ 			item->mbs_label = malloc(wslen(item->label)
++ 						* sizeof(wchar_t) + 1);
++ 			wstostr(item->mbs_label, item->label);
++ 		}
++ #else
++ 		if (item->mbs_label == NULL)
++ 		{
++ 			item->mbs_label = malloc(strlen(item->label)
++ 						* sizeof(char) + 1);
++ 			strcpy(item->mbs_label, item->label);
++ 		}
++ 
++ #endif 
++ 	
++ 		texts[count] = item->mbs_label;
++ 		count++;
++ 	}
++ 
++ 	xv_set(pi, PANEL_CHOICE_STRINGS, LOCALIZE("Choice"), 0, 0);
++ 	for (i=0; i< count; i++)
++ 		xv_set(pi, PANEL_CHOICE_STRING, i, (char *)texts[i], NULL);
++ 	
++ 	if (xrdb_default)
++ 		xv_set(pi,
++ 	       		PANEL_VALUE,		list->current_value,
++ 	       		PANEL_DEFAULT_VALUE,	list->default_value,
++ 	       		NULL);
++ 	else
++ 		xv_set(pi,
++ 	       		PANEL_VALUE,		list->default_value,
++ 	       		PANEL_DEFAULT_VALUE,	list->default_value,
++ 	       		NULL);
++ 		
++ }
++ 
++ reset_localization()
++ {
++ 
++ 	l10n_config_list_item_t	*l_item = NULL;
++ 	Panel_item		msg_item = 0;
++     	Description 		*id;
++ 
++ 	if (!(id = (Description *)xv_get(l10n_bs, PANEL_CLIENT_DATA))) {
++ 		printf("Bad client data for Basic Setting\n");
++ 	} else {
++ 		
++                     char       *value;
++                     int         i = 0;
++                     char       *options_copy;
++                     char       *scanner;
++  
++                     value = defaults_get_string(id->name, id->class,
++                                                 id->default_value);
++                     options_copy = (char *) strdup(id->misc);
++                     scanner = strtok(options_copy, ":");
++                     while (scanner != NULL && strcmp(scanner, value)) {
++                         i++;
++                         scanner = strtok(NULL, ":");
++                     }
++                     if (!scanner)
++                         i = 0;
++  
++                     free(options_copy);
++  
++                     xv_set(id->panel_item, PANEL_VALUE, i, NULL);
++ 	}
++ 
++         l_item = l10n_config_slot2ptr(
++                         &l10n_config_basic_setting[BASIC_SETTING], 
++ 			xv_get(l10n_bs, PANEL_VALUE));
++         if (l_item != NULL)
++ 		l10n_ss_setup(l_item->value);
++ 
++ 	/*
++ 	 *Reset Specific Settings based on Basic Setting 
++ 	 */
++ 
++ 	l10n_set_choice(l10n_ss_input_language,
++ 			&sss->list[INPUT_LANGUAGE], TRUE);
++ 	l10n_set_client_data(l10n_ss_input_language,
++ 			 &sss->list[INPUT_LANGUAGE], msg_item,
++ 			(Description *)xv_get(l10n_ss_input_language,
++ 			 PANEL_CLIENT_DATA));
++ 
++ 	l10n_set_choice(l10n_ss_display_language,
++ 			&sss->list[DISPLAY_LANGUAGE], TRUE);
++ 	l10n_set_client_data(l10n_ss_display_language,
++ 			&sss->list[DISPLAY_LANGUAGE], msg_item,
++ 			(Description *)xv_get(l10n_ss_display_language,
++ 			PANEL_CLIENT_DATA));
++ 
++ 	l10n_set_choice(l10n_ss_time_format,
++ 			&sss->list[TIME_FORMAT], TRUE);
++ 	l10n_set_client_data(l10n_ss_time_format,
++ 			&sss->list[TIME_FORMAT], msg_item,
++ 			(Description *)xv_get(l10n_ss_time_format,
++ 			PANEL_CLIENT_DATA));
++ 
++ 	l10n_set_choice(l10n_ss_numeric_format,
++ 			&sss->list[NUMERIC_FORMAT], TRUE);
++ 	l10n_set_client_data(l10n_ss_numeric_format,
++ 			&sss->list[NUMERIC_FORMAT], msg_item,
++ 			(Description *)xv_get(l10n_ss_numeric_format,
++ 			PANEL_CLIENT_DATA));
++ 
++ }
++ 
++ /*
++  * Notify callback function for `l10n_bs'.
++  */
++ void
++ l10n_bs_notify(item, value, event)
++ 	Panel_item	item;
++ 	int		value;
++ 	Event		*event;
++ {	
++ 	l10n_config_list_item_t	*l_item;
++ 	Panel_item		msg_item = 0;
++ 
++ 	l10n_config_basic_setting[BASIC_SETTING].current_value = value;
++         l_item = l10n_config_slot2ptr(
++                         &l10n_config_basic_setting[BASIC_SETTING], value);
++         l10n_ss_setup(l_item->value);
++ 
++ 	/*
++ 	 *Reset Specific Settings based on Basic Setting 
++ 	 */
++ 
++ 	l10n_set_choice(l10n_ss_input_language,
++ 			&sss->list[INPUT_LANGUAGE], FALSE);
++ 	l10n_set_client_data(l10n_ss_input_language,
++ 			 &sss->list[INPUT_LANGUAGE], msg_item,
++ 			(Description *)xv_get(l10n_ss_input_language,
++ 			 PANEL_CLIENT_DATA));
++ 
++ 	l10n_set_choice(l10n_ss_display_language,
++ 			&sss->list[DISPLAY_LANGUAGE], FALSE);
++ 	l10n_set_client_data(l10n_ss_display_language,
++ 			&sss->list[DISPLAY_LANGUAGE], msg_item,
++ 			(Description *)xv_get(l10n_ss_display_language,
++ 			PANEL_CLIENT_DATA));
++ 
++ 	l10n_set_choice(l10n_ss_time_format,
++ 			&sss->list[TIME_FORMAT], FALSE);
++ 	l10n_set_client_data(l10n_ss_time_format,
++ 			&sss->list[TIME_FORMAT], msg_item,
++ 			(Description *)xv_get(l10n_ss_time_format,
++ 			PANEL_CLIENT_DATA));
++ 
++ 	l10n_set_choice(l10n_ss_numeric_format,
++ 			&sss->list[NUMERIC_FORMAT], FALSE);
++ 	l10n_set_client_data(l10n_ss_numeric_format,
++ 			&sss->list[NUMERIC_FORMAT], msg_item,
++ 			(Description *)xv_get(l10n_ss_numeric_format,
++ 			PANEL_CLIENT_DATA));
++ 
++ 	add_change_bar(item, event);
++ 
++ }
++ 
++ 
++ /*
++  * Notify callback function for `l10n_ss_il_supplement'.
++  */
++ void
++ l10n_ss_il_supplement_notify(item, event)
++    	Panel_item	item;
++    	Event		*event;
++ {
++ 	
++ 
++ }
++ 
++ 
++ l10n_set_client_data(p_item, l10n_list, msg_item, client_data)
++    	Panel_item		p_item;
++    	l10n_config_list_t	*l10n_list;
++    	Panel_item		msg_item;
++    	Description		*client_data;
++ {
++ 
++ 	register l10n_config_list_item_t	*item;
++ 	register int	slotno;
++ 
++ 	char	client_choices[256]; /* LOCALE_NAME_LEN*MAX_CHOICES + MAX_CHOICES */
++ 	char	choice[LOCALE_NAME_LEN];  	     /* 20  in l1on_props.h */
++ 	char	resource_name[DEFAULTS_MAX_VALUE_SIZE]; /* 128 in xview/defaults.h */
++ 
++ 
++ 	for (slotno = 0, item = l10n_list->items;  item != NULL;
++ 		     slotno++, item = item->next)
++ 	{
++ 		if (slotno) {
++ 			sprintf(choice, ":%s", item->value);
++ 			strcat(client_choices, choice);
++ 		} else
++ 			sprintf(client_choices, "%s", item->value);
++ 
++ 		
++ 	}
++ 
++ 	sprintf(resource_name, "*%s", l10n_list->class);
++ 
++ 	if (client_data == NULL) {
++ 		xv_set(p_item, PANEL_CLIENT_DATA,
++ 		allocate_desc_struct(resource_name,
++ 			l10n_list->class,
++ 			l10n_list->class_type,
++ 			l10n_list->items->value,
++ 			client_choices, p_item, msg_item),
++ 			NULL);
++ 	} else {
++ 		client_data->misc = strdup(client_choices);
++ 	}
++ 
++ 
++ 
++ }
++ 
++ void
++ create_localization_panel()
++ {
++ 
++ 	Panel 		l10n_area;
++ 	Panel_item	msg_item[5];
++ 	char		locale[LOCALE_NAME_LEN];
++ 	int		i;
++ 
++ 	register l10n_config_list_t	*bs;
++ 	l10n_config_list_item_t         *l_item = NULL;
++ 
++ 
++ 	l10n_area = panel_group[LOCALIZATION_PANEL + color];
++ 
++         xv_set(l10n_area,
++ 	   XV_HELP_DATA, "props:LocalizationPanelInfo",
++ 	   NULL);
++ 
++ 
++ 	/* 
++ 	 * Create Basic Setting 
++ 	 */
++ 
++ 	msg_item[0] = xv_create(l10n_area, 
++ 		PANEL_MESSAGE, 
++ 		PANEL_LABEL_STRING, LOCALIZE(" "),
++ 		NULL);
++ 
++         l10n_bs = xv_create(l10n_area, PANEL_CHOICE, 
++ 		PANEL_LABEL_STRING, LOCALIZE("Basic Setting:"),
++ 		PANEL_DISPLAY_LEVEL, PANEL_CURRENT,
++ 		PANEL_LAYOUT, PANEL_HORIZONTAL,
++ 		PANEL_CHOICE_NCOLS, 1,
++ 		PANEL_NOTIFY_PROC, l10n_bs_notify,
++ 		PANEL_CHOICE_STRING, 0, LOCALIZE("Choice"),
++ 		XV_HELP_DATA,	"props:BasicSetting",
++ 		NULL);
++ 
++ 	bs = l10n_config_basic_setting;
++ 	strcpy(locale, setlocale(LC_MESSAGES, NULL));
++ 
++ 	/* 
++ 	 * Retrieve basic setting from l10n configuration file.
++ 	 */
++ 	if (l10n_config_read(locale, "basic_setting", bs) == -1) {
++ 
++ 		fprintf(stderr, (char *)LOCALIZE("Invalid Basic Setting for Category: Localization.\n"));
++ 		xv_set(l10n_bs, PANEL_INACTIVE, TRUE, 0);
++ 
++ 	} else {
++ 		l10n_set_choice(l10n_bs, &bs[BASIC_SETTING], TRUE);
++ 		l10n_set_client_data(l10n_bs, bs, msg_item[0], NULL);
++ 		l_item = l10n_config_slot2ptr(&l10n_config_basic_setting[BASIC_SETTING], 
++ 			(int)xv_get(l10n_bs, PANEL_VALUE));
++ 
++ 	}
++ 
++ 
++ 	/* 
++ 	 * Create Specific Settings 
++ 	 */
++ 
++ 	/* 
++ 	 * Create Specific Setting item 
++ 	 */
++ 	l10n_ss = xv_create(l10n_area, PANEL_MESSAGE,
++ 		PANEL_LABEL_STRING, LOCALIZE("Specific Setting:"),
++ 		PANEL_LABEL_BOLD, TRUE,
++ 		PANEL_NEXT_ROW, -1,
++ 		XV_HELP_DATA,	"props:SpecificSetting",
++ 		NULL);
++ 
++     	{ int a,b;
++ 
++           a = xv_get(l10n_bs, PANEL_LABEL_WIDTH);
++           b = xv_get(l10n_ss, PANEL_LABEL_WIDTH);
++ 
++           i = MAX(a,b) + xv_get(msg_item[0], PANEL_LABEL_WIDTH) + DEFAULT_X_GAP;
++         }
++         xv_set(l10n_bs, PANEL_VALUE_X, i, NULL);
++         xv_set(l10n_ss, PANEL_VALUE_X, i, NULL);
++ 
++ 	/* 
++ 	 * Create display language item 
++ 	 */
++ 	msg_item[1] = xv_create(l10n_area, 
++ 		PANEL_MESSAGE, 
++ 		PANEL_LABEL_STRING, LOCALIZE(" "),
++ 		PANEL_NEXT_ROW, -1,
++ 		NULL);
++ 
++ 	l10n_ss_display_language = xv_create(l10n_area, PANEL_CHOICE, 
++ 		PANEL_DISPLAY_LEVEL, PANEL_CURRENT,
++ 		PANEL_LAYOUT, PANEL_HORIZONTAL,
++ 		PANEL_CHOICE_NCOLS, 1,
++ 		PANEL_LABEL_STRING, LOCALIZE("Display Language:"),
++ 		PANEL_NOTIFY_PROC, add_change_bar,
++ 		PANEL_CHOICE_STRING, 0, LOCALIZE("Choice"),
++ 		XV_HELP_DATA, "props:DisplayLanguage",
++ 		NULL);
++ 
++ 	/* 
++ 	 * Create input language item 
++ 	 */
++ 	msg_item[2] = xv_create(l10n_area, 
++ 		PANEL_MESSAGE, 
++ 		PANEL_LABEL_STRING, LOCALIZE(" "),
++ 		PANEL_NEXT_ROW, -1,
++ 		NULL);
++ 
++ 	l10n_ss_input_language = xv_create(l10n_area, PANEL_CHOICE, 
++ 	        PANEL_DISPLAY_LEVEL, PANEL_CURRENT,
++ 		PANEL_LABEL_STRING, LOCALIZE("Input Language:"),
++ 		PANEL_LAYOUT, PANEL_HORIZONTAL,
++ 		PANEL_CHOICE_NCOLS, 1,
++ 		PANEL_NOTIFY_PROC, add_change_bar,
++ 		PANEL_CHOICE_STRING, 0, LOCALIZE("Choice"),
++ 		XV_HELP_DATA, "props:InputLanguage",
++ 		NULL);
++ 
++ 	/* 
++ 	 * Create supplementary item 
++ 	 */
++ 	l10n_ss_il_supplement = xv_create(l10n_area, PANEL_BUTTON,
++ 		XV_X, 340,
++ 		PANEL_LABEL_STRING, LOCALIZE("Supplementary..."),
++ 		/*PANEL_NOTIFY_PROC, l10n_ss_il_supplement_notify,*/
++ 		XV_HELP_DATA, "props:SupplementarySetting",
++ 		NULL);
++ 
++ 	 /* "Supplement" is not supported yet.  */
++         xv_set(l10n_ss_il_supplement,
++                 PANEL_INACTIVE,          TRUE,
++                 NULL);
++ 
++ 	/* 
++ 	 * Create time format item 
++ 	 */
++ 	msg_item[3] = xv_create(l10n_area, 
++ 		PANEL_MESSAGE, 
++ 		PANEL_LABEL_STRING, LOCALIZE(" "),
++ 		PANEL_NEXT_ROW, -1,
++ 		NULL);
++ 
++ 	l10n_ss_time_format = xv_create(l10n_area, PANEL_CHOICE, 
++ 		PANEL_LABEL_STRING, LOCALIZE("Time Format:"),
++ 		PANEL_DISPLAY_LEVEL, PANEL_CURRENT,
++ 		PANEL_LAYOUT, PANEL_HORIZONTAL,
++ 		PANEL_CHOICE_NCOLS, 1,
++ 		PANEL_NOTIFY_PROC, add_change_bar,
++ 		PANEL_CHOICE_STRING, 0, LOCALIZE("Choice"),
++ 		XV_HELP_DATA, "props:TimeFormat",
++ 		NULL);
++ 
++ 	/* 
++ 	 * Create numeric format item 
++ 	 */
++ 	msg_item[4] = xv_create(l10n_area, 
++ 		PANEL_MESSAGE, 
++ 		PANEL_LABEL_STRING, LOCALIZE(" "),
++ 		PANEL_NEXT_ROW, -1,
++ 		NULL);
++ 
++ 	l10n_ss_numeric_format = xv_create(l10n_area, PANEL_CHOICE, 
++ 		PANEL_LABEL_STRING, LOCALIZE("Numeric Format:"),
++ 		PANEL_DISPLAY_LEVEL, PANEL_CURRENT,
++ 		PANEL_LAYOUT, PANEL_HORIZONTAL,
++ 		PANEL_CHOICE_NCOLS, 1,
++ 		PANEL_NOTIFY_PROC, add_change_bar,
++ 		PANEL_CHOICE_STRING, 0, LOCALIZE("Choice"),
++ 		XV_HELP_DATA, "props:NumericFormat",
++ 		NULL);
++ 
++ 
++ 	/* 
++ 	 * Retrieve Specific Settings from configuration file.
++ 	 */
++ 
++ 	if (l_item == NULL || l10n_ss_setup(l_item->value) == -1)
++ 	{
++ 
++ 		fprintf(stderr, (char *)LOCALIZE("Invalid Specific Setting for Category: Localization.\n"));
++ 		xv_set(l10n_ss, PANEL_INACTIVE, TRUE, 0);
++ 		xv_set(l10n_ss_display_language, PANEL_INACTIVE, TRUE, 0);
++ 		xv_set(l10n_ss_input_language, PANEL_INACTIVE, TRUE, 0);
++ 		xv_set(l10n_ss_time_format, PANEL_INACTIVE, TRUE, 0);
++ 		xv_set(l10n_ss_numeric_format, PANEL_INACTIVE, TRUE, 0);
++ 
++ 	} else {
++ 
++ 		l10n_set_choice(l10n_ss_display_language,
++ 			&sss->list[DISPLAY_LANGUAGE], TRUE);
++ 		l10n_set_client_data(l10n_ss_display_language,
++ 			&sss->list[DISPLAY_LANGUAGE], msg_item[1], NULL);
++ 
++ 		l10n_set_choice(l10n_ss_input_language,
++ 			&sss->list[INPUT_LANGUAGE], TRUE);
++ 		l10n_set_client_data(l10n_ss_input_language,
++ 			 &sss->list[INPUT_LANGUAGE], msg_item[2], NULL);
++ 
++ 		l10n_set_choice(l10n_ss_time_format,
++ 			&sss->list[TIME_FORMAT], TRUE);
++ 		l10n_set_client_data(l10n_ss_time_format,
++ 			 &sss->list[TIME_FORMAT], msg_item[3], NULL);
++ 
++ 		l10n_set_choice(l10n_ss_numeric_format,
++ 			&sss->list[NUMERIC_FORMAT], TRUE);
++ 		l10n_set_client_data(l10n_ss_numeric_format,
++ 			 &sss->list[NUMERIC_FORMAT], msg_item[4], NULL);
++ 
++ 	}
++ 
++     	{ int a,b,c,d;
++ 
++           a = xv_get(l10n_ss_display_language, PANEL_LABEL_WIDTH);
++           b = xv_get(l10n_ss_input_language,   PANEL_LABEL_WIDTH);
++           c = xv_get(l10n_ss_time_format,      PANEL_LABEL_WIDTH);
++           d = xv_get(l10n_ss_numeric_format,   PANEL_LABEL_WIDTH);
++ 
++           i = MAX(a,b) + xv_get(msg_item[0], PANEL_LABEL_WIDTH) + (3 * DEFAULT_X_GAP);
++         }
++         xv_set(l10n_ss_display_language, PANEL_VALUE_X, i, NULL);
++         xv_set(l10n_ss_input_language,   PANEL_VALUE_X, i, NULL);
++         xv_set(l10n_ss_time_format,      PANEL_VALUE_X, i, NULL);
++         xv_set(l10n_ss_numeric_format,   PANEL_VALUE_X, i, NULL);
++ 	xv_set(l10n_ss_il_supplement,	 XV_X, i+175, NULL);
++ 
++     	window_fit_width(l10n_area);
++ }
+diff -c -r --new-file xvorig/xview3.2//clients/props/l10n_props.h xview3.2//clients/props/l10n_props.h
+*** xvorig/xview3.2//clients/props/l10n_props.h
+--- xview3.2//clients/props/l10n_props.h	Sat Oct  5 07:13:32 1991
+***************
+*** 0 ****
+--- 1,92 ----
++ /*
++  * @(#)l10n_props.h 1.1 90/12/14
++  */
++ 
++ /*
++  * Maximum number of choices per choice item (choices read from config file)
++  */
++ #define	MAX_CHOICES	12
++ 
++ /*
++  * This should be defined by some of the /usr/include files, but not
++  * (yet?).
++  */
++ #define	LOCALE_NAME_LEN		20
++ 
++ 
++ typedef struct	_l10n_config_list_item {
++ 	/*
++ 	 * value is locale name, and locale name has to be in ASCII.
++ 	 */
++ 	char			*value;
++ 
++ #ifdef OW_I18N
++ 	/*
++ 	 * label could be locale depended any characters.
++ 	 */
++ 	wchar_t			*label;
++ #else
++ 	char			*label;
++ #endif 
++ 
++ 	/*
++ 	 * the following is a copy of "label", this is temporary until
++ 	 * *_WCS attr become available.
++ 	 */
++ 	char			*mbs_label;
++ 
++ 	struct _l10n_config_list_item	*next;
++ 
++ } l10n_config_list_item_t;
++ 
++ 
++ typedef struct	l10n_config_list {
++ #ifdef OW_I18N
++ 	/*
++ 	 * name is should be in ASCII, but from performance point of
++ 	 * view, better to be in the wide char here.
++ 	 */
++ 	wchar_t			*name;
++ #else
++ 	char			*name;
++ #endif 
++ 
++ 	/*
++ 	 * Class name for defaults database(Xrm).  Has to be char
++ 	 * (portable character only).
++ 	 */
++ 	char			*class;
++ 
++ 	/*
++ 	 * Class type for defaults -- D_string, D_boolean, etc.
++ 	 */
++ 	Deftype			class_type;
++ 
++ #ifdef OW_I18N
++ 	/*
++ 	 * When reading from file, the label will converted by this
++ 	 * function.  This is usefull for data like time format which
++ 	 * actually generated by strftime function (file contains
++ 	 * format for strftime, not string itself).
++ 	 */
++ 	wchar_t			*(*convert_label)();
++ #endif OW_I18N
++ 
++ 	int			default_value;
++ 
++ 	int			initial_value;
++ 
++ 	int			current_value;
++ 
++ 	l10n_config_list_item_t	*items;
++ 
++ } l10n_config_list_t;
++ 
++ 
++ typedef struct _l10n_config_sss {
++ 	char			*locale;
++ 	l10n_config_list_t	*list;
++ 	struct _l10n_config_sss	*next;
++ } l10n_config_sss_t;
++ 
++ 
+diff -c -r --new-file xvorig/xview3.2//clients/props/l10n_read.c xview3.2//clients/props/l10n_read.c
+*** xvorig/xview3.2//clients/props/l10n_read.c
+--- xview3.2//clients/props/l10n_read.c	Tue Aug 10 17:39:22 1993
+***************
+*** 0 ****
+--- 1,286 ----
++ #ifndef lint
++ static char *sccsid = "@(#)l10n_read.c 1.6 92/03/10";
++ #endif
++ 
++ /*
++  * l10n_read.c - Reader for l10n configuration file(s)
++  */
++ 
++ #include	<sys/types.h>
++ #include	<sys/param.h>
++ #include	<locale.h>
++ #ifdef OW_I18N
++ #include	<widec.h>
++ #endif 
++ #include	<stdio.h>
++ #include	<string.h>
++ #include	"props.h"
++ #include	"l10n_props.h"
++ 
++ 
++ #define	MAX_LINE_LENGTH		256
++ 
++ #define	NAME_SEPARATOR		'='
++ #define	FIELD_SEPARATOR		'|'
++ #define	ITEM_SEPARATOR		';'
++ 
++ 
++ #ifndef __linux
++ #ifndef ultrix
++ extern char	*malloc();
++ #endif
++ extern char	*calloc();
++ #endif
++ 
++ 
++ /*
++  * FIX_ME! This routine must be sophisticated enough to allow more
++  * flexible syntax in file.  Such as allow the white space between
++  * each token.
++  */
++ int
++ l10n_config_read(locale, file_name, a_list)
++ 	char			*locale;
++ 	char			*file_name;
++ 	l10n_config_list_t	*a_list;
++ {
++ #ifdef OW_I18N
++ 	register wchar_t	*p1, *p2;
++ #else
++ 	register char		*p1, *p2;
++ #endif
++ 
++ 	register l10n_config_list_t	*list;
++ 	register l10n_config_list_item_t *item;
++ 	l10n_config_list_item_t	*item_new;
++ 
++ 	register FILE		*config_file;
++ 	int			i;
++ #ifdef OW_I18N
++ 	wchar_t			*dft;
++ #else
++ 	char			*dft;
++ #endif
++ 	char			*mbs;
++ 	int			lineno;
++ 	int			slotno;
++ 	char			fullpath[MAXPATHLEN];
++ #ifdef OW_I18N
++ 	wchar_t			line[MAX_LINE_LENGTH+1];
++ #else
++ 	char			line[MAX_LINE_LENGTH+1];
++ #endif
++ 	int			rcode = -1;
++ 
++ 
++ 	/*  
++ 	 * Find path for localization configuration files under
++ 	 * $OPENWINHOME/share/locale/<locale>/props
++ 	 */
++ 	sprintf(fullpath, "%s/share/locale/%s/props/%s",
++ 		getenv("OPENWINHOME"), locale, file_name);
++ 
++ 	if ((config_file = fopen(fullpath, "r")) == NULL)
++ 	{
++ 		perror(fullpath);
++ 		goto ret;
++ 	}
++ 
++ 	/* 
++ 	 * Parse configuration file. 
++ 	 */
++ #ifdef OW_I18N
++ 	for (lineno = 1; fgetws(line, MAX_LINE_LENGTH, config_file) != NULL; lineno++)
++ #else
++ 	for (lineno = 1; fgets(line, MAX_LINE_LENGTH, config_file) != NULL; lineno++)
++ #endif
++ 	{
++ 		p1 = line;
++ 		if (*p1 == '#' || *p1 == '\n')
++ 			continue;
++ 
++ 		/*
++ 		 * Pickup the category name.
++ 		 */
++ #ifdef OW_I18N
++ 		if ((p2 = wschr(p1, NAME_SEPARATOR)) == NULL)
++ #else
++ 		if ((p2 = strchr(p1, NAME_SEPARATOR)) == NULL)
++ #endif
++ 		{
++ 			fprintf(stderr, (char *)LOCALIZE("Bad format in %s (line#%d): missing name separator '%c')\n"),
++ 					fullpath, lineno, NAME_SEPARATOR);
++ 			goto ret;
++ 		}
++ 
++ 		/*
++ 		 * Looking for the category name in list...
++ 		 */
++ 		*p2 = 0;	/* Overwrite '=' with string terminator */
++ 		for (list = a_list; list->name != NULL; list++)
++ #ifdef OW_I18N
++ 			if (wscmp(list->name, p1) == 0)
++ #else
++ 			if (strcmp(list->name, p1) == 0)
++ #endif 
++ 				break;
++ 		if (list->name == NULL)
++ 		{
++ #ifdef OW_I18N
++ 			fprintf(stderr, (char *)LOCALIZE("Bad format in %s (line#%d): Unknown category name [%ws]\n"),
++ 					fullpath, lineno, p1);
++ #else
++ 			fprintf(stderr, (char *)LOCALIZE("Bad format in %s (line#%d): Unknown category name [%s]\n"),
++ 					fullpath, lineno, p1);
++ #endif
++ 			goto ret;
++ 		}
++ 		p1 = ++p2;
++ 
++ 		/*
++ 		 * Picking up the default value.
++ 		 */
++ #ifdef OW_I18N
++ 		if ((p2 = wschr(p1, ITEM_SEPARATOR)) == NULL)
++ #else
++ 		if ((p2 = strchr(p1, ITEM_SEPARATOR)) == NULL)
++ #endif
++ 		{
++ 			fprintf(stderr, (char *)LOCALIZE("Bad format in %s (line#%d): no default value\n"),
++ 					fullpath, lineno);
++ 			goto ret;
++ 		}
++ 		*p2++ = 0;
++ 		dft = p1;	/* Keep it for now */
++ 		p1 = p2;
++ 
++ 
++ 		/*
++ 		 * Picking up the items.
++ 		 */
++ 		item = NULL;
++ 		for (slotno = 0; *p1 != '\n' && *p1 != 0; slotno++)
++ 		{
++ 			/*
++ 			 * Allocate new space.
++ 			 */
++ 			item_new = (l10n_config_list_item_t *)
++ 				calloc(1, sizeof (l10n_config_list_item_t));
++ 			if (item == NULL)
++ 				list->items = item_new;
++ 			else
++ 				item->next = item_new;
++ 			item = item_new;
++ 
++ 			/*
++ 			 * Picking up the "value".
++ 			 */
++ #ifdef OW_I18N
++ 			if ((p2 = wschr(p1, FIELD_SEPARATOR)) == NULL)
++ #else
++ 			if ((p2 = strchr(p1, FIELD_SEPARATOR)) == NULL)
++ #endif
++ 			{
++ 				fprintf(stderr, (char *)LOCALIZE("Bad format in %s (line#%d): missing field separator '%c'\n"),
++ 					fullpath, lineno, FIELD_SEPARATOR);
++ 				goto ret;
++ 			}
++ 			*p2++ = 0;
++ #ifdef OW_I18N
++ 			item->value = malloc(wslen(p1) * sizeof(wchar_t) + 1);
++ 			wstostr(item->value, p1);
++ #else
++ 			item->value = malloc(strlen(p1) * sizeof(char) + 1);
++ 			strcpy(item->value, p1);
++ #endif
++ #ifdef OW_I18N
++ 			if (dft != NULL && wscmp(p1, dft) == 0)
++ #else
++ 			if (dft != NULL && strcmp(p1, dft) == 0)
++ #endif
++ 			{
++ 				list->default_value = slotno;
++ 				dft = NULL;
++ 			}
++ 			p1 = p2;
++ 
++ 
++ 			/*
++ 			 * Picking up the label.
++ 			 */
++ #ifdef OW_I18N
++ 			if ((p2 = wschr(p1, ITEM_SEPARATOR)) != NULL
++ 			 || (p2 = wschr(p1, '\n')) != NULL)
++ #else
++ 			if ((p2 = strchr(p1, ITEM_SEPARATOR)) != NULL
++ 			 || (p2 = strchr(p1, '\n')) != NULL)
++ #endif
++ 			{
++ 				if (*p2 != ITEM_SEPARATOR)
++ 					slotno = -1;
++ 				*p2++ = 0;
++ 			}
++ #ifdef OW_I18N
++ 			if (list->convert_label != NULL)
++ 				item->label = (*(list->convert_label))
++ 							(item->value, p1);
++ 			else
++ 				item->label = wsdup(p1);
++ #else
++ 			item->label = strdup(p1);
++ 
++ #endif
++ 			if (slotno < 0)
++ 				break;
++ 			p1 = p2;
++ 		}
++ 		if (dft != NULL)
++ 		{
++ #ifdef OW_I18N
++ 			fprintf(stderr, LOCALIZE("Invalid default value in %s (line#%d): [%ws]\n"),
++ 				fullpath, lineno, dft);
++ #else
++ 			fprintf(stderr, (char *)LOCALIZE("Invalid default value in %s (line#%d): [%s]\n"),
++ 				fullpath, lineno, dft);
++ 
++ #endif
++ 			goto ret;
++ 		}
++ 		if (defaults_exists(list->class, list->class) == TRUE)
++ 		{
++ 			mbs = defaults_get_string(list->class, list->class, "");
++ 			for (i = 0, item = list->items;
++ 			     item != NULL;
++ 			     i++, item = item->next)
++ 				if (strcmp(item->value, mbs) == 0)
++ 				{
++ 					list->current_value = i;
++ 					break;
++ 				}
++ 			if (item == NULL)
++ 			{
++ #ifdef notdef
++ 				/*
++ 				 * This could happen all the time, if
++ 				 * you switch the "Basic Setting" from
++ 				 * English to Japanese.  So, I'm
++ 				 * decided do it silently.
++ 				 */
++ 				fprintf(stderr, LOCALIZE("Bad configuration: %s should not be %s for basic setting %s\n"),
++ 						list->class, mbs, file_name);
++ #endif
++ 				list->current_value = list->default_value;
++ 			}
++ 		}
++ 		else
++ 			list->current_value = list->default_value;
++ 		list->initial_value = list->current_value;
++ 	}
++ 	if (lineno > 1) /* Make sure null-file returns failure */
++ 		rcode = 0;
++ 
++ ret:
++ 	(void) fclose(config_file);
++ 
++ 	return rcode;
++ }
+diff -c -r --new-file xvorig/xview3.2//clients/props/props.c xview3.2//clients/props/props.c
+*** xvorig/xview3.2//clients/props/props.c
+--- xview3.2//clients/props/props.c	Tue Aug 10 19:27:53 1993
+***************
+*** 0 ****
+--- 1,905 ----
++ #ifndef lint
++ static char sccsid[] = "@(#)props.c 1.64 91/09/14";
++ #endif
++ 
++ 
++ #include <stdio.h>
++ #include <ctype.h>
++ #include <string.h>
++ #include "props.h"
++ 
++ #include <xview/text.h>
++ #include <xview/font.h>
++ #include <xview/notice.h>
++ #include <xview/font.h>
++ #include <xview/cms.h>
++ 
++ #include <locale.h>
++ #include <sys/param.h> 
++ #ifdef OW_I18N
++ #include <widec.h>
++ #include <mltext/XFontSet.h>
++ #endif /* OW_I18N */
++ 
++ #define MONO_PROPS LOCALIZE("Icons"), LOCALIZE("Menus"), LOCALIZE("Miscellaneous"), LOCALIZE("Mouse Settings"), LOCALIZE("Localization"), NULL
++ #define COLOR_PROPS LOCALIZE("Color"), MONO_PROPS
++ 
++ 
++ Frame       frame;
++ Panel       flavor_panel;
++ Panel_item  flavor_choice;
++ Panel       panel_group[TOTAL_PANELS + 1];
++ Panel       current_panel;
++ Panel_item  apply_button[TOTAL_PANELS + 1];
++ Panel_item  reset_button[TOTAL_PANELS + 1];
++ int         showing_factory;
++ static char saved_defaults[20];
++ static char user_defaults[256];
++ int         color = FALSE;
++ Display    *dsp;
++ 
++ Description *
++ allocate_desc_struct(name, class, type, default_value, misc, item, msg_item)
++     char       *name;
++     char       *class;
++     Deftype     type;
++     caddr_t     default_value;
++     caddr_t     misc;
++     Panel_item  item;
++     Panel_item  msg_item;
++ {
++     Description *new_struct;
++ 
++     new_struct = (Description *) malloc(sizeof(Description));
++ 
++     if (new_struct) {
++ 	new_struct->name = (char *) strdup(name);
++ 	new_struct->class = (char *) strdup(class);
++ 	new_struct->type = type;
++ 	if ((type == D_number) || (type == D_boolean))
++ 	    new_struct->default_value = default_value;
++ 	else
++ 	    new_struct->default_value = (char *) strdup(default_value);
++ 	if ((type == D_string) && misc)
++ 	    new_struct->misc = (caddr_t) strdup(misc);
++ 	else
++ 	    new_struct->misc = misc;
++ 	new_struct->change_mark = FALSE;
++ 	new_struct->change_mark_item = msg_item;
++ 	new_struct->panel_item = item;
++     }
++     return (new_struct);
++ }
++ 
++ Panel_setting
++ add_change_bar(panel_item, event)
++     Panel_item  panel_item;
++     Event      *event;
++ {
++     Description *id;
++ 
++     id = (Description *) xv_get(panel_item, PANEL_CLIENT_DATA);
++ 
++     if (!id->change_mark) {
++ 	xv_set(id->change_mark_item,
++ 	       PANEL_LABEL_STRING, LOCALIZE("|"),
++ 	       NULL);
++ 
++ 	id->change_mark = TRUE;
++     }
++     if ((Panel_item_type) xv_get(panel_item, PANEL_ITEM_CLASS) ==
++ 	    PANEL_TEXT_ITEM)
++ 	return (panel_text_notify(panel_item, event));
++     return PANEL_NONE;		/* return value is ignored */
++ }
++ 
++ static void
++ destroy_change_bars()
++ {
++     int         i;
++     Panel_item  local_item;
++     Description *id;
++ 
++     for (i = color; i < TOTAL_PANELS + color; i++) {
++ 	PANEL_EACH_ITEM(panel_group[i], local_item) {
++ 	    id = (Description *) xv_get(local_item,
++ 					PANEL_CLIENT_DATA);
++ 
++ #ifdef OW_I18N
++ 	    if (!id &&
++ 		    ((Panel_item_type) xv_get(local_item, PANEL_ITEM_CLASS) ==
++ 		     PANEL_MESSAGE_ITEM) && (wscmp((wchar_t *)xv_get(local_item, PANEL_LABEL_STRING_WCS), mbstowcsdup(LOCALIZE("|")))) == 0)
++ #else
++             if (!id && ((Panel_item_type) xv_get(local_item, PANEL_ITEM_CLASS) == 
++ 			PANEL_MESSAGE_ITEM) && (strcmp((char *)xv_get(local_item, PANEL_LABEL_STRING), "|") == 0))
++ #endif
++ 
++ 		/* Remove change bar from message item */
++ 		xv_set(local_item, PANEL_LABEL_STRING, LOCALIZE(" "), NULL);
++ 	    else if (id && ((int) id->type < D_nop))
++ 		id->change_mark = FALSE;
++ 	} PANEL_END_EACH
++     }
++ }
++ 
++ 
++ static void
++ apply_props_proc(panel_item, event)
++     Panel_item  panel_item;
++     Event      *event;
++ {
++     int         i;
++     Panel_item  local_item;
++     Description *id;
++     int         result;
++     Event       ie;
++ 
++     if (panel_item) {
++ 	result = notice_prompt(frame, &ie,
++ 			       NOTICE_MESSAGE_STRINGS,
++ 			       LOCALIZE(" Applying your changes will modify\n your ~/.Xdefaults file.  All comments\n in your file will be lost.  Do you\n want to do this?"),
++ 			       NULL,
++ 			       NOTICE_BUTTON_YES, LOCALIZE("Yes"),
++ 			       NOTICE_BUTTON_NO, LOCALIZE("No"),
++ 			       NULL);
++ 
++ 	if (result == NOTICE_NO) {
++ 	    xv_set(panel_item, PANEL_NOTIFY_STATUS, XV_ERROR, NULL);
++ 	    return;
++ 	}
++     }
++     if (color)
++ 	apply_colors();
++     for (i = color; i < TOTAL_PANELS + color; i++) {
++ 	PANEL_EACH_ITEM(panel_group[i], local_item) {
++ 	    if (id = (Description *) xv_get(local_item, PANEL_CLIENT_DATA)) {
++ 		switch (id->type) {
++ 		case D_number:
++ 		    if ((Panel_item_type) xv_get(id->panel_item,
++ 					PANEL_ITEM_CLASS) == PANEL_TEXT_ITEM)
++ 			defaults_set_integer(id->name,
++ 					     atoi(xv_get(id->panel_item,
++ 							 PANEL_VALUE)));
++ 		    else
++ 			defaults_set_integer(id->name,
++ 					xv_get(id->panel_item, PANEL_VALUE));
++ 		    break;
++ 		case D_string:
++ 		    if ((Panel_item_type) xv_get(id->panel_item,
++ 					PANEL_ITEM_CLASS) == PANEL_TEXT_ITEM)
++ 			defaults_set_string(id->name,
++ 					xv_get(id->panel_item, PANEL_VALUE));
++ 		    else {
++ 			int         index;
++ 			int         i;
++ 			char       *options_copy;
++ 			char       *scanner;
++ 
++ 			index = (int) xv_get(id->panel_item,
++ 					     PANEL_VALUE);
++ 			options_copy = (char *) strdup(id->misc);
++ 			scanner = (char *) strtok(options_copy, ":");
++ 			for (i = 0; i < index; i++)
++ 			    scanner = strtok(NULL, ":");
++ 			defaults_set_string(id->name, scanner);
++ 			free(options_copy);
++ 		    }
++ 		    break;
++ 		case D_boolean:
++ 		    defaults_set_boolean(id->name,
++ 					 xv_get(id->panel_item,
++ 						PANEL_VALUE));
++ 		    break;
++ 		}
++ 	    }
++ 	} PANEL_END_EACH;
++     }
++     if (panel_item) {
++ 	unlink(user_defaults);
++ 	defaults_store_db(user_defaults);
++ 	destroy_change_bars();
++ 	xv_set(panel_item, PANEL_NOTIFY_STATUS, XV_ERROR, NULL);
++     }
++ }
++ 
++ static void
++ set_props_values(panel_item, event)
++     Panel_item  panel_item;
++     Event      *event;
++ {
++     int         i,
++                 tmp;
++     Panel_item  local_item;
++     Description *id;
++     char        number_string[20];
++ 
++     for (i = color; i < TOTAL_PANELS + color; i++) {
++ 	PANEL_EACH_ITEM(panel_group[i], local_item) {
++ 
++ 	    if (!(id = (Description *) xv_get(local_item, PANEL_CLIENT_DATA)))
++ 		continue;
++ 
++ 	    switch (id->type) {
++ 	    case D_number:
++ 		tmp = defaults_get_integer(id->name, id->class,
++ 					   id->default_value);
++ 		if ((Panel_item_type) xv_get(id->panel_item, PANEL_ITEM_CLASS)
++ 			== PANEL_TEXT_ITEM) {
++ 		    sprintf(number_string, "%d", tmp);
++ 		    xv_set(id->panel_item, PANEL_VALUE, number_string, NULL);
++ 		} else
++ 		    xv_set(id->panel_item, PANEL_VALUE, tmp, NULL);
++ 		break;
++ 	    case D_string:
++ 		if ((Panel_item_type) xv_get(id->panel_item, PANEL_ITEM_CLASS)
++ 			== PANEL_TEXT_ITEM) {
++ 		    xv_set(id->panel_item, PANEL_VALUE,
++ 			   defaults_get_string(id->name, id->class,
++ 					       id->default_value),
++ 			   NULL);
++ 		} else {
++ 		    char       *value;
++ 		    int         i = 0;
++ 		    char       *options_copy;
++ 		    char       *scanner;
++ 
++ 		    value = defaults_get_string(id->name, id->class,
++ 						id->default_value);
++ 		    options_copy = (char *) strdup(id->misc);
++ 		    scanner = strtok(options_copy, ":");
++ 		    while (scanner != NULL && strcmp(scanner, value)) {
++ 			i++;
++ 			scanner = strtok(NULL, ":");
++ 		    }
++ 		    if (!scanner)
++ 			i = 0;
++ 
++ 		    free(options_copy);
++ 
++ 		    xv_set(id->panel_item, PANEL_VALUE, i, NULL);
++ 		}
++ 		break;
++ 	    case D_boolean:
++ 		xv_set(id->panel_item, PANEL_VALUE,
++ 		       defaults_get_boolean(id->name, id->class,
++ 					    id->default_value),
++ 		       NULL);
++ 		break;
++ 	    default:
++ 		break;
++ 	    }
++ 	} PANEL_END_EACH;
++     }
++ }
++ 
++ 
++ static void
++ reset_props_proc(panel_item, event)
++     Panel_item  panel_item;
++     Event      *event;
++ {
++ 	
++     extern Panel_item l10n_bs;
++ 
++     defaults_init_db();
++     defaults_load_db(NULL);
++     defaults_load_db(user_defaults);
++ 
++     /* 
++      * Localization values for Specific Settings based on
++      * Basic Setting.  reset_localization() added since 
++      * set_props_values() does not understand this dependency.
++      */
++     if (!xv_get(l10n_bs, PANEL_INACTIVE))
++     	reset_localization();
++ 
++     set_props_values(panel_item, event);
++ 
++     /* Remove all of the change bars that were inserted */
++     destroy_change_bars();
++ 
++     if (color)
++ 	reset_colors();
++ 
++     xv_set(panel_item, PANEL_NOTIFY_STATUS, XV_ERROR, NULL);
++ }
++ 
++ 
++ create_icon_panel()
++ {
++     Panel_item  choice_item;
++     Panel_item  msg_item;
++ 
++     xv_set(panel_group[ICON_PANEL + color],
++ 	   XV_HELP_DATA, "props:IconPanelInfo",
++ 	   NULL);
++ 
++     msg_item = xv_create(panel_group[ICON_PANEL + color],
++ 			 PANEL_MESSAGE,
++ 			 PANEL_LABEL_STRING, LOCALIZE(" "),
++ 			 NULL);
++     choice_item =
++ 	xv_create(panel_group[ICON_PANEL + color], PANEL_CHOICE,
++ 		  PANEL_LABEL_STRING, LOCALIZE("Location:"),
++ 		  PANEL_CHOICE_STRINGS, LOCALIZE("Top"), LOCALIZE("Bottom"), 
++ 			LOCALIZE("Left"), LOCALIZE("Right"), NULL,
++ 		  PANEL_NOTIFY_PROC, add_change_bar,
++ 		  XV_HELP_DATA, "props:IconLocationInfo",
++ 		  NULL);
++ 
++     xv_set(choice_item,
++ 	   PANEL_CLIENT_DATA,
++ 	   allocate_desc_struct("OpenWindows.IconLocation", 
++ 				"OpenWindows.IconLocation", D_string, 
++ 				"bottom", "top:bottom:left:right",
++ 				choice_item, msg_item),
++ 	   NULL);
++ 
++     window_fit_width(panel_group[ICON_PANEL + color]);
++ }
++ 
++ 
++ create_menu_panel()
++ {
++     Panel_item  dr_item, mp_item;
++     Panel_item  msg_item;
++     int		i;
++ 
++     xv_set(panel_group[MENU_PANEL + color],
++ 	   XV_HELP_DATA, "props:MenuPanelInfo",
++ 	   NULL);
++ 
++     msg_item = xv_create(panel_group[MENU_PANEL + color],
++ 			 PANEL_MESSAGE,
++ 			 PANEL_LABEL_STRING, LOCALIZE(" "),
++ 			 NULL);
++     dr_item = xv_create(panel_group[MENU_PANEL + color], PANEL_TEXT,
++ 		     PANEL_LABEL_STRING, LOCALIZE("Drag-Right distance (pixels):"),
++ 		     PANEL_VALUE_DISPLAY_LENGTH, 2,
++ 		     PANEL_NOTIFY_PROC, add_change_bar,
++ 		     PANEL_NOTIFY_LEVEL, PANEL_ALL,
++ 		     XV_HELP_DATA, "props:MenuDragRightInfo",
++ 		     NULL);
++     xv_set(dr_item,
++ 	   PANEL_CLIENT_DATA,
++ 	   allocate_desc_struct("OpenWindows.DragRightDistance", 
++ 				"OpenWindows.DragRightDistance", D_number,
++ 				(caddr_t) 100, (caddr_t) 0, dr_item, msg_item),
++ 	   NULL);
++ 
++     /*
++      * The PANEL_VALUE of "Selects Default" is 0 == FALSE. The PANEL_VALUE of
++      * "Displays Menu" is 1 == TRUE. So, the name of the boolean resource is
++      * "SelectDisplaysMenu".
++      */
++     msg_item = xv_create(panel_group[MENU_PANEL + color],
++ 			 PANEL_MESSAGE,
++ 			 PANEL_LABEL_STRING, LOCALIZE(" "),
++ 			 PANEL_NEXT_ROW, -1,
++ 			 NULL);
++     mp_item = xv_create(panel_group[MENU_PANEL + color], PANEL_CHOICE,
++ 		     PANEL_LABEL_STRING, LOCALIZE("SELECT Mouse Press:"),
++ 		     PANEL_CHOICE_STRINGS,
++ 		     LOCALIZE("Selects Default"), LOCALIZE("Displays Menu"), 0,
++ 		     PANEL_NOTIFY_PROC, add_change_bar,
++ 		     XV_HELP_DATA, "props:SelectMousePressInfo",
++ 		     NULL);
++     xv_set(mp_item,
++ 	   PANEL_CLIENT_DATA,
++ 	   allocate_desc_struct("OpenWindows.SelectDisplaysMenu",
++ 				"OpenWindows.SelectDisplaysMenu", D_boolean,
++ 				(caddr_t) FALSE, (caddr_t) 0, mp_item, msg_item),
++ 	   NULL);
++ 
++     { int a,b;
++ 
++       a = xv_get(dr_item, PANEL_LABEL_WIDTH);
++       b = xv_get(mp_item, PANEL_LABEL_WIDTH);
++ 
++       i = MAX_VALUE(a,b) + xv_get(msg_item, PANEL_LABEL_WIDTH) + DEFAULT_X_GAP;
++     }
++     xv_set(dr_item, PANEL_VALUE_X, i, NULL);
++     xv_set(mp_item, PANEL_VALUE_X, i, NULL);
++ 
++     window_fit_width(panel_group[MENU_PANEL + color]);
++ }
++ 
++ 
++ create_misc_panel()
++ {
++     Panel       misc_panel = panel_group[MISC_PANEL + color];
++     Panel_item  msg_item;
++     Panel_item	bp_item, scl_item, ia_item, sbp_item;
++     int		i;
++ 
++ 
++     xv_set(misc_panel,
++ 	   XV_HELP_DATA, "props:MiscPanelInfo",
++ 	   NULL);
++ 
++     msg_item = xv_create(misc_panel, PANEL_MESSAGE,
++ 			 PANEL_LABEL_STRING, LOCALIZE(" "),
++ 			 NULL);
++     bp_item = xv_create(misc_panel, PANEL_CHOICE,
++ 			 PANEL_LABEL_STRING, LOCALIZE("Beep:"),
++ 			 PANEL_CHOICE_STRINGS,
++ 			 LOCALIZE("Always"),
++ 			 LOCALIZE("Notices Only"),
++ 			 LOCALIZE("Never"),
++ 			 0,
++ 			 PANEL_NOTIFY_PROC, add_change_bar,
++ 			 XV_HELP_DATA, "props:Beep",
++ 			 NULL);
++ 
++     xv_set(bp_item,
++ 	   PANEL_CLIENT_DATA,
++ 	   allocate_desc_struct("OpenWindows.Beep",
++ 				"OpenWindows.Beep", D_string, "always",
++ 				"always:notices:never", bp_item, msg_item),
++ 	   NULL);
++ 
++ #ifdef RESCALE_ENTRY
++     msg_item = xv_create(misc_panel, PANEL_MESSAGE,
++ 			 PANEL_LABEL_STRING, LOCALIZE(" "),
++ 			 PANEL_NEXT_ROW, -1,
++ 			 NULL);
++     scl_item = xv_create(misc_panel, PANEL_CHOICE,
++ 			 PANEL_LABEL_STRING, LOCALIZE("Scale at Startup:"),
++ 			 PANEL_CHOICE_STRINGS,
++ 			 LOCALIZE("Small"),
++ 			 LOCALIZE("Medium"),
++ 			 LOCALIZE("Large"),
++ 			 LOCALIZE("Extra Large"),
++ 			 0,
++ 			 PANEL_NOTIFY_PROC, add_change_bar,
++ 			 XV_HELP_DATA, "props:InitialScaleInfo",
++ 			 NULL);
++ 
++     xv_set(scl_item,
++ 	   PANEL_CLIENT_DATA,
++ 	   allocate_desc_struct("Window.Scale",
++ 				"Window.Scale", D_string, "medium",
++ 				"small:medium:large:extra_large", scl_item,
++ 				msg_item),
++ 	   NULL);
++ #endif				/* RESCALE_ENTRY */
++ 
++     msg_item = xv_create(misc_panel, PANEL_MESSAGE,
++ 			 PANEL_LABEL_STRING, LOCALIZE(" "),
++ 			 PANEL_NEXT_ROW, -1,
++ 			 NULL);
++     ia_item = xv_create(misc_panel, PANEL_CHOICE,
++ 			 PANEL_LABEL_STRING, LOCALIZE("Set Input Area:"),
++ 			 PANEL_CHOICE_STRINGS,
++ 			 LOCALIZE("Click SELECT"),
++ 			 LOCALIZE("Move Pointer"),
++ 			 0,
++ 			 PANEL_NOTIFY_PROC, add_change_bar,
++ 			 XV_HELP_DATA, "props:InputFocusInfo",
++ 			 NULL);
++ 
++     xv_set(ia_item,
++ 	   PANEL_CLIENT_DATA,
++ 	   allocate_desc_struct("OpenWindows.SetInput",
++ 				"OpenWindows.SetInput", D_string, "select",
++ 				"select:followmouse", ia_item, msg_item),
++ 	   NULL);
++ 
++     msg_item = xv_create(misc_panel, PANEL_MESSAGE,
++ 			 PANEL_LABEL_STRING, LOCALIZE(" "),
++ 			 PANEL_NEXT_ROW, -1,
++ 			 NULL);
++     sbp_item = xv_create(misc_panel, PANEL_CHOICE,
++ 			 PANEL_LABEL_STRING, LOCALIZE("Scrollbar Placement:"),
++ 			 PANEL_CHOICE_STRINGS,
++ 			 LOCALIZE("Left"),
++ 			 LOCALIZE("Right"),
++ 			 0,
++ 			 PANEL_NOTIFY_PROC, add_change_bar,
++ 			 XV_HELP_DATA, "props:ScrollbarPlacementInfo",
++ 			 NULL);
++ 
++     xv_set(sbp_item,
++ 	   PANEL_CLIENT_DATA,
++     	   allocate_desc_struct("OpenWindows.ScrollbarPlacement",
++ 			"OpenWindows.ScrollbarPlacement", D_string, "right",
++ 			"left:right", sbp_item, msg_item),
++ 	   NULL);
++ 
++     /*
++      * tmp_item = xv_create(misc_panel, PANEL_MESSAGE, PANEL_LABEL_STRING,
++      * "SELECT Always Brings", PANEL_LABEL_BOLD, TRUE, NULL); xv_set(tmp_item,
++      * XV_Y, xv_row(misc_panel, 3), XV_X, 225 - (int) xv_get(tmp_item,
++      * XV_WIDTH, NULL), NULL);
++      * 
++      * tmp_item = xv_create(misc_panel, PANEL_CHECK_BOX, PANEL_LABEL_STRING,
++      * "Window Forward:", PANEL_NOTIFY_PROC, add_change_bar, PANEL_VALUE_X,
++      * 225, XV_Y, xv_row(misc_panel, 4), XV_HELP_DATA, "props:InputFocusInfo",
++      * NULL);
++      * 
++      * xv_set(tmp_item, PANEL_CLIENT_DATA,
++      * allocate_desc_struct("OpenWindows.AutoRaise", D_boolean, (caddr_t)
++      * FALSE, (caddr_t) 0, tmp_item), NULL);
++      */
++ 
++     { int a,b,c,d;
++ 
++       a = xv_get(bp_item,  PANEL_LABEL_WIDTH);
++ #ifdef RESCALE_ENTRY
++       b = xv_get(scl_item, PANEL_LABEL_WIDTH);
++ #endif
++       c = xv_get(ia_item,  PANEL_LABEL_WIDTH);
++       d = xv_get(sbp_item, PANEL_LABEL_WIDTH);
++ 
++ #ifdef RESCALE_ENTRY
++       i = MAX_VALUE(a,MAX_VALUE(b,MAX_VALUE(c,d))) + xv_get(msg_item, PANEL_LABEL_WIDTH) + DEFAULT_X_GAP;
++ #else
++       i = MAX_VALUE(a,MAX_VALUE(c,d)) + xv_get(msg_item, PANEL_LABEL_WIDTH) + DEFAULT_X_GAP;
++ #endif
++     }
++     xv_set(bp_item,  PANEL_VALUE_X, i, NULL);
++ #ifdef RESCALE_ENTRY
++     xv_set(scl_item, PANEL_VALUE_X, i, NULL);
++ #endif
++     xv_set(ia_item,  PANEL_VALUE_X, i, NULL);
++     xv_set(sbp_item, PANEL_VALUE_X, i, NULL);
++ 
++     window_fit_width(panel_group[MISC_PANEL + color]);
++ }
++ 
++ create_mouse_set_panel()
++ {
++     Panel_item  msg_item;
++     Panel       mouse_set_panel;
++     Panel_item  sbj_item, ppj_item, mct_item;
++     int		i;
++ 
++     mouse_set_panel = panel_group[MOUSE_SET_PANEL + color];
++     xv_set(mouse_set_panel,
++ 	   XV_HELP_DATA, "props:MouseSetPanelInfo",
++ 	   NULL);
++ 
++     msg_item = xv_create(mouse_set_panel, PANEL_MESSAGE,
++ 			 PANEL_LABEL_STRING, LOCALIZE(" "),
++ 			 NULL);
++     sbj_item = xv_create(mouse_set_panel, PANEL_CHECK_BOX,
++ 			 PANEL_LABEL_STRING, LOCALIZE("Scrollbar Pointer Jumping:"),
++ 			 PANEL_NOTIFY_PROC, add_change_bar,
++ 		       XV_HELP_DATA, "props:ScrollbarPointerJumpInfo", NULL);
++ 
++     xv_set(sbj_item,
++ 	   PANEL_CLIENT_DATA,
++ 	   allocate_desc_struct("Scrollbar.JumpCursor", 
++ 				"Scrollbar.JumpCursor", D_boolean,
++ 				(caddr_t) TRUE, (caddr_t) 0, sbj_item,
++ 				msg_item),
++ 	   NULL);
++ 
++     msg_item = xv_create(mouse_set_panel, PANEL_MESSAGE,
++ 			 PANEL_LABEL_STRING, LOCALIZE(" "),
++ 			 PANEL_NEXT_ROW, -1,
++ 			 NULL);
++     ppj_item = xv_create(mouse_set_panel, PANEL_CHECK_BOX,
++ 			 PANEL_LABEL_STRING, LOCALIZE("Pop-up Pointer Jumping:"),
++ 			 PANEL_NOTIFY_PROC, add_change_bar,
++ 			 XV_HELP_DATA, "props:PopupPointerJumpInfo",
++ 			 NULL);
++ 
++     xv_set(ppj_item,
++ 	   PANEL_CLIENT_DATA,
++ 	   allocate_desc_struct("OpenWindows.PopupJumpCursor",
++ 				"OpenWindows.PopupJumpCursor", D_boolean,
++ 				(caddr_t) TRUE, (caddr_t) 0, ppj_item,
++ 				msg_item),
++ 	   NULL);
++ 
++     msg_item = xv_create(mouse_set_panel, PANEL_MESSAGE,
++ 			 PANEL_LABEL_STRING, LOCALIZE(" "),
++ 			 PANEL_NEXT_ROW, -1,
++ 			 NULL);
++     mct_item = xv_create(mouse_set_panel, PANEL_SLIDER,
++ 			 PANEL_LABEL_STRING, LOCALIZE("Multi-click Timeout (sec/10) :"),
++ 			 PANEL_MIN_VALUE, 2,
++ 			 PANEL_MAX_VALUE, 10,
++ 			 PANEL_SHOW_RANGE, TRUE,
++ 			 PANEL_NOTIFY_PROC, add_change_bar,
++ 			 XV_HELP_DATA, "props:MultiClickInfo",
++ 			 NULL);
++ 
++     xv_set(mct_item,
++ 	   PANEL_CLIENT_DATA,
++ 	   allocate_desc_struct("OpenWindows.MultiClickTimeout",
++ 				"OpenWindows.MultiClickTimeout", D_number,
++ 				(caddr_t) 4, (caddr_t) 0, mct_item,
++ 				msg_item),
++ 	   NULL);
++ 
++     { int a,b,c,d;
++ 
++       a = xv_get(sbj_item, PANEL_LABEL_WIDTH);
++       b = xv_get(ppj_item, PANEL_LABEL_WIDTH);
++       c = xv_get(mct_item, PANEL_LABEL_WIDTH);
++ 
++       i = MAX_VALUE(a,MAX_VALUE(b,c)) + xv_get(msg_item, PANEL_LABEL_WIDTH) + DEFAULT_X_GAP;
++     }
++     xv_set(sbj_item,  PANEL_VALUE_X, i, NULL);
++     xv_set(ppj_item,  PANEL_VALUE_X, i, NULL);
++     xv_set(mct_item,  PANEL_VALUE_X, i, NULL);
++ 
++     window_fit_width(mouse_set_panel);
++ }
++ 
++ add_buttons()
++ {
++     Font_string_dims apply_size;
++     Font        font;
++     int         i;
++     Font_string_dims reset_size;
++     int         width;
++ 
++ #ifdef OW_I18N
++     XFontSet	font_set;
++     wchar_t	*ws;
++     Display	*dpy;
++     XRectangle     overall_ink_extents, overall_logical_extents;
++ 
++     font = xv_get(flavor_panel, WIN_FONT);
++     dpy = (Display *)xv_get(flavor_panel, XV_DISPLAY);
++     font_set= (XFontSet)xv_get(font, FONT_SET_ID);
++     ws = (wchar_t *)mbstowcsdup(LOCALIZE("Apply"));
++     XwcTextExtents(font_set, ws, wslen(ws),
++                 &overall_ink_extents, &overall_logical_extents);
++     apply_size.width = overall_logical_extents.width;
++     ws = (wchar_t *)mbstowcsdup(LOCALIZE("Reset"));
++     XwcTextExtents(font_set, ws, wslen(ws),
++                 &overall_ink_extents, &overall_logical_extents);
++     reset_size.width = overall_logical_extents.width;
++ 
++ #else
++ 
++     font = xv_get(flavor_panel, WIN_FONT);
++     xv_get(font, FONT_STRING_DIMS, LOCALIZE("Apply"), &apply_size);
++     xv_get(font, FONT_STRING_DIMS, LOCALIZE("Reset"), &reset_size);
++ 
++ #endif
++ 
++     for (i = 0; i < TOTAL_PANELS + color; i++) {
++ 	width = (int) xv_get(panel_group[i], XV_WIDTH);
++ 	xv_create(panel_group[i], PANEL_BUTTON,
++ 		  PANEL_LABEL_STRING, LOCALIZE("Apply"),
++ 		  PANEL_NOTIFY_PROC, apply_props_proc,
++ 		  PANEL_NEXT_ROW, -1,
++ 		  XV_X, (width / 4) - (apply_size.width / 2),
++ 		  XV_HELP_DATA, "props:ApplyInfo",
++ 		  NULL);
++ 
++ 	xv_create(panel_group[i], PANEL_BUTTON,
++ 		  PANEL_LABEL_STRING, LOCALIZE("Reset"),
++ 		  PANEL_NOTIFY_PROC, reset_props_proc,
++ 		  XV_X, (3 * width) / 4 - (reset_size.width / 2), 
++ 		  XV_HELP_DATA, "props:ResetInfo",
++ 		  NULL);
++ 	window_fit(panel_group[i]);
++     }
++ }
++ 
++ create_panels()
++ {
++     int         i;
++ 
++     for (i = 0; i < TOTAL_PANELS + color; i++)
++ 	panel_group[i] = xv_create(frame, PANEL,
++ 				   WIN_BORDER, TRUE,
++ 				   WIN_BELOW, flavor_panel,
++ 				   XV_X, 0,
++ #ifdef OW_I18N
++ 				   WIN_USE_IM, FALSE,
++ #endif
++ 				   XV_SHOW, FALSE,
++ 				   NULL);
++     if (color)
++ 	create_color_panel();
++ 
++     create_icon_panel();
++     create_menu_panel();
++     create_misc_panel();
++     create_mouse_set_panel();
++     create_localization_panel();
++ 
++     xv_set(panel_group[0], XV_SHOW, TRUE, NULL);
++ }
++ 
++ /* ARGSUSED */
++ factory_choice(panel_item, event)
++     Panel_item  panel_item;
++     Event      *event;
++ {
++     int         factory = !(int) xv_get(panel_item, PANEL_VALUE);
++ 
++     if (factory == showing_factory)
++ 	return;
++ 
++     if (factory) {
++ 	if (!saved_defaults[0]) {
++ 	    strcpy(saved_defaults, "/tmp/.XtempXXXXXX");
++ 	    mktemp(saved_defaults);
++ 	} else
++ 	    unlink(saved_defaults);
++ 
++ 	apply_props_proc(NULL, NULL);
++ 
++ 	defaults_store_db(saved_defaults);
++ 
++ 	defaults_init_db();
++ 	defaults_load_db(NULL);
++ 	showing_factory = TRUE;
++     } else {
++ 	defaults_load_db(saved_defaults);
++ 	showing_factory = FALSE;
++     }
++     set_props_values(NULL, NULL);
++ }
++ 
++ 
++ /* ARGSUSED */
++ show_props_category(panel_item, which_panel, event)
++     Panel_item  panel_item;
++     int         which_panel;
++     Event      *event;
++ {
++     int         height;
++     int         width;
++ 
++     if (panel_group[which_panel] == current_panel)
++ 	return;
++ 
++     /* Show requested panel */
++     xv_set(current_panel, XV_SHOW, FALSE, NULL);
++     current_panel = panel_group[which_panel];
++ #ifndef XV_SHOW_FIXED
++     height = (int) xv_get(current_panel, XV_HEIGHT);
++     width = (int) xv_get(current_panel, XV_WIDTH);
++ #endif
++     xv_set(current_panel, XV_SHOW, TRUE, NULL);
++ #ifndef XV_SHOW_FIXED
++     xv_set(current_panel,
++ 	   XV_HEIGHT, height,
++ 	   XV_WIDTH, width,
++ 	   NULL);
++ #endif
++ 
++     /* Resize frame around new panel */
++     width = (int) xv_get(current_panel, XV_WIDTH) + 2 * BORDER_WIDTH;
++     xv_set(flavor_panel,
++ 	   XV_WIDTH, width,
++ 	   NULL);
++     height = (int) xv_get(flavor_panel, XV_HEIGHT) +
++ 	xv_get(current_panel, XV_HEIGHT) + 2 * BORDER_WIDTH;
++     xv_set(frame,
++ 	   XV_HEIGHT, height,
++ 	   XV_WIDTH, width,
++ 	   NULL);
++ }
++ 
++ Notify_value
++ frame_unmap_proc(frame, event, arg, type)
++     Frame       frame;
++     Event      *event;
++     Notify_arg  arg;
++     Notify_event_type type;
++ {
++     if (event_action(event) == ACTION_CLOSE) {
++ 	exit(0);
++     }
++     return (notify_next_event_func(frame, event, arg, type));
++ }
++ 
++ main(argc, argv)
++     int         argc;
++     char       *argv[];
++ {
++     int		visual_class;
++     int		depth;
++     char	*openwin_dir;
++     char	localepath[MAXPATHLEN];
++     Cms		cms;
++ 
++     xv_init(XV_USE_LOCALE, TRUE,
++ 	    XV_INIT_ARGC_PTR_ARGV, &argc, argv, 
++ 	    NULL);
++ 
++     if ((openwin_dir = (char *)getenv("OPENWINHOME")) == NULL)
++     {
++ 	fprintf(stderr, LOCALIZE("%s: $OPENWINHOME has not been set\n"), argv[0]);
++     }
++     else
++     {
++         strcpy(localepath, openwin_dir);
++         strcat(localepath, "/lib/locale/");
++         bindtextdomain("props", localepath);
++     }
++ 
++     frame = xv_create(NULL, FRAME_CMD,
++ 		      XV_VISUAL_CLASS, PseudoColor,
++ 		      XV_DEPTH, 8,
++ 		      WIN_INHERIT_COLORS, TRUE,
++ 		      XV_X, 0,
++ 		      XV_Y, 0,
++ 		      XV_LABEL, LOCALIZE("Workspace Properties"),
++ 		      FRAME_NO_CONFIRM, TRUE,
++ 		      FRAME_CMD_PUSHPIN_IN, TRUE,
++ #ifdef OW_I18N
++ 		      WIN_USE_IM, FALSE,
++ #endif
++ 		      NULL);
++ 
++     dsp = (Display *) xv_get(frame, XV_DISPLAY);
++     visual_class = (int)xv_get(frame, XV_VISUAL_CLASS);
++     depth = (int)xv_get(frame, XV_DEPTH);
++ 
++     /* Note: We should probably handle a 4-bit color visual with a
++      *       smaller color palette, but we don't have the time to
++      *       do this for V3.  Therefore we are treating a 4 bit visual
++      *	     like monochrome, and thus shut off the color palette.
++      */
++     color = ((depth >= 8) && (visual_class % 2));
++ 
++     sprintf(user_defaults, "%s/.Xdefaults", getenv("HOME"));
++ 
++     if ( color ) {
++ 	cms = create_palette();
++ 	xv_set(frame, WIN_CMS, cms, NULL);
++     }
++ 
++     /*
++      * Might not get the colors set up right, so don't use FRAME_CMD_PANEL.
++      * We must create a new one.
++      */
++     xv_set((Panel)xv_get(frame, FRAME_CMD_PANEL) , XV_SHOW, FALSE, 0);
++ 
++     flavor_panel = xv_create(frame, PANEL, 
++ 			     XV_X, 0, 
++ 			     XV_Y, 0, 
++ #ifdef OW_I18N
++ 			     WIN_USE_IM, FALSE,
++ #endif 
++ 			     NULL);
++     
++     notify_interpose_event_func(frame, frame_unmap_proc, NOTIFY_SAFE);
++ 
++     flavor_choice = xv_create(flavor_panel, PANEL_CHOICE,
++ 			      PANEL_DISPLAY_LEVEL, PANEL_CURRENT,
++ 			      PANEL_LAYOUT, PANEL_HORIZONTAL,
++ 			      PANEL_CHOICE_NCOLS, 1,
++ 			      PANEL_LABEL_STRING, LOCALIZE("Category:"),
++ 			      PANEL_NOTIFY_PROC, show_props_category,
++ 			      XV_HELP_DATA, "props:CategoryInfo",
++ 			      NULL);
++ 
++     if (color)
++ 	xv_set(flavor_choice, PANEL_CHOICE_STRINGS, COLOR_PROPS, NULL);
++     else
++ 	xv_set(flavor_choice, PANEL_CHOICE_STRINGS, MONO_PROPS, NULL);
++ 
++     window_fit_height(flavor_panel);
++ 
++     create_panels();
++ 
++     current_panel = panel_group[0];
++ 
++     set_props_values(NULL, NULL);
++ 
++     add_buttons();
++ 
++     xv_set(flavor_panel,
++ 	   XV_WIDTH, xv_get(current_panel, XV_WIDTH) + 2 * BORDER_WIDTH,
++ 	   NULL);
++ 
++     window_fit(frame);
++ 
++     xv_set(frame, XV_SHOW, TRUE, NULL);
++ 
++     xv_main_loop(frame);
++ 
++     unlink(saved_defaults);
++ }
+diff -c -r --new-file xvorig/xview3.2//clients/props/props.h xview3.2//clients/props/props.h
+*** xvorig/xview3.2//clients/props/props.h
+--- xview3.2//clients/props/props.h	Sat Oct  5 07:13:30 1991
+***************
+*** 0 ****
+--- 1,55 ----
++ /*
++  * @(#)props.h 1.5 91/09/14
++  */
++ 
++ /*
++  * props.h - declarations for external interfaces to the props program.
++  */
++ 
++ #include <xview/xview.h>
++ #include <xview/panel.h>
++ #include <xview/defaults.h>
++ 
++ #define BORDER_WIDTH	1
++ 
++ #define	COLOR_PANEL 	0
++ #define	ICON_PANEL 	0
++ #define	MENU_PANEL 	1
++ #define	MISC_PANEL 	2
++ #define	MOUSE_SET_PANEL 3
++ #define LOCALIZATION_PANEL 4
++ #define	TOTAL_PANELS	5	/* or 6 if color terminal */
++ 
++ typedef enum {
++     D_number, D_string, D_boolean, D_nop
++ }           Deftype;
++ 
++ typedef struct {
++     char       *name;
++     char       *class;
++     Deftype     type;
++     caddr_t     default_value;
++     caddr_t     misc;
++     int         change_mark;	/* TRUE or FALSE */
++     Panel_message_item change_mark_item;
++     Panel_item  panel_item;
++ }           Description;
++ 
++ extern Frame frame;
++ extern Panel flavor_panel;
++ extern Panel_item flavor_choice;
++ extern Panel panel_group[TOTAL_PANELS + 1];
++ extern Panel current_panel;
++ extern Panel_item apply_button[TOTAL_PANELS + 1];
++ extern Panel_item reset_button[TOTAL_PANELS + 1];
++ extern int  showing_factory;
++ extern Display *dsp;
++ extern char *strtok();
++ extern int color;
++ 
++ extern Description *allocate_desc_struct();
++ extern Panel_setting add_change_bar();
++ 
++ #define LOCALIZE(s)	dgettext("props",s)
++ #define MAX_VALUE(x,y) 	(((x) > (y)) ? (x) : (y))
++ #define DEFAULT_X_GAP   20
+diff -c -r --new-file xvorig/xview3.2//clients/props/props.info xview3.2//clients/props/props.info
+*** xvorig/xview3.2//clients/props/props.info
+--- xview3.2//clients/props/props.info	Sat Oct  5 07:13:29 1991
+***************
+*** 0 ****
+--- 1,488 ----
++ ##################################################
++ #  props.info    3 July 1991, rev'd by James Brook
++ #	new helpopen path 11 July 1991
++ #
++ # This help text is for the workspace properties.
++ #
++ #       Open Windows Version 3 FCS
++ #
++ # 	@(#)props.info 1.16 91/09/14
++ #
++ ##################################################
++ #######################50#########################
++ :CategoryInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Category
++ 
++ Press MENU to choose a category and display the
++ Workspace properties you can change:
++ 
++ Color		Workspace and window color
++ 		(for color systems only)
++ 
++ Icons		Location of icons on Workspace
++ 
++ Menus		Drag-Right distance for pointer
++ 		SELECT Mouse Press
++ 
++ Miscellaneous	Beep
++ 		Set Input Area
++ 		Scrollbar Placement
++ 
++ Mouse		Scrollbar Pointer Jumping
++ 		Pop-up Pointer Jumping
++ 		Multi-click Timeout
++ 
++ Localization	Language- and culture-related
++ 		settings
++ #
++ :ApplyInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Apply 
++ 
++ Click SELECT on Apply to make the new settings
++ take effect and dismiss the Properties window.
++ 
++ Some properties take effect immediately, while 
++ others take effect the next time you start an
++ application.
++ 
++ #
++ #######################50#########################
++ :ResetInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Reset 
++ 
++ Click SELECT on Reset to return the properties
++ to their original settings and remove any change
++ bars.
++ 
++ #
++ ########################################
++ #       Color Category
++ ######################################
++ #
++ :ColorPanelInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Color Category
++ 
++ Choose options in this window to change the
++ color of the Workspace or windows.
++ 
++ You can preview your color choices before
++ applying them.
++ 
++ Click SELECT on Apply to apply your changes.
++ 
++ #######################50#########################
++ :ColorChoiceInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Workspace/Windows
++ 
++ Click SELECT on Workspace to edit Workspace 
++ color.
++ 
++ Click SELECT on Windows to edit Window color.
++ 
++ #######################50#########################
++ :CustomColorInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Custom/Palette
++ 
++ Click SELECT on Custom to display the Color
++ properties window. This is where you create a
++ custom color, using the Hue, Saturation, and
++ Brightness sliders.
++ 
++ Click SELECT on Palette to return to the color
++ palette.
++ 
++ :PaletteInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Palette Grid
++ 
++ This grid contains a variety of predetermined 
++ colors that are ideal for windows and the 
++ Workspace.
++ 
++ There are eight hues, each with four saturations,
++ and two brightness levels. On the right are eight
++ levels of gray scale.
++ 
++ Click SELECT on a color to choose it. When you 
++ choose a a new color for Windows, look in the
++ upper left corner of the pane to see a preview.
++ 
++ #######################50#########################
++ :AppImageInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Preview Area
++ 
++ This is the preview of your current color
++ selections.
++ 
++ #######################50#########################
++ :HueSlider:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Hue Slider
++ 
++ Press SELECT and drag the slider to set the hue.
++ 
++ :SaturationSlider:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Saturation Slider
++ 
++ Press SELECT and drag the slider to set the
++ saturation.
++ 
++ Moving this slider all the way to the left makes
++ all colors look gray and effectively disables
++ the Hue slider.
++ 
++ :BrightnessSlider:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Brightness Slider
++ 
++ Press SELECT and drag the slider to set the
++ saturation.
++ 
++ Moving this slider all the way to the left turns
++ all colors black and effectively disables the Hue
++ and Saturation sliders.
++ 
++ #######################50#########################
++ #
++ #######################################
++ #       Icons Category
++ ######################################
++ #
++ :IconPanelInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Icon Category
++ 
++ Choose options in this window to change the
++ location of icons on the Workspace.
++ 
++ #######################50#########################
++ :IconLocationInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Icon Location
++ 
++ Choose where on the screen new icons will be 
++ displayed:
++ 
++ 
++ Top	First icon appears in the upper left 
++ 	corner. Subsequent icons appear to the
++ 	right of the first icon. 
++ 
++ Bottom	First icon appears in the lower left 
++ 	corner. Subsequent icons appear to the
++ 	right of the first icon.
++ 
++ Left	First icon appears in the upper left 
++ 	corner. Subsequent icons appear below 
++ 	the first icon.
++ 
++ Right	First icon appears in the upper right 
++ 	corner. Subsequent icons appear below 
++ 	the first icon.
++ 
++ 
++ Click SELECT on Apply to apply the location
++ setting.
++ 
++ When you start a new application, its icon will
++ use the new location setting.
++ 
++ Icons already displayed will not change location.
++ 
++ #######################50#########################
++ #
++ #######################################
++ #       Menus Category
++ ######################################
++ #
++ #######################50#########################
++ 
++ :MenuPanelInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Menus Category
++ 
++ Choose options in this window to change settings
++ affecting how you choose from menus.
++ 
++ 
++ :MenuDragRightInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Drag-Right distance (pixels):
++ 
++ Specifies how far you must drag the pointer
++ before it displays a submenu. The smaller the
++ number, the faster the submenu appears.
++ 
++ Enter the number of pixels you want to drag the
++ pointer before it displays the submenu.
++ 
++ Default = 5 pixels
++ 
++ This setting takes effect as soon as you click
++ SELECT on Apply.
++ 
++ #
++ #######################50#########################
++ :SelectMousePressInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ SELECT Mouse Press:
++ 
++ Determines what happens when you use the SELECT
++ mouse button on a menu button.
++ 
++ Selects Default	Shows the default setting for the
++ 		menu when you press SELECT.
++ 		Executes the default when you 
++ 		release SELECT.
++ 
++ Displays Menu	Displays the menu.
++ 
++ 
++ Click SELECT on Apply to apply the setting.
++ 
++ New applications will use the new setting. The
++ setting will not change for applications that
++ are already running.
++ 
++ #
++ #######################50#########################
++ #######################################
++ #       Miscellaneous
++ ######################################
++ #
++ 
++ :MiscPanelInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Miscellaneous Category
++ 
++ Choose options in this window to change settings
++ for beep, input area, and scrollbar placement.
++ 
++ #
++ #######################50#########################
++ :Beep:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Beep:
++ 
++ Choose when your system will beep:
++ 
++ Always		Beeps for all applications.
++ 
++ Notices Only	Only beeps when a Notice is 
++ 		displayed.
++ 
++ Never		Never beeps.
++ 
++ Click SELECT on Apply to apply the setting.
++ 
++ New applications will use the new setting. The
++ setting will not change for applications that
++ are already running.
++ 
++ #######################50#########################
++ #
++ :InputFocusInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Set Input Area:
++ 
++ Choose how you activate the input caret to type
++ in a window or text field:
++ 
++ Click SELECT	Move the pointer into a window and
++ 		click SELECT.
++ 
++ Move Pointer	Move the pointer into a window.
++ 
++ This setting takes effect as soon as you click
++ SELECT on Apply.
++ 
++ With either setting, you can set a new insert
++ point by clicking SELECT in a text field or
++ pane.
++ 
++ #
++ #######################50#########################
++ :ScrollbarPlacementInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Scrollbar Placement:
++ 
++ Choose where the scrollbar is placed in a pane:
++ Left or Right.
++ 
++ This setting applies to all applications on the
++ Workspace.
++ 
++ Click SELECT on Apply to apply the setting.
++ 
++ New applications will use the new setting. The
++ setting will not change for applications that
++ are already running.
++ 
++ #
++ #######################################
++ #       Mouse Settings
++ ######################################
++ #
++ #######################50#########################
++ 
++ :MouseSetPanelInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Mouse Settings Category
++ 
++ Choose options in this window to change
++ mouse-related settings.
++ 
++ 
++ #
++ #######################50#########################
++ :ScrollbarPointerJumpInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Scrollbar Pointer Jumping:
++ 
++ Sets the pointer so it follows the moves of the
++ scrollbar elevator.
++ 
++ Click SELECT on the check box to set the pointer.
++ To undo the setting, click on the check box
++ again.
++ 
++ Click SELECT on Apply to apply the setting.
++ 
++ New applications will use the new setting. The
++ setting will not change for applications that
++ are already running.
++ 
++ #
++ #######################50#########################
++ :PopupPointerJumpInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Pop-up Pointer Jumping:
++ 
++ Sets the pointer so it jumps into a pop-up
++ window when you open it.
++ 
++ Click SELECT on the check box to set the pointer.
++ To undo the setting, click on the check box
++ again.
++ 
++ Click SELECT on Apply to apply the setting.
++ 
++ New applications will use the new setting. The
++ setting will not change for applications that
++ are already running.
++ 
++ #
++ #######################50#########################
++ :MultiClickInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Multi-click Timeout (sec/10):
++ 
++ Specifies in 10ths of a second the length of
++ time between clicks for multi-click operations. 
++ 
++ If the time between clicks is longer than the
++ number in the setting, each click is treated as
++ a separate event.
++ 
++ For example, with a setting of 4/10, if you 
++ double-click on a icon with clicks that are 5/10
++ of a second apart, you select the icon instead
++ of opening it. 
++ 
++ You can type a number from 2 to 10 or use the
++ slider to set the time.
++ 
++ Click SELECT on Apply to apply the setting.
++ 
++ New applications will use the new setting. The
++ setting will not change for applications that
++ are already running.
++ 
++ 
++ #
++ #######################################
++ #       Localization Settings
++ ######################################
++ #
++ #######################50#########################
++ :LocalizationPanelInfo:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Localization Category
++ 
++ In this window, you can change language- and 
++ culture-related Workspace properties.
++ 
++ Changes will apply when you start a new 
++ application, and will not affect applications 
++ that are already running.
++ 
++ #
++ #######################50#########################
++ :BasicSetting:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Basic Setting:
++ 
++ Press MENU on the menu button to choose the
++ language or culture area to be used in the 
++ Workspace.
++ 
++ Choice of a basic setting determines the choices
++ and defaults available for Specific Setting
++ entries.
++ 
++ #
++ #######################50#########################
++ :SpecificSetting:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Specific Setting:
++ 
++ These entries are essential to each localized
++ environment. They include Display Language, Input
++ Language, Time Format, and Numeric Format
++ settings.
++ 
++ Choices and defaults for Specific Setting
++ entries vary according to the Basic Setting.
++ 
++ #
++ #######################50#########################
++ :DisplayLanguage:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Display Language:
++ 
++ Specifies the language in which messages, labels,
++ menu items, titles, and help text are shown.
++ 
++ Press MENU on the menu button to choose a new
++ setting.
++ 
++ New applications will use the new setting. The
++ setting will not change for applications that
++ are already running.
++ 
++ #
++ :InputLanguage:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Input Language:
++ 
++ Specifies the language used for input.
++ 
++ Press MENU on the menu button to choose a new
++ setting.
++ 
++ New applications will use the new setting. The
++ setting will not change for applications that
++ are already running.
++ 
++ #
++ #######################50#########################
++ :TimeFormat:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Time Format:
++ 
++ Specifies the format for time and date display.
++ 
++ Press MENU on the menu button to choose a new
++ setting.
++ 
++ New applications will use the new setting. The
++ setting will not change for applications that
++ are already running.
++ 
++ #
++ :NumericFormat:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Numeric Format:
++ 
++ Specifies the format for numeric display.
++ 
++ Press MENU on the menu button to choose a new
++ setting.
++ 
++ New applications will use the new setting. The
++ setting will not change for applications that
++ are already running.
++ 
++ #
++ :SupplementarySetting:$OPENWINHOME/bin/helpopen handbooks/workspace.handbook
++ Supplementary
++ 
++ This setting is not currently available.
++ 
+diff -c -r --new-file xvorig/xview3.2//clients/textedit/Imakefile xview3.2//clients/textedit/Imakefile
+*** xvorig/xview3.2//clients/textedit/Imakefile
+--- xview3.2//clients/textedit/Imakefile	Sun Feb 14 03:56:16 1993
+***************
+*** 0 ****
+--- 1,24 ----
++ #include <XView.tmpl>
++ 
++ /**/##########################################################################
++ /**/# @(#)Imakefile 1.6 90/07/17 SMI
++ /**/# Imakefile for textedit
++ 
++ DEFINES = -DSTANDALONE
++ INCLUDES = -I/usr/openwin/include -I$(HEADER_DEST) -I$(TOP)
++ SYS_LIBRARIES =
++ DEPLIBS = XViewClientDepLibs
++ LOCAL_LIBRARIES = XViewClientLibs
++ 
++ HEADERS =
++ INFOFILES = textedit.info
++ MANPAGES = textedit.man
++ ICONS = textedit.icon textedit.mask.icon
++ SRCS = textedit.c
++ OBJS = textedit.o
++ 
++ ALLFILES = ${HEADERS} ${INFOFILES} ${MANPAGES} ${ICONS} ${SRCS}
++ 
++ ComplexProgramTarget(textedit)
++ 
++ #include <XView.prog>
+diff -c -r --new-file xvorig/xview3.2//clients/textedit/textedit.c xview3.2//clients/textedit/textedit.c
+*** xvorig/xview3.2//clients/textedit/textedit.c
+--- xview3.2//clients/textedit/textedit.c	Thu Aug 12 03:07:58 1993
+***************
+*** 0 ****
+--- 1,1020 ----
++ #ifndef lint
++ static char sccsid[] = "@(#)textedit.c 15.50 90/05/22";
++ #endif
++ 
++ /*
++  * Copyright (c) 1986, 1987, 1988 by Sun Microsystems, Inc.
++  */
++ 
++ /*
++  * This textedit is the envelope that binds various text display and
++  *   editing facilities together.
++  */
++ 
++ #include <sys/param.h> /* MAXPATHLEN (include types.h if removed) */
++ #include <sys/dir.h>   /* MAXNAMLEN */
++ #include <sys/stat.h>
++ 
++ #include <fcntl.h>
++ #include <stdio.h>
++ #include <strings.h>
++ #include <X11/X.h>
++ #include <xview/defaults.h>
++ #include <xview/font.h>
++ #include <xview/notice.h>
++ #include <xview/frame.h>
++ #include <xview/xview.h>
++ #include <xview/scrollbar.h>
++ #include <xview/text.h>
++ #include <xview/panel.h>
++ #include <xview/selection.h>
++ #include <xview/sel_svc.h>
++ #include <xview/sel_attrs.h>
++ 
++ #ifdef ecd.help
++ #include <suntool/help.h>
++ #endif
++ 
++ /*
++  * The presence of this line caused textedit not to be built
++  * The function is already defined in the XView libraries
++ long	textsw_store_file();
++ */
++ char	*getwd();
++ #ifndef __linux
++ char *sprintf();
++ #endif
++ void	frame_cmdline_help();
++ static int		off();
++ static Notify_value	mysigproc();
++ /*
++ extern Notify_value	textedit_event_proc();
++ */
++ 
++ static Frame		base_frame;
++ static char		current_filename[MAXNAMLEN];
++ static char		current_directory[MAXPATHLEN];
++ static int		handling_signal;
++ static Textsw		textsw;
++ static char		*cmd_name;
++ static int		user_label;
++ static int		caps_lock_on;
++ static int		edited;
++ static int      	read_only;
++ static char		cmdline_args[1024];
++ 
++ 
++ int		PANEL_ITEM_DATA;
++ 
++ static short edit_ic_image[256]={
++ #include "textedit.icon"
++ };
++ 
++ static short edit_mask_image[256]={
++ #include "textedit.mask.icon"
++ };
++ 
++ /*
++  * The textedit command line options.
++  */
++ static char	*option_names[] = {
++ 			"auto_indent", "Ei",
++ 			"okay_to_overwrite", "Eo",
++ 			"lower_context", "EL",
++ 			"margin", "Em",
++ 			"multi_click_space", "ES",
++ 			"multi_click_timeout", "ET",
++ 			"number_of_lines", "En",
++ 			"read_only", "Er",
++ 			"scratch_window", "Es",
++ 			"tab_width", "Et",
++ 			"history_limit", "Eu",
++ 			"upper_context", "EU",
++ 			"checkpoint", "Ec",
++ 			"num_cols", "EC",
++ #ifdef DEBUG
++ 			"malloc_debug_level", "Ed",
++ #endif
++ 			0  /* Terminator! */  };
++ 
++ #define OPTION_AUTO_INDENT		(1<<0)
++ #define OPTION_ALWAYS_OVERWRITE		(1<<1)
++ #define OPTION_LOWER_CONTEXT		(1<<2)
++ #define OPTION_MARGIN			(1<<3)
++ #define OPTION_MULTI_CLICK_SPACE	(1<<4)
++ #define OPTION_MULTI_CLICK_TIMEOUT	(1<<5)
++ #define OPTION_NUMBER_OF_LINES		(1<<6)
++ #define OPTION_READ_ONLY		(1<<7)
++ #define OPTION_SCRATCH_WINDOW		(1<<8)
++ #define OPTION_TAB_WIDTH		(1<<9)
++ #define OPTION_UNDO_HISTORY		(1<<10)
++ #define OPTION_UPPER_CONTEXT		(1<<11)
++ #define OPTION_CHECKPOINT_FREQUENCY	(1<<12)
++ #define OPTION_NUM_COLS	                (1<<13)
++ 
++ #ifdef DEBUG
++ #define OPTION_MALLOC_DEBUG_LEVEL	(1<<14)
++ #define OPTION_EDIT_LOG_WRAPS_AT	(1<<15)
++ #endif
++ 
++ #ifdef TEXTEDIT_HELP_STRING
++ static char	*help_msg()
++ /*
++  * This routine is required because the help_msg is too big for the
++  *   compiler to accept as a single string token.
++  */
++ {
++ 	extern char	*calloc();
++ 	char		*result = calloc(1, 5000);
++ 	
++ 	(void)sprintf(result, "\n\t\tHelp for %s\n%s\n%s\n%s\n",
++ 		xv_get(base_frame, FRAME_LABEL),
++ "Mouse buttons: left is point, middle is adjust, right is menu.\n\
++ 	Multi-click is only implemented for point.\n\
++ 	Adjust-at-end-char is char-adjust.\n\
++ 	CONTROL-select is pending-delete select, e.g. CONTROL-GET is MOVE.\n\
++ Function keys:",
++ "	L1 STOP				L2 is AGAIN\n\
++ 	L3 (unused)			L4 is UNDO\n\
++ 	L5 TOP				L6 is PUT\n\
++ 	L7 OPEN				L8 is GET\n\
++ 	L9 (or ^F) is FIND		L10 (or ^D) is DELETE\n\
++ 	^P is an accelerator for the 'Put, then Get' menu item.\n\
++ 	GET with no secondary selection (or ^G) is GET from SHELF.\n\
++ SHIFTs:",
++ "	SHIFT-back_char/word/line is forward_char/word/line.\n\
++ 	SHIFT-TOP is BOTTOM; SHIFT-OPEN is CLOSE.\n\
++ Menu item notes: Save leaves old file as <file>%\n\
++ 	Store writes to selected name, and then edits it.\n\
++ Startup: \"Text Editor <options> <file>\" is supported.\n\
++ Options are [where (E<letter>) indicates a short alternative]:\n\
++ 	okay_to_overwrite (Eo) [on]\n\
++ 	auto_indent (Ei) [off]			read_only (Er) [on]\n\
++ 	lower_context (EL) <int>		scratch_window (Es) <int>\n\
++ 	margin (Em) <int>			tab_width (Et) <int>\n\
++ 	multi_click_space (ES) <int>		history_limit (Eu) <int>\n\
++ 	multi_click_timeout (ET) <int>		upper_context (EU) <int>\n\
++ 	number_of_lines (En) <int>\n\
++ Use defaultsedit to permanently set all of the above (and additional)\n\
++ 	options for all text subwindows.\n\
++ Saving your edits in case of disaster:\n\
++ 	If the  Text Editor runs wild, send it a SIGHUP to force a Store."
++ 	);
++ 	return(result);
++ }
++ #endif
++ 
++ /*
++  * Return pointer to longest suffix not beginning with '/'
++  */
++ static char *
++ base_name(full_name)
++ 	char *full_name;
++ {
++ 	extern char	*rindex();
++ 	register char	*temp;
++ 
++ 	if ((temp = rindex(full_name, '/')) == NULL)
++ 	    return(full_name);
++ 	else
++ 	    return(temp+1);
++ }
++ 
++ 
++ Notify_value
++ textedit_load_event_proc(window, event, arg, type)
++ 
++ Xv_opaque               window;
++ Event                   *event;
++ Notify_arg              arg;
++ Notify_event_type       type;
++ 
++ {
++ 	char	document_name[4096];
++ 	int	alert_result;
++ 	char	*s_p;
++ 
++         if (event_action(event) == ACTION_DRAG_LOAD)
++         {
++                	if (xv_decode_drop(event, document_name, 4096) == -1)
++                        	return(NOTIFY_DONE);
++ 	
++ 		/* display an alert here, asking if the user wants 
++ 	   	   to have any edits discarded.  If they don't, 
++ 	   	   then abort the load. */
++ 
++ 		if (edited)
++ 			alert_result = (int) notice_prompt(base_frame, &event,
++ 				NOTICE_MESSAGE_STRINGS,
++ 				"Your file has been edited.",
++ 				"Do you wish to discard these edits?",
++ 				0,
++ 				NOTICE_BUTTON_NO, "Cancel",
++ 				NOTICE_BUTTON_YES, "Confirm",
++ 				0);
++ 
++ 		if (!edited || (alert_result == NOTICE_YES))
++ 		{
++ 
++ 			/* clip out any files after the first one.  We 
++ 			   don't take multiple file names in textedit. */
++ 
++ 			s_p = document_name;
++ 			while (*s_p && (*s_p != '\t'))
++ 				s_p++;
++ 			*s_p = NULL;
++ 	
++                 	xv_set(textsw, 
++ 				TEXTSW_FILE, document_name, 
++ 				TEXTSW_FIRST,   0,
++                 		TEXTSW_INSERTION_POINT, 0,
++ 				0);
++ 	
++ 			xv_set(base_frame, FRAME_CLOSED, FALSE, 0);
++ 		}
++                 return(NOTIFY_DONE);
++         }
++ 
++         return notify_next_event_func(window, event, arg, type);
++ }
++ 	
++ static
++ set_name_frame(textsw_local, attributes)
++ 	Textsw		 textsw_local;
++ 	Attr_avlist	 attributes;
++ {
++ 	char		 frame_label[50+MAXNAMLEN+MAXPATHLEN];
++ 	Icon		 edit_icon;
++ 	char		 icon_text[sizeof(frame_label)];
++ 	char		 *ptr;
++ 	int		 len, pass_on = 0, repaint = 0;
++ 	int		 was_read_only = read_only;
++ 	Attr_avlist	 attrs;
++ 	char		*attr_string;
++ 
++ 	if (handling_signal)
++ 	    return;
++ 	icon_text[0] = '\0';
++ 	ptr = icon_text;
++ 	for (attrs = attributes; *attrs; attrs = attr_next(attrs)) {
++ 	    repaint++;	/* Assume this attribute needs a repaint. */
++ 	    switch ((Textsw_action)(*attrs)) {
++ 	      case TEXTSW_ACTION_CAPS_LOCK:
++ 		caps_lock_on = (int)attrs[1];
++ 		ATTR_CONSUME(*attrs);
++ 		break;
++ 	      case TEXTSW_ACTION_CHANGED_DIRECTORY:
++ 		attr_string = (char *)attrs[1];
++ 		switch (attr_string[0]) {
++ 		  case '/':
++ 		    (void)strcpy(current_directory, attrs[1]);
++ 		    break;
++ 		  case '.':
++ 		    if (attr_string[1] != '\0')
++ 			(void) getwd(current_directory);
++ 		    break;
++ 		  case '\0':
++ 		    break;
++ 		  default:
++ 		    (void)strcat(current_directory, "/");
++ 		    (void)strcat(current_directory, attrs[1]);
++ 		    break;
++ 		}
++ 		ATTR_CONSUME(*attrs);
++ 		break;
++ 	      case TEXTSW_ACTION_USING_MEMORY:
++ 		(void)strcpy(current_filename, "(NONE)");
++ 		(void)strcpy(icon_text, "NO FILE");
++ 		edited = read_only = 0;
++ 		ATTR_CONSUME(*attrs);
++ 		break;
++ 	      case TEXTSW_ACTION_LOADED_FILE:
++ 		(void)strcpy(current_filename, attrs[1]);
++ 		edited = read_only = 0;
++ 		goto Update_icon_text;
++ 	      case TEXTSW_ACTION_EDITED_FILE:
++ 		edited = 1;
++ 		*ptr++ = '>';
++ Update_icon_text:
++ 		len = (strlen(attrs[1]) > sizeof(icon_text) - 2) ?
++ 		    sizeof(icon_text) - 2 : strlen(attrs[1]);
++ 		    /* need 1 char for edit/not, 1 for null */
++ 		(void)strncpy(ptr, attrs[1], len); ptr[len] = '\0';
++ 		(void)strcpy(ptr, base_name(ptr));	/* strip path */
++ 		ATTR_CONSUME(*attrs);
++ 		break;
++ 	      default:
++ 		pass_on = 1;
++ 		repaint--;	/* Above assumption was wrong. */
++ 		break;
++ 	    }
++ 	}
++ 	if (pass_on)
++ 	    (void)textsw_default_notify(textsw_local, attributes);
++ 	if (repaint) {
++ 	    (void)sprintf(frame_label, "%s Text Editor - %s%s, dir; %s",
++ 		    (caps_lock_on) ? "[CAPS] " : "",
++ 		    current_filename,
++ 		    (was_read_only) ? " (read only)"
++ 			: (edited) ? " (edited)" : "",
++ 		    current_directory);
++ 	    (void)xv_set(base_frame, FRAME_LABEL, frame_label, 0);
++ 
++ 	    if (icon_text[0] != '\0') {
++ 		struct rect	text_rect, *icon_rect;
++ 		struct pixfont	*font;
++ 		
++ 		edit_icon = xv_get(base_frame, FRAME_ICON);
++ 		icon_rect = (Rect *) (icon_get(edit_icon, ICON_IMAGE_RECT));
++ 		font = (struct pixfont *) (icon_get(edit_icon, ICON_FONT));
++ 		ptr = (user_label) ?
++ 			(char *) xv_get(edit_icon, XV_LABEL) : icon_text;
++ 		
++ 		/* adjust icon text top/height to match font height */
++ 		text_rect.r_height = xv_get(font, FONT_DEFAULT_CHAR_HEIGHT);
++ 		text_rect.r_top =
++ 		    icon_rect->r_height - (text_rect.r_height + 2);
++ 
++ 		/* center the icon text */
++ 		text_rect.r_width = strlen(ptr)*(xv_get(font, FONT_DEFAULT_CHAR_WIDTH));
++ 		if (text_rect.r_width > icon_rect->r_width)
++ 		    text_rect.r_width = icon_rect->r_width;
++ 		text_rect.r_left = (icon_rect->r_width-text_rect.r_width)/2;
++ 
++ 		(void)xv_set(edit_icon,
++ 		    XV_LABEL,		ptr,
++ 		    ICON_LABEL_RECT,	&text_rect,
++ 		    0);
++ 		/* xv_set actually makes a copy of all the icon fields */
++ 		(void)xv_set(base_frame, FRAME_ICON, edit_icon, 0);
++ 	    }
++ 	}
++ }
++ 
++ static void
++ button_notify_proc(item, event)
++ 	Panel_item item;
++ 	Event *event;
++ {
++ 	Textsw 	textsw = (Textsw)xv_get(item, XV_KEY_DATA, PANEL_ITEM_DATA);
++ 	Menu	menu = (Menu)xv_get(item, PANEL_ITEM_MENU);
++         Panel   p_menu = (Panel)xv_get(menu, MENU_PIN_WINDOW);
++         Menu_item menu_item;
++         Menu pullr_menu;
++         int num_items, i;
++ 	
++ 	xv_set(menu, XV_KEY_DATA, TEXTSW_MENU_DATA_KEY, textsw, 0);
++         if (p_menu) {
++           num_items = (int)xv_get(menu, MENU_NITEMS);
++           for (i = 1; i<= num_items; i++) {
++               menu_item = (Menu_item)xv_get(menu, MENU_NTH_ITEM, i);
++               if (menu_item) {
++                   pullr_menu = (Menu)xv_get(menu_item, MENU_PULLRIGHT);
++                   if (pullr_menu) {
++                      xv_set(pullr_menu, XV_KEY_DATA, TEXTSW_MENU_DATA_KEY, textsw, 0); 
++                   }
++               }
++           }
++         }
++ }
++ 
++ static
++ textsw_split_proc(origview, newview, pos)
++ 
++ Xv_Window	origview;
++ Xv_Window	newview;
++ int		pos;
++ 
++ {
++ 	notify_interpose_event_func(newview, textedit_load_event_proc, NOTIFY_SAFE);
++ }
++ 
++ 
++ 
++ static void
++ my_frame_help(name)
++ 	char	*name;
++ {
++ 	frame_cmdline_help(name);
++ #ifdef TEXTEDIT_HELP_STRING
++ 	(void)fprintf(stderr,
++ 		"\nFor further information, use the switch -text_help.\n");
++ #endif
++ }
++ 
++ #if	(defined(STANDALONE) || defined(DEBUG) || defined(GPROF))
++ main(argc, argv)
++ 	int	  argc;
++ 	char	**argv;
++ {
++ #ifdef	GPROF
++ 	if (argc > 1 && strcmp(argv[argc-1], "-gprof") == 0) {
++ 	    moncontrol(1);
++ 	    /* Pull the -gprof out of argc/v */
++ 	    argc--;
++ 	    argv[argc] = (char *)0;
++ 	} else {
++ 	    moncontrol(0);
++ 	}
++ #endif	GPROF
++ 	textedit_main(argc, argv);
++ }
++ #endif	(defined(STANDALONE) || defined(DEBUG) || defined(GPROF))
++ 
++ textedit_main(argc, argv)
++ 	int	  argc;
++ 	char	**argv;
++ {
++ #define	GET_INT_ATTR_VAL(var)						\
++ 	if (argc > 0) {var = (caddr_t) atoi(argv[1]); argc--, argv++;}
++ 	extern struct pixfont	 *pw_pfsysopen();
++ 
++ 	Icon			  edit_icon;
++ 	Textsw_status		  status;
++ 	int			  checkpoint = 0;
++ 	int			  margin;
++ 	int			  textswwidth;
++ 	int			  number_of_lines = 0;
++ 	int			  optioncount = 
++ 				   sizeof(option_names)/sizeof(option_names[0]);
++ 	struct stat           	  stb;
++ 	caddr_t			  textsw_attrs[ATTR_STANDARD_SIZE];
++ 	int			  attrc = 0;
++ 	char			 *file_to_edit = NULL;
++ 	Panel			  panel;
++ 	Panel_item		  file_panel_item, edit_panel_item, display_panel_item, find_panel_item;
++ 	Menu			  file_panel_menu, edit_panel_menu, display_panel_menu, find_panel_menu;
++ 		
++ #ifdef DEBUG
++ 	caddr_t			  edit_log_wraps_at = (caddr_t)TEXTSW_INFINITY;
++ #endif
++ 	
++ 	Menu_item		  menu_item;
++         int                       num_cols = 0;
++         int                       user_set_size = FALSE;
++ 	char			  **argscanner = argv;
++ 	Server_image		  icon_image;
++ 	Server_image		  mask_image;
++ 
++ 
++ #define STDERR  2
++ 
++ 	/*
++ 	 * Init data
++ 	 * Implicitely zeroed:	caps_lock_on, handling_signal,
++ 	 *			read_only, edited
++ 	 */
++ 
++ 	while (*argscanner)
++         {
++                 if (!strcmp(*argscanner, "-Ws") || 
++ 		    !strcmp(*argscanner, "-Ww") || 
++ 		    !strcmp(*argscanner, "-Wh"))
++                 {
++                         user_set_size = TRUE;
++ 			break;
++                 }
++                 argscanner++;
++         }
++ 
++ 
++ 	xv_init(XV_INIT_ARGC_PTR_ARGV,	&argc, argv, 0);
++ 
++      	icon_image = xv_create(0, SERVER_IMAGE,
++                 SERVER_IMAGE_BITS, edit_ic_image,
++                 SERVER_IMAGE_DEPTH, 1,
++                 XV_WIDTH, 64,
++                 XV_HEIGHT, 64,
++                 0);
++ 
++      	mask_image = xv_create(0, SERVER_IMAGE,
++                 SERVER_IMAGE_BITS, edit_mask_image,
++                 SERVER_IMAGE_DEPTH, 1,
++                 XV_WIDTH, 64,
++                 XV_HEIGHT, 64,
++                 0);
++ 
++         edit_icon= xv_create(0, ICON,
++                         ICON_IMAGE, icon_image,
++ 			ICON_MASK_IMAGE, mask_image,
++ 			ICON_TRANSPARENT, TRUE,
++                         0);
++ 
++ 	xv_set(edit_icon,
++ 		WIN_CONSUME_EVENTS,
++ 		LOC_WINENTER,
++ 		LOC_WINEXIT,
++ 		LOC_DRAG,
++ 		0,
++ 		0);
++ 
++ 	cmd_name = *argv;		/* Must be BEFORE calls on die() */
++ 	current_filename[0] = '\0';
++ 	(void) getwd(current_directory);
++ 	    /* Error message is placed into current_directory by getwd */
++ 	checkpoint =
++ 	    defaults_get_integer_check("text.checkpointFrequency",
++                           "Text.CheckpointFrequency", 0, 0, (int)TEXTSW_INFINITY);
++ 	base_frame = xv_create((Xv_window)NULL, FRAME,
++ 	    FRAME_NO_CONFIRM,		TRUE,
++ 	    FRAME_ICON,			edit_icon,
++ 	    FRAME_LABEL,		"Text Editor",
++ 	    FRAME_SHOW_LABEL,		TRUE,
++ 	    FRAME_CMDLINE_HELP_PROC,	my_frame_help,
++ #ifdef ecd.help
++ 	    HELP_DATA,			"sunview:textedit",
++ #endif
++ 	    0);
++ 
++ 	/*
++ 	 * Set icon's font to system font [if user hasn't set icon font],
++ 	 * but AFTER xv_create has a chance to change it from the
++ 	 * built-in font.
++ 	 * If the user supplies a label, use it and don't override
++ 	 * with our's later.
++ 	 * Note that we get the icon from the Frame in case user
++ 	 * over-rides via argc, argv!
++ 	 */
++ 	edit_icon = xv_get(base_frame, FRAME_ICON);
++ 	user_label = (int)xv_get(edit_icon, XV_LABEL);
++ 	if (!icon_get(edit_icon, ICON_FONT)) {
++ 	    (void)icon_set(edit_icon, ICON_FONT, pw_pfsysopen(), 0);
++ 	    if (!icon_get(edit_icon, ICON_FONT))
++ 		die("Cannot get default font.\n", (char *)NULL, (char *)NULL);
++ 	    (void)xv_set(base_frame, FRAME_ICON, edit_icon, 0);
++ 	}
++ 
++ 	/*
++ 	 * Pick up command line arguments to modify textsw behavior.
++ 	 * Notes: FRAME_ARGC_PTR_ARGV above has stripped window flags.
++ 	 *        case OPTION_MARGIN is used to compute WIN_WIDTH.
++ 	 */
++ #ifndef lint
++ 	margin = (int)textsw_get_from_defaults(TEXTSW_LEFT_MARGIN);
++ #endif
++ 	argc--; argv++;				/* Skip the cmd name */
++ 	while ((argc--) && (attrc < ATTR_STANDARD_SIZE)) {
++ 
++ 	    strcat(cmdline_args, argv[0]);
++ 	    strcat(cmdline_args, " ");
++ 
++ 	    if (argv[0][0] == '-') {
++ 		extern int	match_in_table();
++ 		int		option =
++ 				match_in_table(&(argv[0][1]), option_names);
++ 		if (option < 0 || option >= optioncount) {
++ 		    die(argv[0], " is not a valid option.\n", (char *)NULL);
++ 		}
++ 		switch (1<<(option/2)) {
++ 		    case OPTION_NUMBER_OF_LINES:
++ 			if (argc > 0) {
++ 			    number_of_lines = atoi(argv[1]);
++ 	    		    strcat(cmdline_args, argv[1]);
++ 	    		    strcat(cmdline_args, " ");
++ 			    argc--, argv++;
++ 			}
++ 			break;
++ 		    case OPTION_READ_ONLY:
++ 		 	read_only = 1;
++ 		    	if ((argc > 0) && (argv[1][0] != '-')) {
++ 	    		    strcat(cmdline_args, argv[1]);
++ 	    		    strcat(cmdline_args, " ");
++ 			    argc--, argv++;
++ 			    read_only = !off(argv[0]);
++                             file_to_edit = argv[0];
++ 			}
++ 			break;
++ 			
++ 		    case OPTION_AUTO_INDENT:
++ 			textsw_attrs[attrc++] = (caddr_t) TEXTSW_AUTO_INDENT;
++ 			textsw_attrs[attrc] = (caddr_t) 1;
++ 			if ((argc > 0) && (argv[1][0] != '-')) {
++ 	    		    strcat(cmdline_args, argv[1]);
++ 	    		    strcat(cmdline_args, " ");
++ 			    argc--, argv++;
++ 			    textsw_attrs[attrc] = (caddr_t) !off(argv[0]);
++ 			}
++ 			attrc++;
++ 			break;
++ 		    case OPTION_ALWAYS_OVERWRITE:
++ 		 	textsw_attrs[attrc++] =
++ 		 		(caddr_t) TEXTSW_CONFIRM_OVERWRITE;
++ 		 	textsw_attrs[attrc] = (caddr_t) 0;
++ 		    	if ((argc > 0) && (argv[1][0] != '-')) {
++ 	    		    strcat(cmdline_args, argv[1]);
++ 	    		    strcat(cmdline_args, " ");
++ 			    argc--, argv++;
++ 			    textsw_attrs[attrc] = (caddr_t) off(argv[0]);
++ 			}
++ 			attrc++;
++ 			break;
++ #ifdef DEBUG
++ 		    case OPTION_EDIT_LOG_WRAPS_AT:
++ 			GET_INT_ATTR_VAL(edit_log_wraps_at)
++ 			break;
++ #endif
++ 		    case OPTION_LOWER_CONTEXT:
++ 			textsw_attrs[attrc++] = (caddr_t) TEXTSW_LOWER_CONTEXT;
++ 			GET_INT_ATTR_VAL(textsw_attrs[attrc++])
++ 			break;
++ #ifdef DEBUG
++ 		    case OPTION_MALLOC_DEBUG_LEVEL:
++ 			textsw_attrs[attrc++] =
++ 				(caddr_t) TEXTSW_MALLOC_DEBUG_LEVEL;
++ 			GET_INT_ATTR_VAL(textsw_attrs[attrc++])
++ 			break;
++ #endif
++ 		    case OPTION_MARGIN:
++ 			textsw_attrs[attrc++] =
++ 				(caddr_t) TEXTSW_LEFT_MARGIN;
++ 			margin = atoi(argv[1]);
++ 			GET_INT_ATTR_VAL(textsw_attrs[attrc++])
++ 			break;
++ 		    case OPTION_MULTI_CLICK_SPACE:
++ 			textsw_attrs[attrc++] =
++ 				(caddr_t) TEXTSW_MULTI_CLICK_SPACE;
++ 			GET_INT_ATTR_VAL(textsw_attrs[attrc++])
++ 			break;
++ 		    case OPTION_MULTI_CLICK_TIMEOUT:
++ 			textsw_attrs[attrc++] =
++ 				(caddr_t) TEXTSW_MULTI_CLICK_TIMEOUT;
++ 			GET_INT_ATTR_VAL(textsw_attrs[attrc++])
++ 			break;
++ 		    case OPTION_TAB_WIDTH:
++ 			textsw_attrs[attrc++] = (caddr_t) TEXTSW_TAB_WIDTH;
++ 			GET_INT_ATTR_VAL(textsw_attrs[attrc++])
++ 			break;
++ 		    case OPTION_UNDO_HISTORY:
++ 			textsw_attrs[attrc++] = (caddr_t) TEXTSW_HISTORY_LIMIT;
++ 			GET_INT_ATTR_VAL(textsw_attrs[attrc++])
++ 			break;
++ 		    case OPTION_UPPER_CONTEXT:
++ 			textsw_attrs[attrc++] = (caddr_t) TEXTSW_UPPER_CONTEXT;
++ 			GET_INT_ATTR_VAL(textsw_attrs[attrc++])
++ 			break;
++ 		    case OPTION_CHECKPOINT_FREQUENCY:
++ 			if (argc > 0) {
++ 	    		    strcat(cmdline_args, argv[1]);
++ 	    		    strcat(cmdline_args, " ");
++ 			    checkpoint = atoi(argv[1]);
++ 			    argc--, argv++;
++ 			}
++ 			break;
++ 		    case OPTION_NUM_COLS:
++ 			if (argc > 0) {
++ 			    num_cols = atoi(argv[1]);
++ 	    		    strcat(cmdline_args, argv[1]);
++ 	    		    strcat(cmdline_args, " ");
++ 			    argc--, argv++;
++ 			}
++ 			break;
++ 		    default:
++ 			die("Unrecognized command line option.", (char *)NULL, (char *)NULL);
++ 			break;
++ 		}
++ 	    } else if (file_to_edit == NULL) {
++ 		file_to_edit = argv[0];
++ 	    } else {
++ 		die("Too many files specified.", (char *)NULL, (char *)NULL);
++ 	    }
++ 
++ 	    argv++;
++ 	}
++ 	textsw_attrs[attrc] = 0;	/* A-V list terminator */
++ 
++ 	xv_set(base_frame,
++ 		WIN_CMD_LINE, cmdline_args,
++ 		0);
++ 		
++ 	read_only = (read_only & (file_to_edit != NULL));
++ #ifdef DEBUG
++ 	if (edit_log_wraps_at != (caddr_t)TEXTSW_INFINITY) {
++ 	    textsw_attrs[attrc++] = (caddr_t) TEXTSW_WRAPAROUND_SIZE;
++ 	    textsw_attrs[attrc++] = edit_log_wraps_at;
++ 	    textsw_attrs[attrc] = 0;
++ 	}
++ #endif
++ 	if ((file_to_edit != NULL) && (stat(file_to_edit, &stb) < 0)) 
++ 	{
++ 		char 	buf[256];
++ 		int	fd;
++ 		int	alert_result;
++ 		Event	event;
++ 
++ 		sprintf(buf, "The file '%s' does not exist", file_to_edit);
++ 		alert_result = (int) notice_prompt(base_frame, &event,
++ 			NOTICE_MESSAGE_STRINGS,
++ 			buf,
++ 			"Please confirm creation of new",
++ 			"file for textedit.",
++ 			0,
++ 			NOTICE_BUTTON_NO, "Cancel",
++ 			NOTICE_BUTTON_YES, "Confirm",
++ 			0);
++ 
++ 		if (alert_result == NOTICE_YES)
++ 			if ((fd = creat(file_to_edit, 0777)) == -1)
++ 				die("Could not create new file.", (char *)NULL, (char *)NULL);
++ 			else
++ 				close(fd);
++ 		else
++ 			exit(0);
++ 
++ 
++ 	}
++ 	else if ((file_to_edit != NULL) && (stat(file_to_edit, &stb) == 0)) 
++ 	{
++ 		char 	buf[256];
++ 		int	fd;
++ 		int	alert_result;
++ 		Event	event;
++ 
++ 		/* see if it was a regular file */
++ 
++ 		if (!(stb.st_mode & S_IFREG))
++ 		{
++ 	
++ 			sprintf(buf, "The file '%s' is not a regular file", file_to_edit);
++ 			alert_result = (int) notice_prompt(base_frame, &event,
++ 				NOTICE_MESSAGE_STRINGS,
++ 				buf,
++ 				"Please confirm creation of new",
++ 				"file for textedit.",
++ 				0,
++ 				NOTICE_BUTTON_YES, "Continue",
++ 				NOTICE_BUTTON_NO, "Cancel",
++ 				0);
++ 	
++ 			if (alert_result == NOTICE_YES)
++ 				file_to_edit = NULL;
++ 			else
++ 				die("no file to edit", NULL, NULL);
++ 		}
++ 	}
++ 
++ 	/*
++ 	 * Create subwindows
++ 	 */
++ 	
++ 	panel = xv_create(base_frame, PANEL,
++ 		PANEL_LAYOUT,	PANEL_HORIZONTAL,
++ 		XV_HELP_DATA,			"textedit:Panel",
++ 		0);
++ 		
++ 	
++ 	textsw = (Textsw)xv_create(base_frame, TEXTSW,
++ 		ATTR_LIST,			textsw_attrs,
++ 		WIN_IS_CLIENT_PANE,
++ 		TEXTSW_STATUS,			&status,
++ 		TEXTSW_READ_ONLY,		read_only,
++ 		TEXTSW_FILE,			file_to_edit,
++ 		TEXTSW_NOTIFY_PROC,		set_name_frame,
++ 		TEXTSW_CHECKPOINT_FREQUENCY,	checkpoint,
++ 		XV_HELP_DATA,			"textedit:Textsw",
++ 		OPENWIN_SPLIT,
++ 			OPENWIN_SPLIT_INIT_PROC, textsw_split_proc,
++ 		NULL,
++ 	    	0);
++ 
++ 	if (!user_set_size)
++ 	{
++ 		xv_set(textsw,
++                 	WIN_ROWS,     (number_of_lines) ? number_of_lines : 45,
++                 	WIN_COLUMNS,  (num_cols) ? num_cols : 80,
++ 	    		0);
++ 	}
++ 
++ 	/* force the panel to be some reasonable size, so that the 
++ 	   buttons lay out reasonably. */
++ 
++ 	xv_set(panel, WIN_WIDTH, 800, 0);
++ 
++ 	/* Panel item and fitting height here is for performance reason */
++ 	/* This way the textsw will not require to readjust the rect */
++ 	file_panel_menu = (Menu)xv_get(textsw, TEXTSW_SUBMENU_FILE);
++ 
++ 	file_panel_item = xv_create(panel, PANEL_BUTTON,
++ 		PANEL_LABEL_STRING,		"File",
++ 		PANEL_ITEM_MENU, 		file_panel_menu, 
++ 		XV_HELP_DATA,			"textedit:File",
++ 		PANEL_NOTIFY_PROC,		button_notify_proc,
++ 		0);
++ 		
++ 	textswwidth = (int)xv_get(textsw, WIN_WIDTH);
++ 
++ 	(void)window_fit_height(panel);
++ 
++ 	xv_set(textsw, WIN_BELOW, panel, 0);
++ 
++ 	switch (status) {
++ 	  case TEXTSW_STATUS_CANNOT_OPEN_INPUT:
++ 	    die("Cannot open file '", file_to_edit, "', exiting!\n");
++ 	  case TEXTSW_STATUS_OKAY:
++ 	    if (textsw)
++ 		break;
++ 	    /* else fall through */
++ 	  default:
++ 	    die("Cannot create textsw, exiting!\n", (char *)NULL, (char *)NULL);
++ 	}
++ 	/*
++ 	 * Setup signal handlers.
++ 	 */
++ /*!!!	(void)notify_set_signal_func(base_frame, mysigproc, SIGINT,  NOTIFY_ASYNC);
++ #if !defined(__linux) || defined(SIGXCPU)
++ 	(void)notify_set_signal_func(base_frame, mysigproc, SIGXCPU, NOTIFY_ASYNC);
++ #endif
++ #if !defined(__linux) || defined(SIGBUS)
++ 	(void)notify_set_signal_func(base_frame, mysigproc, SIGBUS,  NOTIFY_ASYNC);
++ #endif
++ 	(void)notify_set_signal_func(base_frame, mysigproc, SIGHUP,  NOTIFY_ASYNC);
++ 	(void)notify_set_signal_func(base_frame, mysigproc, SIGILL,  NOTIFY_ASYNC);
++ 	(void)notify_set_signal_func(base_frame, mysigproc, SIGSEGV, NOTIFY_ASYNC);
++ 	(void)notify_set_signal_func(base_frame, mysigproc, SIGFPE,  NOTIFY_ASYNC);
++ !!!*/
++ 	/*
++ 	 * Install us in tree of windows
++ 	 */
++ 	 
++ 	PANEL_ITEM_DATA = xv_unique_key();
++ 
++ 	display_panel_menu = (Menu)xv_get(textsw, TEXTSW_SUBMENU_VIEW);
++ 	edit_panel_menu = (Menu)xv_get(textsw, TEXTSW_SUBMENU_EDIT);
++ 	find_panel_menu = (Menu)xv_get(textsw, TEXTSW_SUBMENU_FIND);
++ 	 
++ 	 /* This set has to be done before the other panel items are created */
++ 	xv_set(file_panel_item,
++ 		XV_KEY_DATA, 			PANEL_ITEM_DATA, textsw,
++ 		0);
++ 		
++ 	display_panel_item = xv_create(panel, PANEL_BUTTON,
++ 		PANEL_LABEL_STRING,		"View",
++ 		PANEL_NOTIFY_PROC,		button_notify_proc,
++ 		PANEL_ITEM_MENU, 		display_panel_menu,
++ 		XV_HELP_DATA,			"textedit:View",
++ 		XV_KEY_DATA, 			PANEL_ITEM_DATA, textsw,
++ 		0);
++ 
++ 	edit_panel_item = xv_create(panel, PANEL_BUTTON,
++ 		PANEL_LABEL_STRING,		"Edit",
++ 		PANEL_NOTIFY_PROC,		button_notify_proc,
++ 		PANEL_ITEM_MENU, 		edit_panel_menu, 
++ 		XV_HELP_DATA,			"textedit:Edit",
++ 		XV_KEY_DATA, 			PANEL_ITEM_DATA, textsw,
++ 		0);
++ 		
++ 	find_panel_item = xv_create(panel, PANEL_BUTTON,
++ 		PANEL_LABEL_STRING,		"Find",
++ 		PANEL_NOTIFY_PROC,		button_notify_proc,
++ 		PANEL_ITEM_MENU, 		find_panel_menu, 
++ 		XV_HELP_DATA,			"textedit:Find",
++ 		XV_KEY_DATA, 			PANEL_ITEM_DATA, textsw,
++ 		0);	
++ 	
++ 
++ 
++ 	if (!user_set_size)
++ 	{
++ 		xv_set(panel, WIN_WIDTH, textswwidth, 0);
++         	(void)window_fit(base_frame);
++ 	}
++ 	else
++ 	{
++ 		/* restore the panel width before coming up */
++ 		xv_set(panel, WIN_WIDTH, WIN_EXTEND_TO_EDGE, 0);
++ 	}
++ 
++ 	/* set up to catch load events */
++ 
++ 	notify_interpose_event_func(textsw_first(textsw), textedit_load_event_proc, NOTIFY_SAFE);
++ 	notify_interpose_event_func(edit_icon, textedit_load_event_proc, NOTIFY_SAFE);
++ 
++ 	if (!user_label && file_to_edit)
++ 	{
++ 		xv_set(edit_icon, XV_LABEL, file_to_edit, 0);
++ 		xv_set(base_frame, FRAME_ICON, edit_icon, 0);
++ 	}
++ 
++ 	xv_main_loop(base_frame);
++ 	exit(0);
++ }
++ 
++ /*
++  *	SIGNAL handlers
++  */
++ 
++ /* ARGSUSED */
++ static Notify_value
++ mysigproc(me, sig, when)
++ 	Notify_client		 me;
++ 	int			 sig;
++ 	Notify_signal_mode	 when;
++ {
++ 	char			 name_to_use[MAXNAMLEN];
++ 	int			 pid = getpid();
++ 	int			 was_SIGILL = (sig == SIGILL);
++ #ifndef __linux
++ 	struct sigvec vec;
++ #else
++ 	struct sigaction vec;
++ #endif
++ 
++ 	if (handling_signal == 2)
++ 	    _exit(3);
++ 	if (handling_signal++ == 1) {
++ 	    (void)fprintf(stderr, "Signal catcher called recursively: ");
++ 	    goto Die;
++ 	}
++ 	if (sig == SIGINT) {
++ 	    if (xv_get((Xv_window)(textsw), TEXTSW_MODIFIED)) {
++ 		(void)xv_destroy(base_frame);	/* It will be vetoed */
++ 		handling_signal = 0;
++ 	    } else {
++ 		/* Skip more user confirmation - just die (but cleanly)! */
++ 		(void) notify_post_destroy(base_frame, DESTROY_PROCESS_DEATH,
++ 					   NOTIFY_IMMEDIATE);
++ 		(void) notify_stop();
++ 	    }
++ 	    return(NOTIFY_DONE);
++ 	}
++ 	(void)sprintf(name_to_use, "textedit.%d", pid);
++ 	(void)fprintf(stderr, "attempting Store to %s ... ", name_to_use);
++ 	(void)fflush(stderr);
++ 	if (textsw_store_file(textsw, name_to_use, 0, 0) == 0)
++ 	    goto Done;
++ 	(void)sprintf(name_to_use, "/usr/tmp/textedit.%d", pid);
++ 	(void)fprintf(stderr, "failed!\nAttempting Store to %s ... ", name_to_use);
++ 	(void)fflush(stderr);
++ 	if (textsw_store_file(textsw, name_to_use, 0, 0) == 0)
++ 	    goto Done;
++ 	(void)sprintf(name_to_use, "/tmp/textedit.%d", pid);
++ 	(void)fprintf(stderr, "failed!\nAttempting Store to %s ... ", name_to_use);
++ 	(void)fflush(stderr);
++ 	if (textsw_store_file(textsw, name_to_use, 0, 0) == 0)
++ 	    goto Done;
++ 	(void)fprintf(stderr, "failed!\nSorry, cannot save your edits: ");
++ 	    goto Die;
++ Done:
++ 	(void)fprintf(stderr, "finished; ");
++ Die:
++ 	(void)fprintf(stderr, "aborting for post-mortem ...\n");
++ 	(void)fflush(stderr);
++ 	(void)sigsetmask(0);		/* Make sure signals get through */
++ 	if (was_SIGILL) {
++ #ifndef lint
++ 	    char	dummy, *bad_ptr = 0;
++ 	    /* (void)signal(SIGSEGV, SIG_DFL);	/* Make sure 0 deref dumps. */
++ #ifndef __linux
++ 	    vec.sv_handler = SIG_DFL;
++ 	    vec.sv_mask = vec.sv_onstack = 0;
++ 	    sigvec(SIGSEGV, &vec, 0);
++ #else
++ 	    vec.sa_handler = SIG_DFL;
++ 	    vec.sa_mask = 0;
++ 	    vec.sa_flags = 0;
++ 	    vec.sa_restorer = NULL;
++ 	    sigaction(SIGSEGV, &vec, (struct sigaction *)0);
++ #endif
++ 	    dummy = *bad_ptr;
++ #endif
++ 	} else {
++ 	    /* (void)signal(SIGILL, SIG_DFL);	/* Make sure abort() dumps. */
++ #ifndef __linux
++             vec.sv_handler = SIG_DFL; 
++ 	    vec.sv_mask = vec.sv_onstack = 0; 
++             sigvec(SIGILL, &vec, 0);
++ #else
++ 	    vec.sa_handler = SIG_DFL;
++ 	    vec.sa_mask = 0;
++ 	    vec.sa_flags = 0;
++ 	    vec.sa_restorer = NULL;
++ 	    sigaction(SIGILL, &vec, (struct sigaction *)0);
++ #endif
++ 	    abort();
++ 	}
++ 	return(NOTIFY_DONE);
++ }
++ 
++ 
++ /*
++  * Misc. utilities
++  */
++ static
++ die(msg1, msg2, msg3)
++ 	char	*msg1, *msg2, *msg3;
++ {
++ 	char	*dummy = "";
++ 	(void)fprintf(stderr, "%s: %s%s%s\n", cmd_name, msg1,
++ 			(msg2?msg2:dummy), (msg3?msg3:dummy));
++ 	exit(4);
++ }
++ 
++ static int
++ off(str)
++ 	char	*str;
++ {
++     return ((strcmp(str, "off") == 0) ||
++ 	    (strcmp(str, "Off") == 0) ||
++ 	    (strcmp(str, "OFF") == 0)
++ 	   );
++ }
++ 
+diff -c -r --new-file xvorig/xview3.2//clients/textedit/textedit.icon xview3.2//clients/textedit/textedit.icon
+*** xvorig/xview3.2//clients/textedit/textedit.icon
+--- xview3.2//clients/textedit/textedit.icon	Sat Oct  5 07:14:04 1991
+***************
+*** 0 ****
+--- 1,66 ----
++ /* Format_version=1, Width=64, Height=64, Depth=1, Valid_bits_per_item=16
++  */
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x003F,0xFFFE,0x0000,
++ 	0x0000,0x003F,0xFFFE,0x0000,
++ 	0x0000,0x03F0,0x0006,0x0000,
++ 	0x0000,0x03FF,0xFFF6,0x0000,
++ 	0x0000,0x3F00,0x0016,0x0000,
++ 	0x0000,0x3FFF,0xE016,0x0000,
++ 	0x0000,0x2000,0x3016,0x0000,
++ 	0x0000,0x2000,0x2816,0x0000,
++ 	0x0000,0x2000,0x2416,0x0000,
++ 	0x0000,0x2000,0x2216,0x0000,
++ 	0x0000,0x2000,0x2116,0x0000,
++ 	0x0000,0x2000,0x2096,0x0000,
++ 	0x0000,0x2000,0x3FD6,0x0000,
++ 	0x0000,0x2000,0x0056,0x0000,
++ 	0x0000,0x2000,0x4056,0x0000,
++ 	0x0000,0x2000,0xC056,0x0000,
++ 	0x0000,0x2001,0x8056,0x0000,
++ 	0x0000,0x2003,0x0056,0x0000,
++ 	0x0000,0x2006,0x0056,0x0000,
++ 	0x0000,0x200C,0x0056,0x0000,
++ 	0x0000,0x2018,0x0056,0x0000,
++ 	0x0000,0x2030,0x0056,0x0000,
++ 	0x0000,0x2060,0x0056,0x0000,
++ 	0x0000,0x20C0,0x0056,0x0000,
++ 	0x0000,0x2180,0x0056,0x0000,
++ 	0x0000,0x2300,0x0056,0x0000,
++ 	0x0000,0x2600,0x0056,0x0000,
++ 	0x0000,0x2C00,0x0056,0x0000,
++ 	0x0000,0x3800,0x0056,0x0000,
++ 	0x0000,0x7000,0x005E,0x0000,
++ 	0x0000,0xE000,0x005E,0x0000,
++ 	0x0001,0xE000,0x0058,0x0000,
++ 	0x0003,0xA000,0x0078,0x0000,
++ 	0x0007,0x2000,0x0078,0x0000,
++ 	0x000E,0x2000,0x0060,0x0000,
++ 	0x000E,0x3FFF,0xFFE0,0x0000,
++ 	0x000C,0x3FFF,0xFFE0,0x0000,
++ 	0x007F,0x0000,0x0000,0x0000,
++ 	0x007F,0x0000,0x0000,0x0000,
++ 	0x01FF,0xC000,0x0000,0x0000,
++ 	0x03FF,0xE000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000
+diff -c -r --new-file xvorig/xview3.2//clients/textedit/textedit.man xview3.2//clients/textedit/textedit.man
+*** xvorig/xview3.2//clients/textedit/textedit.man
+--- xview3.2//clients/textedit/textedit.man	Sat Oct  5 07:14:05 1991
+***************
+*** 0 ****
+--- 1,650 ----
++ .\" @(#)textedit.1 1.29 90/02/26 SMI;
++ .\" Updated 6/8/90
++ .TH TEXTEDIT 1 "11 June 1990"
++ .SH NAME
++ textedit 
++ \- XView window- and mouse-based text editor
++ .SH SYNOPSIS
++ .B textedit
++ [
++ .I generic-tool-arguments
++ ] 
++ [
++ .B "\-Ea on\|" |\| off 
++ ] 
++ [
++ .B \-adjust_is_pending_delete
++ ]
++ [
++ .B "\-Ei on\|" |\| off 
++ ] 
++ .if t .ti +0.5i
++ [
++ .B \-auto_indent
++ ]
++ [
++ .B "\-Eo on\|" |\| off 
++ ] 
++ [
++ .B \-okay_to_overwrite
++ ]
++ [
++ .B "\-Er on\|" |\| off 
++ ] 
++ [
++ .B \-read_only
++ ]
++ .if t .ti +0.5i
++ [
++ .BI \-Ec " N"
++ ] 
++ [
++ .BI \-checkpoint " count"
++ ]
++ [
++ .BI \-\s-1EL\s0 " lines"
++ ] 
++ [
++ .BI \-lower_context " lines"
++ ]
++ [
++ .BI \-Em " pixels"
++ ] 
++ .if t .ti +0.5i
++ [
++ .BI \-margin " pixels"
++ ]
++ [
++ .BI \-En " N"
++ ] 
++ [
++ .BI \-number_of_lines " lines"
++ ]
++ [
++ .BI \-\s-1ES\s0 " N"
++ ] 
++ .if t .ti +0.5i
++ [
++ .BI \-multi_click_space " radius"
++ ]
++ [
++ .BI \-Et " N"
++ ] 
++ [
++ .BI \-tab_width " tabstop"
++ ]
++ [
++ .BI \-\s-1ET\s0 " N"
++ ] 
++ .if t .ti +0.5i
++ [
++ .BI \-multi_click_timeout " intrvl"
++ ]
++ [
++ .BI \-Eu " N"
++ ] 
++ [
++ .BI \-history_limit " max"
++ ]
++ [
++ .BI \-\s-1EU\s0 " N"
++ ] 
++ .if t .ti +0.5i
++ [
++ .BI \-upper_context " lines"
++ ]
++ .I filename 
++ .SH AVAILABILITY
++ This command is available with the OpenWindows 
++ environment.
++ For information about installing OpenWindows, refer to the
++ .I OpenWindows Installation and Start-Up Guide.
++ .SH DESCRIPTION
++ .IX tools textedit "" "\fLtextedit\fR"
++ .LP
++ .B textedit
++ is a window-based \s-1XV\s0iew application 
++ that provides both mouse and pointer operations 
++ and keyboard accelerators for the editing of
++ text. 
++ In general, text editing throughout the OpenWindows
++ user environment uses
++ .B textedit
++ conventions, both in text display areas such 
++ as mail message windows and command panel text fields.
++ .LP
++ .B textedit 
++ operates via a set of command panel buttons and text
++ fields and a set of menus and submenus accessible from the main
++ editing window.
++ .SH OPTIONS
++ .LP
++ .TP 
++ .I generic-tool-arguments
++ .B textedit
++ accepts the \s-1XV\s0iew generic tool arguments described in the
++ .I XView Reference Manual.
++ .LP
++ .TP 
++ .BR "\-Ea on" \||\| off
++ .PD 0
++ .TP
++ .B \-adjust_is_pending_delete
++ .PD
++ Choose whether or not an adjustment to a selection makes the
++ selection \(lqpending-delete.\(rq  
++ The default is off.
++ This option corresponds to, and overrides, the 
++ .B adjust_is_pending_delete
++ Text defaults entry.
++ .TP 
++ .PD 0
++ .BR "\-Ei on" \||\| off
++ .TP
++ .B \-auto_indent
++ .PD
++ Choose whether or not to automatically indent newly-opened
++ lines.  
++ The default is off.  
++ Corresponds to the
++ .BR auto_indent 
++ Text default.
++ .TP 
++ .BR "\-Eo on" \||\| off
++ .PD 0
++ .TP 
++ .B \-okay_to_overwrite
++ .PD
++ Set behavior to the 
++ .B "Store as New File"
++ menu item.  If 
++ .B on
++ a
++ .B "Store as New File"
++ to the current file is treated as a
++ .BR "Save Current File" .
++ If 
++ .B off
++ (the standard default),
++ .B "Store as New File"
++ operations using the current filename 
++ results in an error message.
++ Corresponds to
++ .BR Store_self_is_save .
++ .TP 
++ .PD 0
++ .BR "\-Er on" \||\| off
++ .TP
++ .B \-read_only
++ .PD
++ Turn read-only mode on or off.
++ When on, text cannot be modified.
++ .TP
++ .BI \-Ec " N"
++ .PD 0
++ .TP
++ .BI \-checkpoint " count"
++ .PD
++ Checkpoint after every
++ .I count
++ editing operation.
++ If 
++ .I count 
++ is 0 (the standard default), no checkpointing takes place.
++ Each character typed, each
++ .BR Paste ,
++ and each
++ .B Cut
++ counts as an editing operation.
++ Corresponds to 
++ .BR checkpoint_frequency .
++ .TP 
++ .BI \-EL " lines"
++ .PD 0
++ .TP
++ .BI \-lower_context lines
++ .PD
++ Specify the minimum number of lines to keep between the caret
++ and the bottom of the text subwindow.
++ The default is 2.
++ Corresponds to
++ .BR lower_context .
++ .TP 
++ .BI \-Em " pixels"
++ .PD 0
++ .TP
++ .BI \-margin " pixels"
++ .PD
++ Set the scrollbar margin width in pixels. 
++ The default is 4.
++ Corresponds to
++ .BR left_margin .
++ .TP 
++ .BI \-En " N"
++ .PD 0
++ .TP
++ .BI \-number_of_lines " lines"
++ .PD
++ Set the number of lines in the bottom subwindow.
++ The default is 45.
++ .TP 
++ .BI \-ES " N"
++ .PD 0
++ .TP
++ .BI \-multi_click_space " radius"
++ .PD
++ Set the radius in pixels, within which clicks must
++ occur to be treated as a multi-click selection.
++ The default is 3 pixels. 
++ Corresponds to 
++ .BR multi_click_space .
++ .TP
++ .BI \-Et " N"
++ .PD 0
++ .TP
++ .BI \-tab_width " tabstop"
++ .PD
++ Set the number of
++ .SM SPACE
++ characters displayed per
++ .SM TAB
++ stop. 
++ The default is 8.
++ This option has no effect on the characters in the file.
++ Corresponds to 
++ .BR tab_width .
++ .TP 
++ .BI \-ET " N"
++ .PD 0
++ .TP
++ .BI \-multi_click_timeout " intrvl"
++ .PD
++ Set the interval, in milliseconds,
++ within which any two clicks must occur to be treated as a 
++ multi-click selection.
++ The default is 390 milliseconds.
++ Corresponds to 
++ .BR multi_click_timeout .
++ .TP
++ .BI \-Eu " N"
++ .PD 0
++ .TP
++ .BI \-history_limit " max"
++ .PD
++ Set the maximum number of editing operations that can be
++ undone or replayed.
++ The default is 50.
++ Corresponds to
++ .BR history_limit .
++ .TP
++ .B \-EU " N"
++ .PD 0
++ .TP
++ .BI \-upper_context " lines"
++ .PD
++ Set the minimum number of lines to keep between the caret and
++ the top of the text subwindow.
++ The default is 2.
++ Corresponds to
++ .BR upper_context .
++ .SH USAGE
++ .B textedit
++ is part of the OpenWindows user environment.
++ For a descriptions of the basic concepts of OpenWindows,
++ see the
++ .I OpenWindows User's Guide.
++ .SS Signal Processing
++ .LP
++ If
++ .B textedit
++ hangs, for whatever reason, you can send a
++ .B \s-1SIGHUP\as0
++ signal to its process
++ .SM ID,
++ which forces it to write any changes
++ (if possible):
++ .IP
++ .BI "kill \-\s-1HUP\s0 " pid
++ .LP
++ The edits are written to the file 
++ .BI textedit. pid
++ in its working directory.
++ If that fails,
++ .B textedit
++ successively tries to write to a file by that name in
++ .BR /var/tmp ,
++ and then
++ .BR /tmp .
++ In addition, whenever
++ .B textedit
++ catches a fatal signal, such as 
++ .BR \s-1SIGILL\s0 ,
++ it tries to write out the edits before aborting.
++ .SS Defaults Options
++ .LP
++ You can specify a number of defaults using the 
++ .B .Xdefaults
++ file that affect the behavior of the text-based 
++ facilities.  
++ See 
++ .BR xview (1)
++ for more detailed information.
++ .SS Selections
++ .LP
++ Selections in 
++ .B textedit
++ are defined as selected portions of text to 
++ which editing operations can be applied. 
++ For example, a selection can be
++ .I deleted, moved, copied, etc.
++ .LP
++ .B textedit
++ provides two types of selections: primary and secondary.
++ Primary selections allow you to select a set of 
++ text on which to perform an editing function. 
++ Secondary selections allow you to define a 
++ .I second
++ block of text without undefining your primary 
++ text selection or repositioning your cursor. 
++ Being able to define two sets of text at once 
++ allows you to take advantage of the advanced editing
++ functions described below in the section called
++ .B Function Keys.
++ .bp
++ .TP 10
++ .B Using a Mouse and Pointer:
++ .RS
++ Single characters can be selected using the
++ .SM SELECT.
++ .sp .5
++ Blocks of text can be selected by selecting a starting
++ point with the
++ .SM SELECT
++ and selecting an ending point with 
++ .SM ADJUST.
++ .sp .5
++ Or blocks of text can be selected using OPEN LOOK's
++ .I wipe through
++ feature by pointing at a beginning character and depressing the
++ .B select 
++ button while moving the pointer to the end of a block
++ of text.
++ .sp .5
++ Selections can also be made by
++ sing 
++ .I clicking
++ (rapidly pressing)
++ the select button. Click once to select a single letter;
++ click twice to select a word; click three times to select
++ a complete line of text; click four times to select the
++ entire document being edited.
++ .RE
++ .TP
++ .B Visual Feedback 
++ .RS
++ All primary selections are indicated visually 
++ by inverse video of the text selected and are
++ .I pending delete.
++ Pending delete selections are replaced if you 
++ type or paste while the text is selected.
++ .sp .5
++ Secondary selections that are not 
++ .I pending delete
++ are indicated by underlining of the text.
++ .sp .5
++ Secondary selections pending delete are indicated by underlining
++ of the text and strike through of the individual characters.
++ .RE
++ .SS Secondary Selections
++ .RS
++ Secondary selections are made using any of 
++ the selection methods described above in 
++ addition to holding down one of the four function keys
++ corresponding to the commands
++ .BR Cut ,
++ .BR Find ,
++ .BR Paste ,
++ or
++ .BR Copy  .
++ .LP
++ Secondary selections are made pending delete by holding the
++ .SM CTRL key when making the secondary selection.
++ If a secondary selection is pending-delete,
++ it is deleted when the function key is released, except in the case
++ of the 
++ .BR Find ,
++ which deselects the secondary selection.
++ .LP
++ You can make adjusted selections switch to pending-delete using the
++ .B adjust_is_pending_delete
++ defaults entry, or the
++ .B \-Ea
++ option. 
++ In this case,
++ \s-1CTRL\s0-Middle
++ makes the selection
++ .I not
++ pending-delete.
++ .LP
++ Commands that operate on the primary selection do so even if the
++ primary selection is not in the window that issued the command.
++ .RE
++ .SS "Inserting Text and Command Characters"
++ .LP
++ For the most part, typing any of the standard
++ keys either inserts the corresponding character
++ at the insertion point, or erases characters.
++ However, certain key combinations are treated as commands.
++ Some of the most useful are:
++ .LP
++ .ta 20n 40n
++ .nf
++ .B Command	Character	Description
++ .sp
++ \fBCut-Primary\fR	\s-1META\s0-X 	Erases, and moves to the Clipboard, the primary selection.
++ \fBFind-Primary\fR	\s-1META\s0-F	Searches the text for the pattern specified by the primary
++ 		selection or by the Clipboard, if there is no primary selection.
++ \fBCopy-to-Clipboard\fR	\s-1META\s0-C	Copies the primary selection to the 	Clipboard. 
++ \fBPaste-Clipboard\fR	\s-1META\s0-V	Inserts the Clipboard contents at the insertion point.
++ \fBCopy-then-Paste\fR	\s-1META\s0-P	Copies the primary selection to the insertion point (through
++ 		the Clipboard).
++ \fBGo-to-\s-1EOF\s0\fR	\s-1CTRL\s0-\s-1RETURN\s0	Moves the insertion point to the end of the text, positioning
++ 		the text so that the insertion point is visible.
++ .fi
++ .br
++ .ne 8
++ .SS Function Keys
++ .LP
++ The commands indicated by use of the function keys are:
++ .LP
++ .ta 20n 40n
++ .nf
++ \fBCommand\fP	\fBSun-2\||\|3 Key\fP	\fBDescription\fP
++ .sp
++ \fBStop\fR	L1	Aborts the current command.
++ \fBAgain\fR	L2	Repeats the previous editing sequence since a 
++ 		primary selection was made.
++ \fBUndo\fR	L4	Undoes a prior editing sequence.
++ \fBFront\fR	L5	Makes the window completely visible (or 
++ 		hides it, if it is already exposed).
++ \fBCopy\fR	L6	Copies the primary selection, either to the 
++ 		Clipboard or at the closest end of the secondary 
++ 		selection.
++ \fBOpen\fR	L7	Makes the window iconic (or normal, if it is already 
++ 		iconic).
++ \fBPaste\fR	L8	Copies either the secondary selection or the Clipboard at 
++ 		the insertion point.
++ \fBFind\fR	L9	Searches for the pattern specified by, in order, the 
++ 		secondary selection, the primary selection, or the Clipboard.
++ \fBCut\fR	L10	Erases, and moves to the Clipboard, either the primary or 
++ 		the secondary selection.
++ \fB\s-1Help\s0\fR	F1	Produces help text.
++ .fi
++ .LP
++ .B Find
++ usually searches the text forwards, towards the end.
++ Holding down the 
++ .SM SHIFT
++ key while invoking
++ .B Find
++ searches backward through the text, towards the beginning.
++ If the pattern is not found before the search encounters
++ either extreme, it \(lqwraps around\(rq and
++ continues from the other extreme.
++ .B Find
++ starts the search at the appropriate end of the primary selection,
++ if the primary selection is in the subwindow that the search is made in;
++ otherwise it starts at the insertion point, unless the subwindow cannot
++ be edited, in which case it starts at the beginning of the text.
++ .LP
++ \s-1CTRL\s0-Find
++ invokes the
++ .B Find and Replace
++ pop-up frame.
++ .LP
++ .br
++ .ne 10
++ .SS Menu Items
++ .LP
++ .TP 10
++ .B File
++ A pull-right menu item for file operations.
++ .TP
++ .B Edit
++ A pull-right menu item equivalent of the editing function keys.
++ The
++ .B Edit
++ submenu provides
++ .BR Again ,
++ .BR Undo ,
++ .BR Copy ,
++ .BR Paste ,
++ and
++ .B Cut
++ (same as function keys L2, L4, L6, L8, and L10).
++ .TP
++ .B Display
++ A pull-right menu item for controlling the way
++ text is displayed and line display format.
++ .TP
++ .B Find
++ A pull-right menu item for find and delimiter matching operations.
++ .TP
++ .B Extras
++ A user definable pull-right menu item.  The
++ .B Extras
++ standard submenu is controlled by
++ .BR /usr/lib/.text_extras_menu ,
++ which has the same format as
++ .B \&.rootmenu
++ file.
++ This can be overridden in two ways:
++ .RS 15
++ 1) Change the value of the .Xdefaults parameter 
++ .B text.extrasMenuFilename 
++ to the correct file path.
++ .br
++ 2) Set the environment variable 
++ .B \s-1EXTRASMENU\s0
++ to the file desired.
++ .br
++ Note that option 1 overrides option 2 if both are
++ used.
++ .br
++ For more information see the
++ .I "DeskSet Environment Reference Guide".
++ See also
++ .BR xview (1).
++ .RE		
++ .LP
++ Only those items that are active appear 
++ as normal text in the menu;
++ inactive items (which are inappropriate 
++ at the time) are \(lqgrayed out\(rq.
++ .bp
++ .SS User Defined Commands
++ .LP
++ The file
++ .B /usr/lib/text_extras_menu
++ specifies filter programs that are included in the text subwindow
++ .B Extras
++ pull-right menu item.  
++ The file 
++ .B ~/.textswrc
++ specifies filter programs that are assigned to (available)
++ function keys.
++ These filters are applied to the contents of the primary selection.
++ Their output is entered at the caret.
++ .LP
++ The file
++ .B /usr/lib/textswrc
++ is a sample containing a set of useful filters.
++ It is not read automatically.
++ .SH FILES
++ .PD 0
++ .TP 25
++ .B ~/.textswrc
++ Specifies bindings of filters to function keys
++ .TP
++ .B /usr/lib/text_extras_menu
++ Specifies bindings of filters for the extras menu pull-right items
++ .TP
++ .B /usr/bin
++ Contains useful filters, including \fBshift_lines\fP and \fBcapitalize\fP.
++ .TP
++ .IB filename %
++ Prior version of
++ .I filename
++ is available here after a
++ .B Save Current File
++ menu operation
++ .TP
++ .BI textedit. pid
++ Edited version of
++ .IR filename ;
++ generated in response to fatal internal errors
++ .TP
++ .B /tmp/Text*
++ Editing session logs
++ .PD
++ .SH "SEE ALSO"
++ .BR kill (1)
++ .LP
++ .I Introduction to the OpenWindows User Environment
++ .SH DIAGNOSTICS
++ .TP 35
++ .B "Cannot open file '\fIfilename\fP', aborting!"
++ .I filename
++ does not exist or cannot be read.
++ .LP
++ .B textedit
++ produces the following exit status codes:
++ .LP
++ .PD 0
++ .RS
++ .TP
++ 0
++ normal termination
++ .TP
++ 1
++ standard OpenWindows help message was printed
++ .TP
++ 2
++ help message was requested and printed
++ .TP
++ 3
++ abnormal termination in response to a signal, usually due to an internal error
++ .TP
++ 4
++ abnormal termination during initialization,
++ usually due to a missing file or running out of swap space
++ .PD
++ .RE
++ .SH BUGS
++ Multi-click to change the current selection does not work for
++ .BR "Adjust Selection" .
++ .LP
++ Handling of long lines is incorrect in certain scrolling situations.
++ .LP
++ There is no way to replay any editing sequence except the most recent.
++ .LP
+diff -c -r --new-file xvorig/xview3.2//clients/textedit/textedit.mask.icon xview3.2//clients/textedit/textedit.mask.icon
+*** xvorig/xview3.2//clients/textedit/textedit.mask.icon
+--- xview3.2//clients/textedit/textedit.mask.icon	Sat Oct  5 07:14:05 1991
+***************
+*** 0 ****
+--- 1,66 ----
++ /* Format_version=1, Width=64, Height=64, Depth=1, Valid_bits_per_item=16
++  */
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x003F,0xFFFE,0x0000,
++ 	0x0000,0x003F,0xFFFE,0x0000,
++ 	0x0000,0x03FF,0xFFFE,0x0000,
++ 	0x0000,0x03FF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x3FFF,0xFFFE,0x0000,
++ 	0x0000,0x7FFF,0xFFFE,0x0000,
++ 	0x0000,0xFFFF,0xFFFE,0x0000,
++ 	0x0001,0xFFFF,0xFFF8,0x0000,
++ 	0x0003,0xBFFF,0xFFF8,0x0000,
++ 	0x0007,0x3FFF,0xFFF8,0x0000,
++ 	0x000E,0x3FFF,0xFFE0,0x0000,
++ 	0x000E,0x3FFF,0xFFE0,0x0000,
++ 	0x000C,0x3FFF,0xFFE0,0x0000,
++ 	0x007F,0x0000,0x0000,0x0000,
++ 	0x007F,0x0000,0x0000,0x0000,
++ 	0x01FF,0xC000,0x0000,0x0000,
++ 	0x03FF,0xE000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000,
++ 	0x0000,0x0000,0x0000,0x0000

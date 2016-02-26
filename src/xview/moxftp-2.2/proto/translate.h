@@ -1,0 +1,13 @@
+static int check P_((int, char*));
+static void compile_regexp P_((struct _translate*));
+static char * get_next P_((char*, int));
+static char * get_next_tran P_((char*, int));
+static char * getstring P_((regexp*, int));
+static void merge_t P_((struct _translate*, struct _translate*));
+static void merge_use_other P_(());
+static void read_init P_((char*(*)(), int));
+static void set_exp P_((char**, char**, char*, char*(*)(), char*, int*));
+static char * set_listing P_((int*, char*));
+static int set_mode P_((char*));
+static int set_size P_((char*));
+static void upper P_((char*));

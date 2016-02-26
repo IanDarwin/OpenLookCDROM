@@ -1,0 +1,232 @@
+#!/usr/NeWS/bin/psh
+
+% stickem version 1.0
+% Written by Josh Siegel (Wed Jun 29 1988)
+
+% This programs allows you to anotate windows with little yellow
+% stickems.  It takes whatever is current selected at will stick
+% them onto whatever window you choose.
+%
+
+
+% getxyloc returns the position of the next left-button
+% mouse up event.  It passes all other events.
+
+/getxyloc { %  => x y
+    10 dict 
+    begin
+        createevent
+        dup /Priority 20 put
+        dup /Name /LeftMouseButton put
+        dup /Action /UpTransition put
+        /foobar exch def
+        foobar expressinterest
+        {
+            awaitevent
+            dup /Name get /LeftMouseButton eq { 
+                exit 
+            } if
+            redistributeevent
+        } loop
+        foobar revokeinterest
+        dup /XLocation get
+        exch /YLocation get
+    end
+} def
+
+% find_tree traverses the canvas tree passed to it and calls
+% check_canvas to check to see if the point is in the
+% canvas.   It is also a example of a recursive NeWS routine.
+
+/find_tree { % canvas =>
+    dup null eq {
+        pop 
+    } {
+        dup check_canvas 
+        {
+            dup [ exch ] answer exch append /answer exch def
+        } if
+        dup /TopChild get find_tree
+        {
+            /CanvasBelow get
+            dup null eq { 
+                pop exit 
+            } if
+            dup check_canvas 
+            {
+                dup [ exch ] answer exch append /answer exch def
+            } if
+        } loop
+    } ifelse
+} def
+
+% Check canvas checks to see if the point is inside of the
+% clipping path of the canvas.  This is VERY important for things
+% like the clock where the clipping path is round.
+%
+
+/check_canvas { % canvas => boolean
+    dup /Mapped get {
+        dup getcanvaslocation % can xwin ywin
+        ypnt exch sub % can xwin ypnt-ywin
+        exch xpnt exch sub exch % can xpnt-xwin ypnt-ywin
+        3 -1 roll setcanvas clipcanvaspath pointinpath % boolean
+        framebuffer setcanvas
+    } { 
+        pop false 
+    } ifelse
+} def
+
+% find_canvas is a convient front end to the whole system.
+% I use a local dictionary to help in garbage collected in case
+% this routine is later used as part of a larger piece of code.
+
+/find_canvas { % x y => [canvas]
+    10 dict 
+    begin
+        /answer [ ] def
+        /ypnt exch def
+        /xpnt exch def
+        framebuffer find_tree
+        answer
+    end
+} def
+
+% convert primary selection into the array form that we like.
+%
+% stores the resulting array in primarytext
+
+/primary_convert {
+    /ShelfSelection getselection 
+    dup null eq { 
+        ( ) 
+    } { 
+        /ContentsAscii get 
+    } ifelse
+%    /PrimarySelection getselection /ContentsAscii get
+    userdict /primarytext [ ] put
+    {
+        (\n) search false eq {
+            exit
+        } if
+        ( ) append [ exch ] primarytext exch append
+        /primarytext exch store
+        pop
+    } loop
+    dup () eq not {
+        [ exch ]
+        primarytext exch append /primarytext exch store
+    } { 
+        pop 
+    } ifelse
+} def
+
+/FntPts 14 def
+/FontName /Times-Roman def
+
+/textpop {
+    50 dict 
+    begin
+        primary_convert
+        /strs userdict /primarytext get def
+        gsave 
+            framebuffer setcanvas initmatrix
+            getxyloc /y exch def 
+            /x exch def
+            /canv x y find_canvas
+            dup length 1 le { 
+                0 get 
+            } { 
+                1 get 
+            } ifelse 
+            def
+            canv getcanvaslocation y exch sub exch x exch sub exch
+            /y exch def 
+            /x exch def
+            canv setcanvas
+            { 
+                newprocessgroup
+                strs type /arraytype ne { 
+                    1 array astore 
+                } if
+                FontName findfont FntPts scalefont setfont
+                0 setgray
+                /width 0 def
+                strs { 
+                    stringwidth pop width max /width exch def 
+                } forall
+                /height strs length 30 mul def
+                /y y height 2 div add 25 sub def
+                /x x width 2 div sub def
+                /x0 x 10 sub def
+                /y0 y 25 add def
+                /x1 x0 width add 20 add def
+                /y1 y0 height 5 add sub def
+                x0 y0 10 sub moveto
+                x0 y1 x1 y1 10 arcto
+                x1 y1 x1 y0 10 arcto
+                x1 y0 x0 y0 10 arcto
+                x0 y0 x0 y1 10 arcto
+                /cv canv newcanvas def
+                closepath
+                /cpath currentpath def
+                cv reshapecanvas cv setcanvas
+                cv /SaveBehind false put
+                cv /Retained true put
+                cv /Transparent false put
+                cv /Mapped true put
+                {
+                    clippath 0 setgray fill
+                    /x0 x0 2 add def 
+                    /y0 y0 2 sub def
+                    /x1 x1 2 sub def 
+                    /y1 y1 2 add def
+                    x0 y0 10 sub moveto
+                    x0 y1 x1 y1 10 arcto
+                    x1 y1 x1 y0 10 arcto
+                    x1 y0 x0 y0 10 arcto
+                    x0 y0 x0 y1 10 arcto clear
+                    255 255 0 RGBcolor setcolor fill
+                    ColorDisplay? { 
+                        1 .5 .5 sethsbcolor 
+                    } { 
+                        0 setgray 
+                    } ifelse
+                    strs { 
+                        x y moveto show /y y 30 sub def 
+                    } forall
+                    damagepath newpath
+                    createevent 
+                    begin
+                        /Canvas currentcanvas def
+                        /Name 
+                        4 dict 
+                        begin 
+                            /Damaged true def
+                            /LeftMouseButton false def 
+                            currentdict 
+                        end 
+                        def
+                        currentdict
+                    end 
+                    expressinterest
+                    awaitevent
+%			exit
+                    /Name get false eq {
+                        exit
+                    } if
+                } loop
+                cv /Mapped false put
+                canv /Retained get false eq {
+                    canv setcanvas
+                    cpath setpath
+                    extenddamage
+                } if
+                currentprocess killprocessgroup
+            } fork pause
+            pop
+        grestore
+    end
+} def
+
+textpop

@@ -1,0 +1,389 @@
+%!
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  String Shaped Window
+%  Copyright (C) 1988.
+%  By Don Hopkins.
+%  All rights reserved.
+%
+%  This program is provided for UNRESTRICTED use provided that this
+%  copyright message is preserved on all copies and derivative works.
+%  This is provided without any warranty. No author or distributor
+%  accepts any responsibility whatsoever to any person or any entity
+%  with respect to any loss or damage caused or alleged to be caused
+%  directly or indirectly by this program. This includes, but is not
+%  limited to, any interruption of service, loss of business, loss of
+%  information, loss of anticipated profits, core dumps, abuses of the
+%  virtual memory system, or any consequential or incidental damages
+%  resulting from the use of this program.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Instructions:
+%
+% psh wtf.ps <string>
+%
+% If <string> is not given, a studly default is used.
+% Stroke out a window.
+% Text that you type in it is inserted at the end of the string.
+% You can paste text onto the end by typing Get (L8).
+% Type EditBackChar (Delete) to erase a character.
+% Type EditBackLine (^U) to erase the line.
+% Hit return or click the PointButton (left) to copy the string to the
+% /PrimarySelection. 
+% Type escape to toggle between graph and paper tape shape.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Based on "input-example" by Dave Lavellee, 
+% and "ptape" by Don Hopkins.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+/main {
+  { newprocessgroup
+    framebuffer setcanvas
+
+    /win framebuffer /new DefaultWindow send def	% Create a window
+    {
+	/Background .125 .125 .125 rgbcolor def
+	/Foreground 1 1 1 rgbcolor def
+
+	/BorderLeft 2 def
+	/BorderRight 2 def
+	/BorderTop 2 def
+	/BorderBottom 2 def
+
+	/hole-radius 4 def
+	/hole-spacing 12 def
+	/tape-margin 3 def
+	/inputtext ($1) dup () eq {
+	  pop ( NeWS! NeWS! NeWS! NeWS! NeWS! )
+	} if def
+	/old-matrix matrix def
+
+        /ptape-string () def
+
+	/ptape { % width height string => 
+	  /ptape-string exch def
+	  /image-height exch def
+	  /image-width exch def
+
+	  old-matrix currentmatrix pop
+
+	  /tape-length
+	    ptape-string length
+	    hole-spacing mul
+	    tape-margin dup add add def
+
+	  /tape-width
+	    hole-spacing 9 mul
+	    tape-margin dup add add def
+
+	  image-width tape-length div
+	  image-height tape-width div scale
+
+	  newpath
+
+	  0 0 moveto
+	  tape-length 0 rlineto
+	  0 tape-width rlineto
+	  tape-length neg 0 rlineto
+	  closepath
+
+	  hole-spacing 2 div tape-margin add
+	  dup translate
+
+	  ptape-string {
+	    /char exch def
+	    /power 1 def
+	      8 {
+		power 16 eq {
+		  0 0 hole-radius 2 div 0 360 arc
+		  closepath
+		  0 hole-spacing translate
+		} if
+		pause
+		char power and 0 ne {
+		  0 0 hole-radius 0 360 arc
+		  closepath
+		} if
+		0 hole-spacing translate
+		/power power dup add def
+	      } repeat
+	    hole-spacing dup -9 mul translate
+	  } forall
+
+	  old-matrix setmatrix
+
+	} def
+
+	/graph { % width height string => 
+	  /ptape-string exch def
+	  /image-height exch def
+	  /image-width exch def
+
+	  old-matrix currentmatrix pop
+
+	  /tape-length
+	    ptape-string length
+	    hole-spacing mul
+	    tape-margin dup add add def
+
+	  /tape-width
+	    256
+	    tape-margin dup add add def
+
+	  image-width tape-length div
+	  image-height tape-width div scale
+
+	  newpath
+
+	  tape-length tape-width moveto
+	  tape-length 0 lineto
+	  0 0 lineto
+	  0 tape-width rlineto
+
+	  hole-spacing 2 div tape-margin add
+	  dup translate
+
+	  ptape-string {
+	    /char exch def
+	    0 char lineto
+%	    0 char .5 controlpoint
+	    hole-spacing 0 translate
+	  } forall
+
+	  closepath
+
+	  old-matrix setmatrix
+
+	} def
+
+        /shape-state true def
+
+	/toggle-shape {
+	  /shape-state shape-state not def
+	  FrameX FrameY FrameWidth FrameHeight reshape
+	} def
+
+	/make-shape {
+	  shape-state {
+	    graph
+	  } {
+	    ptape
+	  } ifelse
+	} def
+
+	% The client canvas will be rectangular inside an
+	% elliptical frame with 0 borders.
+	/ShapeFrameCanvas { % Form into a circle
+	    gsave
+	    ParentCanvas setcanvas
+	    FrameX FrameY translate
+	    matrix currentmatrix
+	    0 0 moveto
+	    0 FrameHeight translate
+	    -90 rotate
+	    FrameHeight FrameWidth
+	    inputtext make-shape
+	    setmatrix
+	    FrameCanvas eoreshapecanvas
+	    FrameCanvas /Mapped true put
+	    MoveFrameControls
+	    grestore
+	} def
+	/ShapeClientCanvas { % Form into a circle
+	    % Don't do anything. Doesn't get mapped?
+	} def
+	/ShapeIconCanvas {
+	    gsave
+	    ParentCanvas setcanvas
+	    % Try to align the bits of the icon with the round shape
+	    0 0 translate
+	    ParentCanvas setcanvas
+	    matrix currentmatrix
+	    0 0 moveto
+	    0 IconHeight translate
+	    -90 rotate
+	    IconWidth IconHeight
+	    inputtext make-shape
+	    setmatrix
+	    IconCanvas eoreshapecanvas
+	    grestore
+	} def
+	/PaintFrame {
+	  clippath Background setshade fill
+	  Foreground setshade
+	  repair
+	} def % Supposedly can't see frame
+	/PaintIcon {
+	  clippath Background setshade fill
+	  Foreground setshade
+	} def
+	/ClientCanvas null def
+	/IconImage /scroll def
+	/PaintFocus { } def % Don't show input focus--ruins images
+	/ForkPaintClient? true def	% avoid forking PaintClient.
+
+    } win send
+
+    /reshapefromuser win send				% Shape window.
+
+    /can win /FrameCanvas get def
+    can setcanvas
+    
+    /map win send  % Map the window. (Damage causes PaintClient to be called)
+
+
+    {
+      % Stolen from Scout's keyboard input example:
+
+      /textx 8 def
+      /initx 8 def
+      /texty 8 def
+      /inity 8 def
+      /textfont /Courier-Bold findfont 16 scalefont def
+      /labelx
+        gsave textfont setfont
+	  (X) stringwidth pop
+	  1.5 mul
+	grestore
+      def
+      /cleartext {
+	  gsave
+	      can setcanvas Background setshade
+	      initx inity moveto inputtext show
+	      () setinputtext
+	      Foreground setshade
+	      /textx initx store
+	      /texty inity store
+	  grestore
+      } def
+
+      /setinputtext { % str => -
+	      /inputtext exch def
+	      shapewindow
+      } def
+
+      /shapewindow {
+	  gsave
+	      textfont setfont
+	      FrameX FrameY
+	      FrameWidth
+	      FrameHeight
+	      reshape
+	  grestore
+      } def
+
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+      %% KEY HANDLING PROCEEDURES
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+      /addchar {
+	      cvis addstring
+      } def
+      /addstring {
+	  gsave
+	      inputtext exch append
+	      dup setinputtext
+	  grestore
+      } def
+      /deletechar {
+	  gsave
+	      inputtext () ne {
+	      inputtext dup length 1 sub 0 exch getinterval
+	      setinputtext
+	      } if
+	  grestore
+      } def
+      /deleteline {
+	      cleartext
+      } def
+      /returnkey {
+	      selectstring
+      } def
+      /selectstring {
+	20 dict begin
+	  /ContentsAscii inputtext def
+	  /SelectionResponder null def
+	  /Canvas can def
+	  /SelectionHolder currentprocess def
+	  currentdict
+	end
+	/PrimarySelection setselection
+      } def
+      /extendstring {
+	selectstring % for now
+      } def
+      /deselectstring {
+      } def
+
+      /handlers 200 dict dup begin
+	      0 1 127 {
+		      dup [ exch /addchar cvx ] cvx def
+	      } for
+	      13 {returnkey} def
+	      27 {toggle-shape} def
+	      /EditBackChar {deletechar} def
+	      /EditBackLine {deleteline} def
+	      /InsertValue {dup /Action get addstring} def
+	      /DeSelect {deselectstring} def
+%	      /SetSelectionAt {selectstring} def
+%	      /ExtendSelectionTo {extendstring} def
+      end def
+
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+      %% INITIALIZE A WINDOW
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+      /repair {
+	gsave
+	  can setcanvas
+	  textfont setfont
+	  FrameHeight inity sub % y
+	  inputtext { % y
+	    cvis exch % s y
+	    textfont fontheight sub
+	    dup inity lt {
+	      pop FrameHeight inity sub
+	      textfont fontheight sub
+	      labelx 0 translate
+	      0 0 transform pop FrameWidth gt { exit } if
+	    } if
+	    initx 1 index moveto
+	    exch show
+	  } forall
+	  pop
+	grestore
+      } def
+
+      /MouseClickEventMgr [
+	      PointButton {
+			  selectstring
+	      } /DownTransition can eventmgrinterest
+      ] forkeventmgr def
+
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+      %% KEYBOARD INPUT LOOP
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+      {
+	  can setcanvas
+	  currentcanvas addkbdinterests pop
+	  currentcanvas addselectioninterests pop
+	  currentcanvas addeditkeysinterest pop
+	  {
+	      awaitevent dup /Name get dup
+	      handlers exch known {
+		  handlers exch get exec
+	      } if
+	      clear
+	  } loop
+      } fork
+    } win send
+
+  } fork pop
+} def
+
+main

@@ -1,0 +1,254 @@
+%!
+%
+% Date: Wed, 21 Sep 88 00:43:28 EDT
+% To: NeWS-makers@brillig.umd.edu
+% Subject: 3-D pyramid fractal for NeWS
+% From: gerard@cgl.ucsf.EDU
+% 
+%  > {allegra,philabs,cmcl2,rutgers}!phri!roy -or- phri!roy@uunet.uu.net
+%  >	I still maintain that NeWS is different enough from PostScript to
+%  >   make in inadvisable to use the former as a tool for learning the latter.
+% 
+%    Roy,
+% 
+%    Curt.McDowell (cm26+@andrew.cmu.edu) has recently posted (in comp.graphics)
+%    an interesting 3-D pyramid fractal, written in PostScript. You can adjust
+%    the viewing angle by modifying alpha and beta parameters.
+%    Unfortunately, sending the program to a laser printer is not very fast.
+%    You can also view it with psview, but it is also slow.
+%    However, by modifying SLIGHTLY Curt's program, to run it under NeWS,
+%    You get a much faster response time, and you can learn some PostScript
+%    tips (I did !).
+% 
+%    Nota bene,
+%    The program below has been written by Curt McDowell, I just made some
+%    small modifications to run it with NeWS. (More than 3/4 is `pure'
+%    PostScript less than 1/4 is NeWS !).
+%    __________________________________________________________________________
+
+%                                                | Z
+% alpha -> Rotation around the Z axis            |
+%         (front corner moving left)             |_________ X
+% beta  -> Rotation around the Y                /
+%         (top corner moving away)             /
+%                                             / Y
+
+/alpha          -11   def       /beta           -10   def
+/shadeleft       1    def        /shaderight     0.1   def
+/pagew          300    def      /pageh          400    def
+/StartSize      1.6   def       /MinSize        0.2   def
+
+/sina alpha sin def             /sinb beta sin def
+/cosa alpha cos def             /cosb beta cos def
+
+% Transformation from 3-D coordinates to 2-D
+
+/xform  % alpha,beta,x,y,z ==> x',y'
+{
+        /zz exch def
+        /yy exch def
+        /xx exch def
+	/Beta exch def
+	/Alpha exch def
+
+        yy
+	Alpha cos
+		  mul
+        xx
+	Alpha sin
+		  mul sub
+        pagew 2 div mul         % Compute X and
+        pagew 2 div add         % leave on stack
+
+        xx
+	Beta sin
+	     mul
+	Alpha cos
+		 mul
+        yy
+	Alpha sin
+		 mul
+	Beta sin
+	         mul add
+        zz
+	Beta cos
+		 mul add
+        pageh 2 div mul         % Compute Y and
+        pageh 2 div add         % leave on stack
+} def
+
+% Constants
+
+/sqr3o4   3 sqrt    4 div       def
+/sqr3o2   3 sqrt    2 div       def
+/sqr3o6   3 sqrt    6 div       def
+/sqr6o3   6 sqrt    3 div       def
+/sqr3o12  3 sqrt    12 div      def
+/sqr6o6   6 sqrt    6 div       def
+
+/pyramid    % alpha,beta,x,y,z,size ==> --
+{
+gsave
+        /size exch def
+	/z exch def
+	/y exch def
+	/x exch def
+	/beta exch def
+	/alpha exch def
+
+        % (ax, ay) = Left bottom point
+	alpha
+	beta
+        x
+	y
+	z
+	   xform
+	/ay exch def
+	/ax exch def
+
+        % (bx, by) = bottom front point
+	alpha
+	beta
+        sqr3o2 size mul x add
+	size 2 div y add
+	z
+	   xform
+	/by exch def
+	/bx exch def
+
+        % (cx, cy) = Right bottom point
+	alpha
+	beta
+        x
+	size y add
+	z
+	   xform
+	/cy exch def
+	/cx exch def
+
+        % (dx, dy) = top point
+	alpha
+	beta
+        sqr3o6 size mul x add
+	size 2 div y add
+	sqr6o3 size mul z add
+	   xform
+	/dy exch def
+	/dx exch def
+
+        % Fill the 2 visible faces with different shades
+
+        ax ay moveto    bx by lineto    dx dy lineto    closepath
+        shadeleft       setgray         fill
+        cx cy moveto    bx by lineto    dx dy lineto    closepath
+        shaderight      setgray         fill
+
+        % Draw the 5 visible segments
+
+        0 setgray 0.1 72 div setlinewidth
+
+        ax ay moveto    bx by lineto    cx cy lineto    dx dy lineto
+        closepath       dx dy moveto    bx by lineto    stroke
+grestore
+} def
+
+% Recursive routine to build a pyramid out of subpyramids
+
+/buildsave { alpha beta x y z size } def
+/buildrest { /size exch def
+             /z exch def
+	     /y exch def
+	     /x exch def
+	     /beta exch def
+	     /alpha exch def
+} def
+
+/build {  % alpha,beta,x,y,z,size ==> --
+	pause
+        /size exch def
+	/z exch def
+	/y exch def
+	/x exch def
+	/beta exch def
+	/alpha exch def
+
+        size MinSize lt
+        {       buildsave
+                alpha  beta x   y   z   size   pyramid
+                buildrest
+        }
+        {       buildsave
+                alpha  beta x   y   z   size 2 div   build
+                buildrest
+
+                buildsave
+                alpha beta  x   size 2 div y add   z   size 2 div   build
+                buildrest
+
+                buildsave
+		alpha
+		beta
+                sqr3o12 size mul x add   size 4 div y add
+                sqr6o6 size mul z add   size 2 div   build
+                buildrest
+
+		alpha
+		beta
+                sqr3o4 size mul x add   size 4 div y add
+                z   size 2 div   build
+        } ifelse
+} def
+
+/go {
+       Zrot
+       Yrot
+       0 StartSize
+       -2 div StartSize
+       sqr6o6 mul -2 div StartSize
+       build
+} def
+
+/main {
+/Zrot    1 def
+/Yrot    1 def
+    /Zrotchoice
+	         [(-180)(-120)(-90)(-20)(-10)(0)(10)(20)(30)]
+	         [{ /Zrot currentkey cvi store
+	            /paint win send}]
+                 /new DefaultMenu send def
+    /Yrotchoice
+	         [(-180)(-120)(-100)(-80)(-60)(-50)
+		 (-30)(-20)(-10)(0)(10)(20)(30)]
+	         [{ /Yrot currentkey cvi store
+	            /paint win send}]
+                 /new DefaultMenu send def
+    /setstartsize
+		 [(0.5)(1.0)(1.5)(2)(2.5)(3.0)]
+	         [{ /StartSize currentkey cvr store
+	            /paint win send}]
+                 /new DefaultMenu send def
+    /setminsize
+		 [(0.2)(0.5)(1.0)(1.5)]
+	         [{ /MinSize currentkey cvr store
+	            /paint win send}]
+                 /new DefaultMenu send def
+
+    /win framebuffer /new DefaultWindow send def {
+        /PaintClient {
+		      gsave
+		      alpha go
+		      grestore
+        } def
+        /FrameLabel (Receptor) def
+	/PaintIcon {} def
+        /ClientMenu [
+		    (Z Rotation =>) Zrotchoice
+		    (Y Rotation =>) Yrotchoice
+		    (StartSize =>) setstartsize
+		    (MinSize =>) setminsize
+	 ] /new DefaultMenu send def
+    } win send
+    500 600 400 600 /reshape win send
+    /map win send
+} def
+main

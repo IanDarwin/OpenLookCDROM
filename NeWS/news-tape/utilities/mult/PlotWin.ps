@@ -1,0 +1,519 @@
+%
+%	Class:		PlotWindow
+%	SubClass:	DefaultWindow
+%
+%	Author:		Dennis Brockway
+%
+%	Methods:
+%		/new		- => instance
+%		/Clear		- => -
+%		/SendData	array => -	Add Data to Plot
+%		/NewLine	- => -		Start new Plot
+%		/LineTo		x y => -	Draw a lineto x y
+%		/MoveTo		x y => -	Move To x y
+%		/RmoveTo	x y => -	Rmove to x y
+%		/Display	canvas => -	Displays the Plot
+%
+%	Variables:
+%		/DrawXaxis?     false   	Whether to Draw Xaxis
+%        	/DrawYaxis?     false   	Whether to Draw Yaxis
+%        	/DrawXtics?     true    	Whether to Draw Tics on Xaxis
+%        	/DrawYtics?     true    	Whether to Draw Tics on Yaxis
+%        	/NumberXaxis?   true    	Whether to Number Xaxis
+%        	/NumberYaxis?   true    	Whether to Number Yaxis
+%        	/LabelXaxis?    true    	Whether to Label  Xaxis
+%        	/LabelYaxis?    true    	Whether to Label  Yaxis
+%        	/DrawBox?       true    	Whether to Draw a Box
+%        	/LabelFonts     /Times-Roman findfont 16 scalefont def
+%        	/NumberFonts    /Times-Roman findfont 16 scalefont def
+%        	/LabelX         (X-AXIS)        Label for Xaxis
+%        	/LabelY         (Y-AXIS)        Label for Yaxis
+%		/CurrentPlotColor		DefaultPlotColor
+%		/BackGroundColor		Color of Back ground
+%		/AxisColor			Color of X and Y Axis
+%		/LabelColor			Color of Labels
+%		/NumberColor			Color of Numbers
+%		/PlotLineWidth			Width of plot line
+%
+systemdict begin
+
+/PlotWindow DefaultWindow
+dictbegin
+	/DrawXaxis?	false	def
+	/DrawYaxis?	false	def
+	/DrawXtics?	true	def
+	/DrawYtics?	true	def
+	/NumberXaxis?	true	def
+	/NumberYaxis?	true	def
+	/LabelXaxis?	true	def
+	/LabelYaxis?	true	def
+	/DrawBox?	true	def
+	/LabelFontName		/Times-Roman	def
+	/LabelFontSize		16		def
+	/LabelFonts	LabelFontName findfont LabelFontSize scalefont def
+	/NumberFontName		/Times-Roman	def
+	/NumberFontSize		16		def
+	/NumberFonts	NumberFontName findfont NumberFontSize scalefont def
+	/BackGroundColor	.8 .8 .8 rgbcolor def
+	/AxisColor		0 0 1 rgbcolor def
+	/LabelColor		0 0 1 rgbcolor def
+	/NumberColor		LabelColor     def
+	/DefaultPlotColor	1 0 0 rgbcolor def
+	/CurrentPlotColor	0 0 0 rgbcolor def
+	/PlotLineWidth	1	def
+	/Data 		 [] 	def
+	/DataList	 []	def
+	/PlotList	 []	def
+	/XticData	 []	def
+	/YticData	 []	def
+	/XaxisData	 []	def
+	/YaxisData	 []	def
+	/NumberXaxisData []	def
+	/NumberYaxisData []	def
+	/LabelXaxisData  []	def
+	/LabelYaxisData  []	def
+	/BoxData  	 []	def
+	/LabelX		(X-AXIS)	def
+	/LabelY		(Y-AXIS)	def
+	/PlotCtm	matrix  currentmatrix def
+	/Numdys 	5	def
+	/Numdxs		5	def
+	/PlotUmin	0	def
+	/PlotVmin	0	def
+	/PlotUmax	0	def
+	/PlotVmax	0	def
+	/Xgapfactor	.05	def
+	/Ygapfactor	.05	def
+dictend
+classbegin
+	/PlotChanged?	true	def
+	/AxisTbl [2 5 10 20 50 100 150 200 300 400 500 1000 2000 5000 10000 
+		  20000 50000 100000 200000 500000 1000000] def
+
+	/new {
+	    /new super send
+	} def
+
+	/PaintClient {
+	    /Display self send
+	} def
+
+	/PaintIcon {
+	    /Display self send
+	    /IconFont /Times-Roman findfont 10 scalefont def
+	    PaintIconLabel
+	} def
+
+	/Clear { %  		Start a Data List
+	    initminmax			%  Initialize Mins and Maxs
+	    %/CurrentPlotColor	DefaultPlotColor def
+	    /PlotChanged? true def
+	    /Data		[] 	def
+	    /DataList		[]	def
+	    /XticData		[]	def
+	    /YticData		[]	def
+	    /XaxisData	 	[]	def
+	    /YaxisData	 	[]	def
+	    /NumberXaxisData	[]	def
+	    /NumberYaxisData	[]	def
+	    /LabelXaxisData	[]	def
+	    /LabelYaxisData	[]	def
+	    /BoxData  	 	[]	def
+	    Display			% Display Cleared Plot
+	} def
+
+
+	/SendData { % [array of x,y pairs] => -
+	    /Data [] def
+	    dup length 1 sub
+	    0 2 3 -1 roll {
+		2 copy				% A indx A indx
+		2 getinterval aload pop		% A indx x y
+		3 -1 roll 0 eq {MoveTo} {LineTo} ifelse
+	    } for
+	    pop
+	    NewLine
+	} def
+
+	/NewLine {	% Add Newline to Data 
+	    /PlotChanged? true def
+	    Data length 0 gt {
+		/DataList [
+		    DataList aload pop
+		    GSAVE
+			Data cvx EXEC
+			CurrentPlotColor SETCOLOR
+			STROKE
+		    GRESTORE
+		] def
+		/Data [] def
+	    } if
+	} def
+
+	/PlotColor { % color => -	Sets plotcolors for next points
+	    /CurrentPlotColor exch def
+	} def
+
+	%
+	%	The procedures
+	%	LineTo, MoveTo, RmoveTo
+	%	do the indicated thing, but also set mins and maxs
+	%	These are intended to be called externally
+	%
+	/LineTo { % x y => -		Add lineto to Data and set min/max
+	    1 index 1 index
+	    setminmax			% set min and max
+	    addline
+	} def
+
+	/MoveTo { % x y => -		Add moveto to Data and set min/max
+	    1 index 1 index
+	    setminmax			% set min and max
+	    addmove
+	} def
+
+	/RmoveTo { % x y => -		Add rmoveto to Data and set min/max
+	    1 index 1 index
+	    setminmax			% set min and max
+	    addrmove
+	} def
+
+
+
+	%
+	%	User Space:
+	%	    Variables starting with X or Y refer to variables
+	%	    in User Space (pixels)
+	%	Physical Space:
+	%	    Variables starting with U or V refer to variables
+	%	    in physical space.
+	%
+	/Display{	%  => -	Display the PlotList on canvas
+	    PlotChanged? {
+		/Vmin PlotVmin def
+		/Umin PlotUmin def
+		setdys		% Set Vmax PlotdVtics
+		setdxs		% Set Umax PlotdUtics
+		/Ugap Vmax Vmin sub 50 div def
+		/Vgap Umax Umin sub 50 div def
+
+		NewLine		% Add any new Data to DataList
+	    } if
+	    Iconic? {IconCanvas} {ClientCanvas} ifelse
+	    SetUserSpace
+	    /tarray [Xu1 Yv1 Xu2 Yv2 Umin Vmin Umax Vmax] def
+
+	    DrawBox?   { PlotBox   } {/BoxData   [] def} ifelse
+	    DrawXaxis? { PlotXaxis } {/XaxisData [] def} ifelse
+	    DrawYaxis? { PlotYaxis } {/YaxisData [] def} ifelse
+	    DrawXtics? { PlotXtics } {/XticData  [] def} ifelse
+	    DrawYtics? { PlotYtics } {/YticData  [] def} ifelse
+	    NumberXaxis? { NumberXaxis } {/NumberXaxisData [] def} ifelse
+	    NumberYaxis? { NumberYaxis } {/NumberYaxisData [] def} ifelse
+	    LabelXaxis?  { LabelXaxis  } {/LabelXaxisData  [] def} ifelse
+	    LabelYaxis?  { LabelYaxis  } {/LabelYaxisData  [] def} ifelse
+	    /PlotList
+		[   {gsave newpath } aload pop
+		    DrawBox?		{BoxData   cvx EXEC} if
+		    DrawXaxis?		{XaxisData cvx EXEC} if
+		    DrawYaxis?		{YaxisData cvx EXEC} if
+		    DrawXtics?		{XticData  cvx EXEC} if
+		    DrawYtics?		{YticData  cvx EXEC} if
+		    Iconic? not {
+			NumberXaxis?	{NumberXaxisData cvx EXEC} if
+			NumberYaxis?	{NumberYaxisData cvx EXEC} if
+			LabelXaxis?		{LabelXaxisData  cvx EXEC} if
+			LabelYaxis?		{LabelYaxisData  cvx EXEC} if
+		    } if
+		    DataList  cvx EXEC
+		    GRESTORE
+		] cvx
+	    def
+	    PaintPlot
+	    /PlotChanged? false def
+	} def
+
+	/PaintPlot { %		Paint the Canvas with Plot
+	    gsave
+		Iconic? {IconCanvas} {ClientCanvas} ifelse
+		setcanvas
+		BackGroundColor fillcanvas
+		0 setgray
+		tarray tcalc
+		PlotList		% exec PlotList
+	    grestore
+	} def
+
+	/PlotXaxis {	%  - => -	Add X axis to Data
+	    /XaxisData [
+		Umin Vmin MOVETO
+		Umax Vmin LINETO
+		AxisColor SETCOLOR
+		STROKE
+	    ] def
+	} def
+
+	/PlotYaxis {	%  - => -	Add Y axis to Data
+	    /YaxisData [
+		Umin Vmin MOVETO
+		Umin Vmax LINETO
+		AxisColor SETCOLOR
+		STROKE
+	    ] def
+	} def
+
+	/PlotBox { %  - => -		Add a Box to Data
+	    /BoxData [
+		Umin Vmin MOVETO
+		Umax Vmin LINETO
+		Umax Vmax LINETO
+		Umin Vmax LINETO
+		Umin Vmin LINETO
+		AxisColor SETCOLOR
+		STROKE
+	    ] def
+	} def
+
+	/PlotXtics { % 			Add Tics marks on X-Axis to Data
+	    /XticData [
+		Umin PlotdUtics Umax {
+		    dup Vmin MOVETO
+		    4 -1 roll Ugap LINETO
+		} for
+		AxisColor SETCOLOR
+		STROKE
+	    ] def
+	} def
+
+	/PlotYtics { % 			Add Tics marks on Y-Axis to Data
+	    /YticData [
+		Vmin PlotdVtics Vmax {
+		    dup Umin exch MOVETO
+		    Vgap 5 -1 roll  LINETO
+		} for
+		AxisColor SETCOLOR
+		STROKE
+	    ] def
+	} def
+
+	/NumberXaxis { %		Set NumberXaxisData
+	    /val Umin def
+	    /dx Xu2 Xu1 sub Numdxs div def
+	    /NumberXaxisData [ 
+		GSAVE
+		PlotCtm SETMATRIX
+		NumberFonts SETFONT
+		NumberColor  SETCOLOR
+		Xu1 dx Xu2 {
+		    YposXnumbers MOVETO
+		    val 20 string cvs CSHOW
+		    /val val PlotdUtics add def
+		} for
+		GRESTORE
+	    ] def
+	} def
+
+	/NumberYaxis { %		Set NumberYaxisData
+	    /val Vmin def
+	    /dy Yv2 Yv1 sub Numdys div def
+	    /NumberYaxisData [ 
+		GSAVE
+		PlotCtm SETMATRIX
+		NumberFonts SETFONT
+		NumberColor  SETCOLOR
+		Yv1 dy Yv2 {
+		    NumberFontHeight 2 div sub XposYnumbers exch MOVETO
+		    val 20 string cvs SHOW
+		    /val val PlotdVtics add def
+		} for
+		GRESTORE
+	    ] def
+	} def
+
+	/LabelXaxis { %			Set LabelXaxisData
+	    /LabelXaxisData [
+		GSAVE
+		    PlotCtm SETMATRIX
+		    LabelFonts SETFONT 
+		    LabelColor  SETCOLOR
+		    XposXlabel YposXlabel MOVETO
+		    LabelX CSHOW
+		GRESTORE
+	    ] def
+	} def
+	    
+	/LabelYaxis { %			Set LabelYaxisData
+	    /LabelYaxisData [
+		GSAVE
+		    PlotCtm SETMATRIX
+		    LabelFonts SETFONT 
+		    LabelColor  SETCOLOR
+		    XposYlabel Yv2 Yv1 add 2 div MOVETO
+		    90 ROTATE
+		    LabelY CSHOW
+		GRESTORE
+	    ] def
+	} def
+
+	%
+	%	The procedures
+	%	addline, addmove, addrmove
+	%	do the indicated thing
+	%	These are intended to be called internally
+	%
+	/addline { % x y => -	Add lineto to Data
+	    [ 3 1 roll LINETO] addtail
+	} def
+
+	/addmove { % x y => -		Add moveto to Data
+	    [ 3 1 roll MOVETO] addtail
+	} def
+	    
+	/addrmove { % x y => -		Add rmoveto to Data
+	    [ 3 1 roll RMOVETO] addtail
+	} def
+
+	/addtail { % tail => -		Add tail to Data
+	    Data exch arrayappend
+	    /Data exch def
+	    /PlotChanged? true def
+	} def
+
+	/EXEC	   { /exec load }	def
+	/SHOW      { /show cvx }	def
+	/CSHOW	   { /cshow cvx }	def
+	/GSAVE     { /gsave cvx }	def
+	/GRESTORE  { /grestore cvx }	def
+	/SETMATRIX { /setmatrix cvx }	def
+	/SETFONT   { /setfont cvx }	def
+	/MOVETO    { /moveto cvx }	def
+	/LINETO    { /lineto cvx }	def
+	/STROKE	   { /stroke cvx }	def
+	/ROTATE	   { /rotate cvx }	def
+	/SETCOLOR  { /setcolor cvx }	def
+	/SETLINEWIDTH { /setlinewidth cvx } def
+
+	/SetUserSpace { % canvas => -
+	    gsave
+		setcanvas
+		clippath pathbbox
+		/Y2 exch def
+		/X2 exch def
+		/Y1 exch def
+		/X1 exch def
+		/Xgap X2 X1 sub Xgapfactor mul def
+		/Ygap Y2 Y1 sub Ygapfactor mul def
+		/LabelFontHeight LabelFonts fontascent def
+		/NumberFontHeight NumberFonts fontascent def
+		Iconic? {
+		    /PlotDy 15 def
+		    /PlotDx 10 def
+		} {
+		    /PlotDy
+			Ygap
+			LabelXaxis?  {LabelFontHeight add Ygap add} if
+			NumberXaxis? {NumberFontHeight add Ygap add} if
+		    def
+		    /PlotDx
+			Xgap
+			LabelYaxis?  {LabelFontHeight add Xgap add} if
+			NumberYaxis? {
+					NumberFonts setfont Vmax sizeof add 
+					Xgap add
+				     } if
+		    def
+		} ifelse
+		/Xu1 X1 PlotDx add def
+		/Yv1 Y1 PlotDy add def
+		/Xu2 X2 PlotDx 2 div sub def
+		/Yv2 Y2 PlotDy 2 div sub def
+		LabelXaxis? {
+		    /XposXlabel Xu1 Xu2 add 2 div def
+		    /YposXlabel Ygap def
+		} if
+		LabelYaxis? {
+		    /XposYlabel Xgap LabelFontHeight add def
+		    /YposYlabel Yv1 Yv2 add 2 div def
+		    /XposYnumbers XposYlabel Xgap add def
+		} {
+		    /XposYnumbers Xgap def
+		} ifelse
+		/YposXnumbers Yv1 Ygap NumberFontHeight add sub def
+	    grestore
+	} def
+
+	/sizeof { % num => sizeof
+	    20 string cvs
+	    stringwidth pop
+	} def
+
+	/initminmax { %  - => -		Initialize Min, Max to 0
+	    /PlotUmin 0 def
+	    /PlotVmin 0 def
+	    /PlotUmax 0 def
+	    /PlotVmax 0 def
+	} def
+
+        /setminmax { % x y => -     Set PlotUmin, PlotVmin, PlotUmax, PlotUmax
+            dup PlotVmin lt {dup /PlotVmin exch def} if
+            dup PlotVmax gt {dup /PlotVmax exch def} if pop
+            dup PlotUmin lt {dup /PlotUmin exch def} if
+            dup PlotUmax gt {dup /PlotUmax exch def} if pop
+        } def
+
+	/setdys {  % - => -	Set Vmax , PlotdVtics
+	    AxisTbl {
+		dup PlotVmax ge {exit} {pop} ifelse
+	    } forall
+	    /Vmax exch def
+	    PlotVmax 0 eq {/Vmax 10 def} if
+	    /PlotdVtics Vmax Numdys div def
+	} def
+
+	/setdxs {  % - => -	Set Umax , PlotdUtics
+	    AxisTbl {
+		dup PlotUmax ge {exit} {pop} ifelse
+	    } forall
+	    /Umax exch def
+	    Umax 10 lt {/Umax 10 def} if
+	    /PlotdUtics Umax Numdxs div def
+	} def
+
+	%
+        %       calculate transformation
+	%
+	/tcalc { %  [x1 y1 x2 y2 u1 v1 u2 v2] => -
+	    20 dict
+	    begin % private dictionary
+		aload pop % transform array; 6 elements
+		/v2 exch def
+		/u2 exch def
+		/v1 exch def
+		/u1 exch def
+		/y2 exch def
+		/x2 exch def
+		/y1 exch def
+		/x1 exch def
+		/sx x2 x1 sub u2 u1 sub div def
+		/sy y2 y1 sub v2 v1 sub div def
+		/tx x1 sx u1 mul sub def
+		/ty y1 sy v1 mul sub def
+		tx ty translate
+		sx sy scale
+	    end
+	} def
+
+	%
+	%	append arrays
+	%
+	/arrayappend { % array1 array2 => Array    Append array2 to array1
+	    1 index length 1 index length add array	% a1 a2 A
+	    dup 4 -1 roll 1 index copy length		% a2 A A l1
+	    4 -1 roll putinterval
+	} def
+
+
+classend
+def
+
+end % systemdict

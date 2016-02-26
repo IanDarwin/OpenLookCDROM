@@ -1,0 +1,131 @@
+*** OLD/dispnew.c	Sun May  8 00:49:58 1988
+--- dispnew.c	Sun May  8 00:50:31 1988
+***************
+*** 1320,1325 ****
+--- 1320,1331 ----
+  	  goto term_init_done;
+  	}
+  #endif /* HAVE_X_WINDOWS */
++ #ifdef HAVE_NEWS
++       if (egetenv ("NEWSSERVER") && NeWS_term_init()) {
++ 	  Vwindow_system = intern ("NeWS");
++ 	  goto term_init_done;
++       }
++ #endif HAVE_NEWS
+        ;
+      }
+  
+*** OLD/emacs.c	Sun May  8 00:49:58 1988
+--- emacs.c	Sun May  8 00:50:30 1988
+***************
+*** 236,241 ****
+--- 236,244 ----
+  #ifdef HAVE_X_WINDOWS
+        inhibit_window_system = 1;	/* -t => -nw */
+  #endif
++ #ifdef HAVE_NEWS
++       inhibit_window_system = 1;	/* -t => -nw */
++ #endif
+      }
+  #ifdef HAVE_X_WINDOWS
+  /* Handle the -d switch, which means use a different display for X */
+***************
+*** 399,404 ****
+--- 402,411 ----
+        syms_of_xmenu ();
+  #endif /* HAVE_X_MENU */
+  #endif /* HAVE_X_WINDOWS */
++ 
++ #ifdef HAVE_NEWS
++       syms_of_NeWS ();
++ #endif HAVE_NEWS
+  
+  #ifdef SYMS_SYSTEM
+        SYMS_SYSTEM;
+*** OLD/keyboard.c	Sun May  8 00:49:59 1988
+--- keyboard.c	Sun May  8 03:44:00 1988
+***************
+*** 53,62 ****
+--- 53,66 ----
+  #endif
+  
+  /* Make all keyboard buffers much bigger when using X windows.  */
++ #ifdef HAVE_NEWS
++ #define BUFFER_SIZE_FACTOR 16		/* limits pasts to <4k */
++ #else
+  #ifdef HAVE_X_WINDOWS
+  #define BUFFER_SIZE_FACTOR 16
+  #else
+  #define BUFFER_SIZE_FACTOR 1
++ #endif
+  #endif
+  
+  /* Following definition copied from eval.c */
+*** OLD/process.c	Sun May  8 00:49:59 1988
+--- process.c	Sun May  8 00:50:33 1988
+***************
+*** 1597,1605 ****
+    if (!setjmp (send_process_frame))
+      while (len > 0)
+        {
+! 	signal (SIGPIPE, send_process_trap);
+  	rv = write (XFASTINT (XPROCESS (proc)->outfd), buf, len);
+! 	signal (SIGPIPE, SIG_DFL);
+  	if (rv < 0)
+  	  {
+  #ifdef EWOULDBLOCK
+--- 1597,1605 ----
+    if (!setjmp (send_process_frame))
+      while (len > 0)
+        {
+! 	int (*oldhandler)() = signal (SIGPIPE, send_process_trap);
+  	rv = write (XFASTINT (XPROCESS (proc)->outfd), buf, len);
+! 	signal (SIGPIPE, oldhandler);
+  	if (rv < 0)
+  	  {
+  #ifdef EWOULDBLOCK
+*** OLD/ymakefile	Sun May  8 00:49:59 1988
+--- ymakefile	Sun May  8 05:30:54 1988
+***************
+*** 168,173 ****
+--- 168,178 ----
+  #endif /* not X11 */
+  #endif /* HAVE_X_WINDOWS */
+  
++ #ifdef HAVE_NEWS
++ NEWSHOME=/usr/NeWS
++ NeWSobj= NeWS.o $(NEWSHOME)/lib/libcps.a
++ #endif HAVE_NEWS
++ 
+  #ifdef MAINTAIN_ENVIRONMENT
+  environobj = environ.o
+  #endif MAINTAIN_ENVIRONMENT
+***************
+*** 180,186 ****
+  /* lastfile must follow all files
+     whose initialized data areas should be dumped as pure by dump-emacs. */
+  obj=    dispnew.o scroll.o xdisp.o window.o \
+! 	term.o cm.o $(XOBJ) \
+  	emacs.o keyboard.o macros.o keymap.o sysdep.o \
+  	buffer.o filelock.o insdel.o marker.o \
+  	minibuf.o fileio.o dired.o filemode.o \
+--- 185,191 ----
+  /* lastfile must follow all files
+     whose initialized data areas should be dumped as pure by dump-emacs. */
+  obj=    dispnew.o scroll.o xdisp.o window.o \
+! 	term.o cm.o $(XOBJ) $(NeWSobj) \
+  	emacs.o keyboard.o macros.o keymap.o sysdep.o \
+  	buffer.o filelock.o insdel.o marker.o \
+  	minibuf.o fileio.o dired.o filemode.o \
+***************
+*** 416,418 ****
+--- 421,429 ----
+  
+  ${etcdir}emacstool: ${etcdir}emacstool.c
+  	cd ${etcdir}; make ${MFLAGS} emacstool
++ 
++ NeWS.h:	NeWS.cps
++ 	$(NEWSHOME)/bin/cps NeWS.cps
++ 
++ NeWS.o: NeWS.c NeWS.h
++ 	$(CC) $(CFLAGS) -I$(NEWSHOME)/include -c NeWS.c

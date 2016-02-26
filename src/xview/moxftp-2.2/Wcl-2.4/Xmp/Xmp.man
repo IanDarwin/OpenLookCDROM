@@ -1,0 +1,251 @@
+.COMMENT SCCS_data: @(#) Xmp.man 1.3 92/11/02 08:36:37
+.TH "Xmp" 1 "1 March 1992"
+.SH NAME
+Xmp \- Motif Public Library
+.SH SYNOPSIS
+.ta 1.5i 2.5i
+.nf
+.ft B
+#include <X11/Intrinsic.h>
+#include <X11/Wc/WcCreate.h>
+#include <X11/Xmp/Xmp.h>
+
+/* All Wcl applications should provide at least the Wcl options:
+*/
+static XrmOptionDescRec options[] = {
+    ... application specific command line options ...
+    WCL_XRM_OPTIONS
+};
+
+main ( argc, argv )
+    int    argc;
+    char*  argv[];
+{
+    /*  -- Intialize Toolkit creating the application shell
+    */
+    Widget appShell = XtInitialize (
+        argv[0], WcAppClass( argc, argv ),      /* app name & class  */
+        options, XtNumber(options),             /* argv option descr */
+        &argc, argv
+    );
+    XtAppContext app = XtWidgetToApplicationContext(appShell);
+
+    /*  -- Register application specific callbacks and widget classes
+    */
+    RegisterApplication ( app );
+
+    /*  -- Register all widget classes and constructors
+    */
+    XmpRegisterMotif( app );
+
+    /*  -- Create widget tree below toplevel shell using Xrm database
+    */
+    if ( WcWidgetCreation ( appShell ) )
+        exit(1);
+
+    /*  -- Realize the widget tree
+    */
+    XtRealizeWidget ( appShell );
+
+    /*  -- Catch `Close' from mwm menu on top level shell.
+    */
+    XmpAddMwmCloseCallback( appShell, DeleteWindowCB, clientData );
+
+    /*  -- and finally, enter the main application loop
+    */
+    XtMainLoop ( );
+}
+.fi
+.ft R
+
+.SH LINK BY
+.RS
+.nf
+.ft B
+example% ld -o prog prog.o -lXmp -lXm -lWc <dynLinkLib> -lXmu -lXt -lX11
+.ft R
+.RE
+.LP 
+On SunOS or SVR4 machines, the <dynLinkLib> is named -ldl.
+Other architectures cannot use the dynamic linking capabilites of
+Wcl, and therefore do not need any dynamic link library.
+.SH DESCRIPTION
+.LP
+.I Xmp
+is intended to be used with
+.I Wcl
+and the Motif widget set.  Xmp provides a procedure for registering all
+Motif widgets, and convenience functions frequently needed by Motif
+applications.
+.SH REGISTRATION PROCEDURES
+.LP
+.I Wcl
+must be told the names of all widgets and widget constructors before
+it can create widgets as specified in the resource file of client
+applications.
+.I Xmp
+provides a registration procedure for registering all Motif widgets.
+For backward compatibility with previous releases of Wcl, this
+registration procedure has three names: MriRegisterMotif(), 
+XmpRegisterAll(), and XmpRegisterMotif().  These procedures
+are exactly equivalent.
+.TP
+.B void XmpRegisterMotif( XtAppContext )
+This procedure registers all of the Motif widget class pointer names,
+widget class names, and widget constructor function names with Wcl.
+It also registers all Xmp converters and action procedures with Xt,
+and all Xmp callback procedures with Wcl.
+.SH CONVERTERS
+.LP
+.I Xmp
+provides converters which are useful for specifying look and feel
+attributes of Motif user interfaces from resource files.  It causes
+the WcCvtStringToWidget() converter to be invoked for setting
+constraints and menuIds.  WcCvtStringToWidget() uses WcFullNameToWidget()
+to resolve the name, so the Wcl relative path naming conventions can
+be used to navigate the widget tree to find a specific widget.
+.LP
+.I Xmp
+causes the XmpCvtStringToXmString()
+converter to be invoked to provide multi-line labels to Motif
+widgets.  This converter uses XmStringCreateLtoR() and the
+XmSTRING_DEFAULT_CHARSET to convert strings in the resource database
+into XmStrings.  XmStringCreateLtoR() recognizes the two characters
+"\n" (backslash followed by a lower case "n"), and causes the XmString
+to break to a new line.  Hence, "Hello\nThere" ends up being a two
+line label on an XmLabel.
+.SH ACTIONS AND CALLBACKS
+.LP
+Most Xmp actions are available as callbacks, and all callbacks are
+available as actions.  The provided procedures, as named in the
+resource database, are as follows:
+.nf
+.ft B
+XmpFixTranslations( widget [widget ...] )
+XmpAddMwmCloseCallback( widget callback(args) [callback(args) ...] )
+XmpAddTabGroup( [widget] )
+XmpTableChildConfig( widget col row [h_span [v_span [opts]]] )
+XmpTableChildPosition( widget col row )
+XmpTableChildResize( widget h_span v_span )
+XmpTableChildOptions( widget options )
+XmpPopup( widget )
+.ft R
+.fi
+.LP
+Each callback procedure can also be named in resource files as
+the name of the procedure followed by CB: i.e, XmpFixTranslations()
+can also be invoked as a callback by giving the name XmpFixTranslationsCB()
+for a callback resource value.  Also, each action procedure can also
+be named by appending ACT to the procedure name.  Normally, I just use the
+procedure name, so it is less trouble to change behavior from callbacks
+to actions triggered by translations or accelerators, and vice versa.
+The CB and ACT endings are maintained for backward compatibility, and
+because some people like to be more explicit.  It is all a matter of taste.
+.LP
+Arguments to the procedures are provided as strings, the characters
+between the parenthesis following the procedure name.  If no parenthesis
+follow the procedure name, then a NULL string is passed to the procedure.
+Some procedures require arguments, some provide reasonable defaults when
+no arguments are given.  For example:
+.RS
+.nf
+.ft B
+*foo.wcCreate:         XmText
+*foo.wcCallback:       XmpFixTranslations( this ^that )
+
+*bar.wcCreate:         XmPushButton
+*bar.activateCallback: XmpAddTabGroup
+.ft R
+.RE
+.LP
+Each
+.I Xmp
+procedure is discussed in detail below.
+.TP
+.B XmpFixTranslations( widget [widget ...] )
+This works on XmText widgets only, and has the effect of fixing
+translations which get hammered when XmText widgets are put into
+dialogs.  Normally, pressing newline in a multi-line text widget
+does a newline action.  In a dialog, pressing return causes the
+dialog to go away.  
+.TP
+.B XmpAddMwmCloseCallback( widget callback(args) [callback(args) ...] )
+The callbacks are invoked in an Xt dependent order when the named widget
+receives the WM_DELETE_WINDOW or WM_SAVE_YOURSELF protocol event.  Each
+of the named callbacks are added to the widget using XmAddProtocolCallback(). 
+.TP
+.B XmpAddTabGroup( [widget] )
+The named widget, or the widget providing the context for the callback if
+no widget is named, is passed to XmAddTabGroup().  The effect is simple:
+if the widget is a manager widget, then all the children are put in a
+tab group together.  If the widget is a primitive, then that widget
+is in its own tab group.
+.TP
+.B XmpPopup( widget )
+This is only available as an action triggered due to translations of
+accelerators, it cannot be invoked as a callback.  The argument is the
+name of a menu pane (usually, a widget which was created with
+XmCreatePopupMenu()).  The menu is positioned using XmMenuPosition()
+which is the same procedure used by Motif itself.  This depends on
+the existance of an XmRowColumn somewhere in the interface.  If
+you have a menuBar, then this will work.  This is because XmRowColumn
+provides all sorts of wierd and wonderful event handlers for dealing
+with menus.
+.TP
+.B XmpTableChildConfig( w col row [h_span [v_span [opts]]] )
+This allows a child of an XmpTable to be moved to a new row or
+column, to be given a different horizontal or vertical span, and
+to change the justification and re-size options of the child.
+.TP
+.B XmpTableChildPosition( w col row )
+This allows a child of an XmpTable to be moved to a new row or 
+column.
+.TP
+.B XmpTableChildResize( w h_span v_span )
+This allows a child of an XmpTable to be given a different horizontal
+or vertical span.
+.TP
+.B XmpTableChildOptions( w options )
+This allows a child of an XmpTable to be given new
+justification and re-size options.
+.SH "SEE ALSO"
+.BI XmpTable (3),
+.BI Mri (1),	
+.BI Wcl (3),
+.BI X (1)
+.SH BUGS
+.LP
+realizeCallback, destroyCallback, popupCallback, and popdownCallback
+MUST NOT be specified using resource values for shell widgets derived
+from Motif Vendor Shell in most releases of Motif.  Sorry, there is no
+way I can see for Wcl to work around this bug in the list of resources
+fetched by the Motif Vendor Shell Extension VendorExtInitialize()
+procedure.
+.LP
+If you want to specify these resources, specifiy a wcCallback resource
+and add the callbacks using WcAddCallbacks().
+.LP
+Explanation for Xt and Motif gurus with source code: Xt has fetched
+these resources for the shell, and compiled the XtCallbackRec array
+generated by WcCvtStringToCallback into the
+InternalCallbackRec/XtCallbackRec "thang."  This happens in
+Xt'Create.c'_XtCreate in R5.  _XtCreate then allows the widget to
+initialize itself, calling CallInitialize().  This eventually invokes
+the Motif Vendor Shell initialization, which invokes the Motif Vendor
+Shell Extension initialization.  Here, Motif incorrectly fetches again
+the above callback resources, applying the resources straight into the
+"new" widget with its already compiled callback lists.  This causes the
+compiled callback list storage to be overwritten with the original,
+uncompiled form previously generated by WcCvtStringToCallback.  The
+next XtAddCallback or XtCallAllCallbacks or XtSetValues on these
+resources will (or should!) fail due to mis-interpreting the callback
+list (the first element will again be an XtCallbackRec instead of an
+InternalCallbackRec).  The fix is messy:  somehow treat the callback
+resources as uniquely as Xt does everywhere else: fetch into a
+different (local) Widget instead of new, and then traverse the list of
+callbacks, invoking XtAddCallback( new, <callbackName>, cb->callback,
+cb->closure ), and then free up that locally allocated dummy widget.
+Yuck!
+.SH AUTHOR
+David E. Smyth (David.Smyth@sniap.mchp.sni.de) at Siemens Nixdorf
+Informationssysteme AG, Munich Germany.

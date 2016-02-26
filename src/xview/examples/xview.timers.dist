@@ -1,0 +1,145 @@
+From sq!wildcan!news2.uunet.ca!uunet.ca!uunet!elroy.jpl.nasa.gov!decwrl!koriel!west.West.Sun.COM!male.EBay.Sun.COM!exodus.Eng.Sun.COM!exodus!rickg Thu Aug  5 12:18:24 EDT 1993
+Article: 8609 of comp.windows.open-look
+Xref: sq alt.toolkits.xview:2034 comp.windows.open-look:8609
+Path: sq!wildcan!news2.uunet.ca!uunet.ca!uunet!elroy.jpl.nasa.gov!decwrl!koriel!west.West.Sun.COM!male.EBay.Sun.COM!exodus.Eng.Sun.COM!exodus!rickg
+From: rickg@eng.sun.com (Richard Goldstein)
+Newsgroups: alt.toolkits.xview,comp.windows.open-look
+Subject: Re: 2 itimers 1 client?  Is this possible?
+Date: 02 Aug 1993 20:44:49 GMT
+Organization: SunSoft, Inc.
+Lines: 127
+Message-ID: <RICKG.93Aug2134449@lamancha.eng.sun.com>
+References: <1993Jul28.155909.1@cc.utah.edu> <1993Jul31.152546.12255@sq.sq.com>
+Reply-To: rickg@eng.sun.com
+NNTP-Posting-Host: lamancha
+In-reply-to: lee@sq.sq.com's message of Sat, 31 Jul 93 15:25:46 GMT
+
+
+   From: lee@sq.sq.com (Liam R. E. Quin)
+   Organization: SoftQuad Inc., Toronto, Canada
+   Date: Sat, 31 Jul 93 15:25:46 GMT
+
+
+   > How to have 2 itimers for one client?
+   >
+   > Is this possible?  From what I read in the book it sounds like I can.
+
+   You can't, as far as I know.  I even looked at the source, some time ago,
+   to see how to do this.
+
+   You have to write your own layer on top of the notifier, that works out when
+   it next needs to be interrupted and then works out (e.g. from a linked list)
+   which function to call next.
+
+
+
+well, this all depends on how you're using the term "client".  In terms of
+a Notifier client, this is true that you can only have 1 itimer per client.
+In terms of an X client, you may certainly have more than one itimer.  Multi-
+plexing itimers is one of the services the Notifier provides for you.  As I
+said, the limitation is that it can only deal with 1 per Notify_client.  Most
+programs I've seen have plenty of these to go around, because the Generic
+package makes Notifier clients for every object you create.
+
+following is a quickie program that demonstrates this.
+
+
+<<tank
+
+
+----------------------------------------------------------------------------
+
+
+#include <stdio.h>
+#include <xview/xview.h>
+#include <xview/panel.h>
+
+
+static Attr_attribute	INSTANCE = 0;
+typedef struct {
+    Frame		frame;
+    Panel		panel;
+    Panel_button_item	btn1;
+    Panel_button_item	btn2;
+    Panel_gauge_item	gg1;
+    Panel_gauge_item	gg2;
+} My_ui;
+
+
+static void
+my_timer_func( Notify_client client, int which )
+{
+    My_ui *ui = (My_ui *) xv_get((Xv_opaque)client, XV_KEY_DATA, INSTANCE);
+    Panel_gauge_item gg = (client == ui->btn1) ? ui->gg1 : ui->gg2;
+    int val = (int) xv_get(gg, PANEL_VALUE);
+
+    xv_set(gg, PANEL_VALUE, ++val, NULL);
+}
+
+
+static void
+fire_proc(Panel_button_item item, Event *event)
+{
+    struct itimerval timer = {0};
+
+    timer.it_interval.tv_sec = 1;
+    timer.it_value.tv_sec = 1;
+    notify_set_itimer_func( (Notify_client)item, (Notify_func) my_timer_func, 
+			   ITIMER_REAL, &timer, NULL
+			   );
+}
+
+void
+main(int argc, char **argv)
+{
+    My_ui ui;
+
+    (void) xv_init(XV_INIT_ARGC_PTR_ARGV, &argc, argv, NULL);
+    INSTANCE = xv_unique_key();
+
+    ui.frame = xv_create(XV_NULL, FRAME, NULL);
+    ui.panel = xv_create(ui.frame, PANEL, NULL);
+
+    ui.btn1 = xv_create(ui.panel, PANEL_BUTTON,
+			PANEL_LABEL_STRING,	"Fire 1",
+			PANEL_NOTIFY_PROC,	fire_proc,
+			XV_KEY_DATA,		INSTANCE, &ui,
+			NULL);
+    
+    ui.btn2 = xv_create(ui.panel, PANEL_BUTTON,
+			PANEL_LABEL_STRING,	"Fire 2",
+			PANEL_NOTIFY_PROC,	fire_proc,
+			XV_KEY_DATA,		INSTANCE, &ui,
+			NULL);
+
+    ui.gg1 = xv_create(ui.panel, PANEL_GAUGE,
+		       PANEL_NEXT_ROW,		-1,
+		       PANEL_LABEL_STRING,	"Gauge1:",
+		       XV_KEY_DATA,		INSTANCE, &ui,
+		       NULL);
+
+    ui.gg2 = xv_create(ui.panel, PANEL_GAUGE,
+		       PANEL_NEXT_ROW,		-1,
+		       PANEL_LABEL_STRING,	"Gauge2:",
+		       XV_KEY_DATA,		INSTANCE, &ui,
+		       NULL);
+
+    window_fit( ui.panel );
+    window_fit( ui.frame );
+    xv_main_loop( ui.frame );
+}
+
+--
+
+*********************************************************************
+
+	Richard M. "Tank" Goldstein		rickg@Eng.Sun.COM
+	SunSoft, Inc.
+
+	"Without time, we pick up all the streams,
+	and find the leaves that drift down in between..."
+				-K. Kirkwood		
+
+*********************************************************************
+
+

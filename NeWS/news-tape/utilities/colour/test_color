@@ -1,0 +1,231 @@
+#! /usr/NeWS/bin/psh
+%			test_color			%
+%			30/6/89				%
+%			ORKB				%
+%		Copyright STC Technology Limited	%
+
+% A little application to demonstrate a few of the objects I have built.
+% This displays a colour-wheel and allows the user to click/drag over it
+% to change the displayed colour. It provides both RGB and HSB values for
+% the selected colour.
+
+/ItemsWindow where { pop } { (window_subset.ps) run } ifelse
+
+% ================================= ColorWheel =====================================
+/ColorWheel ORKItem
+dictbegin
+	/Hue		0 def
+	/Saturation	1 def
+	/Brightness	1 def
+	/NumSegments	64 def
+	/WheelCanvas	null def
+	/ItemFillColor	.9 def
+dictend
+classbegin
+% class variables
+% private methods
+	/PaintItem { % - => -
+		FixClient? {/PaintWheel self send} if
+		gsave ItemWidth ItemHeight scale
+		WheelCanvas imagecanvas
+		grestore
+		/PaintPoint self send
+	} def
+	/PaintWheel { % - => - (paint a colour wheel at the current brightness)
+		gsave WheelCanvas setcanvas
+		ItemFillColor fillcanvas
+		ItemWidth ItemHeight scale
+		4 dict begin
+		/seg_ang 360 NumSegments div def
+		0 1 4 {
+			/saturation exch 4 div 1 exch sub def
+			/radius saturation 2.5 div .1 add def
+			0 1 NumSegments 1 sub {
+				dup NumSegments div saturation Brightness sethsbcolor
+				/ta exch seg_ang mul def
+				.5 .5 moveto
+				.5 .5 radius ta ta seg_ang add arc
+				closepath fill pause
+			} for
+		} for
+		end
+		grestore
+		/FixClient? false store
+	} def
+	/PaintPoint { % - => - (paint a square to indicate the current colour)
+		gsave
+		ItemWidth 2 div ItemHeight 2 div translate
+		Hue rotate
+		Saturation 1 sub -1 3 3 rectpath
+		Brightness .4 lt {1} {0} ifelse setgray stroke
+		grestore
+	} def
+	/ClientDown { % - => - (set the current colour)
+		2 dict begin
+		/x CurrentEvent /XLocation get ItemWidth 2 div sub def
+		/y CurrentEvent /YLocation get ItemHeight 2 div sub def
+		x x mul y y mul add sqrt /Saturation exch store
+		x 0 ne {y x abs div arctan} {y 0 ge {90} {-90} ifelse} ifelse
+		x 0 lt {180 exch sub} if
+		/Hue exch store
+		end
+		/paint self send
+		NotifyUser
+	} def
+	/ClientDrag { % - => -
+		ClientDown
+	} def
+	/ClientUp { % - => -
+		StopItem
+	} def
+% public methods
+	/new { % notify parent_canvas => instance
+		/new super send begin
+			/NotifyUser exch cvx store
+			/FixClient? true store
+			/WheelCanvas ItemCanvas newcanvas store
+			WheelCanvas /Retained true put
+			currentdict
+		end
+	} def
+	/reshape { % x y w h => -
+		/reshape super send
+		gsave ItemCanvas setcanvas
+		0 0 ItemWidth ItemHeight rectpath WheelCanvas reshapecanvas
+		grestore
+	} def
+	/set_hue { % float => -
+		/Hue exch store
+	} def
+	/set_saturation { % float => -
+		/Saturation exch store
+	} def
+	/set_brightness { % float => -
+		/Brightness exch store
+		/FixClient? true store
+	} def
+	/get_hue { % - => float
+		Hue 360 div
+	} def
+	/get_saturation { % - => float
+		Saturation 100 div
+	} def
+	/get_brightness { % - => float
+		Brightness
+	} def
+classend def
+
+% ================================= ColorWindow ====================================
+/ColorWindow ItemsWindow
+dictbegin
+	/Hue	0 def
+	/Sat	0 def
+	/Bright	1 def
+	/Red	1 def
+	/Green	1 def
+	/Blue	1 def
+dictend
+classbegin
+% class variables
+	/FrameLabel	(Color Test) def
+	/IconLabel	(ColorTest) def
+% private methods
+	/PaintClient { % - => -
+		/PaintClient super send
+		/PaintColor self send
+	} def
+	/PaintColor { % - => - (paint a rectangle fill with the current colour)
+		gsave ClientCanvas setcanvas
+		210 ClientHeight 212 sub 110 20 rectpath
+		gsave Hue Sat Bright hsbcolor setshade fill grestore
+		0 setgray stroke
+		grestore
+	} def
+	/CreateItems { % - => - (create the items to be managed by the window)
+		[
+			[/hue_saturation /send cvx self exch] /get_items_canvas self send
+				/new ColorWheel send
+				5 30 200 200 /reshape 5 index send
+			() [0 100 Bright 100 mul] /Left [/brightness /send cvx self exch]
+				/get_items_canvas self send /new SliderItem send
+				5 5 200 20 /reshape 5 index send
+			(Red) /get_items_canvas self send /new StaticText send
+				210 193 /move 3 index send
+			Red 4 string cvs /get_items_canvas self send /new StaticText send
+				290 193 30 0 /reshape 5 index send
+			(Green) /get_items_canvas self send /new StaticText send
+				210 170 /move 3 index send
+			Green 4 string cvs /get_items_canvas self send /new StaticText send
+				290 170 30 0 /reshape 5 index send
+			(Blue) /get_items_canvas self send /new StaticText send
+				210 147 /move 3 index send
+			Blue 4 string cvs /get_items_canvas self send /new StaticText send
+				290 147 30 0 /reshape 5 index send
+			(Hue) /get_items_canvas self send /new StaticText send
+				210 113 /move 3 index send
+			Hue 4 string cvs /get_items_canvas self send /new StaticText send
+				290 113 30 0 /reshape 5 index send
+			(Saturation) /get_items_canvas self send /new StaticText send
+				210 90 /move 3 index send
+			Sat 4 string cvs /get_items_canvas self send /new StaticText send
+				290 90 30 0 /reshape 5 index send
+			(Brightness) /get_items_canvas self send /new StaticText send
+				210 67 /move 3 index send
+			Bright 4 string cvs /get_items_canvas self send /new StaticText send
+				290 67 30 0 /reshape 5 index send
+		] /set_items self send
+	} def
+	/SetColor { % - => - (called when H S or B has been altered)
+		Red 4 string cvs /set_text 3 /get_item self send send
+		Green 4 string cvs /set_text 5 /get_item self send send
+		Blue 4 string cvs /set_text 7 /get_item self send send
+		Hue 4 string cvs /set_text 9 /get_item self send send
+		Sat 4 string cvs /set_text 11 /get_item self send send
+		Bright 4 string cvs /set_text 13 /get_item self send send
+		3 2 13 {/paint exch /get_item self send send} for
+		gsave ClientCanvas setcanvas
+		/PaintColor self send
+		grestore
+	} def
+% public methods
+	/new { % parent => -
+		/new super send begin
+			/CreateItems self send
+			/auto_shape self send
+			currentdict
+		end
+	} def
+	/auto_shape { % - => - (default position is centered on screen)
+		349 314 355 272 /reshape self send
+	} def
+	/hue_saturation { % - => - (called from the ColorWheel item)
+		/Hue /get_hue 0 /get_item self send send store
+		/Sat /get_saturation 0 /get_item self send send store
+		/Bright /get_brightness 0 /get_item self send send store
+		gsave
+		Hue Sat Bright hsbcolor setcolor currentrgbcolor
+		/Blue exch store
+		/Green exch store
+		/Red exch store
+		grestore
+		/SetColor self send
+	} def
+	/brightness { % - => - (called from the SliderItem item)
+		/Bright /getvalue 1 /get_item self send send 100 div store
+		Bright /set_brightness 0 /get_item self send send
+		/paint 0 /get_item self send send
+		/SetColor self send
+	} def
+	/flipiconic { % - => - (sets icon fill colour to currently selected colour)
+		/IconFillColor Hue Sat Bright hsbcolor def
+		/flipiconic super send
+		Iconic? {/paint self send} if
+	} def
+classend def
+
+/main { % - => -
+	/win framebuffer /new ColorWindow send def
+	/map win send
+} def
+
+main

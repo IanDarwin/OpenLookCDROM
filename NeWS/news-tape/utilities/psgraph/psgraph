@@ -1,0 +1,209 @@
+#!/bin/sh
+#
+# From dss@Sun.COM Tue Nov 29 03:01:11 1988
+# Date: Mon, 28 Nov 88 12:50:19 PST
+# From: dss@Sun.COM (Daniel Steinberg)
+# To: don@bensun.cs.umd.edu
+# Subject: Re:  Permission to distribute NeWS software
+# 
+# feel free to distribute psgraph, though it's not exactly elegant.
+# here's my latest copy, in case you have an old version:
+# ------------------------------------------------------------------
+# 
+# @(#)psgraph.sh 1.7 87/11/10 SMI
+#
+# PostScript graphing tool
+#
+# usage:
+#	psgraph [-blsx] [file [label]]
+# where:
+#	-b	binary (doubles) input (default is ascii)
+#	-l	log10 y-scaling (default is linear)
+#	-s	square waves (lines inbetween points are ordinarily direct)
+#	-x	label the axes
+#	file	name of file containing ascii data samples ('-' for stdin)
+#	label	ascii graph label (default "")
+#
+USAGE="PostScript Graphing Tool -- usage:\n
+\tpsgraph [-blsx] [file [label]]\nwhere:\n
+\t-b\tread samples as binary doubles (default: ascii)\n
+\t-l\tuse log (base 10) y-scaling (default: linear)\n
+\t-s\tplot square waves (default: connect-the-dots)\n
+\t-x\tput numeric labels on the axes\n
+\tfile\tinput file (if NULL or '-', read stdin)\n
+\tlabel\tlabel for graph (default: NULL)"
+#
+PATH=/usr/5bin:$PATH
+set -- `getopt blsx $@`
+if [ $? != 0 ]
+then
+	echo $USAGE
+	exit 1
+fi
+for i in $*
+do
+	case $i in
+	-b)	ASCII=false; shift;;
+	-l)	LOG=true; shift;;
+	-s)	SQUARE=true; shift;;
+	-x)	AXES=true; shift;;
+	--)	shift; break;;
+	esac
+done
+#
+if [ -f ${1:-"-"} ]
+then
+	Input=$1
+else
+	Input=
+fi
+tmp='/tmp/psgraph'$$
+echo '% psgraph - graph data' >$tmp
+echo '/Square '${SQUARE:-false}' def' >>$tmp
+echo '/Log '${LOG:-false}' def' >>$tmp
+echo '/Labelxy '${AXES:-false}' def' >>$tmp
+#
+# stupid kludge because getopt() doesn't quote arguments correctly
+#
+if [ $# -ge 1 ]; then shift; fi
+echo '/Label ('$*') def' >>$tmp
+#
+echo '/Samples [' >>$tmp
+if [ ${ASCII:-true} = true ]
+then
+	tr ';#' '%%' <$Input >>$tmp
+else
+	ftoa <$Input >>$tmp
+fi
+echo '] def' >>$tmp
+cat $tmp - <<'@@@ Fin @@@' | psh
+
+% x & y ratios of graphing area to displayed canvas
+/Xoff .95 def
+/Yoff .9 def
+
+% Number of tick marks to display on the x & y axes
+/Xticks 5 def
+/Yticks 5 def
+
+% Derived constants
+/Xborder 1 Xoff sub 2 div def
+/Yborder 1 Yoff sub 2 div def
+
+% Draw the graph, with horizontal lines between points if /Square is true
+/drawgraph {
+newpath
+	0 Samples 0 get moveto
+	0 Samples {
+	    2 copy lineto exch 1 add exch
+	    Square {2 copy lineto} if
+	    pop
+	} forall
+stroke
+} def
+
+% Save the current matrix and rescale for text
+/saveandscale {				% saveandscale -> matrix
+	matrix currentmatrix initmatrix
+} def
+
+% Write a string at the current location
+/putlabel {				% string putlabel ->
+	saveandscale exch show setmatrix
+} def
+
+% Write a string centered at the current location
+/centerlabel {				% string centerlabel ->
+	saveandscale exch
+	dup stringbbox pop exch pop 2 div exch pop neg 0 rmoveto
+	show setmatrix
+} def
+
+% Find minimum and maximum among the data points
+/minmax {				%  array minmax -> min max
+	1E38 -1E38 3 -1 roll {					% min max num
+		2 copy gt {exch} {exch pop dup} ifelse 3 1 roll	% max min num
+		2 copy lt {} {exch} ifelse pop exch		% min max
+	} forall
+} def
+
+% Calculate the min/max of the data; [take the log if /Log is true]
+% Save min/max sample values in Minval/Maxval
+% Save min/max display values (may be logarithmic) in Miny/Maxy
+/scaledata {
+	/Nsamp Samples length def
+	Nsamp 0 eq { (psgraph: no sample data\n) printf quit } if
+	Samples minmax /Maxy exch def /Miny exch def
+	/Maxval Maxy def /Minval Miny def
+	Log {
+		Miny 0 le { (psgraph: log data <= 0\n)
+		    printf quit } if
+		Samples 0 Samples {			% array index val
+			log 3 copy put pop 1 add	% array index
+		} forall pop pop
+		Samples minmax /Maxy exch def /Miny exch def
+	} if
+} def
+
+% Set the scaling and translation so that the data fits in the window
+/scalegraph {
+	%	1/(N-1) 2/(Max-Min) scale
+	1 Nsamp 1 sub div 2 Maxy Miny sub div scale
+	%	0 -(Max-((Max-Min)/2)) translate
+	0 Maxy Miny sub 2 div Maxy sub translate
+} def
+
+% Draw tick marks on the graph and label them
+/labelgraph {
+	currentfont
+	dup .8 scalefont setfont
+	.5 Yoff 2 sub Yborder sub moveto
+	Label centerlabel
+	setfont
+    newpath
+	-1 2 Xticks 1 sub div 1 {
+	    dup 0 exch moveto Xborder neg exch lineto
+	} for
+	0 1 Yticks 1 sub div 1 {
+	    dup -1 moveto -1 Yborder sub lineto
+	} for
+    stroke
+    Labelxy {
+	currentfont
+	(Screen) findfont setfont
+	Xborder neg 1 moveto (%) [Maxval] sprintf putlabel
+	Xborder neg Yoff 2 sub Yborder sub moveto (%) [Minval] sprintf putlabel
+	1 Yoff 1 sub moveto (%) [Nsamp] sprintf centerlabel
+	setfont
+    } if
+} def
+
+% Here is where execution actually begins
+scaledata
+/win framebuffer /new DefaultWindow send def
+{
+    /PaintClient {
+	ClientCanvas setcanvas
+	textcolor setcolor
+	1 setlinequality
+
+	%	Rescale so that 0<x<1 and -1<y<1
+	clippath pathbbox pop pop 0 exch sub exch 0 exch sub exch translate
+	clippath pathbbox 2 div scale clear
+	0 1 translate
+
+	%	Rescale to indent the graphing area
+	Xoff Yoff scale Xborder Yborder translate
+
+	%	Label the graph, then rescale and draw it
+	labelgraph scalegraph drawgraph
+	} def
+    /FrameLabel (psgraph) def
+    /IconImage /perfmon def
+} win send
+/reshapefromuser win send
+/map win send
+
+@@@ Fin @@@
+rm $tmp
+
