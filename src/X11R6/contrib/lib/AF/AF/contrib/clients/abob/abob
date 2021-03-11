@@ -1,0 +1,424 @@
+#!/usr/local/bin/wish -f
+#
+# 
+if {[catch {file readlink [info script]}]} {
+        set appdir [file dirname [info script]]
+} else {
+        set appdir [file dirname [file readlink [info script]]]
+}
+
+set bgain 0
+
+#-----------------------------------------------------------------------------
+# Make a menu & menubutton, and pack into parent
+#-----------------------------------------------------------------------------
+proc mkMenu {p name where} {
+	set m [menubutton $p.$name -text $name -menu $p.$name.m]
+	pack append $p $m $where
+	return [menu $p.$name.m]
+}
+
+#-----------------------------------------------------------------------------
+#  Create an entry and pack it into the parent
+#-----------------------------------------------------------------------------
+proc mkEntry {p name pos args} {
+	if {$args == {}} {
+		set args {-relief sunken -borderwidth 2}
+	}
+	pack append $p [set f [eval "entry $p.$name [join $args]"]] \
+		[concat $pos {padx 10 pady 5}]
+	return $f
+}
+
+#-----------------------------------------------------------------------------
+#  Create a label and pack it into the parent
+#-----------------------------------------------------------------------------
+proc mkLabel {p name pos args} {
+	pack append $p [set f [eval "label $p.$name -text $name [join $args]"]] \
+		[concat $pos {padx 10 pady 5}]
+	return $f
+}
+
+
+#-----------------------------------------------------------------------------
+#  Create a button and pack it into the parent
+#-----------------------------------------------------------------------------
+proc mkButton {p name cmd pos} {
+	pack append $p [button $p.$name -text $name -command $cmd] \
+		[concat $pos {padx 10 pady 10}]
+	return $p.$name
+}
+
+#-----------------------------------------------------------------------------
+#  Create a check button and pack it into the parent
+#-----------------------------------------------------------------------------
+proc mkCheckButton {p name cmd pos var} {
+	pack append $p [checkbutton $p.$name -text $name -command $cmd -variable $var] \
+		[concat $pos {padx 10 pady 10}]
+	return $p.$name
+}
+
+#-----------------------------------------------------------------------------
+#  Make a scale
+#-----------------------------------------------------------------------------
+proc make-scale {f min cur max text comm} {
+	pack append [frame $f] \
+		[scale $f.s -orient horizontal -from $min -to $max \
+			-background bisque] {top} \
+		[label $f.l -text $text] {top}
+
+	$f.s set $cur
+	bind $f.s <ButtonRelease-1> "$comm \[$f.s get\]"
+
+	return $f
+}
+
+#----------------------------------------------------------------------------
+#  Create a trimmed frame and pack into its parent.  Return path of innermost
+#  frame.
+#----------------------------------------------------------------------------
+proc mkTrim {w title {pack {top padx 10 pady 10}}} {
+        frame $w
+        pack append [winfo parent $w] $w $pack
+	pack append $w \
+		[label $w.title -text $title] {top frame w} \
+		[frame $w.frame -relief sunken -borderwidth 1] {top fill}
+
+	pack append $w.frame \
+		[frame $w.frame.frame -relief raised -borderwidth 1] \
+			{top fill}
+	
+        return $w.frame.frame
+}
+
+
+#-----------------------------------------------------------------------------
+#  Create a frame and pack it into the parent
+#-----------------------------------------------------------------------------
+proc mkFrame {p name pos args} {
+	if {$args == {}} {
+		set args {-relief raised -borderwidth 1}
+	}	
+	pack append $p [set f [eval "frame $p.$name [join $args]"]]\
+		 $pos
+	return $f
+}
+		
+#-----------------------------------------------------------------------------
+# Make a list with a scrollbar.  Return name of list object
+#-----------------------------------------------------------------------------
+proc mkList {p name pos {geometry 40x40}} {
+	set f [frame $p.$name]
+	pack append $f \
+	    [scrollbar $f.scroll -relief raised \
+		 -command "$f.list yview"] {right fill} \
+	    [listbox $f.list -yscroll "$f.scroll set" -relief raised \
+		-geometry $geometry -font "fixed"] \
+		{left expand fill}
+
+	pack append $p $f $pos
+	return $f.list
+}
+
+#-----------------------------------------------------------------------------
+# Make a text object with a scrollbar.  Return name of text object
+#-----------------------------------------------------------------------------
+proc mkText {p name pos {height 50} {width 80}} {
+	set f [frame $p.$name]
+	pack append $f \
+                [scrollbar $f.s -relief flat -command "$f.text yview"] \
+                        {right filly} \
+                [text $f.text -bd 2 -relief raised -yscrollcommand "$f.s set" \
+                        -width $width -height $height -font "fixed" -wrap none] \
+				{expand fill}
+
+	pack append $p $f $pos
+	return $f.text
+}
+
+#-----------------------------------------------------------------------------
+# Make a new toplevel window
+#-----------------------------------------------------------------------------
+proc mkWindow {w title} {
+	catch "destroy $w"
+	wm title [toplevel $w] $title
+	return $w
+}
+
+#-----------------------------------------------------------------------------
+# Make an informational dialog box
+#-----------------------------------------------------------------------------
+proc mkInfoDialog {w message {button "ok"}} {
+	global appdir
+
+	mkWindow $w "Dialog"
+	bind $w <Visibility> "grab $w; focus $w"
+
+	set f [mkFrame $w buttons {bottom fillx}]
+	mkButton $f $button	"destroy $w" right
+	if {[file exists $appdir/bitmaps/exclaim.xbm]} {
+		pack append $w \
+			[label $w.l -relief raised -border 1 \
+				-bitmap @$appdir/bitmaps/exclaim.xbm -padx 5 -pady 5] \
+					{padx 10 pady 10 left}
+	}
+	pack append $w \
+		[message $w.m -padx 20 -pady 20 \
+			-text $message -aspect 250\
+			-font -Adobe-helvetica-medium-r-normal--*-120*] \
+		{fillx filly top padx 10 pady 10}
+
+	bind $w.m <Any-Key> "destroy $w"
+}
+	
+#-----------------------------------------------------------------------------
+#  Run a command and make the top level window go "busy"
+#	(stolen from the Tk FAQ file)
+#-----------------------------------------------------------------------------
+proc runBusy {args} {
+    global errorInfo
+
+    set busy {.app .root}
+    set list [winfo children .]
+    while {$list != ""} {
+        set next {}
+        foreach w $list {
+            set class [winfo class $w]
+            set cursor [lindex [$w config -cursor] 4]
+            if {[winfo toplevel $w] == $w || $cursor != ""} {
+                lappend busy [list $w $cursor]
+            }
+            set next [concat $next [winfo children $w]]
+        }
+        set list $next
+    }
+
+    foreach w $busy {
+        catch {[lindex $w 0] config -cursor watch}
+    }
+
+    update idletasks
+
+    set error [catch {uplevel eval [list $args]} result]
+    set ei $errorInfo
+
+    foreach w $busy {
+        catch {[lindex $w 0] config -cursor [lindex $w 1]}
+    }
+
+    if $error {
+        error $result $ei
+    } else {
+        return $result
+    }
+}
+#-----------------------------------------------------------------------------
+#  Put the DEC/CRL logo in a framed box
+#-----------------------------------------------------------------------------
+proc mkAboutLogo {p n} {
+	global appdir
+
+	set f [frame $p.$n -relief raised -borderwidth 2]
+	set f1 [frame $f.f1 -relief sunken -borderwidth 2]
+	set l [label $f1.l -bitmap @$appdir/bitmaps/crl-logo.xbm]
+	pack append $p $f {left padx 10 pady 10}
+	pack append $f $f1 top
+	pack append $f1 $l top
+}
+
+#-----------------------------------------------------------------------------
+#  Make the title for the About box
+#-----------------------------------------------------------------------------
+proc mkAboutTitle {p title ver} {
+	pack append $p [frame $p.title] {right padx 10 pady 10}
+	pack append $p.title \
+		[label $p.title.l1 -text $title \
+			-font -*-helvetica-*-r-*-*-24-*-*-*-*-*-*-*] {top} \
+		[label $p.title.l2 -text "Version $ver" \
+			-font -*-helvetica-*-r-*-*-14-*-*-*-*-*-*-*] {top}
+
+	return $p.title
+}
+
+#-----------------------------------------------------------------------------
+#  Display an "about" box
+#-----------------------------------------------------------------------------
+proc mkAbout {prog title ver desc} {
+	global appdir
+
+	set w [toplevel .about]
+	wm title $w "About $prog"
+	pack append $w [set f [frame $w.f]] top
+
+	mkAboutTitle $f $title $ver
+
+	pack append $w \
+		[label $w.lab -bitmap @$appdir/btaylor.bm -relief raised -borderwidth 2] \
+			{top} \
+		[button $w.button -text "   Ok   " -command "destroy $w"] \
+			{bottom padx 10 pady 10} \
+		[message $w.desc -text $desc -aspect 600 -justify center \
+		-font -Adobe-times-medium-r-normal--*-180*] \
+			{bottom expand filly pady 10} \
+}
+
+#--------------------------------------------------
+#
+#--------------------------------------------------
+
+#-----------------------------------------------------------------------------
+#  Make a help box
+#-----------------------------------------------------------------------------
+proc mkHelp {name title file} {
+	set w [toplevel .$name]
+	wm title $w $title
+
+	set t [mkText $w t top 30]
+	set f [mkFrame $w buttons {fillx bottom}]
+	mkButton $f " Close " "destroy $w" right
+	set f [open $file r]
+	$t configure -font -*-helvetica-*-r-*-*-14-*-*-*-*-*-*-*
+	$t insert current [read $f]
+	close $f
+}
+
+#-----------------------------------------------------------------------------
+#  Make the controls
+#-----------------------------------------------------------------------------
+proc make-control {p} {
+	global bgain output_device
+
+	set f [mkTrim $p.0 "Bob's Controls"]
+	pack append $f [make-scale $f.s1 -20 $bgain 20 "Gain" \
+		"set bgain"] \
+		{left padx 5 pady 5}
+}
+
+
+#----------------------------------------------------------------------------
+#  Build output devices menu:  use aset to count the number of devices
+#----------------------------------------------------------------------------
+
+set device 0
+set type_names(MU255)   "u-law"
+set type_names(LIN16)   "16-bit linear"
+set channel_names(1)    "Mono"
+set channel_names(2)    "Stereo"
+
+proc device-desc {num type rate channels} {
+        global type_names channel_names
+
+        set tname "(unknown sample type)"
+        catch {set tname $type_names($type)}
+
+        set cname "$channels channels"
+        catch {set cname $channel_names($channels)}
+
+        return "Device $num:  $cname $tname at $rate"
+}
+
+proc make-device {menu num in out} {
+	scan $in "%d %s %d %s %d %s %d %d %d %d %d" device junk ninputs \
+                inmask nphonein type inrate inchannels inmin incur inmax
+        scan $out "%s %d %s %d %s %d %d %d %d %d" junk noutputs outmask \
+                nphoneout type outrate outchannels outmin outcur outmax
+
+	$menu add radio -label [device-desc $num $type $outrate $outchannels] \
+		-value $num -variable output_device
+}
+
+proc build-device-menu {m} {
+	global output_device
+
+	set output_device 1
+	set dinfo [split [exec aset -b q] "\n"]
+	set ndevices [expr [llength $dinfo]/2]
+	if {$ndevices == 1} {
+		set output_device 0
+	}
+	set m [menu $m.dmenu]
+	for {set i 0} {$i < $ndevices} {incr i} {
+		make-device $m $i [lindex $dinfo 0] [lindex $dinfo 1]
+		set dinfo [lreplace $dinfo 0 1]
+	}
+	return $m
+}
+
+
+#--------------------------------------------------
+#  Play the canonical sound bite.
+#--------------------------------------------------
+
+proc mkSoundPathDialog {} {
+	mkInfoDialog .info {Bob's voice seems to be lost.  \
+abob tries to find bob.snd by looking in the directory specified \
+by the optional argument or by one of the directories in \
+your SOUND_PATH environment variable. \
+Please see the abob(1) man page.}
+}
+
+proc do-play {} {
+	global env output_device bgain argv argc
+
+	if {$argc > 0} {
+		set dir [lindex $argv 0]
+	} else {
+		set spath "."
+		catch {set spath $env(SOUND_PATH)} errMsg
+		while {[regexp {^([^:]+):*(.*)$} $spath ignore dir spath]} {
+			if { [file exists $dir/bob.snd]} break
+		}
+	}
+#	puts stdout $dir/bob.snd
+	if {! [file exists $dir/bob.snd]} {
+		mkSoundPathDialog
+	} else {
+		exec aplay -d $output_device -g $bgain -e ulaw $dir/bob.snd &
+		exec true
+	}
+}
+
+#-----------------------------------------------------------------------------
+# Show the "About Bob" dialog box
+#-----------------------------------------------------------------------------
+proc do-about {} {
+	mkAbout Bob "Bob Taylor"  1.01 "Bob Taylor opened Digital \
+Equipment Corporation's Systems Research Center in 1984.\n\
+Bob's voice was captured using a DECvoice audio module in \
+a Firefly multiprocessor by two anonymous co-conspirators."
+}
+
+#------------------------------------------------------------------------------
+# 
+#------------------------------------------------------------------------------
+set p [frame .f]
+pack append . $p {top expand fill}
+
+pack append $p \
+	[label $p.lab -text "Bob" \
+		-font "-*-helvetica-*-r-*-*-*-240-*-*-*-*-*-*"] \
+		{top frame w}
+
+set f [frame $p.top]
+pack append $p $f {top expand fill}
+
+pack append . [set m [frame .menu -relief raised -borderwidth 1]] {top fillx}
+
+set mb [mkMenu $m file left]
+$mb add cascade -label "Output Device -->" -menu [build-device-menu $mb]
+$mb add separator
+$mb add command -label "Exit" 		-command "destroy ."
+
+set mb [mkMenu $m help right]
+$mb add command -label "About Bob"	-command "do-about"
+$mb add command -label "Sound Path"	-command "mkSoundPathDialog"
+$mb add separator
+$mb add command -label "Help!" 		-command "mkHelp help {Bob Help} $appdir/bob.help"
+
+mkButton $m "play" "do-play" left
+
+pack append . [set d [frame .device -relief raised -borderwidth 1]] {top fillx}
+set bd [make-control  $d]
+
+wm maxsize . 1000 1000
+wm title . "Bob"

@@ -1,0 +1,82 @@
+#!/bin/csh -f
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+# list-de-subscribe listname host.bitnet
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+
+if ($??0) then
+	set EX=$0
+else
+	set EX="list-de-subscribe"
+endif
+if ($#argv < 2) then
+	echo "Usage: $EX listname host.bitnet [-plus|-hash] [-list|-digest] [andrew-listname]"
+	echo "(a+b@c == default.  -hash => a#b@c)"
+	exit(2)
+endif
+set DISTRIB=$1
+set ANDYNAME=$1
+set TO=LISTSERV@$2
+shift
+shift
+set SYMBOL="+"
+set LOCADDR="arpalists"
+while ($#argv > 0)
+	if ( "$1" == "-plus" ) then
+		set SYMBOL="+"
+	else if ( "$1" == "-hash" ) then
+		set SYMBOL="#"
+	else if ( "$1" == "-list" ) then
+		set LOCADDR="arpalists"
+	else if ( "$1" == "-digest" ) then
+		set LOCADDR="arpadigests"
+	else
+		set ANDYNAME=$1
+	endif
+	shift
+end
+set FN=/tmp/dogs$$
+set FROM=${LOCADDR}${SYMBOL}${ANDYNAME}@?[WorkstationCell]
+set CC=?[LogBB].subscribe@?[WorkstationCell]
+echo "About to request $TO to unsubscribe $FROM from list ${DISTRIB}, calling it ?[InternetRootName].${ANDYNAME} ."
+
+echo "Composing request notice in $FN..."
+echo "Date: `?[arpadatepgm]`" > $FN
+echo "From: $FROM" >> $FN
+echo "To: $TO" >> $FN
+echo "Subject: Please un-subscribe us" >> $FN
+echo "CC: $CC" >> $FN
+echo "" >> $FN
+echo "UNSUBSCRIBE ${DISTRIB}" >> $FN
+echo "Now mailing the request..."
+echo ?[queuemail] -f $FN -r "<$FROM>" -a $TO $CC
+?[queuemail] -f $FN -r "<$FROM>" -a $TO $CC
+set STAT=$status
+if ($STAT != 0) then
+	echo "Submission failed!  Exit status is $STAT; request left in $FN."
+	exit(3)
+endif
+echo "Submitted OK."
+
+rm -f $FN

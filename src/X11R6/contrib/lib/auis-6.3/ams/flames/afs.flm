@@ -1,0 +1,118 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;                                                                   ;;;;
+;;;;       Copyright IBM Corporation 1988,1991 - All Rights Reserved   ;;;;
+;;;;      For full copyright information see:'andrew/config/COPYRITE'  ;;;;
+;;;;                                                                   ;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; $Disclaimer: 
+; Permission to use, copy, modify, and distribute this software and its 
+; documentation for any purpose is hereby granted without fee, 
+; provided that the above copyright notice appear in all copies and that 
+; both that copyright notice, this permission notice, and the following 
+; disclaimer appear in supporting documentation, and that the names of 
+; IBM, Carnegie Mellon University, and other copyright holders, not be 
+; used in advertising or publicity pertaining to distribution of the software 
+; without specific, written prior permission.
+; 
+; IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+; DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+; ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+; SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+; BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+; DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+; WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+; ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+; OF THIS SOFTWARE.
+;  $
+
+;;;;;;;;;;;;;;;;;;;;;;;
+;;;;               ;;;;
+;;;; AFS services  ;;;;
+;;;;               ;;;;
+;;;;;;;;;;;;;;;;;;;;;;;
+
+;;
+;; need to get "BIT-AND" and "ZEROP" and "DOLIST" from elilib.
+;;
+
+(load "elilib")
+
+;;
+;; AFS rights bit twiddling routines.
+;;   These are meant to be used with the UserRightsToDir and
+;;   UserAnyRightToDir FLAMES primitives to translate to and
+;;   from the integer rights code (0 - 127) and either a string
+;;   representation (as used by the 'fs' command, e.g. "rlidwka")
+;;   or a set-of-symbols representation (more lisp-like, e.g.
+;;   '(read lookup insert delete write lock administer)).
+;;
+
+;;
+;; This is the mapping from integer code to symbolic and string
+;; forms.  The order matters in that translating from an integer
+;; will result in strings and sets ordered by the list below.
+;;
+(setq *afs-rights-mapping*
+      '((read "r" 1)
+	(lookup "l" 8)
+	(insert "i" 4)
+	(delete "d" 16)
+	(write "w" 2)
+	(lock "k" 32)
+	(administer "a" 64)))
+;;
+;; Access routines for above "table"
+;;
+(defun afs-get-symbol (x) (car x))
+(defun afs-get-character (x) (cadr x))
+(defun afs-get-int (x) (caddr x))
+
+;;
+;; STRING-TO-AFS-RIGHTS
+;;   string s -- the string to translate to the integer rights
+;; returns the integer rights translation of the string.
+;;
+(defun string-to-afs-rights (s)
+  (let ((result 0))
+    (dolist (afs-map *afs-rights-mapping* result)
+	    (cond ((strcontains (afs-get-character afs-map) s t)
+		   (setq result (+ result (afs-get-int afs-map))))))))
+  )
+
+;;
+;; AFS-RIGHTS-TO-STRING
+;;   integer r -- the rights to translate to a string
+;; returns the string representation of the rights r.
+;;
+(defun afs-rights-to-string (r)
+  (apply 'strcat
+	 (mapcar '(lambda (afs-map)
+		    (cond ((not (zerop (bit-and (afs-get-int afs-map) r)))
+			   (afs-get-character afs-map))
+			  (t "")))
+		 *afs-rights-mapping*)))
+
+;;
+;; SET-TO-AFS-RIGHTS
+;;   set-of-symbols s -- the symbolic rights tokens to translate
+;; returns the integer rights translation of the set-of-symbols.
+;;
+(defun set-to-afs-rights (s)
+  (let ((result 0))
+    (dolist (afs-map *afs-rights-mapping* result)
+	    (cond ((member (afs-get-symbol afs-map) s)
+		   (setq result (+ result (afs-get-int afs-map))))))))
+
+;;
+;; AFS-RIGHTS-TO-SET
+;;   integer r -- the rights to translate to a set-of-symbols
+;; returns the set-of-symbols representation of the rights r.
+;;
+(defun afs-rights-to-set (r)
+  (apply 'append
+	 (mapcar '(lambda (afs-map)
+		    (cond ((not (zerop (bit-and (afs-get-int afs-map) r)))
+			   (list (afs-get-symbol afs-map)))))
+		 *afs-rights-mapping*)))
+

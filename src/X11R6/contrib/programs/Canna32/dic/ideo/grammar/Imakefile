@@ -1,0 +1,64 @@
+/* $Id: Imakefile,v 1.9 1994/01/28 05:26:47 kon Exp $ */
+#include "../../../Canna.conf"
+
+      CANNAROOT = ../../..
+    CANNACMDDIR = $(CANNAROOT)/cmd
+
+         FORCPP = $(CANNACMDDIR)/forcpp/forcpp
+        FORSORT = $(CANNACMDDIR)/forsort/forsort
+           SORT = sort
+
+        CRXGRAM = $(CANNACMDDIR)/crxgram/crxgram
+         CRXDIC = $(CANNACMDDIR)/crxdic/crxdic
+         CRFREQ = $(CANNACMDDIR)/crfreq/crfreq
+          MERGE = $(CANNACMDDIR)/mergewd/mergeword
+        FORSORT = $(CANNACMDDIR)/forsort/forsort
+         FORCPP = $(CANNACMDDIR)/forcpp/forcpp
+
+    CANNADICDIR = $(DicDir)/canna
+
+         ALLDIC = $(DICOBJS) hojoswd.t
+        DICOBJS = fuzokugo.d fuzokugo.fq
+           OBJS = cpp.gram cnj.swd cnj.bits cnj.h cnj.mac fuzokugo.swd
+
+        DEFINES = -USX /* for SX3 */
+
+AllTarget($(ALLDIC))
+
+cpp.gram: gram.code gram.goto main.code
+	$(FORCPP) -7 < gram.code | \
+		$(CPP) $(DEFINES) | \
+		$(FORCPP) -8 > cpp.gram
+
+cnj.swd cnj.bits cnj.h cnj.mac: cpp.gram 
+		$(CRXGRAM) -f cpp.gram
+
+fuzokugo.swd: cnj.swd
+	$(FORSORT) -7 < cnj.swd | \
+		$(SORT) | \
+		$(FORSORT) -8 | \
+		$(MERGE) > fuzokugo.swd
+
+fuzokugo.d: fuzokugo.swd cnj.bits
+	$(CRXDIC) -s -o fuzokugo.d -D cnj.bits -n fuzokugo fuzokugo.swd
+	cat cnj.bits >> fuzokugo.d
+
+fuzokugo.fq: fuzokugo.d
+	$(CRFREQ) fuzokugo.d fuzokugo.swd
+
+clean::
+	$(RM) $(DICOBJS) $(OBJS)
+
+depend::
+
+MakeDirectories(install,$(CANNADICDIR))
+
+InstallMultipleFlags($(ALLDIC),$(CANNADICDIR),-m 0664 $(cannaOwnerGroup))
+
+install::
+	$(CHGRP) $(cannaGroup) $(CANNADICDIR)
+	$(CHOWN) $(cannaOwner) $(CANNADICDIR)
+	$(CHMOD) ug+w $(CANNADICDIR)
+	$(RM) $(DESTDIR)$(DicDir)/hyoujun.gram ;
+	$(LN) $(DESTDIR)$(CANNADICDIR)/fuzokugo.d \
+		$(DESTDIR)$(DicDir)/hyoujun.gram

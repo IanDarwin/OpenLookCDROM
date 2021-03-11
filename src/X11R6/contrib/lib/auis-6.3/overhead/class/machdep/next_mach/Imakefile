@@ -1,0 +1,101 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+ *        For full copyright information see:'andrew/config/COPYRITE'     *
+\* ********************************************************************** */
+
+/*
+	$Disclaimer: 
+*Permission to use, copy, modify, and distribute this software and its 
+*documentation for any purpose is hereby granted without fee, 
+*provided that the above copyright notice appear in all copies and that 
+*both that copyright notice, this permission notice, and the following 
+*disclaimer appear in supporting documentation, and that the names of 
+*IBM, Carnegie Mellon University, and other copyright holders, not be 
+*used in advertising or publicity pertaining to distribution of the software 
+*without specific, written prior permission.
+*
+*IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+*DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+*ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+*SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+*BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+*DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+*WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+*ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+*OF THIS SOFTWARE.
+* $
+*/
+
+DependTargetFiles(globalrefs._h)
+
+NormalObjectRule()
+NormalAsmPPRule()
+
+/* Under AFS we do not want to pull in certain NFS routines since that
+ * results in multiple definitions of certain XDR routines.
+ */
+#ifdef AFS_ENV
+GETLIST = getlafs.awk
+#else
+GETLIST = getlist.awk
+#endif
+
+/*ARCHIVE_COM=ar x $(LIBC);
+LIBC_RESOLVER_LIST = gethostnamadr.o gethostent.o res_comp.o res_debug.o res_init.o res_mkquery.o res_send.o sethostent.o res_search.o
+
+LIBC_RESOLVER_HACK = /bin/sh -c 'if test $(RESOLVER_LIB); \
+	then ar d libcx.a $(LIBC_RESOLVER_LIST); fi; exit 0';
+*/
+
+LIBC=/lib/libsys_s.a
+all:: 		globals.o entry.o doload.o
+
+globals.o:  	globals.spp globalrefs._h
+
+globalrefs._h:	libc.eplist
+		$(AWK) '{printf "\tglobalref(%s)\n", $$2}' libc.eplist >,globalrefs._h
+		$(MV) ,globalrefs._h globalrefs._h
+
+libc.eplist:	$(LIBC) $(CRT0PATH) $(RESOLVER_LIB) ${GNULIB} $(GETLIST)
+		$(RM) /tmp/libhack.a
+		$(AR) /tmp/libhack.a $(CRT0PATH)
+		$(NM) -go $(RESOLVER_LIB) $(LIBC) ${GNULIB} /tmp/libhack.a | $(TR) ":" " " | \
+			$(AWK) -f $(GETLIST) >,libc.eplist
+		$(MV) ,libc.eplist libc.eplist
+		$(RM) /tmp/libhack.a
+
+InstallLibrary(libcx.a, $(DESTDIR)/lib)
+InstallCshScript(makedo.csh, $(DESTDIR)/bin/makedo)
+libclass.syms: globals.o
+	$(NM) globals.o | sed -e '/^.........U./!d' -e 's/^...........//g' -e '/^$$/d' -e '/:/d' -e '/^_environ$$/d'| $(SORT) | uniq>libclass.syms
+InstallFile(libclass.syms, ${INSTINCFLAGS}, $(DESTDIR)/lib)
+#ifdef GNU_ENV
+ ARCHIVE_COM = ar x ${GNULIB} ;
+#endif /* GNU_ENV */
+
+all::		libcx.a
+
+DelList._:	libc.eplist
+		$(AWK) '{print $$1}' libc.eplist | $(SORT) -u > ,DelList._
+		$(MV) ,DelList._ DelList._
+
+libcx.a:		$(LIBC) $(CRT0PATH) $(RESOLVER_LIB) ${GNULIB} DelList._
+	        	$(RM) -rf new
+	        	mkdir new
+	              	cd new ; \
+		  	$(RESOLVER_SPLIT_CMD) \
+	                	$(CP) $(LIBC) ,libcx.a ; $(ARCHIVE_COM) \
+	                	$(CHMODW) ,libcx.a ; \
+	                	ar q ,libcx.a *.o $(CRT0PATH)
+	        	$(MV) new/,libcx.a libcx.a
+	        	-ar d libcx.a `cat DelList._`
+		$(LIBC_RESOLVER_HACK)
+	        	$(RANLIB) libcx.a
+	        	$(RM) -rf new
+
+all:: 		dofix.o
+
+clean::
+		$(RM) DelList._ libc.eplist globalrefs._h ,* libcx.a
+		$(RM) -f libclass.syms
+

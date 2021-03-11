@@ -1,0 +1,241 @@
+%{
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+ *        For full copyright information see:'andrew/config/COPYRITE'     *
+\* ********************************************************************** */
+/*
+	$Disclaimer: 
+# Permission to use, copy, modify, and distribute this software and its 
+# documentation for any purpose is hereby granted without fee, 
+# provided that the above copyright notice appear in all copies and that 
+# both that copyright notice, this permission notice, and the following 
+# disclaimer appear in supporting documentation, and that the names of 
+# IBM, Carnegie Mellon University, and other copyright holders, not be 
+# used in advertising or publicity pertaining to distribution of the software 
+# without specific, written prior permission.
+# 
+# IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+# DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+# SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+# BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+# DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+# WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+# ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+# OF THIS SOFTWARE.
+#  $
+*/
+#include <class.h>
+#include <ctype.h>
+#include <rofftext.ih>
+#include <cparser.h>
+double atof();
+
+static double v_Result;
+static int v_DefaultScale;
+static char *StrPtr;
+static int *SF;
+static struct rofftext *rt;
+struct parser *num_New();
+%}
+
+%start list
+
+%union {
+    double dval;
+    enum scale_type sval;
+}
+
+
+%token <dval> CONST
+%token <sval> SCALE
+
+%type <dval> expr
+
+%left '|' '&' '+' '-' '*' '/' '%' '>' '<' '='
+%left UMINUS /* supplies precedence for unary minus */
+%right SCALE
+
+%% /* beginning of rules */
+
+list	:	/* empty */
+	|	list stat
+        |       list error
+			{	parser_CLINEROK;}
+	;
+
+stat	:	expr
+                       {	v_Result = $1; }
+	;
+
+expr	:	'(' expr ')'
+			{	$$ = $2; }
+	|	expr '+' expr
+			{	$$ = $1 + $3; }
+	|	expr '-' expr
+			{	$$ = $1 - $3; }
+	|	expr '*' expr
+			{	$$ = $1 * $3; }
+	|	expr '/' expr
+			{	$$ = $1 / $3; }
+	|	expr '>' expr
+			{	$$ = ($1 > $3); }
+	|	expr '<' expr
+			{	$$ = ($1 < $3); }
+	|	expr '<' '=' expr
+			{	$$ = ($1 <= $4); }
+	|	expr '>' '=' expr
+			{	$$ = ($1 >= $4); }
+	|	expr '=' '=' expr
+			{	$$ = ($1 == $4); }
+	|	expr '=' expr
+			{	$$ = ($1 == $3); }
+	|	expr '&' expr
+			{	$$ = ($1 && $3); }
+	|	expr ':' expr
+			{	$$ = ($1 || $3); }
+	|	expr '%' expr
+			{	$$ = (double)(((int)$1) % ((int)$3)); }
+	|	'-' expr	%prec UMINUS
+			{	$$ = - $2; }
+        |       CONST SCALE
+                        {       $$ = $1 * SF[(int)$2]; }
+	|	CONST
+                        {       $$ = $1 * SF[(int)v_DefaultScale]; }
+	;
+
+%%	/* start of programs */
+
+static char *num_rcsid = "$Header: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/atk/rofftext/RCS/num.gra,v 1.1 1994/03/28 16:24:29 rr2b Exp $";
+
+static int locallexer (lexerrock, pyylval)  /* lexical analysis routine */
+struct parser *lexerrock;
+YYSTYPE *pyylval;
+{
+    int c;
+    while((c = *StrPtr++) == ' ') {}
+    if (isalpha(c)){
+        switch(c) {
+            case 'i': pyylval->sval = scale_i;
+                break;
+            case 'c': pyylval->sval = scale_c;
+                break;
+            case 'P': pyylval->sval = scale_P;
+                break;
+            case 'm': pyylval->sval = scale_m;
+                break;
+            case 'n': pyylval->sval = scale_n;
+                break;
+            case 'p': pyylval->sval = scale_p;
+                break;
+            case 'u': pyylval->sval = scale_u;
+                break;
+            case 'v': pyylval->sval = scale_v;
+                break;
+            default:  pyylval->sval = scale_u;
+                break;
+        }
+        return parser_TranslateTokenNumber(lexerrock, SCALE);
+    }
+    if(isdigit(c) || c == '.'){
+        /* gobble digits, points */
+        char Buf[51],*cp = Buf;
+        int dot=0;
+        for(;(cp-Buf)<50;++cp,c = *StrPtr++) {
+            *cp = c;
+            if (isdigit(c)) continue;
+            if (c=='.') {
+                if(dot++) {
+		return parser_TranslateTokenNumber(lexerrock, '.');
+	}
+                continue;
+            }
+            /* end of number */
+            break;
+        }
+        *cp = '\0';
+        if(((cp-Buf)>=50) && rt->PrintWarnings)
+            fprintf(stderr,"rofftext: warning: constant too big, truncating\n");
+        else
+            StrPtr--; /* push back last char read */
+        pyylval->dval = atof(Buf);
+        return parser_TranslateTokenNumber(lexerrock, CONST);
+    }
+    if (c=='\0') {
+        c = 0;
+        StrPtr--;   /* forever EOF */
+    }
+    return parser_TranslateTokenNumber(lexerrock, c);
+}
+
+
+static void num_ErrorGuts(p, sev, sevname, s)
+struct parser *p;
+int sev;
+char *sevname;
+char *s;{
+    if (rt->PrintWarnings) {
+        fprintf(stderr,"rofftext: %s:%s: number parsing error, %s line %d: %s\n",sevname,s,rt->Input->t->filename,rt->Input->t->LineNumber,s);
+    }
+}
+
+       
+EvalString(self,str,result,scale,absolute,relative)
+struct rofftext *self;
+char *str;
+int *result;
+int scale;
+boolean *absolute,*relative;
+{
+    int sign = 0,temp;
+    boolean ab,rel;
+    struct parser *p=num_New();
+    if(p==NULL)  {
+	*result=NULL;
+	 if (absolute)
+ 		*absolute = ab;
+  	if (relative)
+       		*relative = rel;	
+	return  0;
+    }
+    v_DefaultScale = scale;
+    rt = self;
+    SF = self->ScaleFactor;
+    switch (*str) {
+        case '-':
+            rel = 1;
+            sign = 1;
+            ab = 0;
+            str++;
+            break;
+        case '+':
+            rel = 1;
+            ab = 0;
+            str++;
+            break;
+        case '|':
+            ab = 1;
+            rel = 0;
+            str++;
+            break;
+        default:
+            ab = 0;
+            rel = 0;
+    }
+            
+    StrPtr = str;
+    if (parser_Parse(p, locallexer, p) == 0) {
+        temp = (sign)?(-v_Result):(v_Result);
+        *result = temp;
+    }
+    else {
+        *result = 0;
+    }
+   parser_Destroy(p);
+
+    if (absolute)
+        *absolute = ab;
+    if (relative)
+        *relative = rel;
+}
+

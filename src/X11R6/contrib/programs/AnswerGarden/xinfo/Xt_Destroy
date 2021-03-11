@@ -1,0 +1,163 @@
+@begin(header)
+author: ackerman@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+node_expert: ackerman=ag@ics.uci.edu
+expiration_date: 06/25/93
+last_modifier: ackerman=ag@ics.uci.edu
+last_mod_date: 10/24/91
+mod_num: 4
+@end(header)
+@begin(M)
+Date: 21 Feb 90 21:38:32 GMT
+From: Paul Asente
+Subject: Re: destroyCallback under R4 Athena Widgets
+
+That's right.  Destroying an application context does not destroy the
+widgets created for displays on that context; you must destroy them
+explicitly.
+
+>   I've tried explicitly calling XtDestroyWidget(myWidget), before
+>   the XtDestroyAppl call in Exit, and I've also tried not defining the
+>   Destroy callback in the WidgetRec, but using XtAddCallback in the
+>   Initializes routine of my widget. None of these work? What am I doing
+>   wrong?
+
+You're not waiting long enough :-)
+
+When you call XtDestroyWidget from within a procedure called as a result
+of event dispatching (i.e. an event handler, an action procedure, or any
+procedure called from one of these) the widget is marked as being
+destroyed but is not actually destroyed.  This prevents the widget data
+structures from disappearing out from under the event dispatcher.  When
+the current event dispatch is complete, the widgets are actually
+destroyed.  This includes calling their XtNdestroyCallback callbacks and
+their Destroy procedures.  In your case, since you were exiting the
+program before returning from the event dispatch, the widgets were not
+actually destroyed.
+
+In this case you probably want to do something like just setting a global
+flag when you decide to exit and to have a custom event dispatching loop
+that tests this flag.
+@end(M)
+
+@begin(Q)
+When I call XtDestroyWidget I thought the widget gets unmapped along
+with all it's children.
+
+I call XtInitialize to create the top level widget.  Then I create a
+bulletin board widget ussing HP's widget set.  This is now a child of
+the top level.
+
+I then create a PushButton widget and an sRaster widget whos parent is
+the Bulletin Board.
+
+When the button is pushed, a callback routinbe is called which sets a
+global quitting flag.  It also calls XtDestroyWidget on the bulletin
+board.  I thought that this would destroy the bulletin board and its
+children.  I also thought this would remove it from being a child of
+the top level.  I also thought this would make the windows leave the
+screen.  Well Not So.  The windows, remain, and when I try to create a
+new Bulletin Board, I get an X Window Error telling me that the top
+level can only have one child.
+
+What Gives?
+@end(Q)
+
+@begin(A)
+From: Fred Taft
+Organization: Hewlett-Packard Co., Corvallis, OR, USA
+
+You need to understand that destroying a widget is really a two phase
+process.  When you make your call to XtDestroyWidget(), the toolkit
+simply marks each of the widgets as 'being destroyed'; at this point,
+nothing has been deleted (widgets, windows, children, etc).  The next
+time you make a call to XtNextEvent (directly or by means of
+XtMainLoop), the first thing it does is check to see if there are any
+widgets waiting to be destroyed.  If there are, then it finishes
+destroying them; this includes removing and destroying their windows,
+freeing up any resources they had allocated, freeing up their widget
+structure, and updating their parent's children list.  At that point,
+it should be safe for you to create a new child of the shell widget.
+
+You can probably force the second phase of the destroy to occur by pushing
+a bogus event on the event queue, and then making a call to XtNextEvent()
+directly; you can then discard the bogus event it will return to you.
+@end(A)
+
+@begin(A)
+From: Ralph R. Swick
+
+> ...
+> The next time you make
+> a call to XtNextEvent (directly or by means of XtMainLoop), the first thing
+> it does is check to see if there are any widgets waiting to be destroyed.
+
+Yes, this is the way Release 2 implemented the requirement that
+(Section 4.7) "Phase two occurs when all procedures that should
+execute as a result of the current event have been called."
+
+It was recognized (and documented) that this implementation was not
+completely satisfactory and it has been changed for Release 3 in a way
+similar to that described in "Issues 1 and 2" in the referenced
+section of the R2 documentation.  In R3, when a call to
+XtDispatchEvent returns, all XtDestroyWidget calls made within that
+invocation of XtDispatchEvent will have completed.  
+@end(A)
+
+@begin(Q)
+Date: 16 Nov 89 00:55:36 GMT
+
+Previous net messages led me to believe that XtDispatchEvent() was basically
+re-entrant in X11R3.  You merely had to avoid leaving XtDispatchEvent() by
+a non-local goto.  For instance, you couldn't safely call longjmp() from 
+within an embedded XtDispatchEvent().  Unfortunately, this is not sufficient.
+
+To demonstrate the problem, call XtDestroyWidget() on a widget w while
+in a callback, then enter a recursive event-processing loop.  While in
+the event-processing loop, call XtDestroyWidget() on w's parent.  The
+procedure ObjectDestroy(), which frees widget memory allocated, will
+be called twice on w.  On the second call, ObjectDestroy() accesses
+already freed memory.
+
+Why are there two calls to ObjectDestroy()?  Since the first call to
+XtDestroyWidget() is from a callback, _XtSafeToDestroy is FALSE, and
+XtDestroyWidget() queues up an XtPhase2Destroy on the _XtDestroyList
+rather than destroying the widget immediately.  Then, the second event
+loop is entered.  While in it, w's parent is destroyed, causing w to
+be destroyed also.  Then, our callback returns to the first event
+loop, at which point the pending destroy for w is executed.  Oops!
+
+As it turns out, the two calls to ObjectDestroy() occur fairly close
+in time to one another.  So, you can usually get away with it.  But
+every once in a long while, a segmentation violation results.
+
+Its not feasible to work-around the problem by avoiding calls to
+XtDestroyWidget().  The calls may happen behind the scenes.  For
+example, a viewport widget might create and then destroy a scrollbar
+widget during the process of widget management or realization.  This
+is what happened in our case.
+
+To "work-around" the problem, we had to execute ugly hacks on both
+XtDispatchEvent() and Recursive().  The idea was to keep track of all
+widgets currently awaiting destruction (from outer event loops) and
+ensure that Recursive() did not delete them in an interior loop.
+
+A short Xaw-based program that illustrates the problem is available.
+Also available is the hack used to work-around it.  Contact me if
+interested.  I'll submit both to xbugs.
+
+Xt people - do you agree this is a problem?  If so, will it be fixed
+in R4?
+@end(Q)
+
+@begin(A)
+Date: Thu, 16 Nov 89 10:05:27 EST
+From: Ralph R. Swick
+
+> Xt people - do you agree this is a problem?  If so, will it be fixed in R4?
+
+Yes, and we hope so.  I thought up a while back a few other
+scenarios in addition to the one you give under which the R3
+implementation will fail, so it's definitely a known issue.
+@end(A)

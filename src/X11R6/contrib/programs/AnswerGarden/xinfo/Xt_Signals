@@ -1,0 +1,443 @@
+@begin(header)
+author: ackerman@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+expiration_date: 07/03/93
+last_modifier: ackerman@ics.uci.edu
+last_mod_date: 07/03/91
+mod_num: 1
+@end(header)
+Date: 8 Apr 91 12:23:03 GMT
+From: Marc Evans
+Organization: Synergytics
+Subject: Re: Signals in X
+
+
+|> Under X11R4 how does one design a signal handler in an 
+|> X application that needs to make X calls itself?  Since Xlib
+|> is not reentrant(?), how can one make Xlib calls in response
+|> to a signal?
+
+Enclosed is some code I have lying around that attempts to deal with the issue
+of handling signals in the X environment. It expects that you are using Xt's
+mainloop type of program.
+
+The callable functions are:
+
+	void (*XEAppGetSignalHandler(XtAppContext app, int sig, Bool safe))()
+	void (*XEAppSetSignalHandler(XtAppContext app, int sig, void (*pfunc)(),
+	    Bool safe, void *uptr))()
+	Bool (*XEAppGetEventHandler(XtAppContext app, CARD32 id))()
+	Bool (*XEAppSetEventHandler(XtAppContext app, CARD32 id, Bool (*pfunc)()))()
+	Bool XEAppDispatchEvent(XEvent *event, void *uptr)
+	XtInputMask XEAppPending(XtAppContext app)
+	void XEAppWhileLoop(XtAppContext app, CARD32 *done, void *uptr)
+
+You may notice that the code also attempts to address the problem of extension
+events having to be dealt with in a different manner then the core events. A
+complete solution to these problems would likely involve far more Xt functions.
+
+The concept of the signal code is that you provide a flag indicating that when a
+signal arrives, the function is called immediately if safe is FALSE, or added to
+a list to be called once it is safe for X calls to be made if safe is TRUE.
+
+Happy hacking 
+
+/***********************************************************
+Copyright 1991 by Synergytics, 21 Hinds Lane, Pelham, New Hampshire.
+
+                        All Rights Reserved
+
+Permission to use, copy, modify, and distribute this software and its
+documentation for any purpose and without fee is hereby granted,
+provided that the above copyright notice appear in all copies and that
+both that copyright notice and this permission notice appear in
+supporting documentation, and that the names of Synergytics not be
+used in advertising or publicity pertaining to distribution of the
+software without specific, written prior permission.
+
+SYNERGYTICS DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL
+SYNERGYTICS BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR
+ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS
+SOFTWARE.
+******************************************************************/
+
+/** The problem that is attempted to be solved below is that signal handling
+ ** is difficult to deal with in the X environment. By hacking certain key
+ ** functions in the Xt level we can provide a better mechanism for handling
+ ** signals.
+ **
+ ** One problem we discovered in trying to do this is that although Xlib
+ ** provides hooks to allow it to be extended, Xt does not, and therefore
+ ** this implementation is not safe for more then one process thread to use.
+ ** Ideally we would like to have the ability to add an arbitrary hunk of
+ ** memory into the XtAppContext which only we would ever manipulate, e.g.
+ ** actions hooks are not appropriate.
+ **
+ ** After some hacking it has also become apparent that Xt did not consider
+ ** that library and server extensions would ever generate events that should
+ ** be able to be handled above the Xt level in a transparent manner. This is
+ ** actually rather limiting from the perspective of usability of extensions.
+ ** We have attempted to address this as well, although again we have the
+ ** same limitations as described above.
+ **/
+
+#include <stdio.h>
+#include <signal.h>
+#include <X11/extensions/bits.h>     /* Comes from the XTrap sources */
+#include <X11/Xmd.h>
+#include "IntrinsicI.h"
+
+/* The following has been lifted from NextEvent.c  in X11R4 */
+#ifndef NEEDS_NTPD_FIXUP
+# ifdef sun
+#  define NEEDS_NTPD_FIXUP 1
+# else
+#  define NEEDS_NTPD_FIXUP 0
+# endif
+#endif
+
+#if NEEDS_NTPD_FIXUP
+#define FIXUP_TIMEVAL(t) { \
+        while ((t).tv_usec >= 1000000) { \
+            (t).tv_usec -= 1000000; \
+            (t).tv_sec++; \
+        } \
+        while ((t).tv_usec < 0) { \
+            if ((t).tv_sec > 0) { \
+                (t).tv_usec += 1000000; \
+                (t).tv_sec--; \
+            } else { \
+                (t).tv_usec = 0; \
+                break; \
+            } \
+        }}
+#else
+#define FIXUP_TIMEVAL(t)
+#endif /*NEEDS_NTPD_FIXUP*/
+
+/****
+Local data structures which should be removed if Xt ever learns how to be
+extended in an arbitrary manner.
+****/
+
+/* signal handling */
+static struct _XESignal
+{   
+#ifdef __STDC__
+    void (*ifunc)(int,int,struct sigcontext *,void *);
+    void (*sfunc)(int,int,struct sigcontext *,void *);
+#else
+    void (*ifunc)();
+    void (*sfunc)();
+#endif
+    void *uptr;
+} _XESigArray[NSIG];
+
+static Bool _XEWaiting = False;
+static Bool _XESigPending = False;
+static CARD8 _XESigFlags[NSIG/BitsInByte + (NSIG%BitsInByte == 0L) ? 0L : 1L];
+
+/* event handling */
+static Bool (*_XEEventFunctions[128L])(); /* The magic 128 is the maximum number
+                                           * of events that could be defined in
+                                           * the X environment. Unfortunately,
+                                           * there doesn't appear to be a
+                                           * #define for this anyplace, so we
+                                           * hard code it...
+                                           */
+
+/****
+Functions which are essentially Xt extensions.
+****/
+
+#ifdef __STDC__
+static void _XEProcessSignals(int code, struct sigcontext *scp)
+#else
+static void _XEProcessSignals(code,scp)
+    int code;
+    struct sigcontext *scp;
+#endif
+{
+    register long i;
+
+    if (_XESigPending)
+    {   for (i = 0L; i < NSIG; i++)
+        if (BitIsTrue(_XESigFlags,i))
+        {   (*_XESigArray[i].sfunc)(i,code,scp,_XESigArray[i].uptr);
+            BitFalse(_XESigFlags,i);
+        }
+    }
+    return;
+}
+
+#ifdef __STDC__
+static void _XEHandleSignal(int sig, int code, struct sigcontext *scp)
+#else
+static void _XEHandleSignal(sig,code,scp)
+    int sig;
+    int code;
+    struct sigcontext *scp;
+#endif
+{
+    if (sig < NSIG)
+    {   if (_XESigArray[sig].ifunc)
+        { (*_XESigArray[sig].ifunc)(sig,code,scp,_XESigArray[sig].uptr); }
+        else if (_XESigArray[sig].sfunc)
+        {   if (! _XEWaiting)
+            {   _XESigPending = True;
+                BitTrue(_XESigFlags,sig);
+            }
+            else
+            {   _XESigPending = True;
+                BitTrue(_XESigFlags,sig);
+                _XEProcessSignals(code,scp);
+            }
+        }
+    }
+}
+
+#ifdef __STDC__
+void (*XEAppGetSignalHandler(XtAppContext app, int sig, Bool safe))()
+#else
+void (*XEAppGetSignalHandler(app, sig, safe))()
+    XtAppContext app;
+    int sig;
+    Bool safe;
+#endif
+{
+    return((sig < NSIG) ?
+        (safe ? _XESigArray[sig].sfunc : _XESigArray[sig].ifunc) : NULL);
+}
+
+#ifdef __STDC__
+void (*XEAppSetSignalHandler(XtAppContext app, int sig, void (*pfunc)(),
+    Bool safe, void *uptr))()
+#else
+void (*XEAppSetSignalHandler(app, sig, pfunc, safe, uptr))()
+    XtAppContext app;
+    int sig;
+    void (*pfunc)();
+    Bool safe;
+    void *uptr;
+#endif
+{
+    void (*rfunc)() = XEAppGetSignalHandler(app,sig,safe);
+
+    if (sig < NSIG)
+    {   if (safe)
+        { _XESigArray[sig].sfunc = pfunc; }
+        else
+        { _XESigArray[sig].ifunc = pfunc; }
+        _XESigArray[sig].uptr = uptr;
+        (void)signal(sig,(void *)_XEHandleSignal);
+    }
+    return(rfunc);
+}
+
+#ifdef __STDC__
+Bool (*XEAppGetEventHandler(XtAppContext app, CARD32 id))()
+#else
+Bool (*XEAppGetEventHandler(app, id))()
+    XtAppContext app;
+    CARD32 id;
+#endif
+{
+    return(id < sizeof(_XEEventFunctions) ? _XEEventFunctions[id] : NULL);
+}
+
+#ifdef __STDC__
+Bool (*XEAppSetEventHandler(XtAppContext app, CARD32 id, Bool (*pfunc)()))()
+#else
+Bool (*XEAppSetEventHandler(app,id,pfunc))()
+    XtAppContext app;
+    CARD32 id;
+    Bool (*pfunc)();
+#endif
+{
+    Bool (*rfunc)() = XEAppGetEventHandler(app,id);
+    if (id < sizeof(_XEEventFunctions))
+    { _XEEventFunctions[id] = pfunc; }
+    return(rfunc);
+}
+
+#ifdef __STDC__
+Bool XEAppDispatchEvent(XEvent *event, void *uptr)
+#else
+Bool XEAppDispatchEvent(event,uptr)
+    XEvent *event;
+    void *uptr;
+#endif
+{
+    Bool status = False;
+    CARD32 id = event->type;
+
+    /* If the event is one of the extension events, handle it specially,
+     * otherwise, pass it off to Xt for processing.
+     */
+    if (id < sizeof(_XEEventFunctions) && _XEEventFunctions[id])
+    { status = (*_XEEventFunctions[id])(event,uptr); }
+    else
+    { status = XtDispatchEvent(event); }
+
+    return(status);
+}
+
+#ifdef __STDC__
+XtInputMask XEAppPending(XtAppContext app)
+#else
+XtInputMask XEAppPending(app)
+    XtAppContext app;
+#endif
+{
+    TimerEventRec *te_ptr;
+    struct timeval cur_time;
+    struct timezone cur_zone;
+    XtInputMask retmask = XtAppPending(app) & ~(XtIMTimer | XtIMAlternateInput);
+
+    /* Test for timer */
+    for (te_ptr = app->timerQueue; te_ptr != NULL; te_ptr = te_ptr->te_next)
+    {   (void)gettimeofday(&cur_time, &cur_zone);
+        FIXUP_TIMEVAL(cur_time);
+        if (IS_AFTER(te_ptr->te_timer_value, cur_time))
+        {   /* This timer is due to fire */
+            retmask |= XtIMTimer;
+            break;
+        }
+    }
+    /* Test for alternate input */
+    if (app->outstandingQueue != NULL)
+    { retmask |= XtIMAlternateInput; }
+
+    return(retmask);
+}
+
+#ifdef __STDC__
+void XEAppWhileLoop(XtAppContext app, CARD32 *done, void *uptr)
+#else
+void XEAppWhileLoop(app,flags,uptr)
+    XtAppContext app;
+    CARD32 *done;
+    void *uptr;
+#endif
+{
+    XEvent event;
+    XtInputMask imask;
+    int status = True;
+
+    for (_XEWaiting = False; !(*done);)
+    {   imask = XEAppPending(app);
+
+        /* The point of this if statement is to prevent NextEvent and
+         * ProcessEvent from blocking extension events from being
+         * processed.
+         */
+        if (imask & XtIMXEvent)
+        {   (void)XtAppNextEvent(app,&event);
+            (void)XEAppDispatchEvent(&event,uptr);
+        }
+        else if (imask & (XtIMTimer | XtIMAlternateInput))
+        { XtAppProcessEvent(app,(XtIMTimer | XtIMAlternateInput)); }
+        else
+        {   _XEWaiting = True;
+            _XtwaitForSomething(False, False, False, True, 0L, app);
+            _XEWaiting = False;
+        }
+        /* If there are safe signal handlers waiting to be run, do them now */
+        if (_XESigPending)
+        { _XEProcessSignals(0L,NULL); }
+    }
+    return;
+}
+========8<========8<========bits.h========8<========8<========
+/*
+ * This include file is designed to be a portable way for systems to define
+ * bit field manipulation of arrays of bits.
+ */
+#ifndef __BITS__
+#define __BITS__ "@(#)bits.h	1.6 - 90/09/18  "
+/* RCSID = $Header$" */
+
+/*****************************************************************************
+Copyright 1987, 1988, 1989, 1990 by Digital Equipment Corporation, Maynard, MA
+
+Permission to use, copy, modify, and distribute this software and its 
+documentation for any purpose and without fee is hereby granted, 
+provided that the above copyright notice appear in all copies and that
+both that copyright notice and this permission notice appear in 
+supporting documentation, and that the name of Digital not be
+used in advertising or publicity pertaining to distribution of the
+software without specific, written prior permission.  
+
+DIGITAL DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL
+DIGITAL BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR
+ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS
+SOFTWARE.
+
+*****************************************************************************/
+/*
+ *
+ *  CONTRIBUTORS:
+ *
+ *      Dick Annicchiarico
+ *      Robert Chesler
+ *      Dan Coutu
+ *      Gene Durso
+ *      Marc Evans
+ *      Alan Jamison
+ *      Mark Henry
+ *      Ken Miller
+ *
+ */
+typedef unsigned char *UByteP;  /* Pointer to an unsigned byte array */
+#define BitsInByte    8L        /* The number of bits in a byte */
+
+#define BitInByte(bit)	        /* Returns the bit mask of a byte */ \
+    (1L << (((bit) % BitsInByte)))
+
+#define BitInWord(bit)	        /* Returns the bit mask of a word */ \
+    (1L << (((bit) % (BitsInByte * 2L))))
+
+#define BitInLong(bit)	        /* Returns the bit mask of a long */ \
+    (1L << (((bit) % (BitsInByte * 4L))))
+
+#define ByteInArray(array,bit)	/* Returns the byte offset to get to a bit */ \
+    (((UByteP)(array))[(bit) / BitsInByte])
+
+#define BitIsTrue(array,bit)    /* Test to see if a specific bit is True */ \
+    (ByteInArray(array,bit) & BitInByte(bit))
+
+#define BitIsFalse(array,bit)   /* Test to see if a specific bit is False */ \
+    (!(BitIsTrue(array,bit)))
+
+#define BitTrue(array,bit)      /* Set a specific bit to be True */ \
+    (ByteInArray(array,bit) |= BitInByte(bit))
+
+#define BitFalse(array,bit)     /* Set a specific bit to be False */ \
+    (ByteInArray(array,bit) &= ~BitInByte(bit))
+
+#define BitToggle(array,bit)    /* Toggle a specific bit */ \
+    (ByteInArray(array,bit) ^= BitInByte(bit))
+
+#define BitCopy(dest,src,bit)   /* Copy a specific bit */ \
+    BitIsTrue((src),(bit)) ? BitTrue((dest),(bit)) : BitFalse((dest),(bit))
+
+#define BitValue(array,bit)     /* Return True or False depending on bit */ \
+    (BitIsTrue((array),(bit)) ? True : False)
+
+#define BitSet(array,bit,value) /* Set bit to given value in array */ \
+    (value) ? BitTrue((array),(bit)) : BitFalse((array),(bit))
+
+#endif /* __BITS__ */
+
+-- 
+===========================================================================
+Marc Evans - WB1GRH - evans@decvax.DEC.COM  | Synergytics     (603)635-8876
+      Unix and X Software Consultant        | 21 Hinds Ln, Pelham, NH 03076
+===========================================================================

@@ -1,0 +1,541 @@
+\begindata{text,538353528}
+\textdsversion{12}
+\template{default}
+-- sort.n
+
+
+-- Ness sort library
+
+
+--	For this sort library, records begin with  a single dash on a 
+
+--	line by itself.  Fieldnames are capitalized words, possibly contain
+
+--	dashes, start at the beginning of a line, and end with a colon.
+
+--	The subsequent field contents starts after spaces and tabs and
+
+--	extends to the end of the line.
+
+--	Records may have contents that are not part of fields.
+
+--	If the file does not begin with "-\\n", 
+
+--	everything before the first "\\n-\\n" is retained at the beginning of the 
+file.
+
+
+--	In arguments below, a <fieldnames> argument is a sequence of fieldnames
+
+--	each beginning with its capital letter and ending with its colon.
+
+--	(The final colon can be omitted.)
+
+
+--	The function main() expects an argument line giving 
+
+--		-f <fieldnames> <filename>
+
+--	and sorts the records by the named field.
+
+--	If -f <fieldnames> is omitted, records are sorted by their whole text.
+
+--	The space after -f may be omitted.
+
+--	The output file is written to the same name as the input, 
+
+--	but with the additional extension ".sorted".
+
+
+--	Function sort_records(fieldnames, text) sorts the records of text
+
+--	in order by the contents of the named fields.  If fieldnames is "",
+
+--	records are sorted by their entire contents.
+
+
+--	Function sort_records_per_flags(fieldnames, text, flags) does the sort
+
+--	utilizing the flags, as defined for the Unix function sort(1).  These flags
+
+--	are recognized:  bdfinru   tx     +mmm.nnn - mmm.nnn
+
+--	where x is the tab char, mmm is the number of fields to skip over, 
+
+--	and nnn is a number of characters to skip at the front of the field
+
+--		b	ignore leading blanks, tabs, and spaces
+
+--		d	sort only on letters, digits, and blanks
+
+--		f	fold upper case onto lower case
+
+--		i	consider only ACSII characters \\040 ... \\176
+
+--		n	sort numerically 
+
+--		r	output in descending order instead of ascending
+
+--		u	retain only one copy of duplicate records
+
+--		tx	x is the field separator character
+
+--	spaces are not allowed among the bfdrinu flags
+
+
+
+marker letters := "qwertyuiopasdfghjklzxcvbnm"
+
+		~ "QWERTYUIOPASDFGHJKLZXCVBNM"
+
+
+boolean has377
+
+
+
+-- flagfield(flags)
+
+--	validate the flagfield and append leading "-" if needed
+
+--	Note special care to avoid going off the end of the flags value.
+
+--
+
+function flagfield(flags)
+
+	marker t, outflags
+
+
+	if flags = "" then return flags end if
+
+
+	outflags := newbase() ~ "-"
+
+	t := search(start(flags), "t")
+
+	if t /= "" and extent(t, flags) /= "" then
+
+		outflags ~:= "t" ~ next(t)
+
+		replace (extent(t,next(t)), "")
+
+	end if
+
+	t := token(start(flags), "bdfinru")
+
+	if extent(finish(flags), finish(t)) /= "" then t := extent(t, flags) end if
+
+	outflags ~:= t
+
+
+	-- now handle the +nn and -nn fields
+
+	t := span(finish(t), " +-0123456789.0")
+
+	if extent(finish(flags), finish(t)) /= "" then t := extent(t, flags) end if
+
+	outflags ~:= t
+
+
+	return outflags
+
+end function
+
+
+
+-- deline(m)
+
+--	return a copy of m having newlines replaced by \\376
+
+function deline(m)
+
+	marker n, newline
+
+
+	n := newbase()
+
+	if length(m) > 132 then 
+
+		m := extent (m, nextn(start(m), 132))
+
+	end if
+
+	newline := search(start(m), "\\n")
+
+	while newline /= "" and extent(newline, m) /= "" do
+
+		n ~:= extent(m, start(newline))
+
+		n ~:= "\\376"
+
+		m := extent(finish(newline), m)
+
+		newline := search(start(m), "\\n")
+
+	end while
+
+	return n ~ m
+
+end function
+
+
+
+-- getfield(fieldname, record)
+
+--	returns the field value of the named field in the record
+
+--	the portion returned extends 80 characters or to the first newline,
+
+--	whichever comes sooner
+
+--
+
+function getfield(fieldname, record)
+
+	marker keyval
+
+
+	keyval := search(start(record), fieldname)
+
+	if keyval = "" or extent(keyval, record) = "" then return "" end if
+
+	-- span spaces and tabs to find start of key
+
+	keyval := finish(span(finish(keyval), " \\t"))
+
+	-- search for newline to find end of key
+
+	keyval := extent(keyval, start(search(start(keyval), "\\n")))
+
+	if length(keyval) > 80 then 
+
+		keyval := extent (keyval, nextn(start(keyval), 80))
+
+	elif keyval = "" then 
+
+		keyval := " "	-- at least one space if the keyword appears
+
+	end if
+
+	return keyval
+
+end function
+
+
+
+-- Key records are used for sorting.  The indices of the record in 
+
+-- the key record extend from
+
+-- just after the newline after the dash until just before the
+
+-- newline before the next dash.  The first character can be
+
+-- accessed as f=nextn(start(text), t), where t is 1+allprevious(record)
+
+-- Its extent is extent(f, nextn(start(f), l)), where l is length(record)
+
+
+
+-- buildkey(fieldnames, record)
+
+--	build a key record consisting of the key, a \\376, the number of
+
+--	next()s to get to the first character of the record from the 
+
+--	start(text), and the length of the record
+
+function buildkey(fieldnames, record)
+
+	integer recstart, reclen
+
+	marker keyval, field
+
+
+	recstart := 1 + length(allprevious(record))
+
+	reclen := length(record)
+
+	if fieldnames = ":" then
+
+		keyval := ""
+
+	else
+
+		-- construct list of key values, each terminated with \\1
+
+		keyval := newbase()
+
+		while fieldnames /= "" do
+
+			field := extent(fieldnames, search(start(fieldnames), ":"))
+
+			keyval ~:= getfield(field, record) ~ "\\1"
+
+			fieldnames := extent(next(field), fieldnames)
+
+		end while
+
+	end if
+
+	if span(start(keyval), "\\1") = keyval then 
+
+		keyval := keyval ~ deline(record)		-- before all other records
+
+	else
+
+		keyval := extent(keyval, start(last(keyval)))	-- remove final \\1
+
+	end if
+
+	if has377 then
+
+		-- terminate field prematurely if it contains \\377
+
+		-- this test is only needed if the text has a \\377 at all
+
+		field := search(start(keyval), "\\377")
+
+		if field /= "" and extent(field, keyval) /= "" then
+
+			keyval := extent(keyval, start(field))
+
+		end if
+
+	end if
+
+	return  keyval ~ " \\377" ~ textimage(recstart) ~ " " 
+
+				~ textimage(reclen) ~ "\\n"
+
+end function
+
+
+
+function sort_records_per_flags(fieldname, text, flags)
+
+	marker keyx	-- key<->location file
+
+	marker dash, prevdash, tmpname, newtext, initialcomment
+
+
+	has377 := search(start(text), "\\377") /= ""
+
+
+	if last(fieldname) /= ":" then
+
+		fieldname := fieldname ~ ":"
+
+	end if
+
+	keyx := newbase()
+
+	dash := search(start(text), "\\n-\\n")
+
+	if dash = "" then 
+
+		printline("sort: No records found (no instances of \\n-\\n)")
+
+		return text 
+
+	end if	-- no records
+
+	if match(text, "-\\n") /= "" then
+
+		keyx ~:= buildkey(fieldname,
+
+				extent(finish(second(text)), start(dash)))
+
+		initialcomment := start(text)
+
+	else
+
+		-- text begins with commentary not to be sorted
+
+		initialcomment := extent(text, start(dash))
+
+	end if
+
+	prevdash := dash
+
+	dash := search(finish(dash), "\\n-\\n")
+
+	while dash /= "" do
+
+		-- at this point, prevdash is before a record and dash after
+
+		keyx ~:= buildkey(fieldname, 
+
+				extent(finish(prevdash), start(dash)))
+
+		prevdash := dash
+
+		dash := search(finish(dash), "\\n-\\n")
+
+		if extent(dash, text) = "" then dash := "" end if
+
+	end while
+
+	if extent(finish(prevdash), text) /= "" then
+
+		if last(text) = "\\n" then 
+
+			text := extent(text, start(last(text)))
+
+		end if
+
+		keyx ~:= buildkey(fieldname, extent(finish(prevdash), text))
+
+	end if
+
+
+	tmpname := "/tmp/NessSort" ~ system("echo $$")
+
+	writefile(tmpname, clearstyles(keyx))
+
+	keyx := system("sort " ~ flagfield(flags) ~ " \\"" ~ tmpname  ~ "\\""
+
+-- 			comment out the next line for debugging
+
+			~ "; rm \\"" ~ tmpname ~ "\\""
+
+	)
+
+	-- now keyx is sorted by the keys: 
+
+	-- 	construct a new file using the offsets and lengths in keyx
+
+	if initialcomment = "" then 
+
+		newtext := newbase() ~ "-\\n"
+
+	else
+
+		newtext := initialcomment ~ "\\n-\\n"
+
+	end if
+
+	while keyx /= "" do 
+
+		keyx := next(search(start(keyx), "\\377"))
+
+		dash := nextn(start(text), parseint(keyx))
+
+		keyx := next(next(whereitwas()))
+
+		newtext ~:= extent(dash, nextn(start(dash), parseint(keyx)))
+
+		keyx := next(next(whereitwas()))
+
+		newtext ~:= "\\n-\\n"
+
+	end while
+
+	return newtext
+
+end function
+
+
+
+function sort_records(fieldname, text)
+
+	return sort_records_per_flags(fieldname, text, "")
+
+end function
+
+
+
+function main(args)	
+
+	marker filename, outname, text, fieldname
+
+
+	fieldname := search(start(args), "-f")
+
+	if fieldname /= "" then
+
+		fieldname := token (finish(fieldname), letters ~ "-:")
+
+		args := finish(fieldname)
+
+	
+
+		if search("ABCDEFGHIJKLMNOPQRSTUVWXYZ", first(fieldname)) = "" then
+
+			printline("sort: field names must begin with capital letters")
+
+			exit function
+
+		end if
+
+	end if
+
+
+	filename := token(start(args), letters ~ "./0123456789")
+
+	outname := filename ~ ".sorted"
+
+
+	printline("sort(" ~ fieldname ~ "): " ~ filename ~ " -> " ~ outname)
+
+	text := readfile(filename)
+
+	system("mv " ~ outname ~ " " ~ outname ~ ".BAK")
+
+
+	text := sort_records(fieldname, text)
+
+
+	writefile(outname, text)
+
+end function
+
+
+-- 
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,29,0,0}
+
+-- Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{-- $Disclaimer: 
+
+-- Permission to use, copy, modify, and distribute this software and its 
+
+-- documentation for any purpose is hereby granted without fee, 
+
+-- provided that the above copyright notice appear in all copies and that 
+
+-- both that copyright notice, this permission notice, and the following 
+
+-- disclaimer appear in supporting documentation, and that the names of 
+
+-- IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+-- used in advertising or publicity pertaining to distribution of the software 
+
+-- without specific, written prior permission.
+
+-- 
+
+-- IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+-- DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+-- ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+-- SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+-- BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+-- DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+-- WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+-- ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+-- OF THIS SOFTWARE.
+
+--  $
+
+}}\enddata{text,538353528}

@@ -1,0 +1,882 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+ *        For full copyright information see:'andrew/config/COPYRITE'     *
+\* ********************************************************************** */
+
+/*
+	$Disclaimer: 
+* Permission to use, copy, modify, and distribute this software and its 
+* documentation for any purpose is hereby granted without fee, 
+* provided that the above copyright notice appear in all copies and that 
+* both that copyright notice, this permission notice, and the following 
+* disclaimer appear in supporting documentation, and that the names of 
+* IBM, Carnegie Mellon University, and other copyright holders, not be 
+* used in advertising or publicity pertaining to distribution of the software 
+* without specific, written prior permission.
+* 
+* IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+* DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+* ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+* SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+* BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+* DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+* WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+* ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+* OF THIS SOFTWARE.
+*  $
+*/
+
+
+/* 
+ * 
+ * ******
+ *
+ * PLEASE NOTE:
+ * 
+ * This file is designed to be run through the C preprocessor before
+ * being passed to the assembler.  
+ * 
+ * *****
+ * 
+ * This is the code that breaks a link to ClassEntry routines
+ * and sets it to the set of routines given by the information
+ * pointed to by the first parameter.  That structure contains the 
+ * information needed to locate a module and verify that the module
+ * is the correct version along with some other infomation about the
+ * module.
+ *
+ * Each ClassEntry routine must provide a way to get an index indicating
+ * which entry was called.  On the RT this is done by placing the index in
+ * the static data block that is passed to the procedure in R0.  For other
+ * machines this would be done by having each entry point set a register
+ * to the index and then branching to the main body of this code.
+ *
+ * The main body of the code then does the following:
+ * -- Calls the class_Lookup procedure passing in the structure
+ *    pointed to by the first parameter.
+ * -- class_Lookup returns the base address of the procedure table
+ *    for the module.
+ * -- Use the index provided by the ClassEntry to look up the routine.
+ * -- Reset the stack to the state it was in before the call to this code.
+ * -- Make any adjustments to the stack, registers, etc. to make the
+ *    called routine think that it was called directly.
+ * -- Branch (NOT a subroutine jump) to the real routine.  This may be
+ *    done differently for some new machine.
+ *
+ * NOTE1: There are currently 150 entry points.  This was an arbitrary choice
+ * and can be changed as appropriate.  If it is changed, definitions
+ * in class.h must also be changed.
+ */
+
+/* 
+ * Data section.  Only used here to get access to class_ErrorReturnValue.
+ */
+	.data
+	.globl	class_ErrorReturnValue	/* external used to get class_Lookup status */
+
+
+/*
+ * All the entry points come to this label.  When they get
+ * here the stack is intact and EAX contains the index.
+ */
+	.text
+	.globl class_Lookup		/* used to dynamically load and bind code */
+L000:
+
+/*
+ * While in this routine (after the first few instructions) the stack 
+ * looks like this:
+ * 
+ * EBP + 0x28		parm...		<-- EBP points here at entry time
+ * EBP + 0x24		parm4
+ * EBP + 0x20		parm3
+ * EBP + 0x1C		parm2
+ * EBP + 0x08		parm1		(pointer to header)
+ * EBP + 0x04		return address
+ * EBP + 0x00		saved EBP	<-- EBP during execution
+ * EBP - 0x04		passed parm	(passed index)
+ * EBP - 0x08		passed parm	(pointer to header)
+ * 
+ */
+
+	/* start of code...set up stack, etc. */
+	pushl	%ebp
+	movl	%esp, %ebp
+
+	/* set up registers and call to class_Lookup */
+	pushl	%eax			/* index */
+	pushl	0x08(%ebp)		/* pointer to header */
+	call	class_Lookup
+
+	/* back from class_Lookup */
+	cmpl	$0, %eax		/* lookup failed? */
+	je	ErrorExit		/* yes, return class_ErrorReturnValue */
+				/* no, jump to the proper class routine */
+
+	/* non-zero value from class_Lookup is base of proc table */
+	movl	-0x04(%ebp), %edx	/* get back index */
+	movl	(%eax, %edx, 4), %eax	/* get routine address in %eax using the funky addr modes */
+	leave				/* fix up stack */
+	jmp	*%eax			/* jump to the routine */
+
+ErrorExit:
+	/* return the value in class_ErrorReturnValue */
+	movl	class_ErrorReturnValue, %eax	/* get return value in correct place */
+	leave				/* restore stack */
+	ret				/* and return to caller */
+
+
+/*
+ * and now come the entry points.
+ */
+	.globl	ClassEntry0
+ClassEntry0:
+	movl	$0, %eax
+	jmp	L000
+
+	.globl	ClassEntry1
+ClassEntry1:
+	movl	$1, %eax
+	jmp	L000
+
+	.globl	ClassEntry2
+ClassEntry2:
+	movl	$2, %eax
+	jmp	L000
+
+	.globl	ClassEntry3
+ClassEntry3:
+	movl	$3, %eax
+	jmp	L000
+
+	.globl	ClassEntry4
+ClassEntry4:
+	movl	$4, %eax
+	jmp	L000
+
+	.globl	ClassEntry5
+ClassEntry5:
+	movl	$5, %eax
+	jmp	L000
+
+	.globl	ClassEntry6
+ClassEntry6:
+	movl	$6, %eax
+	jmp	L000
+
+	.globl	ClassEntry7
+ClassEntry7:
+	movl	$7, %eax
+	jmp	L000
+
+	.globl	ClassEntry8
+ClassEntry8:
+	movl	$8, %eax
+	jmp	L000
+
+	.globl	ClassEntry9
+ClassEntry9:
+	movl	$9, %eax
+	jmp	L000
+
+	.globl	ClassEntry10
+ClassEntry10:
+	movl	$10, %eax
+	jmp	L000
+
+	.globl	ClassEntry11
+ClassEntry11:
+	movl	$11, %eax
+	jmp	L000
+
+	.globl	ClassEntry12
+ClassEntry12:
+	movl	$12, %eax
+	jmp	L000
+
+	.globl	ClassEntry13
+ClassEntry13:
+	movl	$13, %eax
+	jmp	L000
+
+	.globl	ClassEntry14
+ClassEntry14:
+	movl	$14, %eax
+	jmp	L000
+
+	.globl	ClassEntry15
+ClassEntry15:
+	movl	$15, %eax
+	jmp	L000
+
+	.globl	ClassEntry16
+ClassEntry16:
+	movl	$16, %eax
+	jmp	L000
+
+	.globl	ClassEntry17
+ClassEntry17:
+	movl	$17, %eax
+	jmp	L000
+
+	.globl	ClassEntry18
+ClassEntry18:
+	movl	$18, %eax
+	jmp	L000
+
+	.globl	ClassEntry19
+ClassEntry19:
+	movl	$19, %eax
+	jmp	L000
+
+	.globl	ClassEntry20
+ClassEntry20:
+	movl	$20, %eax
+	jmp	L000
+
+	.globl	ClassEntry21
+ClassEntry21:
+	movl	$21, %eax
+	jmp	L000
+
+	.globl	ClassEntry22
+ClassEntry22:
+	movl	$22, %eax
+	jmp	L000
+
+	.globl	ClassEntry23
+ClassEntry23:
+	movl	$23, %eax
+	jmp	L000
+
+	.globl	ClassEntry24
+ClassEntry24:
+	movl	$24, %eax
+	jmp	L000
+
+	.globl	ClassEntry25
+ClassEntry25:
+	movl	$25, %eax
+	jmp	L000
+
+	.globl	ClassEntry26
+ClassEntry26:
+	movl	$26, %eax
+	jmp	L000
+
+	.globl	ClassEntry27
+ClassEntry27:
+	movl	$27, %eax
+	jmp	L000
+
+	.globl	ClassEntry28
+ClassEntry28:
+	movl	$28, %eax
+	jmp	L000
+
+	.globl	ClassEntry29
+ClassEntry29:
+	movl	$29, %eax
+	jmp	L000
+
+	.globl	ClassEntry30
+ClassEntry30:
+	movl	$30, %eax
+	jmp	L000
+
+	.globl	ClassEntry31
+ClassEntry31:
+	movl	$31, %eax
+	jmp	L000
+
+	.globl	ClassEntry32
+ClassEntry32:
+	movl	$32, %eax
+	jmp	L000
+
+	.globl	ClassEntry33
+ClassEntry33:
+	movl	$33, %eax
+	jmp	L000
+
+	.globl	ClassEntry34
+ClassEntry34:
+	movl	$34, %eax
+	jmp	L000
+
+	.globl	ClassEntry35
+ClassEntry35:
+	movl	$35, %eax
+	jmp	L000
+
+	.globl	ClassEntry36
+ClassEntry36:
+	movl	$36, %eax
+	jmp	L000
+
+	.globl	ClassEntry37
+ClassEntry37:
+	movl	$37, %eax
+	jmp	L000
+
+	.globl	ClassEntry38
+ClassEntry38:
+	movl	$38, %eax
+	jmp	L000
+
+	.globl	ClassEntry39
+ClassEntry39:
+	movl	$39, %eax
+	jmp	L000
+
+	.globl	ClassEntry40
+ClassEntry40:
+	movl	$40, %eax
+	jmp	L000
+
+	.globl	ClassEntry41
+ClassEntry41:
+	movl	$41, %eax
+	jmp	L000
+
+	.globl	ClassEntry42
+ClassEntry42:
+	movl	$42, %eax
+	jmp	L000
+
+	.globl	ClassEntry43
+ClassEntry43:
+	movl	$43, %eax
+	jmp	L000
+
+	.globl	ClassEntry44
+ClassEntry44:
+	movl	$44, %eax
+	jmp	L000
+
+	.globl	ClassEntry45
+ClassEntry45:
+	movl	$45, %eax
+	jmp	L000
+
+	.globl	ClassEntry46
+ClassEntry46:
+	movl	$46, %eax
+	jmp	L000
+
+	.globl	ClassEntry47
+ClassEntry47:
+	movl	$47, %eax
+	jmp	L000
+
+	.globl	ClassEntry48
+ClassEntry48:
+	movl	$48, %eax
+	jmp	L000
+
+	.globl	ClassEntry49
+ClassEntry49:
+	movl	$49, %eax
+	jmp	L000
+
+	.globl	ClassEntry50
+ClassEntry50:
+	movl	$50, %eax
+	jmp	L000
+
+	.globl	ClassEntry51
+ClassEntry51:
+	movl	$51, %eax
+	jmp	L000
+
+	.globl	ClassEntry52
+ClassEntry52:
+	movl	$52, %eax
+	jmp	L000
+
+	.globl	ClassEntry53
+ClassEntry53:
+	movl	$53, %eax
+	jmp	L000
+
+	.globl	ClassEntry54
+ClassEntry54:
+	movl	$54, %eax
+	jmp	L000
+
+	.globl	ClassEntry55
+ClassEntry55:
+	movl	$55, %eax
+	jmp	L000
+
+	.globl	ClassEntry56
+ClassEntry56:
+	movl	$56, %eax
+	jmp	L000
+
+	.globl	ClassEntry57
+ClassEntry57:
+	movl	$57, %eax
+	jmp	L000
+
+	.globl	ClassEntry58
+ClassEntry58:
+	movl	$58, %eax
+	jmp	L000
+
+	.globl	ClassEntry59
+ClassEntry59:
+	movl	$59, %eax
+	jmp	L000
+
+	.globl	ClassEntry60
+ClassEntry60:
+	movl	$60, %eax
+	jmp	L000
+
+	.globl	ClassEntry61
+ClassEntry61:
+	movl	$61, %eax
+	jmp	L000
+
+	.globl	ClassEntry62
+ClassEntry62:
+	movl	$62, %eax
+	jmp	L000
+
+	.globl	ClassEntry63
+ClassEntry63:
+	movl	$63, %eax
+	jmp	L000
+
+	.globl	ClassEntry64
+ClassEntry64:
+	movl	$64, %eax
+	jmp	L000
+
+	.globl	ClassEntry65
+ClassEntry65:
+	movl	$65, %eax
+	jmp	L000
+
+	.globl	ClassEntry66
+ClassEntry66:
+	movl	$66, %eax
+	jmp	L000
+
+	.globl	ClassEntry67
+ClassEntry67:
+	movl	$67, %eax
+	jmp	L000
+
+	.globl	ClassEntry68
+ClassEntry68:
+	movl	$68, %eax
+	jmp	L000
+
+	.globl	ClassEntry69
+ClassEntry69:
+	movl	$69, %eax
+	jmp	L000
+
+	.globl	ClassEntry70
+ClassEntry70:
+	movl	$70, %eax
+	jmp	L000
+
+	.globl	ClassEntry71
+ClassEntry71:
+	movl	$71, %eax
+	jmp	L000
+
+	.globl	ClassEntry72
+ClassEntry72:
+	movl	$72, %eax
+	jmp	L000
+
+	.globl	ClassEntry73
+ClassEntry73:
+	movl	$73, %eax
+	jmp	L000
+
+	.globl	ClassEntry74
+ClassEntry74:
+	movl	$74, %eax
+	jmp	L000
+
+	.globl	ClassEntry75
+ClassEntry75:
+	movl	$75, %eax
+	jmp	L000
+
+	.globl	ClassEntry76
+ClassEntry76:
+	movl	$76, %eax
+	jmp	L000
+
+	.globl	ClassEntry77
+ClassEntry77:
+	movl	$77, %eax
+	jmp	L000
+
+	.globl	ClassEntry78
+ClassEntry78:
+	movl	$78, %eax
+	jmp	L000
+
+	.globl	ClassEntry79
+ClassEntry79:
+	movl	$79, %eax
+	jmp	L000
+
+	.globl	ClassEntry80
+ClassEntry80:
+	movl	$80, %eax
+	jmp	L000
+
+	.globl	ClassEntry81
+ClassEntry81:
+	movl	$81, %eax
+	jmp	L000
+
+	.globl	ClassEntry82
+ClassEntry82:
+	movl	$82, %eax
+	jmp	L000
+
+	.globl	ClassEntry83
+ClassEntry83:
+	movl	$83, %eax
+	jmp	L000
+
+	.globl	ClassEntry84
+ClassEntry84:
+	movl	$84, %eax
+	jmp	L000
+
+	.globl	ClassEntry85
+ClassEntry85:
+	movl	$85, %eax
+	jmp	L000
+
+	.globl	ClassEntry86
+ClassEntry86:
+	movl	$86, %eax
+	jmp	L000
+
+	.globl	ClassEntry87
+ClassEntry87:
+	movl	$87, %eax
+	jmp	L000
+
+	.globl	ClassEntry88
+ClassEntry88:
+	movl	$88, %eax
+	jmp	L000
+
+	.globl	ClassEntry89
+ClassEntry89:
+	movl	$89, %eax
+	jmp	L000
+
+	.globl	ClassEntry90
+ClassEntry90:
+	movl	$90, %eax
+	jmp	L000
+
+	.globl	ClassEntry91
+ClassEntry91:
+	movl	$91, %eax
+	jmp	L000
+
+	.globl	ClassEntry92
+ClassEntry92:
+	movl	$92, %eax
+	jmp	L000
+
+	.globl	ClassEntry93
+ClassEntry93:
+	movl	$93, %eax
+	jmp	L000
+
+	.globl	ClassEntry94
+ClassEntry94:
+	movl	$94, %eax
+	jmp	L000
+
+	.globl	ClassEntry95
+ClassEntry95:
+	movl	$95, %eax
+	jmp	L000
+
+	.globl	ClassEntry96
+ClassEntry96:
+	movl	$96, %eax
+	jmp	L000
+
+	.globl	ClassEntry97
+ClassEntry97:
+	movl	$97, %eax
+	jmp	L000
+
+	.globl	ClassEntry98
+ClassEntry98:
+	movl	$98, %eax
+	jmp	L000
+
+	.globl	ClassEntry99
+ClassEntry99:
+	movl	$99, %eax
+	jmp	L000
+
+	.globl	ClassEntry100
+ClassEntry100:
+	movl	$100, %eax
+	jmp	L000
+
+	.globl	ClassEntry101
+ClassEntry101:
+	movl	$101, %eax
+	jmp	L000
+
+	.globl	ClassEntry102
+ClassEntry102:
+	movl	$102, %eax
+	jmp	L000
+
+	.globl	ClassEntry103
+ClassEntry103:
+	movl	$103, %eax
+	jmp	L000
+
+	.globl	ClassEntry104
+ClassEntry104:
+	movl	$104, %eax
+	jmp	L000
+
+	.globl	ClassEntry105
+ClassEntry105:
+	movl	$105, %eax
+	jmp	L000
+
+	.globl	ClassEntry106
+ClassEntry106:
+	movl	$106, %eax
+	jmp	L000
+
+	.globl	ClassEntry107
+ClassEntry107:
+	movl	$107, %eax
+	jmp	L000
+
+	.globl	ClassEntry108
+ClassEntry108:
+	movl	$108, %eax
+	jmp	L000
+
+	.globl	ClassEntry109
+ClassEntry109:
+	movl	$109, %eax
+	jmp	L000
+
+	.globl	ClassEntry110
+ClassEntry110:
+	movl	$110, %eax
+	jmp	L000
+
+	.globl	ClassEntry111
+ClassEntry111:
+	movl	$111, %eax
+	jmp	L000
+
+	.globl	ClassEntry112
+ClassEntry112:
+	movl	$112, %eax
+	jmp	L000
+
+	.globl	ClassEntry113
+ClassEntry113:
+	movl	$113, %eax
+	jmp	L000
+
+	.globl	ClassEntry114
+ClassEntry114:
+	movl	$114, %eax
+	jmp	L000
+
+	.globl	ClassEntry115
+ClassEntry115:
+	movl	$115, %eax
+	jmp	L000
+
+	.globl	ClassEntry116
+ClassEntry116:
+	movl	$116, %eax
+	jmp	L000
+
+	.globl	ClassEntry117
+ClassEntry117:
+	movl	$117, %eax
+	jmp	L000
+
+	.globl	ClassEntry118
+ClassEntry118:
+	movl	$118, %eax
+	jmp	L000
+
+	.globl	ClassEntry119
+ClassEntry119:
+	movl	$119, %eax
+	jmp	L000
+
+	.globl	ClassEntry120
+ClassEntry120:
+	movl	$120, %eax
+	jmp	L000
+
+	.globl	ClassEntry121
+ClassEntry121:
+	movl	$121, %eax
+	jmp	L000
+
+	.globl	ClassEntry122
+ClassEntry122:
+	movl	$122, %eax
+	jmp	L000
+
+	.globl	ClassEntry123
+ClassEntry123:
+	movl	$123, %eax
+	jmp	L000
+
+	.globl	ClassEntry124
+ClassEntry124:
+	movl	$124, %eax
+	jmp	L000
+
+	.globl	ClassEntry125
+ClassEntry125:
+	movl	$125, %eax
+	jmp	L000
+
+	.globl	ClassEntry126
+ClassEntry126:
+	movl	$126, %eax
+	jmp	L000
+
+	.globl	ClassEntry127
+ClassEntry127:
+	movl	$127, %eax
+	jmp	L000
+
+	.globl	ClassEntry128
+ClassEntry128:
+	movl	$128, %eax
+	jmp	L000
+
+	.globl	ClassEntry129
+ClassEntry129:
+	movl	$129, %eax
+	jmp	L000
+
+	.globl	ClassEntry130
+ClassEntry130:
+	movl	$130, %eax
+	jmp	L000
+
+	.globl	ClassEntry131
+ClassEntry131:
+	movl	$131, %eax
+	jmp	L000
+
+	.globl	ClassEntry132
+ClassEntry132:
+	movl	$132, %eax
+	jmp	L000
+
+	.globl	ClassEntry133
+ClassEntry133:
+	movl	$133, %eax
+	jmp	L000
+
+	.globl	ClassEntry134
+ClassEntry134:
+	movl	$134, %eax
+	jmp	L000
+
+	.globl	ClassEntry135
+ClassEntry135:
+	movl	$135, %eax
+	jmp	L000
+
+	.globl	ClassEntry136
+ClassEntry136:
+	movl	$136, %eax
+	jmp	L000
+
+	.globl	ClassEntry137
+ClassEntry137:
+	movl	$137, %eax
+	jmp	L000
+
+	.globl	ClassEntry138
+ClassEntry138:
+	movl	$138, %eax
+	jmp	L000
+
+	.globl	ClassEntry139
+ClassEntry139:
+	movl	$139, %eax
+	jmp	L000
+
+	.globl	ClassEntry140
+ClassEntry140:
+	movl	$140, %eax
+	jmp	L000
+
+	.globl	ClassEntry141
+ClassEntry141:
+	movl	$141, %eax
+	jmp	L000
+
+	.globl	ClassEntry142
+ClassEntry142:
+	movl	$142, %eax
+	jmp	L000
+
+	.globl	ClassEntry143
+ClassEntry143:
+	movl	$143, %eax
+	jmp	L000
+
+	.globl	ClassEntry144
+ClassEntry144:
+	movl	$144, %eax
+	jmp	L000
+
+	.globl	ClassEntry145
+ClassEntry145:
+	movl	$145, %eax
+	jmp	L000
+
+	.globl	ClassEntry146
+ClassEntry146:
+	movl	$146, %eax
+	jmp	L000
+
+	.globl	ClassEntry147
+ClassEntry147:
+	movl	$147, %eax
+	jmp	L000
+
+	.globl	ClassEntry148
+ClassEntry148:
+	movl	$148, %eax
+	jmp	L000
+
+	.globl	ClassEntry149
+ClassEntry149:
+	movl	$149, %eax
+	jmp	L000
+
+

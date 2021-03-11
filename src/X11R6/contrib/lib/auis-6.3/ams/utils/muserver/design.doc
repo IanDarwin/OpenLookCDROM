@@ -1,0 +1,64 @@
+Master Update Server (muserver)
+
+Purpose:
+Create a high speed server for master update lookups.
+
+Goals:
+1) faster than current system
+2) as reliable as current system
+3) reduce fileserver load
+
+Concepts:
+1) Master Update String
+A master update string contains the bboard name followed by a ' '
+followed by the tree root (or a single character abbreviation for it),
+followed by the 6-character datestamp, followed by a '\0'.
+The format is desiged to be concise.
+2) Master Update File Buffer
+A "mufbuf" is a dynamically allocated buffer to store an array of
+master update strings.  It contains an array of pointers to the
+strings for fast lookup and sorting.
+
+Design:
+1) When program starts, it forks into two processes: the update
+process, and the server process.  A pipe is created from the update
+process to the server process.
+2) The update process has one mufbuf.  It reads the master update
+files, encoding into master update strings as it reads.  Once the
+files have been read, the entries are sorted.  Then they are sent over
+the pipe to the server process in sorted order.  The process then
+sleeps, periodically checking the master update file timestamps.  When
+they change, the process repeats.
+3) The server process has two mufbufs.  One contains the current
+master update file, and the other is used when reading from the pipe.
+The process uses select() to watch the pipe, a socket, and all current
+clients.  Socket connections are done asynchronously, and all files
+are set non-blocking so the process will only block at the select.
+The should provide immediate response to clients.
+4) clients will open a stream socket to the server, and provide a list
+of interesting bboards.  The server will respond with a list of master
+update strings for each bboard, returning the bboard name for bboards
+that aren't found.  For reliability, clients should fall back on the
+current master update system in case of failure.
+
+Points of interest:
+1) The 3 current master update files have a total size of 255599 bytes.
+With the master update string format, there will probably be a 90%
+savings, making it easy to keep the mufbufs entirely in RAM.
+2) The update file rarely grows, so malloc()/realloc() should only occur
+during startup and when new bboards are added.
+3) If one of the master update files becomes unavailable, the others
+will still be updated and merged with the old version of the file.
+
+Optional design features:
+1) One update process could service many server processes if a stream
+socket was used instead of a pipe.
+2) If the update & server processes contain the same code, they can
+restart each other if the pipe closes.
+3) A hash table could be used if significant CPU time is being spent
+on binary searches.
+4) Logging could be done on number of connections and duration of
+connects, to see if the system is functioning well.  This could be
+made available remotely by having an escape character when requesting
+bboard names.  Time spent searching could also be examined to see if
+it is worth using a hash table.

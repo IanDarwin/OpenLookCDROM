@@ -1,0 +1,165 @@
+/*
+ * Copyright 1994 Network Computing Devices, Inc.
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and
+ * its documentation for any purpose is hereby granted without fee, provided
+ * that the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name Network Computing Devices, Inc. not be
+ * used in advertising or publicity pertaining to distribution of this 
+ * software without specific, written prior permission.
+ * 
+ * THIS SOFTWARE IS PROVIDED `AS-IS'.  NETWORK COMPUTING DEVICES, INC.,
+ * DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING WITHOUT
+ * LIMITATION ALL IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ * PARTICULAR PURPOSE, OR NONINFRINGEMENT.  IN NO EVENT SHALL NETWORK
+ * COMPUTING DEVICES, INC., BE LIABLE FOR ANY DAMAGES WHATSOEVER, INCLUDING
+ * SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES, INCLUDING LOSS OF USE, DATA,
+ * OR PROFITS, EVEN IF ADVISED OF THE POSSIBILITY THEREOF, AND REGARDLESS OF
+ * WHETHER IN AN ACTION IN CONTRACT, TORT OR NEGLIGENCE, ARISING OUT OF OR IN
+ * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * 
+ * $NCDId: @(#)Imakefile,v 1.4 1994/05/27 03:10:32 greg Exp $
+ */
+
+FILES = WaitFor.c connection.c io.c osinit.c access.c genalloca.c mitauth.c \
+	utils.c auth.c hpsocket.c osdep.h
+
+#if (SystemV || SystemV4) && !HasSockets
+#undef ConnectionFlags
+#define ConnectionFlags -DTCPCONN -DUNIXCONN
+#endif
+
+/*
+ * If you have any extra files to be put into the library, define them here.
+ */
+
+#ifdef Amoeba
+#define OtherSources iopreader.c
+#define OtherObjects iopreader.o
+#endif
+
+#ifdef HPArchitecture
+#define OtherSources hpsocket.c 
+#define OtherObjects hpsocket.o dbm.o 
+#endif
+
+
+/*
+ * do not modify the following two definitions
+ */
+
+#ifndef OtherSources
+#define OtherSources
+#endif
+
+#ifndef OtherObjects
+#define OtherObjects
+#endif
+
+XDMAUTHDEFS = 
+XDMAUTHOBJS =
+XDMAUTHSCRS =
+
+RPCDEFS =
+RPCOBJS =
+RPCSRCS =
+
+#if PartialNetDefault
+PART_NET = -DPART_NET
+#else
+PART_NET =
+#endif
+
+#if HasBSD44Sockets
+   SOCK_DEFINES = -DBSD44SOCKETS
+#endif
+
+BOOTSTRAPCFLAGS = 
+           SRCS = WaitFor.c access.c connection.c io.c \
+                  osinit.c utils.c auth.c mitauth.c $(XDMAUTHSRCS) \
+ 		  $(RPCSRCS) OtherSources
+           OBJS = WaitFor.o access.o connection.o io.o \
+                  osinit.o utils.o auth.o mitauth.o $(XDMAUTHOBJS) \
+ 		  $(RPCOBJS) OtherObjects
+#if SpecialMalloc
+     OS_DEFINES = -DSPECIAL_MALLOC
+#else
+     OS_DEFINES =
+#endif /* SpecialMalloc */
+#if defined(PegasusArchitecture) || XdecServer
+    TIME_DEFINES = -DDDXTIME
+#else
+    TIME_DEFINES =
+#endif
+    DBM_DEFINES = NdbmDefines
+    ADM_DEFINES = -DADMPATH=\"$(ADMDIR)/audio\%smsgs\"
+        DEFINES = ConnectionFlags $(OS_DEFINES) $(XDMAUTHDEFS) $(RPCDEFS) $(SIGNAL_DEFINES) $(PART_NET)
+       INCLUDES = -I.  -I../include -I../../include
+ DEPEND_DEFINES = $(DBM_DEFINES)
+       LINTLIBS = ../dix/llib-ldix.ln
+
+#ifdef HPArchitecture
+         DBMLIB = /usr/lib/libdbm.a
+    XLIBSYSVDIR = $(TOP)/lib/X/sysV
+#endif /* HPArchitecture */
+
+#ifdef NEED_ALLOCA_FROM_LIBPW
+          PWLIB = /lib/libPW.a
+#endif /* NEED_ALLOCA_FROM_LIBPW */
+
+NormalLibraryObjectRule()
+NormalLibraryTarget(os,$(OBJS))
+LintLibraryTarget(os,$(SRCS))
+NormalLintTarget($(SRCS))
+
+#ifdef HPArchitecture
+XCOMM
+XCOMM The following kludge is necessary because dbm already has a global 
+XCOMM routine named "bcopy" that is implemented in a silly way.  So, we have to 
+XCOMM extract the objects from the library, force the bcopy routine to be 
+XCOMM local to the one file, put the result into a temporary file, rename the 
+XCOMM temporary file to its proper name, and link it together with
+XCOMM everything else to form the object file that we link into the server.
+XCOMM
+#ifdef hp9000s300
+dbm.o:  $(DBMLIB)
+	rm -f dbm.o
+	if [ ! -d dbm ]; then $(RM) -r dbm; mkdir dbm; else /bin/true; fi
+	(cd dbm; rm -f *.o; ar -x $(DBMLIB); \
+	ld -r -o a.out.o -h _bcopy ndbm.o; \
+	mv a.out.o ndbm.o; ld -r -o ../dbm.o *.o)
+#else
+dbm.o:  $(DBMLIB)
+	rm -f dbm.o
+	if [ ! -d dbm ]; then $(RM) -r dbm; mkdir dbm; else /bin/true; fi
+	(cd dbm; rm -f *.o; ar -x $(DBMLIB); \
+	ld -r -o a.out.o -h bcopy ndbm.o; \
+	mv a.out.o ndbm.o; ld -r -o ../dbm.o *.o)
+#endif /* hp9000s300 */
+#endif /* HPArchitecture */
+
+#ifdef NEED_ALLOCA_FROM_LIBPW
+XCOMM
+XCOMM And this one is to get the version of alloca that lives in /lib/libPW.a
+XCOMM without getting all of the rest of the stuff in there.
+XCOMM
+alloca.o:  $(PWLIB)
+	rm -f alloca.o
+	ar x $(PWLIB) alloca.o
+#endif /* NEED_ALLOCA_FROM_LIBPW */
+
+#ifndef SpecialCObjectRule
+#define SpecialCObjectRule(basename,depends,options)			@@\
+SpecialObjectRule(basename.o,basename.c depends,options)
+#endif
+
+SpecialCObjectRule(access,$(ICONFIGFILES),$(_NOOP_))
+SpecialCObjectRule(auth,$(ICONFIGFILES),$(_NOOP_))
+SpecialCObjectRule(connection,$(ICONFIGFILES),$(SOCK_DEFINES))
+SpecialCObjectRule(osinit,$(ICONFIGFILES),$(ADM_DEFINES))
+SpecialCObjectRule(WaitFor,$(ICONFIGFILES),$(_NOOP_))
+SpecialCObjectRule(io,$(ICONFIGFILES),$(_NOOP_))
+SpecialCObjectRule(utils,$(ICONFIGFILES),$(TIME_DEFINES))
+
+DependTarget()

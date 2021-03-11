@@ -1,0 +1,1046 @@
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+
+
+# Running this awk(1) program will create the startup, crontab, and resolv.conf files for the
+# AMS server machines.  The resolv.conf files are created by substituting the machine's own
+# address for the last entry of the existing, public /etc/resolv.conf.
+# The (global) startup and (machine-specific) crontab files are configured by a bin-packing
+# algorithm that attempts to balance loads among the various PO machines and among the
+# various BB machines.  We estimate the cost for a task (in the cost[]) array, and we're given
+# an estimate for the capacity of a given machine via PossibleXXCapas.
+
+%include pobbconfig.defs
+
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+
+%ifdef pobb_RunMachines
+
+BEGIN	{OFS = ""; ORS = "\n";
+%ifdef pobb_RunAMSDelivery
+	PossiblePOs="?[arrlist(PossiblePOs)]";
+	PossiblePOAddrs="?[arrlist(PossiblePOAddrs)]";
+	PossiblePOCapas="?[arrlist(PossiblePOCapas)]";
+	DeployedPOs="?[arrlist(DeployedPOs)]";
+	MXHosts="?[arrlist(MXHosts)]";
+	MXWeights="?[arrlist(MXWeights)]";
+%endif pobb_RunAMSDelivery
+%ifdef pobb_AutoPost
+	PossibleBBs="?[arrlist(PossibleBBs)]";
+	PossibleBBAddrs="?[arrlist(PossibleBBAddrs)]";
+	PossibleBBCapas="?[arrlist(PossibleBBCapas)]";
+	DeployedBBs="?[arrlist(DeployedBBs)]";
+%endif pobb_AutoPost
+%ifdef pobb_MUServer
+	MUServerBBs="?[arrlist(MUServerBBs)]";
+%endif pobb_MUServer
+	lineIx = 0;
+	NSix = 0;
+	MailQs="?[arrlist(GlobalMailQueues)]";
+	SlowQs="?[arrlist(GlobalSlowMailQueues)]";
+}
+
+# The first line of the input file is special--it tells us what to do.
+# Subsequent lines tell the script other things about how the system is configured--
+# e.g., where the default name servers are.
+{
+	++lineIx;
+	if (lineIx == 1) {
+		ThingToDo=$$1;
+		HostToDoItFor=$$2;
+	} else {
+		if ($$1 == "nameserver") {
+			++NSix;
+			NS[NSix] = $$2
+		} else {
+			print "*** Unrecognized input line: " $$0;
+			exit 1;
+		}
+	}
+}
+
+END	{
+	Debug = 0;
+	if (ThingToDo == "dump") Debug = 1;
+%ifdef pobb_RunAMSDelivery
+	numPossiblePOs = split(PossiblePOs, possPO, " ");
+	numPossiblePOAddrs = split(PossiblePOAddrs, possPOAddr, " ");
+	numPossiblePOCapas = split(PossiblePOCapas, possPOCapa, " ");
+	numDeployedPOs = split(DeployedPOs, deplPO, " ");
+	numMXHosts = split(MXHosts, MXH, " ");
+	numMXWeights = split(MXWeights, MXW, " ");
+	numQs = split(MailQs, Qs, " ");
+	numSQs = split(SlowQs, SQs, " ");
+%else pobb_RunAMSDelivery
+	numPossiblePOs = numDeployedPOs = numQs = numSQs = 0;
+%endif pobb_RunAMSDelivery
+%ifdef pobb_AutoPost
+	numPossibleBBs = split(PossibleBBs, possBB, " ");
+	numPossibleBBAddrs = split(PossibleBBAddrs, possBBAddr, " ");
+	numPossibleBBCapas = split(PossibleBBCapas, possBBCapa, " ");
+	numDeployedBBs = split(DeployedBBs, deplBB, " ");
+%else pobb_AutoPost
+	numPossibleBBs = numDeployedBBs = 0;
+%endif pobb_AutoPost
+%ifdef pobb_MUServer
+	numMUServerBBs = split(MUServerBBs, musrvBB, " ");
+%else pobb_MUServer
+	numMUServerBBs = 0;
+%endif pobb_MUServer
+%ifdef pobb_RunAMSDelivery
+%ifdef pobb_AutoPost
+	possPOBBs = PossiblePOs;
+	deplPOBBs = DeployedPOs;
+	for (bb = 1; bb <= numPossibleBBs; ++bb) {
+		isPO = 0;
+		for (po = 1; po < numPossiblePOs; ++po) {
+			if (possPO[po] == possBB[bb]) isPO = 1;
+		}
+		if (isPO == 0) possPOBBs = possPOBBs " " possBB[bb];
+	}
+	for (bb = 1; bb <= numDeployedBBs; ++bb) {
+		isPO = 0;
+		for (po = 1; po < numDeployedPOs; ++po) {
+			if (deplPO[po] == deplBB[bb]) isPO = 1;
+		}
+		if (isPO == 0) deplPOBBs = deplPOBBs " " deplBB[bb];
+	}
+%else pobb_AutoPost
+	possPOBBs = PossiblePOs;
+	deplPOBBs = DeployedPOs;
+%endif pobb_AutoPost
+%else pobb_RunAMSDelivery
+%ifdef pobb_AutoPost
+	possPOBBs = PossibleBBs;
+	deplPOBBs = DeployedBBs;
+%endif pobb_AutoPost
+%endif pobb_RunAMSDelivery
+
+	numPossiblePOBBs = split(possPOBBs, possPOBB, " ");
+	numDeployedPOBBs = split(deplPOBBs, deplPOBB, " ");
+
+	ppoIx = dpoIx = 0;
+	pbbIx = dbbIx = 0;
+	ppobbIx = dpobbIx = 0;
+	if (HostToDoItFor != "") {
+%ifdef pobb_RunAMSDelivery
+		for (mumble = 1; mumble <= numPossiblePOs; ++mumble) {
+			if (possPO[mumble] == HostToDoItFor) {
+				ppoIx = mumble; break;
+			}
+		}
+		for (mumble = 1; mumble <= numDeployedPOs; ++mumble) {
+			if (deplPO[mumble] == HostToDoItFor) {
+				dpoIx = mumble; break;
+			}
+		}
+%endif pobb_RunAMSDelivery
+%ifdef pobb_AutoPost
+		for (mumble = 1; mumble <= numPossibleBBs; ++mumble) {
+			if (possBB[mumble] == HostToDoItFor) {
+				pbbIx = mumble; break;
+			}
+		}
+		for (mumble = 1; mumble <= numDeployedBBs; ++mumble) {
+			if (deplBB[mumble] == HostToDoItFor) {
+				dbbIx = mumble; break;
+			}
+		}
+%endif pobb_AutoPost
+		for (mumble = 1; mumble <= numPossiblePOBBs; ++mumble) {
+			if (possPOBB[mumble] == HostToDoItFor) {
+				ppobbIx = mumble; break;
+			}
+		}
+		for (mumble = 1; mumble <= numDeployedPOBBs; ++mumble) {
+			if (deplPOBB[mumble] == HostToDoItFor) {
+				dpobbIx = mumble; break;
+			}
+		}
+	}
+	for (mumble = 1; mumble <= numPossiblePOBBs; ++mumble) {
+		Deployed[possPOBB[mumble]] = 0;
+		isPO[possPOBB[mumble]] = isBB[possPOBB[mumble]] = 0;
+		Capacity[possPOBB[mumble]] = 1;
+		isMX[possPOBB[mumble]] = 0;
+		extraN[possPOBB[mumble]] = "";
+	}
+	for (mumble = 1; mumble <= numDeployedPOBBs; ++mumble) {
+		Deployed[deplPOBB[mumble]] = 1;
+		Load[deplPOBB[mumble]] = 0;
+	}
+
+# Here are the cost estimates.
+	PrimCost = 25;		# cost of receiving mail as the WorkstationCell machine
+	PrimMXCost = 30;	# cost of receiving mail as the first host listed via MX
+	MXCost = 65;		# total cost of receiving incoming MX mail
+	mailqueueCost = 20;	# cost of running one queuemail daemon on regular queues
+	slowqueueCost = 30;	# cost of running one queuemail daemon on slow queues
+	outgoingCost = 50;		# cost of running the Outgoing daemon
+	wpCost = 20;		# cost of running the WP-rebuild job
+#	wpCost = 1;		# artificial cost of NOT running the WP-rebuild job
+	gettablesCost = 3;		# cost of retrieving new host tables
+	getlistCost = 3;		# cost of retrieving the list-of-lists
+	mslocalHighCost = 30;	# cost of running the msdaemon.localhigh CUIN daemon
+	mslocalLowCost = 30;	# cost of running the msdaemon.locallow CUIN daemon
+	mslocalCost = 50;		# cost of running the msdaemon.local CUIN daemon
+	msundigestCost = 55;	# cost of running both msdaemon.extnonetnews and undigest
+	msextnonetnewsCost = 40;	# cost of running just msdaemon.extnonetnews
+	msdjCost = 60;		# cost of running msdaemon.dj (polling the Dow-Jones box)
+	msnetnewsCost = 75;	# cost of running both msdaemon.netnews and nntppoll
+	muserverCost = 20;	# cost of running msdaemon.muserver
+	BBDCost = 5;		# 1/4 the cost of running the BBD nightly daemons
+	bbmcheckCost = 3;		# cost of running the bbmailbox size checking daemon
+%ifdef pobb_RunAMSDelivery
+	for (mumble = 1; mumble <= numPossiblePOs; ++mumble) {
+		isPO[possPO[mumble]] = 1;
+		Capacity[possPO[mumble]] = possPOCapa[mumble];
+		if (possPO[mumble] == "?[WorkstationCell]") {
+			Load[possPO[mumble]] += PrimCost;
+			extraN[possPO[mumble]] = "Receive non-MX mail for domain";
+		} else if (possPO[mumble] == "?[PrimaryMXHost]") {
+			Load[possPO[mumble]] += PrimMXCost;
+			extraN[possPO[mumble]] = "Receive MX mail for domain";
+		}
+	}
+	SumMXWeights = 0;
+	for (mumble = 1 ; mumble <= numMXHosts; ++mumble) {
+		SumMXWeights += MXW[mumble];
+	}
+	for (mumble = 1 ; mumble <= numMXHosts; ++mumble) {
+		Load[MXH[mumble]] += MXCost * MXW[mumble] / SumMXWeights ;
+		extraN[MXH[mumble]] = "Receive MX mail for domain";
+	}
+%endif pobb_RunAMSDelivery
+%ifdef pobb_AutoPost
+	for (mumble = 1; mumble <= numPossibleBBs; ++mumble) {
+		isBB[possBB[mumble]] = 1;
+		Capacity[possBB[mumble]] = possBBCapa[mumble];
+	}
+%endif pobb_AutoPost
+	tIx = 0;	# Start off our gensym.
+# First, do the config.monitor lines in crontab.
+# Start with the PO machines.
+	count = 0;
+	for (mumble = 1; mumble <= numDeployedPOs; ++mumble) {
+		++tIx;
+		ct_tasks[tIx] = deplPO[mumble];
+# Check the configuration every hour, skewed across the different machines.
+		when = (count * 60) / numDeployedPOs;
+		y = split(when, outwhen, ".");
+		if (y > 1) when = outwhen[1];
+		++count;
+		cronline[tIx] = when " * * * * root ?[SmallLocalDir]/config.monitor";
+		name[tIx] = "config monitor";
+		n[tIx] = "Configuration monitor";
+	}
+# Now the BB machines that aren't also serving as PO machines.
+	count = 0;
+	numBBnonPO = 0;
+%ifdef pobb_AutoPost
+	for (mumble = 1; mumble <= numDeployedBBs; ++mumble) {
+		if (isPO[deplBB[mumble]] == 0) ++numBBnonPO;
+	}
+%endif pobb_AutoPost
+	for (mumble = 1; mumble <= numDeployedBBs; ++mumble) {
+%ifdef pobb_AutoPost
+	    if (isPO[deplBB[mumble]] == 0)
+%endif pobb_AutoPost
+		{
+		++tIx;
+		ct_tasks[tIx] = deplBB[mumble];
+# Check the configuration every hour, skewed across the different machines.
+		when = (count * 60) / numBBnonPO;
+		y = split(when, outwhen, ".");
+		if (y > 1) when = outwhen[1];
+		++count;
+		cronline[tIx] = when " * * * * root ?[SmallLocalDir]/config.monitor";
+		name[tIx] = "config monitor";
+		n[tIx] = "Configuration monitor";
+	    }
+	}
+
+# Now let's do the restart lines.
+%ifdef pobb_RunAMSDelivery
+	count = 0;
+	for (mumble = 1; mumble <= numPossiblePOs; ++mumble) {
+		++tIx;
+		ct_tasks[tIx] = possPO[mumble];
+		if (Deployed[possPO[mumble]] != 0) {
+# Reboot deployed ones over a one-hour period starting at 5:30am.
+			when = (count * 60) / numDeployedPOs;
+			y = split(when, outwhen, ".");
+			if (y > 1) when = outwhen[1];
+			++count;
+			minute = when + 30;
+			hour = 5;
+			if (minute >= 60) {minute -= 60; hour += 1;}
+			cronline[tIx] = minute " " hour " * * * root ?[SomeScriptDir]/restart";
+		} else {
+# Reboot non-deployed ones every hour at 3:00am.
+			hour = 3;
+			minute = 0;
+			cronline[tIx] = "0 3 * * * root ?[SomeScriptDir]/restart";
+		}
+		name[tIx] = "restart";
+		n[tIx] = "Periodic reboot";
+	}
+%endif pobb_RunAMSDelivery
+%ifdef pobb_AutoPost
+	count = 0;
+	for (mumble = 1; mumble <= numPossibleBBs; ++mumble) {
+		++tIx;
+		ct_tasks[tIx] = possBB[mumble];
+		if (Deployed[possPO[mumble]] != 0) {
+# Reboot deployed ones over a one-hour period starting at 12:30am.
+			when = (count * 60) / numDeployedBBs;
+			y = split(when, outwhen, ".");
+			if (y > 1) when = outwhen[1];
+			++count;
+			minute = when + 30;
+			hour = 0;
+			if (minute >= 60) {minute -= 60; hour += 1;}
+			cronline[tIx] = minute " " hour " * * * root ?[SomeScriptDir]/restart";
+		} else {
+# Reboot non-deployed ones every hour at 3:00am.
+			hour = 3;
+			minute = 0;
+			cronline[tIx] = "0 3 * * * root ?[SomeScriptDir]/restart";
+		}
+		name[tIx] = "restart";
+		n[tIx] = "Periodic reboot";
+	}
+%endif pobb_AutoPost
+
+# The BBD daemon.
+#   If there's a bboard system, it has to run on the first BB machine.
+#   If not, run on any PO machine.
+	++tIx;
+%ifdef pobb_AutoPost
+	bbtask[tIx] = deplBB[1];
+%else pobb_AutoPost
+	potask[tIx] = "";
+%endif pobb_AutoPost
+	cron[tIx] = "10 1 * * * root  ?[SmallLocalDir]/queueBBD N";
+	cost[tIx] = BBDCost;
+	name[tIx] = "BBD N";
+	n[tIx] = "Nightly BBD daemon";
+	++tIx;
+%ifdef pobb_AutoPost
+	bbtask[tIx] = deplBB[1];
+%else pobb_AutoPost
+	potask[tIx] = "";
+%endif pobb_AutoPost
+	cron[tIx] = "20 1 * * 5 root ?[SmallLocalDir]/queueBBD W";
+	cost[tIx] = BBDCost;
+	name[tIx] = "BBD W";
+	n[tIx] = "Weekly BBD daemon";
+	++tIx;
+%ifdef pobb_AutoPost
+	bbtask[tIx] = deplBB[1];
+%else pobb_AutoPost
+	potask[tIx] = "";
+%endif pobb_AutoPost
+	cron[tIx] = "24 1 5,20 * * root ?[SmallLocalDir]/queueBBD BW";
+	cost[tIx] = BBDCost;
+	name[tIx] = "BBD BW";
+	n[tIx] = "Bi-Weekly BBD daemon";
+%ifdef pobb_AutoPost
+# Monthly and semi-annual tasks.  None if we don't run a bboard system.
+	++tIx;
+%ifdef pobb_AutoPost
+	bbtask[tIx] = deplBB[1];
+%else pobb_AutoPost
+	potask[tIx] = "";
+%endif pobb_AutoPost
+	cron[tIx] = "27 1 1 * * root ?[SmallLocalDir]/queueBBD M";
+	cost[tIx] = BBDCost;
+	name[tIx] = "BBD M";
+	n[tIx] = "Monthly BBD daemon";
+	++tIx;
+%ifdef pobb_AutoPost
+	bbtask[tIx] = deplBB[1];
+%else pobb_AutoPost
+	potask[tIx] = "";
+%endif pobb_AutoPost
+	cron[tIx] = "35 1 1 1,7 * root ?[SmallLocalDir]/queueBBD S";
+	cost[tIx] = BBDCost;
+	name[tIx] = "BBD S";
+	n[tIx] = "Semi-annual BBD daemon";
+%endif pobb_AutoPost
+# The related tasks; run on all machines
+	count = 0;
+	for (i = 1; i <= numPossiblePOBBs; ++i) {
+		++tIx;
+		ct_tasks[tIx] = possPOBB[i];
+		if (Deployed[possPOBB[i]] != 0) {
+# Move them for an hour starting at 10:00pm.
+			when = (count * 60) / numDeployedPOBBs;
+			y = split(when, outwhen, ".");
+			if (y > 1) when = outwhen[1];
+			++count;
+			hour = 22;
+			cronline[tIx] = when " 22 * * * root ?[BBDaemonDir]/cron.movelogs";
+		} else {
+			when = 0;
+			hour = 23;
+			cronline[tIx] = "0 23 * * * root ?[BBDaemonDir]/cron.movelogs";
+		}
+		name[tIx] = "bbd-log and capt-addr move";
+		n[tIx] = "BBoard-log and captured-address move";
+	}
+
+# Now, prepare for load balancing.  Add all the known tasks to the XXtask arrays.
+	for (mum = 1; mum <= numDeployedPOBBs; ++mum) {
+		qmd_args[deplPOBB[mum]] = "";
+		bbd_args[deplPOBB[mum]] = "";
+		pocl_args[deplPOBB[mum]] = "";
+	}
+%ifdef pobb_RunAMSDelivery
+	for (i = 1; i <= numQs; ++i) {
+		++tIx;
+		potask[tIx] = "";
+		poqmd[tIx] = Qs[i];
+		cost[tIx] = mailqueueCost;
+		name[tIx] = Qs[i] "/1";
+		n[tIx] = "Service to mail queue " Qs[i];
+		if (numDeployedPOs > 1) {
+			pair[tIx] = tIx+1;
+			++tIx;
+			potask[tIx] = "";
+			poqmd[tIx] = Qs[i];
+			cost[tIx] = mailqueueCost;
+			name[tIx] = Qs[i] "/2";
+			n[tIx] = n[tIx-1];
+			pair[tIx] = tIx-1;
+		}
+	}
+	if (numSQs <= 0) {SQs[1] = "sq1"; numSQs = 1;}
+	for (i = 1; i <= numSQs; ++i) {
+		++tIx;
+		potask[tIx] = "";
+		poqmd[tIx] = SQs[i];
+		popocl[tIx] = SQs[i];
+		cost[tIx] = slowqueueCost;
+		name[tIx] = SQs[i] "/1";
+		n[tIx] = "Service to background mail queue " SQs[i];
+		if (numDeployedPOs > 1) {
+			pair[tIx] = tIx+1;
+			++tIx;
+			potask[tIx] = "";
+			poqmd[tIx] = SQs[i];
+			popocl[tIx] = SQs[i];
+			cost[tIx] = slowqueueCost;
+			name[tIx] = SQs[i] "/2";
+			n[tIx] = n[tIx-1];
+			pair[tIx] = tIx-1;
+		}
+	}
+	++tIx;
+	potask[tIx] = "";
+	poOut[tIx] = "OUT";
+	cost[tIx] = outgoingCost;
+	name[tIx] = "Outgoing";
+	n[tIx] = "Service to .Outgoing directories";
+%endif pobb_RunAMSDelivery
+%ifdef pobb_WPUpdate
+	++tIx;
+	potask[tIx] = "";	# used to run on the first PO machine: loosen that now.
+	cron[tIx] = "31 18 * * * root ?[wpbuildDir]/buildwp.cron";
+	cost[tIx] = wpCost;
+	name[tIx] = "wpbuild";
+	n[tIx] = "White Pages rebuild";
+%endif pobb_WPUpdate
+%ifdef pobb_GetHostTable
+	++tIx;
+	potask[tIx] = "";
+	cron[tIx] = "47 1 * * * root ?[BBDaemonDir]/gettables.cron";
+	cost[tIx] = gettablesCost;
+	name[tIx] = "gettables/1";
+	n[tIx] = "Retrieve new table of hosts";
+	if (numDeployedPOs > 1) {
+		pair[tIx] = tIx+1;
+		++tIx;
+		potask[tIx] = "";
+		cron[tIx] = "10 5 * * * root ?[BBDaemonDir]/gettables.cron";
+		cost[tIx] = gettablesCost;
+		name[tIx] = "gettables/2";
+		n[tIx] = n[tIx-1];
+		pair[tIx] = tIx-1;
+	}
+%endif pobb_GetHostTable
+%ifdef pobb_GetListOfLists
+	++tIx;
+	potask[tIx] = "";
+	cron[tIx] = "22 2 * * * root ?[BBDaemonDir]/getlist.cron";
+	cost[tIx] = getlistCost;
+	name[tIx] = "getlist";
+	n[tIx] = "Retrieve list-of-lists";
+%endif pobb_GetListOfLists
+%ifdef pobb_CheckBBMailboxSizes
+	++tIx;
+	bbtask[tIx] = deplBB[1];
+	cron[tIx] = "46 1,9,17 * * * root ?[BBDaemonDir]/bbmcheck.cron";
+ 	cost[tIx] = bbmcheckCost;
+	name[tIx] = "bbmcheck";
+	n[tIx] = "Check bboard Mailbox sizes";
+%endif pobb_CheckBBMailboxSizes
+%ifdef pobb_AutoPost
+	if (numDeployedBBs >= 3 && ?[count(CUILocalHighBoxes)] > 0 && ?[count(CUILocalLowBoxes)] > 0) {
+		++tIx;
+		bbtask[tIx] = deplBB[3];
+		bbbbd[tIx] = "msdaemon.localhigh";
+		cost[tIx] = mslocalHighCost;
+		name[tIx] = "ms.localhigh";
+		n[tIx] = "Service to local high-service mailboxes";
+		++tIx;
+		bbtask[tIx] = "";
+		bbbbd[tIx] = "msdaemon.locallow";
+		cost[tIx] = mslocalLowCost;
+		name[tIx] = "ms.locallow";
+		n[tIx] = "Service to local low-service mailboxes";
+	} else if (?[count(CUILocalBoxes)] > 0) {
+		++tIx;
+		bbtask[tIx] = "";
+		bbbbd[tIx] = "msdaemon.local";
+		cost[tIx] = mslocalCost;
+		name[tIx] = "ms.local";
+		n[tIx] = "Service to local mailboxes";
+	}
+	if ( ?[count(CUIExtBoxes)] > 0) {
+%ifdef pobb_UnDigest
+# Group extnonetnews and undigest together if we run both.
+		++tIx;
+		bbtask[tIx] = "";
+		bbbbd[tIx] = "msdaemon.extnonetnews undigest";
+		cost[tIx] = msundigestCost;
+		name[tIx] = "ms.ext/undigest";
+		n[tIx] = "Service to external mailboxes and undigesting";
+%else pobb_UnDigest
+		++tIx;
+		bbtask[tIx] = "";
+		bbbbd[tIx] = "msdaemon.extnonetnews";
+		cost[tIx] = msextnonetnewsCost;
+		name[tIx] = "ms.ext";
+		n[tIx] = "Service to external mailboxes";
+%endif pobb_UnDigest
+	}
+%ifdef pobb_DowJonesIn
+	++tIx;
+	if (numDeployedBBs >= 4) {
+		bbtask[tIx] = deplBB[4];
+	} else {
+		bbtask[tIx] = "";
+	}
+	bbbbd[tIx] = "msdaemon.dj";
+	cost[tIx] = msdjCost;
+	name[tIx] = "ms.dj";
+	n[tIx] = "Service to Dow-Jones mailbox";
+%endif pobb_DowJonesIn
+%ifdef pobb_NNTPIn
+	++tIx;
+	bbtask[tIx] = deplBB[1];	# Uses features of the disk on the first BB machine.
+	bbbbd[tIx] = "msdaemon.netnews nntppoll";
+	cost[tIx] = msnetnewsCost;
+	name[tIx] = "ms.netnews/nntppoll";
+	n[tIx] = "Retrieve netnews and post it";
+	BB1TakesHints = 0;	# initialize this
+%endif pobb_NNTPIn
+%ifdef pobb_MUServer
+	for (mumble = 1; mumble <= numMUServerBBs; ++mumble) {
+		++tIx;
+		bbbbd[tIx] = "muserver";
+		bbtask[tIx] = musrvBB[mumble];
+		cost[tIx] = muserverCost;
+		name[tIx] = "muserver";
+		n[tIx] = "Run Master Update server";
+	}
+%endif pobb_MUServer
+%endif pobb_AutoPost
+
+# Now that the tasks are in the arrays, assign them to the machines.  Do the pre-assigned ones first.
+%ifdef pobb_RunAMSDelivery
+	for (i in potask) {
+	    if (potask[i] != "") {
+		Load[potask[i]] += cost[i];
+	    }
+	}
+%endif pobb_RunAMSDelivery
+%ifdef pobb_AutoPost
+	for (i in bbtask) {
+	    if (bbtask[i] != "") {
+		Load[bbtask[i]] += cost[i];
+	    }
+	}
+%endif pobb_AutoPost
+
+# Here's the bin-packing algorithm itself.  We use a greedy algorithm to balance the loads.
+# We find the highest-cost unassigned task and assign it to the least-loaded machine,
+#  and repeat until all tasks are assigned.
+# We do this for the PO machines, and repeat it for the BB machines.
+
+# Let's do arithmetic on integers instead of floating-point numbers.  Here's a conversion factor.
+	FixLoad = 10000;
+%ifdef pobb_RunAMSDelivery
+	while (1) {
+	    MaxCost = 0;
+	    Task = 0;
+	    for (i in potask) {
+		if (potask[i] == "") {
+		    if (cost[i] > MaxCost) {MaxCost = cost[i]; Task = i;}
+		}
+	    }
+	    if (Task == 0) break;	# all tasks are assigned.
+
+	    if (Debug) print "Task " name[Task] ", cost " cost[Task] ":";
+	    MinRatio = FixLoad * 10000;
+	    Machine = "";
+	    for (mum = 1; mum <= numDeployedPOs; ++mum) {
+		if (pair[Task] > 0) {	# Can't assign paired tasks to the same machine.
+			if (potask[pair[Task]] == deplPO[mum]) continue;
+		}
+		ratio = (Load[deplPO[mum]] * FixLoad) / Capacity[deplPO[mum]];
+		if (Debug) print "  " deplPO[mum] " " ratio;
+		if (ratio < MinRatio) {MinRatio = ratio; Machine = deplPO[mum];}
+	    }
+# Assign task Task to machine Machine.
+	    if (Debug) print "PO machine " Machine " gets task " name[Task] ", cost " cost[Task];
+	    potask[Task] = Machine;
+	    Load[Machine] += cost[Task];
+	}
+%endif pobb_RunAMSDelivery
+%ifdef pobb_AutoPost
+	while (1) {
+	    MaxCost = 0;
+	    Task = 0;
+	    for (i in bbtask) {
+		if (bbtask[i] == "") {
+		    if (cost[i] > MaxCost) {MaxCost = cost[i]; Task = i;}
+		}
+	    }
+	    if (Task == 0) break;	# all tasks are assigned.
+
+	    if (Debug) print "Task " name[Task] ", cost " cost[Task] ":";
+	    MinRatio = FixLoad * 10000;
+	    Machine = "";
+	    for (mum = 1; mum <= numDeployedBBs; ++mum) {
+		if (pair[Task] > 0) {	# Can't assign paired tasks to the same machine.
+			if (bbtask[pair[Task]] == deplBB[mum]) continue;
+		}
+		ratio = (Load[deplBB[mum]] * FixLoad) / Capacity[deplBB[mum]];
+		if (Debug) print "  " deplBB[mum] " " ratio;
+		if (ratio < MinRatio) {MinRatio = ratio; Machine = deplBB[mum];}
+	    }
+# Assign task Task to machine Machine.
+	    if (Debug) print "BB machine " Machine " gets task " name[Task] ", cost " cost[Task];
+	    bbtask[Task] = Machine;
+	    Load[Machine] += cost[Task];
+%ifdef pobb_NNTPIn
+	    if (Machine == deplBB[1]) {
+		if (substr(bbbbd[Task], 1, 9) == "msdaemon.") {
+		    BB1TakesHints = 1;
+		}
+	    }
+%endif pobb_NNTPIn
+	}
+%endif pobb_AutoPost
+
+# All done with load balancing.  Stuff the output variables.
+%ifdef pobb_RunAMSDelivery
+	for (i in potask) {
+		if (cron[i] != "") {
+			++tIx;
+			ct_tasks[tIx] = potask[i];
+			cronline[tIx] = cron[i];
+			n[tIx] = n[i];
+		}
+		if (poqmd[i] != "") {
+			qmd_args[potask[i]] = qmd_args[potask[i]] " " poqmd[i];
+		}
+		if (popocl[i] != "") {
+			pocl_args[potask[i]] = pocl_args[potask[i]] " " popocl[i];
+		}
+		if (poOut[i] == "OUT") {
+			Outgoing = potask[i];
+		}
+	}
+	for (mum = 1; mum <= numPossiblePOs; ++mum) {
+	    qmd = qmd_args[possPO[mum]];
+	    if (qmd != "") {
+		qmd = substr(qmd, 2, length(qmd)-1);
+		nElt = split(qmd, q, " ");
+		while (1) {
+		    sorted = 1;
+		    for (i = 1; i < nElt; ++i) {
+			if (q[i] > q[i+1]) {
+				qt = q[i];
+				q[i] = q[i+1];
+				q[i+1] = qt;
+				sorted = 0;
+			}
+		    }
+		    if (sorted) break;
+		}
+		qmd = "";
+		for (i = 1; i <= nElt; ++i) qmd = qmd " " q[i];
+		qmd_args[possPO[mum]] = qmd;
+	    }
+	}
+%endif pobb_RunAMSDelivery
+%ifdef pobb_AutoPost
+	for (i in bbtask) {
+		if (cron[i] != "") {
+			++tIx;
+			ct_tasks[tIx] = bbtask[i];
+			cronline[tIx] = cron[i];
+			n[tIx] = n[i];
+		}
+		if (bbbbd[i] != "") {
+			bbd_args[bbtask[i]] = bbd_args[bbtask[i]] " " bbbbd[i];
+		}
+	}
+%ifdef pobb_NNTPIn
+	if (BB1TakesHints == 0) {
+	    if (Debug) print "BB machine " deplBB[1] " gets to take hints, too."
+	    bbd_args[deplBB[1]] = bbd_args[deplBB[1]] " msdaemon.takehints";
+	}
+%endif pobb_NNTPIn
+%endif pobb_AutoPost
+
+# The configuration is now all assigned.  Now it's time to see what kind of file is being asked for.
+# We could be asked for the startup file, a crontab file, a resolv.conf file, or for a config dump.
+
+%ifdef pobb_RunAMSDelivery
+	if (ThingToDo == "resolv.conf") {
+		upper = 3;	# limit on number of servers a Bind resolver can talk to--MAXNS in resolv.h
+		if (ppoIx > 0) --upper;
+		if (upper > NSix) upper = NSix;
+		for (mumble = 1; mumble <= upper; ++mumble) {
+			print "nameserver	" NS[mumble];
+		}
+		if (ppoIx > 0) print "nameserver	" possPOAddr[ppoIx];
+	} else
+%endif pobb_RunAMSDelivery
+	if (ThingToDo == "crontab") {
+		for (ix in ct_tasks)
+			if (ct_tasks[ix] == HostToDoItFor)
+				print cronline[ix];
+	} else if (ThingToDo == "startup") {
+		print "#!/bin/csh -f"
+		print "set nonomatch"
+		print "rm -f ?[BigLocalDir]/config/*"
+%ifdef pobbenv_AFS
+		print
+		print "if ( -d ?[BigLocalDir]/other-cells ) then"
+		print "    cd ?[BigLocalDir]/other-cells"
+		print "    foreach pairfile ( * )"
+		print "	if ( -f ./$$pairfile ) then"
+		print "	    /bin/echo -n ' ' > /dev/console"
+		print "	    ?[logpgm] -x `cat $$pairfile` -c $$pairfile  > /dev/console"
+		print "	    /bin/echo -n \[$${pairfile}\] > /dev/console"
+		print "	endif"
+		print "    end"
+		print "endif"
+%endif pobbenv_AFS
+		print
+		print "cd ?[SmallLocalDir]"
+		print "switch ($$1)"
+		for (mum = 1; mum <= numDeployedPOBBs; ++mum) {
+		  print "    case " deplPOBB[mum] ":"
+%ifdef pobb_RunAMSDelivery
+		  if (isPO[deplPOBB[mum]] != 0) {	# do the post office things
+# Don't put FlushOld into background; wait for it to finish.
+		    print "	/bin/echo -n ' ' > /dev/console"
+		    print "	?[SmallLocalDir]/FlushOld ?[SentSuffix] ?[SentKeepLen] >& /dev/console"
+		    print "	/bin/echo -n 'FlushOld ' > /dev/console"
+		    print "	?[oldsendmail] -bd -q?[SendmailQueueTime]"
+		    print "	/bin/echo oldsendmail >& ?[BigLocalDir]/config/oldsendmail"
+		    print "	/bin/echo -n 'oldsendmail' > /dev/console"
+		    if (qmd_args[deplPOBB[mum]] != "") {
+			print "	/bin/csh ?[SmallLocalDir]/qmd" qmd_args[deplPOBB[mum]] " >& /dev/console"
+		    }
+		    if (Outgoing == deplPOBB[mum]) {
+			print "	/etc/queuemail -d -O?[QueuemailOutgoingInterval]"
+			print "	/bin/echo O?[QueuemailOutgoingInterval] >& ?[BigLocalDir]/config/qm.O?[QueuemailOutgoingInterval]"
+		    }
+		    print "	(?[SmallLocalDir]/po.clean ?[POCleanInterval]" pocl_args[deplPOBB[mum]] " >& /dev/console &) >& /dev/console"
+		    print "	/bin/echo po.clean >& ?[BigLocalDir]/config/po.clean"
+%ifndef pobb_AutoPost
+		    print "	?[SmallLocalDir]/runBBD >& /dev/console &"
+		    print "	/bin/echo runBBD >& ?[BigLocalDir]/config/runBBD"
+%endif pobb_AutoPost
+		  }
+%endif pobb_RunAMSDelivery
+%ifdef pobb_AutoPost
+		  if (isBB[deplPOBB[mum]] != 0) {	# do the bboard machine things
+		    print "	/bin/csh ?[SmallLocalDir]/bbd" bbd_args[deplPOBB[mum]] " >& /dev/console"
+		    print "	?[SmallLocalDir]/runBBD >& /dev/console &"
+		    print "	/bin/echo runBBD >& ?[BigLocalDir]/config/runBBD"
+		  }
+%endif pobb_AutoPost
+		  print "	breaksw"
+		  print
+		}
+
+		AnyNonDepl = 0;
+		for (mum = 1; mum <= numPossiblePOBBs; ++mum) {
+		    if (Deployed[possPOBB[mum]] == 0) {
+			print "    case " possPOBB[mum] ":"
+			AnyNonDepl = 1;
+		    }
+		}
+		if (AnyNonDepl != 0) {
+		    print "	/bin/echo -n \ keeping $$1 in warm-ready > /dev/console"
+		    print "	breaksw"
+		    print
+		}
+
+		print "    default:"
+		print "	/bin/echo Unknown host in postoffice startup: $$1 >& /dev/console"
+		print
+		print "endsw"
+%ifdef pobbenv_AFS
+# Start reauthentication program
+		print "/bin/echo -n ' ' > /dev/console"
+		print "if ( -d ?[BigLocalDir]/other-cells ) then"
+		print "    ?[SmallLocalDir]/reauth ?[ReauthSleepInterval] ?[PostmasterName] $$2 ?[BigLocalDir]/other-cells >& /dev/console"
+		print "else"
+		print "    ?[SmallLocalDir]/reauth ?[ReauthSleepInterval] ?[PostmasterName] $$2 >& /dev/console"
+		print "endif"
+		print "/bin/echo -n 'reauth' > /dev/console"
+		print "/bin/echo reauth >& ?[BigLocalDir]/config/reauth"
+%endif pobbenv_AFS
+# Clean up.  Move the /usr/spool/log/reboot.* files.
+		print "set nonomatch"
+		print "set anyclean=0"
+		print "foreach foo (?[TempLog]/reboot.*)"
+		print "if (-r $$foo) then"
+		print "    if ($$anyclean == 0) echo -n ' ' > /dev/console"
+		print "    set anyclean=1"
+		print "    echo 'Date:' `?[arpadatepgm]` >> /tmp/clean.$$$$"
+		print "    echo -n 'From: startup script <?[PostmasterName]+@' >> /tmp/clean.$$$$"
+		print "    echo -n `hostname` >> /tmp/clean.$$$$"
+		print "    echo '>' >> /tmp/clean.$$$$"
+		print "    echo 'Subject: Reboot attempt' >> /tmp/clean.$$$$"
+		print "    echo 'To: ?[PostmasterName]+@?[WorkstationCell]' >> /tmp/clean.$$$$"
+		print "    echo '' >> /tmp/clean.$$$$"
+		print "    cat $$foo >> /tmp/clean.$$$$"
+		print "    ?[queuemail] -f /tmp/clean.$$$$ -a ?[PostmasterName]+@?[WorkstationCell]"
+		print "    if ($$status == 0) rm -f $$foo"
+		print "    rm -f /tmp/clean.$$$$"
+		print "endif"
+		print "end"
+		print "if ($$anyclean != 0) echo -n 'reboot-clean' > /dev/console"
+		print
+# Finally, move the files in ~postman/errors and /usr/spool/MailErrors to the postman mailbox.
+		print "foreach dir (?[arrlist(lastDitchPrefixes)])"
+		print "    cd $${dir}"
+		print "    mv [0-9]* ?[PostmasterMailbox]"
+		print "    mv [A-U]* ?[PostmasterMailbox]"
+		print "    mv [a-u]* ?[PostmasterMailbox]"
+		print "    mv * ?[PostmasterMailbox]"
+		print "end"
+	} else if (ThingToDo == "config") {
+		print "@comment{?[POBBRunWarning]}";
+		print "@comment{?[POBBRunNotice]}";
+		print "@string{WorkstationCell='?[WorkstationCell]'}";
+		print "@string{POBBSourceFile='?[POBBSourceFile]'}";
+		print "@string{POBBDestFile='?[POBBDestFile]'}";
+		print "@string{POBBRunDate='?[POBBRunDate]'}";
+		print "@hd0both{}";
+		print "@hd1task{Breakdown by tasks}";
+		print;
+		qIx = 0;
+		nn[1] = n[1];	# Make a duplicate-eliminated list.
+		for (ix in n) {
+			Absent = 1;
+			for (qq = 0; qq < qIx; ++qq)
+				if (n[ix] == nn[qq]) {Absent = 0; break;}
+			if (Absent) {nn[qIx] = n[ix]; ++qIx;} 
+		}
+		wk[1] = "Monday"; wk[2] = "Tuesday"; wk[3] = "Wednesday";
+		wk[4] = "Thursday"; wk[5] = "Friday"; wk[6] = "Saturday"; wk[7] = "Sunday";
+		md[1] = "st"; md[2] = "nd"; md[3] = "rd";
+		md[21] = "st"; md[22] = "nd"; md[23] = "rd"; md[31] = "st";
+		mq[1] = "January"; mq[2] = "February"; mq[3] = "March"; mq[4] = "April";
+		mq[5] = "May"; mq[6] = "June"; mq[7] = "July"; mq[8] = "August";
+		mq[9] = "September"; mq[10] = "October";
+		mq[11] = "November"; mq[12] = "December";
+		for (foo in nn) {	# For each kind of task, say what machine does it.
+		    print "@hd2task{" nn[foo] "}"
+		    print "@begin(tab3task)";
+		    t_printed = 0;
+		    for (x in ct_tasks) {
+			if (nn[foo] == n[x]) {
+				k = split(cronline[x], arr, " ");
+				if (arr[2] == "*" && arr[3] == "*" && arr[4] == "*" && arr[5] == "*") {
+				    when = "hourly, ";
+				    if ((arr[1]+0) == 0)
+					when = when "on the hour";
+				    else
+					when = when "at " (arr[1]+0) " minutes past the hour";
+				} else {
+				    if (arr[3] == "*" && arr[4] == "*" && arr[5] == "*") {
+					when = "daily";
+				    } else if (arr[3] == "*" && arr[4] == "*") {
+					when = "every " wk[(arr[5]+0)];
+				    } else if (arr[5] == "*") {
+					mday = (arr[3]+0);
+					when = "on the " mday;
+					if (md[mday] != "")
+						when = when md[mday];
+					else
+						when = when "th";
+					when = when " of ";
+					if (arr[4] == "*") when = when "every month";
+					else {
+					    mmax = split(arr[4], mm, ",");
+					    for (xq = 1; xq <= mmax; ++xq) {
+						if (xq != 1) when = when " and ";
+						when = when mq[(mm[xq]+0)];
+					    }
+					}
+				    } else {
+					when = "/" arr[3] "/" arr[4] "/" arr[5] "/";
+				    }
+				    if (arr[2] == 0) {
+					hr = 12; sfx = "am";
+				    } else if (arr[2] < 12) {
+					hr = arr[2]; sfx = "am";
+				    } else if (arr[2] == 12) {
+					hr = 12; sfx = "pm";
+				    } else {
+					hr = arr[2]-12; sfx = "pm";
+				    }
+				    mn = (arr[1]+0);
+				    when = when " at " (hr+0) ":";
+				    if (mn < 10) when = when "0";
+				    when = when mn sfx;
+				}
+				SayWhen[x] = when;
+				lineOut = "    " ct_tasks[x] " (" when ")";
+				if (Deployed[ct_tasks[x]] == 0) lineOut = lineOut " (not currently in service)";
+				print lineOut;
+				t_printed = 1; continue;
+			}
+		    }
+%ifdef pobb_RunAMSDelivery
+		    if (t_printed == 0) for (x in potask) {
+			if (nn[foo] == n[x]) {
+				lineOut = "    " potask[x];
+				if (Deployed[potask[x]] == 0) lineOut = lineOut " (not currently in service)";
+				print lineOut;
+			}
+		    }
+%endif pobb_RunAMSDelivery
+%ifdef pobb_AutoPost
+		    if (t_printed == 0) for (x in bbtask) {
+			if (nn[foo] == n[x]) {
+				lineOut = "    " bbtask[x];
+				if (Deployed[bbtask[x]] == 0) lineOut = lineOut " (not currently in service)";
+				print lineOut;
+			}
+		    }
+%endif pobb_AutoPost
+		    print "@end(tab3task)";
+		    print;
+		}
+		print;	# That broke down by tasks.  Now break down by machines.
+		print "@hd1mach{Breakdown by machines}";
+		print;
+		for (mum = 1; mum <= numPossiblePOBBs; ++mum) {
+		    outLine = "@hd2mach{Tasks for machine " possPOBB[mum];
+		    if (Deployed[possPOBB[mum]] == 0) outLine = outLine " (not currently in service)";
+		    print outLine "}";
+		    print "@begin(tab3mach)";
+		    if (extraN[possPOBB[mum]] != "") print "    " extraN[possPOBB[mum]];
+%ifdef pobb_RunAMSDelivery
+		    for (foo in potask) {
+			if (possPOBB[mum] == potask[foo]) {
+			    if (poqmd[foo] != "") print "    " n[foo];
+			    if (poOut[foo] == "OUT") print "    " n[foo];
+			}
+		    }
+%endif pobb_RunAMSDelivery
+%ifdef pobb_AutoPost
+		    for (foo in bbtask) {
+			if (possPOBB[mum] == bbtask[foo]) {
+			    if (bbbbd[foo] != "") print "    " n[foo];
+			}
+		    }
+%endif pobb_AutoPost
+		    for (foo in ct_tasks) {
+			if (possPOBB[mum] == ct_tasks[foo]) {
+				when = "";
+				if (SayWhen[foo] != "") when = " " SayWhen[foo];
+				print "    " n[foo] when;
+			}
+		    }
+		    print "@end(tab3mach)";
+		    print;
+		}
+	} else if (ThingToDo == "dump") {
+		for (mum = 1; mum <= numPossiblePOBBs; ++mum) {
+		    for (foo in ct_tasks) {
+			if (possPOBB[mum] == ct_tasks[foo])
+				print ct_tasks[foo] ": cron: " cronline[foo]
+		    }
+%ifdef pobb_RunAMSDelivery
+		    for (i in qmd_args) {
+			if (possPOBB[mum] == i)
+			    if (qmd_args[i] != "") print i ": qmd:" qmd_args[i];
+		    }
+		    for (i in pocl_args) {
+			if (possPOBB[mum] == i)
+			    if (pocl_args[i] != "") print i ": pocl:" pocl_args[i];
+		    }
+		    if (possPOBB[mum] == Outgoing) print Outgoing ": Outgoing";
+%endif pobb_RunAMSDelivery
+%ifdef pobb_AutoPost
+		    for (i in bbd_args) {
+			if (possPOBB[mum] == i)
+			    if (bbd_args[i] != "") print i ": bbd:" bbd_args[i];
+		    }
+%endif pobb_AutoPost
+		}
+	} else {
+		print "*** Unrecognized keyword: ``" ThingToDo "'' (followed by ``" HostToDoItFor "'')";
+		exit 1;
+	}
+	print
+	if (ThingToDo == "config") print "@begin(comment)";
+	print "# Generated by awk; input was: " ThingToDo " " HostToDoItFor
+	if (Debug == 0) {
+		print "# ?[POBBRunWarning]"
+		print "# ?[POBBRunNotice]"
+		print "#"
+		print "#******************************************************"
+		print "#         Copyright IBM Corporation 1988,1989 - All Rights Reserved"
+		print "#         For full copyright information see: 'andrew/config/COPYRITE'"
+		print "#******************************************************"
+	}
+	if (ThingToDo == "config") print "@end(comment)";
+}
+
+%endif pobb_RunMachines

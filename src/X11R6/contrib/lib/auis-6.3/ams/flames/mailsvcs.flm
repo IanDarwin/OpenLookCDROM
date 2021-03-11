@@ -1,0 +1,588 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;                                                                   ;;;;
+;;;;       Copyright IBM Corporation 1988,1991 - All Rights Reserved   ;;;;
+;;;;      For full copyright information see:'andrew/config/COPYRITE'  ;;;;
+;;;;                                                                   ;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; $Disclaimer: 
+;;Permission to use, copy, modify, and distribute this software and its 
+;;documentation for any purpose is hereby granted without fee, 
+;;provided that the above copyright notice appear in all copies and that 
+;;both that copyright notice, this permission notice, and the following 
+;;disclaimer appear in supporting documentation, and that the names of 
+;;IBM, Carnegie Mellon University, and other copyright holders, not be 
+;;used in advertising or publicity pertaining to distribution of the software 
+;;without specific, written prior permission.
+;;
+;;IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+;;DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+;;ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+;;SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+;;BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+;;DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+;;WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+;;ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+;;OF THIS SOFTWARE.
+;; $
+
+;;;;;;;;;;;;;;;;;;;;;;;
+;;;;               ;;;;
+;;;; mail services ;;;;
+;;;;               ;;;;
+;;;;;;;;;;;;;;;;;;;;;;;
+
+;;
+;; Error code convention for PROVIDE-MAIL-BASED-SERVICE:
+;;   Bit:  Integer: Meaning:
+;;    0       1     Send success report to requestor, audittrail
+;;    1       2     Send authorization request to administrator
+;;    2       4     Send failure (possible forgery) to failure, requestor
+;;    3       8     Temporary failure during some part of the request, 
+;;                  requeue (potentially partial)
+;;    4      16     Entire operation failed, requeue all
+;;
+
+(load "flib")				; standard mail libraries
+
+;;
+;; PROVIDE-MAIL-BASED-SERVICE
+;;   message msg -- the message to process
+;;   string service -- the unix filter program to use
+;;   list_of_string options -- a list of options (passed to program,
+;;                             after the authuser)
+;;   atom unformat -- flag: t means unformat message before processing,
+;;                          nil means don't unformat
+;;   string failto -- the address to send failure messages to
+;;                    (in addition to the sender)
+;;   string authto -- the address to send requests for authorizations to
+;;   string auditto -- the address to send success reports to
+;;                     (in addition to the original requestor)
+;;   string replyto -- the address to use as the from: header in 
+;;                     success reports
+;;
+;; Program service will be called with the body of the message (unformatted
+;;    if unformat is t) as its stdin.  It will be called with the authenticated
+;;    sender of the message ("loginname", if the sender is local, "name@domain"
+;;    if the sender is from another domain) followed by options.
+;;
+;; It is expected that the exit status of the program conform to the following
+;; encoding:
+;;   Bit:  Integer: Meaning:
+;;    0       1     Send success report to requestor, audittrail
+;;    1       2     Send authorization request to administrator
+;;    2       4     Send failure (possible forgery) to failure, requestor
+;;    3       8     Temporary failure during some part of the request, 
+;;                  requeue (potentially partial)
+;;    4      16     Entire operation failed, requeue all
+;;
+;; PMBS returns t if the message was processed successfully,
+;; nil if there were temp failures requiring requeueing of the message
+;;
+(defun provide-mail-based-service (msg service options unformat failto authto auditto replyto)
+  (let ((authsender (GetAuthSender msg))
+	(authsendercell (GetAuthSenderCell msg))
+	(thisdomain (GetParameter "maildomain")))
+    (cond ((member authsender '("<TEMPORARILY UNRECOGNIZED USER>" "<UNKNOWN USER>"))
+	   nil)				; don't process the message if we cannot determine the sender
+	  (t (progn
+	       (cond ((null authsendercell) ; misc. sanitizing
+		      (setq authsendercell "@bogus.domain.name"))
+		     ((equal authsendercell thisdomain)
+		      (setq authsendercell ""))
+		     (t (setq authsendercell (strcat "@" authsendercell))))
+	       (cond (unformat (UnformatMessage msg)))
+	       (let* ((senderaddr (ReplyAddr msg "s")) ; will this work?
+		      (body (GetPartialBody msg 0 (BodyLength msg)))
+		      (result (apply 'filter ; do the update
+				     (append (list 1200 body service
+						   (strcat authsender authsendercell))
+					     options)))
+		      (ec (car result))
+		      (stdout (cadr result))
+		      (stderr (caddr result))
+		      (message (make-copy-of-message msg))
+		      (usertext ""))
+		 (cond ((temp-fail-p ec) nil)	; on temp fail, requeue message
+		       (t 
+			(progn		; interpret the results
+			  (cond ((success-p ec)
+				 (progn
+				   (send-mail (list auditto) replyto
+					      (strcat "Success Report (exit code: " (int-to-str ec) ")")
+					      (official-report-text stdout stderr message))
+				   (setq usertext (strcat usertext *success-report-text)))))
+			  (cond ((auth-req-p ec)
+				 (progn
+				   (send-mail (list authto) senderaddr
+					      (strcat "Need Authentication (exit code: " (int-to-str ec) ")")
+					      (official-report-text stdout stderr message))
+				   (setq usertext (strcat usertext *auth-req-text)))))
+			  (cond ((not-admin-p ec)
+				 (progn
+				   (AddHeader msg
+					      (strcat "X-provide-mail-based-service:  Possible Forgery ("
+						      service " " authsender authsendercell ")"))
+				   (RejectMessage msg failto nil 
+						  (strcat "Possible forgery.\n"
+							  ">Here is the output of " 
+							  service "'s stderr:\n" 
+							  stderr 
+							  "\n>stdout:\n" stdout ))
+				   (setq usertext (strcat usertext *not-admin-text)))))
+			  (send-mail (list senderaddr) replyto "WP Success report"
+				     (user-report-text usertext stdout replyto))
+			  )))
+		 )
+	       )))
+    )
+  )
+
+;;
+;; SEND-MAIL
+;;   list-of-string to -- the destination addresses
+;;   string from -- the alleged sender
+;;   string subject -- subject header text
+;;   string body -- the text of the body
+;; returns true if successful
+;;
+(defun send-mail (to from subject body)
+  (<
+   (car
+    (DropoffMessage (validate-address-list to)
+		    (strcat "Date: " (GetParameter "date")
+			    "\nFrom: " (validate-address from)
+			    "\nTo: " (list-to-str (validate-address-list to) ", ")
+			    "\nSubject: " subject "\n\n"
+			    body)))
+   4))
+  
+;;
+;; VALIDATE-ADDRESS-LIST
+;;   list-of-string l
+;; returns the list of validated addresses
+(defun validate-address-list (l)
+  (mapcar 'validate-address l)
+  )
+
+;;
+;; VALIDATE-ADDRESS
+;;   string address -- the address to validate
+;; returns a validated address, or at least the old one
+(defun validate-address (address)
+  (let ((va (ValidateAddr address)))
+    (cond ((> (car va) 0) address)
+	  (t (cadr va)))))
+
+;;
+;; ANDREWDIR
+;;   string suffix -- the suffix to append
+;; returns the path to suffix in Andrew Dir (e.g. /usr/andrew)
+;; This is the flames version of the AndrewDir(suff) call.
+(defun andrewdir (suffix)
+  (strcat (GetParameter "andrewdir") suffix))
+
+;;
+;; Aux. functions for PMBS
+;;
+(defun make-copy-of-message (msg)
+  (strcat 
+   "Date:  " (car (GetHeaderContents msg "date"))
+   "\nFrom:  " (car (GetHeaderContents msg "from"))
+   "\nTo:  " (car (GetHeaderContents msg "to"))
+   "\nSubject:  " (car (GetHeaderContents msg "subject"))
+   "\n\n"
+   (GetPartialBody msg 0 (BodyLength msg))))
+
+(defun temp-fail-p (exitstat)
+  (or (> (bit-and exitstat 8) 0)
+      (> (bit-and exitstat 16) 0)))
+
+(defun success-p (exitstat)
+  (> (bit-and exitstat 1) 0))
+
+(defun auth-req-p (exitstat)
+  (> (bit-and exitstat 2) 0))
+
+(defun not-admin-p (exitstat)
+  (> (bit-and exitstat 4) 0))
+
+(defun official-report-text (stdout stderr message)
+  (strcat ">Here's the stdout output:\n"
+	  ">-------------------------\n"
+	  stdout
+	  "\n>Here's the stderr output:\n"
+	  ">-------------------------\n"
+	  stderr
+	  "\n>And here's the original message:\n"
+	  ">--------------------------------\n"
+	  message))
+
+;;
+;; Generic Service-to-User texts.  Please feel free to tailor
+;; these strings to your service.
+;;
+(defun user-report-text (usertext stdout replyto)
+  (strcat usertext 
+	  "\nHere are the results of your specific requests:\n\n" 
+	  stdout 
+	  "\nIf you have any problems with or questions about this service, please mail to " 
+	  (validate-address replyto) ".  Thank you.\n\n"))
+
+(setq *success-report-text 
+      "\nYour request has been received and processed.\n")
+
+(setq *auth-req-text
+      "\nYour request has been forwarded to an administrator for approval.  
+If you do not receive confirmation of these requested changes, you may 
+assume they have been denied.\n")
+
+(setq *not-admin-text
+      "\nYour request could not be processed, because you are not an
+administrator for this service.\n")
+
+;;
+;; INTERPRET-MESSAGE
+;;  message msg
+;;  string from
+;;  string audit-to
+;;  special-list service
+;; returns T if all requests succeeded, else NIL, meaning some request 
+;; failed and message should be requeued.
+;; Service is of the following format:
+;;  (summary
+;;   (verb validate-function action-function summary)
+;;   (verb validate-function action-function summary)
+;;   ... )
+;; where:
+;;  string summary
+;;  atom verb
+;;  function validate-function (arglist)
+;;   list-of-string arglist
+;;  function action-function (reply-to from arglist)
+;;   string reply-to
+;;   string from
+;;   list-of-string arglist
+;;  string summary
+;;
+;; Interpret-Message will look through the body of the message for lines
+;; of the form:
+;;  verb [arg]*
+;; If a matching verb is found, the line will be validated first (nil
+;; means no problem, else non-nil (an error message) means that the line
+;; is malformed), then, if validation is successful, the action function
+;; will be called.  The action function returns T for succesful processing,
+;; a string, for successful processing with the user receiving the string
+;; as confirmation,
+;; or NIL for an error.  If any action-function returns NIL, interpret-message
+;; returns NIL, meaning, requeue the message.
+;;
+;; Interpret-Message will send a summary of the requests to the sender and to
+;; the audit-to address.
+;;
+(defun interpret-message (msg from audit-to service)
+  (let* ((reply-to (ReplyAddr msg "s"))
+	 (junk (UnformatMessage msg))
+	 (text 
+	  (do ((txt 
+		(GetPartialBody msg 0 (BodyLength msg))
+		(let ((res (strdecompose "\n\t" txt NIL)))
+					;replace all "\n\t"s with " "s
+		  (strcat (car res) " " (caddr res)))))
+	      ((not (strcontains "\n\t" txt NIL))
+	       txt))))
+    (interpret-results reply-to from audit-to
+		       (mapcar '(lambda (line) 
+				  (append 
+				   (interpret-line reply-to from service line)
+				   (list line)))
+			       (str-to-list text "\n")))))
+
+(defun interpret-line (reply-to from service line)
+  (let* ((words (str-to-list line " "))
+	 (verb (lcstring (car words)))
+	 (svc (assoc verb (cdr service))))
+    (cond ((equal verb "") (list nil t))		;empty line
+	  ((equal "help" verb)
+	   (list "result" (send-help reply-to from service words)))
+	  ((null svc)
+	   (list "syntax" "Unrecognized verb"))
+	  (t 
+	   (let ((check (apply (cadr svc) (list words))))
+	     (cond ((not check)
+		    (list "result"
+			  (apply (caddr svc) 
+				 (list reply-to from words))))
+		   (t (list "syntax" check))))))))
+
+(defun interpret-results (reply-to from audit-to results)
+  (do*
+   ((rest results (cdr rest))
+    (this (car rest) (car rest))
+    (message "Result(s) of your request:\n\n" message)
+					;any NIL "result"
+					;will return NIL
+    (ok t (and ok (cond ((car this)
+			 (cond ((equal (car this) "result") 
+				(cadr this))
+			       (t t)))
+			(t t)))))
+   ((null rest) 
+    (progn
+      (send-mail (list reply-to audit-to)
+		 from
+		 "Summary of your request(s)"
+		 message)
+      ok))
+   (cond ((car this)
+	  (setq message
+		(strcat message
+			(caddr this)
+			":  "
+			(cond ((equal (car this) "result")
+			       (cond ((cadr this)
+			       (cond ((stringp (cadr this))
+				      (cadr this))
+				     (t "successfully processed")))
+				     (t "failed")))
+			      (t (strcat "could not understand--``"
+					 (cadr this)
+					 "''")))
+			"\n")))
+	 (t t))))
+
+(defun send-help (reply-to from service words)
+  (send-mail (list reply-to)
+	     from
+	     "The help you requested"
+	     (strcat 
+	      (cond ((null (cdr words))	;full help
+		     (list-to-str 
+		      (cons (car service)
+			    (mapcar '(lambda (s)
+				       (strcat (car s)
+					       "\t"
+					       (cadddr s)))
+				    (cdr service)))
+		      "\n\n"))
+		    (t			;help on a set of verbs
+		     (list-to-str
+		      (apply 'append
+			     (mapcar 
+			      '(lambda (s)
+				 (cond ((member (car s)
+						(mapcar 
+						 '(lambda (w) (lcstring w))
+						 (cdr words)))
+					(list
+					 (strcat (car s)
+						 "\t"
+						 (cadddr s))))
+					     (t nil)))
+			      (cdr service)))
+		      "\n\n")))
+	      "\n\n")))
+;;
+;; SEND-FILE
+;;   list-of-string to -- the destination addresses
+;;   string from -- the alleged sender
+;;   string subject -- subject header text
+;;   pathname file -- the textfile to send as the body
+;; returns true if successful
+;;
+;; Sends the contents of the file to the addresses in to.
+;; Meant to be used as a file archive tool.
+;; Validates each address in to.
+;;
+(defun send-file (to from subject file)
+  (let* ((val-to (validate-address-list to))
+	 (val-from (validate-address from))
+	 (enclosure (strcat "---- Enclosure " (GenID nil) " ----"))
+	 (headers 
+	  (strcat "Date: " (GetParameter "date")
+		  "\nEnclosure: " enclosure
+		  "\nFrom: " val-from
+		  "\nTo: " (list-to-str val-to ", ")
+		  "\nSubject: " subject "\n\n"
+		  "(file: " file ")\n"
+		  enclosure "\n"))
+	 (fname (strcat "/tmp/" (GenID t))))
+    (progn
+      (WriteFile fname headers 0)
+      (system (strcat "/bin/cat " file ">>" fname))
+      (WriteFile fname (strcat "\n" enclosure "\n") (FileLength fname))
+      (let ((res (DropoffFile val-to fname)))
+	(progn
+	  (system (strcat "/bin/rm " fname))
+	  (< (car res) 4)
+	  ))
+      )
+    ))
+;;
+;; SEND-DIR
+;;   list-of-string to -- the destination addresses
+;;   string from -- the alleged sender
+;;   string subject -- subject header text
+;;   pathname dir -- the directory to send
+;; returns true if successful
+;;
+;; Send-dir will take a directory name, tar it up, compress it,
+;; uuencode it, and split it, and send the split files, along with
+;; a shell script to undo the mail messages.
+;;
+(defun send-dir (to from subject dir)
+  (let ((work (strcat "/tmp/" (GenID t)))
+	(sent 0)
+	(nfiles 0))
+    (progn
+      (system (strcat "/bin/mkdir " work))
+      (system 
+       (strcat "cd " dir ";tar cfhlo - .|compress|uuencode tar.Z|(cd " work ";split - part)"))
+      (let* ((listing (cadr (filter NIL "/bin/ls" work)))
+	     (files (str-to-list 
+					;trim off last "\n"
+		     (substring listing 0 (- (strlen listing) 1))
+		     "\n"))
+	     (count 1))
+	(progn
+	  (setq nfiles (length files))
+	  (send-dir-help to from subject)
+	  (mapcar '(lambda (f)
+		     (progn
+		       (cond 
+			((send-file to from 
+				    (strcat subject " (" 
+					    (int-to-str count) " of " 
+					    (int-to-str nfiles) ")")
+				    (strcat work "/" f))
+			 (setq sent (+ sent 1))))
+		       (setq count (+ count 1))))
+		  files)))
+      (system (strcat "/bin/rm " work "/*"))
+      (system (strcat "/bin/rmdir " work))
+      (cond ((< sent nfiles)
+	     nil)
+	    (t 
+	     (strcat "Sent " (int-to-str nfiles)
+		     (cond ((equal nfiles 1) " file")
+			   (t " files"))))))))
+
+(defun send-dir-help (to from subject)
+  (send-mail to from (strcat subject " (assembly instructions) ")
+	     (strcat
+	      "Instructions for putting together your directory.\n\n"
+"Take the file(s) you will receive, and put them together in order\n"
+"(make sure there are no blank lines at the beginning or end of\n"
+"each file) into one file.  This is a uuencoded file, so uudecode it\n"
+"with:\n"
+"\tuudecode onefile.uu\n"
+"This will produce a compressed tar file tar.Z.  Change the protection\n"
+"on this file with:\n"
+"\tchmod 666 tar.Z\n"
+"and then, to undo the tar file:\n"
+"\tzcat tar.Z | tar xvf -\n\n"
+"Happy hacking!\n")))
+
+;;
+;; SEND-FILES
+;;   list-of-string to -- the destination addresses
+;;   string from -- the alleged sender
+;;   string subject -- subject header text
+;;   list-of-pathnames flist -- the files to send
+;;   pathname rootdir -- the root for the files in flist
+;;   pathname workdir -- the directory to use for building the distribution
+;; returns true if successful
+;;
+;; Send-files will take a list of files and build a directory under workdir
+;; which is a copy of rootdir, containing only those files in flist.
+;; Send-files then does a send-dir on that directory.
+;;
+(defun send-files (to from subject flist rootdir workdir)
+  (let ((work (strcat workdir "/" (GenID t)))
+	(msg ""))
+    (progn
+      (system (strcat "/bin/mkdir " work))
+      (dolist (f flist)
+	      (let ((wf (workify rootdir work f)))
+		(progn
+		  (ensure-parents-exist work (pathname wf))
+		  (system (strcat "ln -s " (rootify rootdir f) " " wf)))))
+      (setq msg (send-dir to from subject work))
+      (system (strcat "/bin/rm -rf " work))
+      msg)))
+    
+(defun rootify (rootname f)
+  (let ((pname (pathname f))
+	(fname (filename f)))
+    (cond ((equal pname "")		;no path
+	   (strcat rootname "/" fname))
+	  ((not (equal (substring pname 0 1) "/")) ;relative path
+	   (strcat rootname "/" pname "/" fname))
+	  ((or (> (strlen rootname) (strlen f))
+	       (equal (strlen rootname) (strlen f)))
+	   rootname)
+	  (t				;need to strip off rootname (and put back)
+	   (strcat rootname "/"		;cheesy method
+		   (substring f (+ (strlen rootname) 1)
+			      (- (strlen f) (+ (strlen rootname) 1))))))))
+
+(defun workify (rootname workname f)
+  (let ((pname (pathname f))
+	(fname (filename f)))
+    (cond ((equal pname "")		;no path
+	   (strcat workname "/" fname))
+	  ((not (equal (substring pname 0 1) "/")) ;relative path
+	   (strcat workname "/" pname "/" fname))
+	  (t				;need to strip off rootname
+	   (strcat workname "/"
+		   (substring f (+ (strlen rootname) 1)
+			      (- (strlen f) (+ (strlen rootname) 1))))))))
+
+;;
+;; SEND-LISTING
+;;   list-of-string to -- the destination addresses
+;;   string from -- the alleged sender
+;;   string subject -- subject header text
+;;   pathname dir -- the directory to list
+;; returns true if successful
+;;
+;; Send-listing will take a directory name, and do an 'ls -Ral' on it,
+;; sending the results to the addresses in to (performing validation,
+;; as necessary).
+;;
+(defun send-listing (to from subject dir)
+  (let* ((val-to (validate-address-list to))
+	 (val-from (validate-address from))
+	 (enclosure (strcat "---- Enclosure " (GenID nil) " ----"))
+	 (msg
+	  (strcat "Date: " (GetParameter "date")
+		  "\nEnclosure: " enclosure
+		  "\nFrom: " val-from
+		  "\nTo: " (list-to-str val-to ", ")
+		  "\nSubject: " subject "\n\n"
+		  "(listing of: " dir ")\n"
+		  enclosure "\n"
+		  (cadr (filter 0 NIL "ls" "-AR" dir))
+		  "\n" enclosure "\n")))
+    (< (car (DropoffMessage val-to msg)) 4)))
+
+
+(defun filename (f)
+  (let ((r (rindex f "/")))
+    (cond (r (substring r 1 (- (strlen r) 1)))
+	  (t f))))
+
+(defun pathname (f)
+  (let ((r (rindex f "/")))
+    (cond ((null r) "")			;no path
+	  (t (substring f 0 (- (strlen f) (strlen r)))))))
+
+(defun ensure-parents-exist (top path)
+  (cond ((equal top path) t)
+	(t (progn 
+	     (ensure-parents-exist top
+				   (substring path 0
+					      (- (strlen path)
+						 (strlen (rindex path "/")))))
+	     (system (strcat "mkdir " path))))))
+

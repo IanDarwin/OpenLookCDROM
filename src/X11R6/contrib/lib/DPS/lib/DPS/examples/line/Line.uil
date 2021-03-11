@@ -1,0 +1,991 @@
+!!
+!! $RCSfile: Line.uil,v $
+!!
+!! (c) Copyright 1992-1994 Adobe Systems Incorporated.
+!! All rights reserved.
+!! 
+!! Permission to use, copy, modify, distribute, and sublicense this software
+!! and its documentation for any purpose and without fee is hereby granted,
+!! provided that the above copyright notices appear in all copies and that
+!! both those copyright notices and this permission notice appear in
+!! supporting documentation and that the name of Adobe Systems Incorporated
+!! not be used in advertising or publicity pertaining to distribution of the
+!! software without specific, written prior permission.  No trademark license
+!! to use the Adobe trademarks is hereby granted.  If the Adobe trademark
+!! "Display PostScript"(tm) is used to describe this software, its
+!! functionality or for any other purpose, such use shall be limited to a
+!! statement that this software works in conjunction with the Display
+!! PostScript system.  Proper trademark attribution to reflect Adobe's
+!! ownership of the trademark shall be given whenever any such reference to
+!! the Display PostScript system is made.
+!! 
+!! ADOBE MAKES NO REPRESENTATIONS ABOUT THE SUITABILITY OF THE SOFTWARE FOR
+!! ANY PURPOSE.  IT IS PROVIDED "AS IS" WITHOUT EXPRESS OR IMPLIED WARRANTY.
+!! ADOBE DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL
+!! IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+!! NON- INFRINGEMENT OF THIRD PARTY RIGHTS.  IN NO EVENT SHALL ADOBE BE LIABLE
+!! TO YOU OR ANY OTHER PARTY FOR ANY SPECIAL, INDIRECT, OR CONSEQUENTIAL
+!! DAMAGES OR ANY DAMAGES WHATSOEVER WHETHER IN AN ACTION OF CONTRACT,
+!! NEGLIGENCE, STRICT LIABILITY OR ANY OTHER ACTION ARISING OUT OF OR IN
+!! CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.  ADOBE WILL NOT
+!! PROVIDE ANY TRAINING OR OTHER SUPPORT FOR THE SOFTWARE.
+!! 
+!! Adobe, PostScript, and Display PostScript are trademarks of Adobe Systems
+!! Incorporated which may be registered in certain jurisdictions
+!! 
+!! Author:  Adobe Systems Incorporated
+
+
+!!***************************************************************
+!! MODULE DECLARATIONS
+!!***************************************************************
+
+!!
+!! module LineApp
+!!
+module LineApp
+        version = 'v1.0'
+        names = case_sensitive
+        objects =
+        {
+                XmCascadeButton = gadget ;
+                XmSeparator     = gadget ;
+        }
+
+
+!!***************************************************************
+!! PROCEDURE DECLARATIONS
+!!***************************************************************
+
+procedure
+	resetProc();
+	scaleValueChanged();
+	textValueChanged();
+        refreshWindow();
+        createProc(integer);
+        quitApp();
+        traceProc();
+	colorWidthProc();
+        drawProc(integer);
+        numLineSel(integer);
+
+!!***************************************************************
+!! VALUE DECLARATIONS
+!!***************************************************************
+
+!!
+!! the following list is duplicated in Line.h for identification
+!! of widgets as they are created
+!!
+value
+        cMainDrawArea       : 1;
+        cTimingText0        : 2;
+        cTimingText1        : 3;
+        cTimingText2        : 4;
+        cTimingText3        : 5;
+        cTimingText4        : 6;
+	cTimingText5	    : 7;
+        cTraceToggle        : 8;
+        cTotalText          : 9;
+        cColorScale         : 10;
+        cWidthScale         : 11;
+        cColorWidthButton   : 12;
+	cScaleForm          : 13;
+
+!!
+!! ADOBE FONTS
+!!
+value
+    hel_bold_font12 :
+      font('-adobe-helvetica-bold-r-normal--12-120-75-75-p-70-iso8859-1');
+    hel_bold_font14 :
+      font('-adobe-helvetica-bold-r-normal--14-140-75-75-p-82-iso8859-1');
+    hel_bold_font18 :
+      font('-adobe-helvetica-bold-r-normal--18-180-75-75-p-103-iso8859-1');
+    newcenturyschlbk_bold24 :
+      font('-adobe-new century schoolbook-bold-r-normal--24-240-75-75-p-149-iso8859-1');
+
+    dialogFont      : hel_bold_font12;
+    textFont        : hel_bold_font12;
+    labelFont       : hel_bold_font14;
+    buttonFont      : hel_bold_font14;
+    bigFont         : hel_bold_font18;
+    jumboFont       : newcenturyschlbk_bold24;
+
+
+!!
+!! general constant values
+!!
+value
+        vLabelOffset    : 7;    ! pixels
+        vFrameShadow    : XmSHADOW_ETCHED_IN;
+
+!!
+!! main window constant values
+!!
+value
+        vMainDrawHeight : 550;  ! pixels
+        vMainDrawWidth  : 550;  ! pixels
+
+value
+        vTopPosition    : 0;    ! percent
+        vBottomPosition : 100;  ! percent
+        vDrawLeft       : 0;    ! percent
+
+        vMethodsLeft    : 66;   ! percent
+        vLeftCenter     : 57;   ! percent
+        vRightCenter    : 63;   ! percent
+        vDrawAllLeft    : 35;   ! percent
+        vDrawAllRight   : 65;   ! percent
+        vMethodsMargin  : 10;   ! pixels
+
+        vOptionLeft     : 66;   ! percent
+        vOptionMargin   : 10;   ! pixels
+
+	vScaleOffset	: 10;	! pixels
+        vColorWidthPosition : 74;   !percent
+
+!!***************************************************************
+!! TOP LEVEL WIDGETS
+!!***************************************************************
+
+!!
+!! The main window widget.  This displays the pattern drawing.
+!!
+object MainWindow : XmMainWindow
+{
+    arguments
+    {
+	XmNmenuBar = mMenuBar ;
+	XmNworkWindow = mMainForm ;
+    };
+    controls
+    {
+        XmMenuBar	mMenuBar;
+        XmForm		mMainForm;
+    };
+};
+
+!!***************************************************************
+!! Main window menu bar
+!!***************************************************************
+
+object mMenuBar : XmMenuBar           
+{
+    controls
+    {
+        XmCascadeButton mCommandButton;
+    };
+};
+
+object mCommandButton : XmCascadeButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+    };
+    controls
+    {
+        XmPulldownMenu mCommandMenu;
+    };
+};
+
+object mCommandMenu : XmPulldownMenu
+{
+    controls
+    {
+        XmToggleButton  mTraceButton;
+        XmSeparator     {};
+        XmPushButton    mQuitButton;
+    };
+};
+
+object mTraceButton : XmToggleButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cTraceToggle);
+        XmNvalueChangedCallback = procedure traceProc ();
+    };
+};
+
+object mQuitButton : XmPushButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+    };
+    callbacks
+    {
+        XmNactivateCallback = procedure quitApp ();
+    };
+};
+ 
+object mMainForm : XmForm
+{
+    arguments
+    {
+    };
+    controls
+    {
+        XmFrame     mDrawFrame;
+        XmFrame     mOptionFrame;
+        XmFrame     mMethodsFrame;
+    };
+};
+
+!!***************************************************************
+!! Main window drawing area
+!!***************************************************************
+object mDrawFrame : XmFrame
+{
+    arguments
+    {
+        XmNshadowType       = vFrameShadow ;
+
+        XmNleftAttachment   = XmATTACH_FORM ;
+	XmNtopAttachment    = XmATTACH_FORM ;
+	XmNbottomAttachment = XmATTACH_FORM ;
+    };
+    controls
+    {
+        XmDrawingArea   mDrawArea;
+    };
+};
+
+object mDrawArea : XmDrawingArea
+{
+    arguments
+    {
+        XmNheight       = vMainDrawHeight;
+        XmNwidth        = vMainDrawWidth ;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cMainDrawArea);
+        XmNexposeCallback = procedure refreshWindow ();
+    };
+};
+
+!!***************************************************************
+!! Option selection box
+!!***************************************************************
+object mOptionFrame : XmFrame
+{
+    arguments
+    {
+        XmNshadowType       = vFrameShadow ;
+        XmNleftAttachment   = XmATTACH_WIDGET ;
+	XmNleftWidget       = XmFrame mDrawFrame ;
+        XmNtopAttachment    = XmATTACH_FORM ;
+    };
+    controls
+    {
+        XmForm      mOptionForm;
+    };
+};
+
+object mOptionForm : XmForm
+{
+    arguments
+    {
+        XmNhorizontalSpacing    = vOptionMargin;
+        XmNverticalSpacing      = vOptionMargin;
+    };
+    controls
+    {
+        XmFrame         mColorWidthFrame;
+        XmLabel         mTotalTitle;
+        XmRowColumn     mNumLineRowColumn;
+        XmTextField     mTotalText;
+        XmLabel         mNumLineTitle;
+        XmPushButton    mClearButton;
+    };
+};
+
+object mColorWidthFrame : XmFrame
+{
+    arguments
+    {
+        XmNshadowType       = vFrameShadow ;
+        XmNleftAttachment   = XmATTACH_FORM ;
+        XmNrightAttachment  = XmATTACH_FORM ;
+
+        XmNtopAttachment    = XmATTACH_FORM ;
+    };
+    controls
+    {
+        XmForm      mColorWidthForm;
+    };
+};
+
+object mColorWidthForm : XmForm
+{
+    arguments
+    {
+        XmNhorizontalSpacing    = vOptionMargin;
+        XmNverticalSpacing      = vOptionMargin;
+    };
+    controls
+    {
+        XmForm          mScaleForm;
+        XmLabel         mColorWidthText;
+        XmToggleButton  mColorWidthButton;
+    };
+};
+
+object mScaleForm : XmForm
+{
+    arguments
+    {
+        XmNleftAttachment = XmATTACH_FORM ;
+        XmNtopAttachment = XmATTACH_FORM ;
+        XmNbottomAttachment = XmATTACH_FORM ;
+	XmNshadowThickness = 0;
+    };
+    controls
+    {
+        XmLabel mColorText0;
+        XmLabel mColorTitle;
+        XmLabel mColorText1;
+        XmScale mColorScale;
+        XmLabel mWidthText0;
+        XmLabel mWidthTitle;
+        XmLabel mWidthText1;
+        XmScale mWidthScale;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc(cScaleForm);
+    };
+};
+
+object mColorText0 : XmLabel
+{
+    arguments
+    {
+        XmNalignment        = XmALIGNMENT_BEGINNING;
+        XmNfontList         = labelFont ;
+        XmNleftAttachment   = XmATTACH_FORM ;
+        XmNtopAttachment    = XmATTACH_FORM ;
+    };
+};
+
+object mColorTitle : XmLabel
+{
+    arguments
+    {
+        XmNalignment        = XmALIGNMENT_BEGINNING;
+        XmNfontList         = labelFont ;
+        XmNmarginTop        = vLabelOffset;
+        XmNleftAttachment   = XmATTACH_FORM ;
+        XmNtopAttachment    = XmATTACH_WIDGET ;
+	XmNtopWidget        = XmLabel mColorText0 ;
+	XmNbottomAttachment = XmATTACH_WIDGET ;
+	XmNbottomWidget     = XmLabel mColorText1 ;
+    };
+};
+
+object mColorText1 : XmLabel
+{
+    arguments
+    {
+        XmNalignment        = XmALIGNMENT_BEGINNING;
+        XmNfontList         = labelFont ;
+        XmNmarginTop        = vLabelOffset;
+        XmNleftAttachment   = XmATTACH_FORM ;
+        XmNbottomAttachment = XmATTACH_FORM;
+    };
+};
+
+object mColorScale : XmScale
+{
+    arguments
+    {
+        XmNvalue            = 0;
+        XmNminimum          = 0;
+        XmNmaximum          = 1000;
+        XmNborderWidth      = 0;
+        XmNleftAttachment   = XmATTACH_WIDGET ;
+        XmNleftWidget       = XmLabel mColorText0;
+        XmNtopAttachment    = XmATTACH_FORM ;
+        XmNbottomAttachment = XmATTACH_FORM ;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cColorScale);
+	XmNvalueChangedCallback = procedure scaleValueChanged();
+    };
+};
+
+object mWidthText0 : XmLabel
+{
+    arguments
+    {
+        XmNalignment        = XmALIGNMENT_END;
+        XmNfontList         = labelFont ;
+        XmNrightAttachment  = XmATTACH_WIDGET ;
+        XmNrightWidget      = XmScale mWidthScale;
+        XmNtopAttachment    = XmATTACH_FORM ;
+    };
+};
+
+object mWidthTitle : XmLabel
+{
+    arguments
+    {
+        XmNalignment        = XmALIGNMENT_END;
+        XmNfontList         = labelFont ;
+        XmNmarginTop        = vLabelOffset;
+        XmNleftAttachment   = XmATTACH_WIDGET ;
+        XmNleftWidget       = XmScale mColorScale;
+	XmNleftOffset       = vScaleOffset;
+	XmNtopAttachment    = XmATTACH_WIDGET ;
+        XmNtopWidget        = XmLabel mColorText0;
+	XmNbottomAttachment = XmATTACH_WIDGET;
+	XmNbottomWidget     = XmLabel mColorText1;
+    };
+};
+
+object mWidthText1 : XmLabel
+{
+    arguments
+    {
+        XmNalignment        = XmALIGNMENT_END;
+        XmNfontList         = labelFont ;
+        XmNmarginTop        = vLabelOffset;
+        XmNrightAttachment   = XmATTACH_WIDGET ;
+        XmNrightWidget       = XmScale mWidthScale;
+        XmNbottomAttachment = XmATTACH_FORM;
+    };
+};
+
+object mWidthScale : XmScale
+{
+    arguments
+    {
+        XmNvalue            = 200;  ! 2.0 on scale of 0 to 5
+        XmNminimum          = 0;
+        XmNmaximum          = 500;
+        XmNborderWidth      = 0;
+        XmNdecimalPoints    = 2;
+        XmNleftAttachment   = XmATTACH_WIDGET ;
+        XmNleftWidget       = XmLabel mWidthTitle;
+        XmNtopAttachment    = XmATTACH_FORM ;
+        XmNbottomAttachment = XmATTACH_FORM ;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cWidthScale);
+	XmNvalueChangedCallback = procedure scaleValueChanged();
+    };
+};
+
+object mColorWidthText : XmLabel
+{
+    arguments
+    {
+        XmNfontList         = labelFont ;
+        XmNmarginTop        = 2 * vLabelOffset;
+
+        XmNleftAttachment   = XmATTACH_WIDGET ;
+        XmNleftWidget       = XmForm mScaleForm;
+        XmNrightAttachment  = XmATTACH_FORM ;
+
+        XmNtopAttachment    = XmATTACH_FORM ;
+    };
+};
+
+object mColorWidthButton : XmToggleButton
+{
+    arguments
+    {
+        XmNlabelString  = "";
+        XmNset          = true;
+
+        XmNleftAttachment   = XmATTACH_POSITION ;
+        XmNleftPosition     = vColorWidthPosition;
+        XmNrightAttachment  = XmATTACH_FORM ;
+
+        XmNtopAttachment    = XmATTACH_WIDGET ;
+        XmNtopWidget        = XmLabel mColorWidthText;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cColorWidthButton);
+	XmNvalueChangedCallback = procedure colorWidthProc ();
+    };
+};
+
+object mTotalTitle : XmLabel
+{
+    arguments
+    {
+        XmNalignment        = XmALIGNMENT_END;
+        XmNfontList         = labelFont ;
+        XmNmarginTop        = vLabelOffset;
+
+        XmNleftAttachment   = XmATTACH_FORM ;
+        XmNrightAttachment  = XmATTACH_FORM ;
+
+        XmNtopAttachment    = XmATTACH_WIDGET ;
+        XmNtopWidget        = XmFrame mColorWidthFrame;
+    };
+};
+
+object mNumLineRowColumn : XmRowColumn
+{
+    arguments
+    {
+	XmNleftAttachment = XmATTACH_FORM;
+	XmNrightAttachment = XmATTACH_WIDGET;
+	XmNrightWidget = XmTextField mTotalText;
+	XmNtopAttachment = XmATTACH_WIDGET ;
+	XmNtopWidget = XmLabel mTotalTitle;
+	XmNentryAlignment = XmALIGNMENT_CENTER;
+    };
+    controls
+    {
+        XmPushButton    mNumLineButton0;
+        XmPushButton    mNumLineButton1;
+        XmPushButton    mNumLineButton2;
+        XmPushButton    mNumLineButton3;
+    };
+};
+
+object mNumLineButton0 : XmPushButton
+{
+    arguments
+    {
+	XmNfontList = buttonFont;
+    };
+    callbacks
+    {
+        XmNactivateCallback = procedure numLineSel (0);
+    };
+};
+
+object mNumLineButton1 : XmPushButton
+{
+    arguments
+    {
+	XmNfontList = buttonFont;
+    };
+    callbacks
+    {
+        XmNactivateCallback = procedure numLineSel (1);
+    };
+};
+
+object mNumLineButton2 : XmPushButton
+{
+    arguments
+    {
+	XmNfontList = buttonFont;
+    };
+    callbacks
+    {
+        XmNactivateCallback = procedure numLineSel (2);
+    };
+};
+
+object mNumLineButton3 : XmPushButton
+{
+    arguments
+    {
+	XmNfontList = buttonFont;
+    };
+    callbacks
+    {
+        XmNactivateCallback = procedure numLineSel (3);
+    };
+};
+
+object mTotalText : XmTextField
+{
+    arguments
+    {
+        XmNvalue            = "0";
+        XmNfontList         = textFont ;
+
+        XmNcolumns          = 5 ;
+        XmNcursorPositionVisible = true;
+
+        !!XmNleftAttachment   = XmATTACH_WIDGET ;
+        !!XmNleftWidget       = XmRowColumn mNumLineRowColumn;
+        XmNrightAttachment  = XmATTACH_FORM ;
+
+        XmNtopAttachment    = XmATTACH_WIDGET;
+        XmNtopWidget        = XmLabel mTotalTitle;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cTotalText);
+	XmNvalueChangedCallback = procedure textValueChanged ();
+    };
+};
+
+object mNumLineTitle : XmLabel
+{
+    arguments
+    {
+        XmNfontList         = labelFont ;
+
+        XmNleftAttachment   = XmATTACH_FORM ;
+        XmNrightAttachment  = XmATTACH_WIDGET ;
+        XmNrightWidget      = XmPushButton mClearButton;
+
+        XmNtopAttachment    = XmATTACH_WIDGET;
+        XmNtopWidget        = XmRowColumn mNumLineRowColumn;
+	XmNbottomAttachment = XmATTACH_FORM;
+    };
+};
+
+object mClearButton : XmPushButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+
+        XmNrightAttachment  = XmATTACH_FORM ;
+        XmNtopAttachment    = XmATTACH_WIDGET;
+        XmNtopWidget        = XmTextField mTotalText;
+        XmNbottomAttachment = XmATTACH_FORM;
+    };
+    callbacks
+    {
+        XmNactivateCallback = procedure numLineSel (4);
+    };
+};
+
+!!***************************************************************
+!! Drawing methods form
+!!***************************************************************
+object mMethodsFrame : XmFrame
+{
+    arguments
+    {
+        XmNshadowType       = vFrameShadow ;
+        XmNleftAttachment   = XmATTACH_WIDGET ;
+	XmNleftWidget       = XmFrame mDrawFrame ;
+        XmNleftPosition     = vMethodsLeft;
+        XmNrightAttachment  = XmATTACH_FORM ;
+	XmNtopAttachment    = XmATTACH_WIDGET ;
+	XmNtopWidget        = XmFrame mOptionFrame;
+	XmNbottomAttachment = XmATTACH_FORM ;
+    };
+    controls
+    {
+        XmForm      mMethodsForm;
+    };
+};
+
+object mMethodsForm : XmForm
+{
+    arguments
+    {
+        XmNhorizontalSpacing    = vMethodsMargin;
+        XmNverticalSpacing      = vMethodsMargin;
+    };
+    controls
+    {
+        XmLabel         mMethodsTitle;
+        XmPushButton    mButton0;
+        XmLabel          mTimingText0;
+        XmPushButton    mButton1;
+        XmLabel          mTimingText1;
+        XmPushButton    mButton2;
+        XmLabel          mTimingText2;
+        XmPushButton    mButton3;
+        XmLabel          mTimingText3;
+        XmPushButton    mButton4;
+        XmLabel          mTimingText4;
+        XmPushButton    mButton5;
+        XmLabel          mTimingText5;
+        XmPushButton    mDrawAllButton;
+	XmPushButton	mResetButton;
+    };
+};
+
+object mMethodsTitle : XmLabel
+{
+    arguments
+    {
+        XmNfontList         = labelFont ;
+        XmNleftAttachment   = XmATTACH_FORM ;
+        XmNrightAttachment  = XmATTACH_FORM ;
+        XmNtopAttachment    = XmATTACH_FORM ;
+    };
+};
+
+object mButton0 : XmPushButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+
+        XmNleftAttachment   = XmATTACH_FORM ;
+        XmNrightAttachment  = XmATTACH_POSITION ;
+        XmNrightPosition    = vLeftCenter;
+
+        XmNtopAttachment    = XmATTACH_WIDGET;
+        XmNtopWidget        = XmLabel mMethodsTitle;
+    };
+    callbacks
+    {
+        XmNactivateCallback = procedure drawProc (0);
+    };
+};
+
+object mTimingText0 : XmLabel
+{
+    arguments
+    {
+        XmNlabelString      = "      "; ! space for 6 digits
+        XmNfontList         = textFont ;
+
+        XmNleftAttachment   = XmATTACH_POSITION;
+        XmNleftPosition     = vRightCenter;
+        XmNrightAttachment  = XmATTACH_FORM ;
+
+        XmNtopAttachment    = XmATTACH_WIDGET ;
+        XmNtopWidget        = XmLabel mMethodsTitle;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cTimingText0);
+    };
+};
+
+object mButton1 : XmPushButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+
+        XmNleftAttachment   = XmATTACH_FORM ;
+        XmNrightAttachment  = XmATTACH_POSITION ;
+        XmNrightPosition    = vLeftCenter;
+
+        XmNtopAttachment    = XmATTACH_WIDGET;
+        XmNtopWidget        = XmLabel mTimingText0;
+    };
+    callbacks
+    {
+        XmNactivateCallback = procedure drawProc (1);
+    };
+};
+
+object mTimingText1 : XmLabel
+{
+    arguments
+    {
+        XmNlabelString            = "      "; ! space for 6 digits
+        XmNfontList         = textFont ;
+
+        XmNleftAttachment   = XmATTACH_POSITION;
+        XmNleftPosition     = vRightCenter;
+        XmNrightAttachment  = XmATTACH_FORM ;
+
+        XmNtopAttachment    = XmATTACH_WIDGET ;
+        XmNtopWidget        = XmLabel mTimingText0;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cTimingText1);
+    };
+};
+
+object mButton2 : XmPushButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+
+        XmNleftAttachment   = XmATTACH_FORM ;
+        XmNrightAttachment  = XmATTACH_POSITION ;
+        XmNrightPosition    = vLeftCenter;
+
+        XmNtopAttachment    = XmATTACH_WIDGET;
+        XmNtopWidget        = XmLabel mTimingText1;
+    };
+    callbacks
+    {
+        XmNactivateCallback = procedure drawProc (2);
+    };
+};
+
+object mTimingText2 : XmLabel
+{
+    arguments
+    {
+        XmNlabelString            = "      "; ! space for 6 digits
+        XmNfontList         = textFont ;
+
+        XmNleftAttachment   = XmATTACH_POSITION;
+        XmNleftPosition     = vRightCenter;
+        XmNrightAttachment  = XmATTACH_FORM ;
+
+        XmNtopAttachment    = XmATTACH_WIDGET ;
+        XmNtopWidget        = XmLabel mTimingText1;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cTimingText2);
+    };
+};
+
+object mButton3 : XmPushButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+
+        XmNleftAttachment   = XmATTACH_FORM ;
+        XmNrightAttachment  = XmATTACH_POSITION ;
+        XmNrightPosition    = vLeftCenter;
+
+        XmNtopAttachment    = XmATTACH_WIDGET;
+        XmNtopWidget        = XmLabel mTimingText2;
+    };
+    callbacks
+    {
+        XmNactivateCallback = procedure drawProc (3);
+    };
+};
+
+object mTimingText3 : XmLabel
+{
+    arguments
+    {
+        XmNlabelString            = "      "; ! space for 6 digits
+        XmNfontList         = textFont ;
+
+        XmNleftAttachment   = XmATTACH_POSITION;
+        XmNleftPosition     = vRightCenter;
+        XmNrightAttachment  = XmATTACH_FORM ;
+
+        XmNtopAttachment    = XmATTACH_WIDGET ;
+        XmNtopWidget        = XmLabel mTimingText2;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cTimingText3);
+    };
+};
+
+object mButton4 : XmPushButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+
+        XmNleftAttachment   = XmATTACH_FORM ;
+        XmNrightAttachment  = XmATTACH_POSITION ;
+        XmNrightPosition    = vLeftCenter;
+
+        XmNtopAttachment    = XmATTACH_WIDGET;
+        XmNtopWidget        = XmLabel mTimingText3;
+    };
+    callbacks
+    {
+        XmNactivateCallback = procedure drawProc (4);
+    };
+};
+
+object mTimingText4 : XmLabel
+{
+    arguments
+    {
+        XmNlabelString            = "      "; ! space for 6 digits
+        XmNfontList         = textFont ;
+        XmNleftAttachment   = XmATTACH_POSITION;
+        XmNleftPosition     = vRightCenter;
+        XmNrightAttachment  = XmATTACH_FORM ;
+        XmNtopAttachment    = XmATTACH_WIDGET ;
+        XmNtopWidget        = XmLabel mTimingText3;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cTimingText4);
+    };
+};
+
+object mButton5 : XmPushButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+
+        XmNleftAttachment   = XmATTACH_FORM ;
+        XmNrightAttachment  = XmATTACH_POSITION ;
+        XmNrightPosition    = vLeftCenter;
+
+        XmNtopAttachment    = XmATTACH_WIDGET;
+        XmNtopWidget        = XmLabel mTimingText4;
+    };
+    callbacks
+    {
+        XmNactivateCallback = procedure drawProc (5);
+    };
+};
+
+object mTimingText5 : XmLabel
+{
+    arguments
+    {
+        XmNlabelString            = "      "; ! space for 6 digits
+        XmNfontList         = textFont ;
+        XmNleftAttachment   = XmATTACH_POSITION;
+        XmNleftPosition     = vRightCenter;
+        XmNrightAttachment  = XmATTACH_FORM ;
+        XmNtopAttachment    = XmATTACH_WIDGET ;
+        XmNtopWidget        = XmLabel mTimingText4;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cTimingText5);
+    };
+};
+
+object mResetButton : XmPushButton
+{
+    arguments
+    {
+        XmNfontList         = buttonFont;
+        XmNrightAttachment  = XmATTACH_FORM ;
+        XmNleftAttachment   = XmATTACH_POSITION ;
+	XmNleftPosition    = vRightCenter ;
+        XmNtopAttachment    = XmATTACH_WIDGET;
+        XmNtopWidget        = XmLabel mTimingText5;
+    };
+    callbacks
+    {
+        XmNactivateCallback = procedure resetProc ();
+    };
+};
+
+object mDrawAllButton : XmPushButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+        XmNleftAttachment   = XmATTACH_FORM ;
+        XmNrightAttachment  = XmATTACH_POSITION ;
+	XmNrightPosition    = vLeftCenter;
+        XmNtopAttachment    = XmATTACH_WIDGET;
+        XmNtopWidget        = XmLabel mTimingText5;
+	XmNrecomputeSize    = false ;
+    };
+    callbacks
+    {
+        XmNactivateCallback = procedure drawProc (6);
+    };
+};
+!!***************************************************************
+end module;
+

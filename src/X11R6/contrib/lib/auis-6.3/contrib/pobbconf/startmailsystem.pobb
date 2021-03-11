@@ -1,0 +1,144 @@
+#!/bin/sh
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+
+%include pobbconfig.defs
+
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+
+%ifdef pobb_RunAMSDelivery
+
+%ifdef pobbenv_SNAP
+if [ -r ?[MoveLogScriptDir]/LogToAFS ]; then
+	echo -n " LogToAFS" > /dev/console
+	?[MoveLogScriptDir]/LogToAFS 2> /dev/console
+	XSTAT=$$??
+	if [ $$XSTAT != 0 ]; then echo -n "--NOT STARTED: status $$XSTAT" > /dev/console; fi
+fi
+%endif pobbenv_SNAP
+
+###########################################################
+#							  #
+# jr: Replaced sendmail startup with stuff for new system #
+#							  #
+###########################################################
+
+# Check on local Vice spooling queue & error queue
+LQ=?[LocalQueue]
+EQ=?[LocalErrorDir]
+if [ ! -d $$LQ ]
+then
+	echo -n \ \(Creating $$LQ > /dev/console
+	mkdir $$LQ
+	chmod 755 $$LQ
+	/etc/chown daemon $$LQ
+	echo -n \) > /dev/console
+fi
+
+if [ ! -d $$EQ ]
+then
+	echo -n \ \(Creating $$EQ > /dev/console
+	mkdir $$EQ
+	chmod 777 $$EQ
+	/etc/chown root $$EQ
+	echo -n \) > /dev/console
+else
+# See if anything in error directory
+	for f in $$EQ/*
+	do
+	    if [ -f $$f ]; then
+		echo "From: /etc/rc@`hostname`" > /tmp/mail
+		echo "Subject: Errors found in file $$f (`ls -l $$f`)" >> /tmp/mail
+		echo >> /tmp/mail
+		cat $$f >> /tmp/mail
+		if ?[queuemail] ?[PostmasterName]+ -f /tmp/mail; then rm -f $$f; fi
+	    fi
+	done
+fi
+
+####################################
+# Don't do the following any longer
+# jr, 7/24/86
+####################################
+
+# See if any undelivered mail in old mail queues
+#for f in /usr/spool/mqueue/[qd]f* /usr/spool/mqueue/dead.letter /usr/spool/mail/*
+#do
+#    if [ -f $$f ]; then
+#	echo "From: /etc/rc@`hostname`" > /tmp/mail
+#	echo "Subject: **Old mail in file $$f (`ls -l $$f`)" >> /tmp/mail
+#	echo >> /tmp/mail
+#	?[queuemail] ?[PostmasterName]+ -f /tmp/mail
+#	break
+#    fi
+#done
+
+# If handling remote requests, assume a higher overload factor for delivery
+%ifdef pobbenv_SNAP
+GF=?[GuardianFlagFile]
+%endif pobbenv_SNAP
+MF=?[MultiUserFlagFile]
+if [ -r $$MF ]; then
+	QXSW="-X`cat $$MF`"
+%ifdef pobbenv_SNAP
+elif [ -r $$GF ]; then
+	QXSW="-X6.0"
+%endif pobbenv_SNAP
+else
+	QXSW="-X"
+fi
+
+# Start queuemail daemon
+echo -n " queuemail $$QXSW" > /dev/console
+%ifdef pobb_MaybeExperimental
+if [ ?[TestExperimental] ]
+then
+	?[SetExperimental] ?[queuemail] -d -w 3600 -q $$LQ $$QXSW
+	XSTAT=$$??
+else
+%endif pobb_MaybeExperimental
+	?[queuemail] -d -w 3600 -q $$LQ $$QXSW
+	XSTAT=$$??
+%ifdef pobb_MaybeExperimental
+fi
+%endif pobb_MaybeExperimental
+if [ $$XSTAT != 0 ]; then echo -n "--NOT STARTED: status $$XSTAT" > /dev/console; fi
+
+%ifdef pobbenv_SNAP
+# Start up guardian -- see if accepting remote requests
+
+if [ -r $$GF ]; then
+	echo -n " guardian -r" `cat $$GF` > /dev/console
+	?[GuardianOnLocalDisk] -r `cat $$GF` 2> /dev/console &
+	XSTAT=$$??
+else
+	echo -n " guardian" > /dev/console
+	?[GuardianOnLocalDisk] 2> /dev/console &
+	XSTAT=$$??
+fi
+if [ $$XSTAT != 0 ]; then echo -n "--NOT STARTED: status $$XSTAT" > /dev/console; fi
+%endif pobbenv_SNAP
+echo "." > /dev/console
+
+%endif pobb_RunAMSDelivery

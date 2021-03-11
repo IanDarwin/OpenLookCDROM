@@ -1,0 +1,306 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+ *        For full copyright information see:'andrew/config/COPYRITE'     *
+\* ********************************************************************** */
+
+/*
+	$Disclaimer: 
+# Permission to use, copy, modify, and distribute this software and its 
+# documentation for any purpose is hereby granted without fee, 
+# provided that the above copyright notice appear in all copies and that 
+# both that copyright notice, this permission notice, and the following 
+# disclaimer appear in supporting documentation, and that the names of 
+# IBM, Carnegie Mellon University, and other copyright holders, not be 
+# used in advertising or publicity pertaining to distribution of the software 
+# without specific, written prior permission.
+# 
+# IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+# DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+# SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+# BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+# DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+# WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+# ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+# OF THIS SOFTWARE.
+#  $
+*/
+
+
+/*
+ *
+ * ******
+ *
+ * PLEASE NOTE:
+ *
+ * This file is designed to be run through the C preprocessor before
+ * being passed to the assembler.
+ *
+ * *****
+ *
+ * This is the code that breaks a link to ClassEntry routines
+ * and sets it to the set of routines given by the information
+ * pointed to by the first parameter.  That structure contains the
+ * information needed to locate a module and verify that the module
+ * is the correct version along with some other infomation about the
+ * module.
+ *
+ * Each ClassEntry routine must provide a way to get an index indicating
+ * which entry was called.  Each entry point sets a register to the index
+ * and then branches to the main body of this code.
+ *
+ * The main body of the code then does the following:
+ * -- Calls the class_Lookup procedure passing in the structure
+ *    pointed to by the first parameter.
+ * -- class_Lookup returns the base address of the procedure table
+ *    for the module.
+ * -- Use the index provided by the ClassEntry to look up the routine.
+ * -- Reset the stack to the state it was in before the call to this code.
+ * -- Make any adjustments to the stack, registers, etc. to make the
+ *    called routine think that it was called directly.
+ * -- Branch (NOT a subroutine jump) to the real routine.  This may be
+ *    done differently for some new machine.
+ *
+ * NOTE1: There are currently 150 entry points.  This was an arbitrary choice
+ * and can be changed as appropriate.  If it is changed, definitions
+ * in class.h must also be changed.
+ */
+
+#if 0
+#include <system.h>
+#endif
+
+/*
+ * This is the AIX Rios version of the class entrypoints.
+ */
+
+/*
+ * some names to make things more readable (hopefully)
+ */
+
+#define r0 0
+#define r1 1
+#define r2 2
+#define r3 3
+#define r4 4
+#define r5 5
+#define r6 6
+#define r7 7
+#define r8 8
+#define r9 9
+#define r10 10
+#define r11 11
+#define r12 12
+#define r13 13
+#define r14 14
+#define r15 15
+#define r31 31
+
+#define fr1 1
+#define fr2 2
+#define fr3 3
+#define fr4 4
+#define fr5 5
+#define fr6 6
+#define fr7 7
+#define fr8 8
+#define fr9 9
+#define fr10 10
+#define fr11 11
+#define fr12 12
+#define fr13 13
+
+/* 
+  This code consists of three parts:
+
+   (1) Function descriptors
+   (2) Entry Points
+   (3) Common code.
+   
+   There are 150 entry points. ClassEntry0, ..., ClassEntry149.  Each
+   entry point does exactly the same thing, but with a different index
+   (index = 0, ..., 149), so the entry point code simply sets r4 to the
+   desired index and branches to the common code.  In addition, since
+   each entry point is references as a function pointer (called by its
+   address in a dispatch vector, not by its name directly), we have
+   to set up a function descriptor for each entry point.
+*/
+
+	.toc
+
+        .csect  ClassEntryFunctionDescriptors[DS]
+        .align  1
+
+#ifdef __STDC__
+#define ClassEntry(n) \
+        .globl  ClassEntry ## n ;\
+ClassEntry ## n:\
+/* Address of ClassEntry0 entry point, address of TOC, address of Environment */ \
+	.long	.ClassEntry ## n , TOC[T0], 0
+#else
+#define ClassEntry(n) \
+        .globl  ClassEntry/**/n ;\
+ClassEntry/**/n: \
+/* Address of ClassEntry0 entry point, address of TOC, address of Environment */ \
+	.long	.ClassEntry/**/n , TOC[T0], 0
+#endif
+
+#include <../common/entrydefs.h>
+
+#undef ClassEntry
+
+	/*  For entry ClassEntry<i>, set up index as 2nd parm for class_Lookup
+	    and branch to common code. */
+#ifdef __STDC__
+#define ClassEntry(n) \
+        .globl  .ClassEntry ## n ;\
+.ClassEntry ## n:\
+        cal     r12, n(0) ; /* Load index into r12 */ \
+        b       L000      ; /* Jump to common code. */
+#else
+#define ClassEntry(n) \
+        .globl  .ClassEntry/**/n ;\
+.ClassEntry/**/n:\
+        cal     r12, n(0) ; /* Load index into r12 */ \
+        b       L000      ; /* Jump to common code. */
+#endif
+
+        .csect  ClassEntryEntryPoints[PR]
+        .align  1
+
+#include <../common/entrydefs.h>
+
+/* If we want this code to work when calling classporcedures that take
+ * floating point arguments, the following must be defined.
+ */
+#define SAVEFPREGS
+
+/* The following must be defined if classentry is to be used from a shared
+ * library. Otherwise, it must not be defined...
+ */
+#define RESTORETOC
+
+/*
+ * All the entry points branch to this label.
+ */
+
+L000:
+	/*  Common code */
+
+        .extern  .class_Lookup
+        .extern  ._ptrgl
+        .set LinkArea, 6        /* LC requires 6 word linkage area */
+        .set OutParams, 8       /* LC says must allocate 8 words for callee
+                                 * to save args. */
+        .set IntArgSave, 8      /* Must save 8 incoming arguments */
+#ifdef SAVEFPREGS
+        /* Make sure that the rest of the numbers in the stack frame work
+         * out so that the FP reg save area is double word aligned.
+         */
+        .set FPArgSave, 26      /* 14 FP arg. regs is 28 words. */
+#else
+        .set FPArgSave, 0
+#endif /* SAVEFPREGS */
+        .set LocalSave, 1       /* Temp storage. */
+        .set Pad, 1             /* Get stack frame to double word boundary. */ 
+        .set Local, IntArgSave + FPArgSave + LocalSave + Pad
+        .set FrameSize, 4 * (LinkArea + OutParams + Local)
+
+        mflr    r0			/*  Move Link Reg to r0 */
+        /* Put return address into correct place in link area. */
+        st      r0,8(r1)
+        /* Allocate stack frame. */
+        stu     r1,-FrameSize(r1)
+
+        /* Save integer argument registers */
+        lil     r0, IntArgSave * 4
+        mtxer   r0
+        ai      r0, r1, 4 * (LinkArea + OutParams)
+        stsx    r3, r0, r0
+
+#ifdef SAVEFPREGS
+        /* Save FP argument registers */
+        .set    FPSaveStart, 4 * (LinkArea + OutParams + IntArgSave)
+        stfd    fr1,  FPSaveStart + 0x00(r1)
+        stfd    fr2,  FPSaveStart + 0x08(r1)
+        stfd    fr3,  FPSaveStart + 0x10(r1)
+        stfd    fr4,  FPSaveStart + 0x18(r1)
+        stfd    fr5,  FPSaveStart + 0x20(r1)
+        stfd    fr6,  FPSaveStart + 0x28(r1)
+        stfd    fr7,  FPSaveStart + 0x30(r1)
+        stfd    fr8,  FPSaveStart + 0x38(r1)
+        stfd    fr9,  FPSaveStart + 0x40(r1)
+        stfd    fr10, FPSaveStart + 0x48(r1)
+        stfd    fr11, FPSaveStart + 0x50(r1)
+        stfd    fr12, FPSaveStart + 0x58(r1)
+        stfd    fr13, FPSaveStart + 0x60(r1)
+#endif /* SAVEFPREGS */
+
+        /* Save index (put in r12 by ClassEntry code) across call. */
+        st      r12, FrameSize - 4 *(LocalSave)(r1)
+
+        /* First arg (r3) is already correct from our caller. */
+        /* idex (r12) is second arg (r4) */        
+        mr      r4, r12
+        bl      .class_Lookup	/* Call class_Lookup (args in r3 and r4) */
+        cror    r15,r15,r15	/*  NO-OP (binder will replace with TOC
+                        	 *  restore instruction, if needed) */
+
+	/*  back from class_Lookup */
+        cmpi    0,r3,0		/*  lookup failed? */
+        beq     ErrorExit	/*  yes, return _class_ErrorReturnValue */
+	/*  no, jump to the proper class routine */
+
+	/*  non-zero value from class_Lookup is base of proc table */
+        l       r4, FrameSize - 4 *(LocalSave)(r1) /* Reload index */
+        sli     r4,r4,2		/*  multiply index by 4 = offset from base */
+        a       r5,r4,r3	/*  index off of base to correct fcn. ptr. */
+        l       r11,0(r5)	/*  r11 has descriptor addr. for .ptrgl */
+
+        /* Restore integer argument registers */
+        lil     r0, IntArgSave * 4
+        mtxer   r0
+        ai      r0, r1, 4 * (LinkArea + OutParams)
+        lsx     r3, r0, r0
+
+#ifdef SAVEFPREGS
+        /* Restore FP argument registers */
+        lfd     fr1,  FPSaveStart + 0x00(r1)
+        lfd     fr2,  FPSaveStart + 0x08(r1)
+        lfd     fr3,  FPSaveStart + 0x10(r1)
+        lfd     fr4,  FPSaveStart + 0x18(r1)
+        lfd     fr5,  FPSaveStart + 0x20(r1)
+        lfd     fr6,  FPSaveStart + 0x28(r1)
+        lfd     fr7,  FPSaveStart + 0x30(r1)
+        lfd     fr8,  FPSaveStart + 0x38(r1)
+        lfd     fr9,  FPSaveStart + 0x40(r1)
+        lfd     fr10, FPSaveStart + 0x48(r1)
+        lfd     fr11, FPSaveStart + 0x50(r1)
+        lfd     fr12, FPSaveStart + 0x58(r1)
+        lfd     fr13, FPSaveStart + 0x60(r1)
+#endif /* SAVEFPREGS */
+
+	/*  get link register from Link Area */
+        l       r0, FrameSize+8(r1)
+
+        ai      r1, r1, FrameSize	/*  restore stack pointer */
+        mtlr    r0                      /*  restore link register from r0 */
+
+#ifdef RESTORETOC
+/* This next line added by Zalman Stern March 23, 1990 */
+        l       r2, 0x14(r1)    /*  restore correct TOC pointer for caller. */
+#endif /* RESTORETOC */
+
+        /* Jump to function pointer via ptrgl which expects func. ptr in
+         * r11
+         */
+        b       ._ptrgl
+
+ErrorExit:
+	/*  return the value in class_ErrorReturnValue */
+        /*  toss other parameters */
+        lil     r3,-1			/*  get error return value */
+        l       r0,FrameSize+8(r1)	/*  get link register from Link Area */
+        ai      r1,r1,FrameSize		/*  restore stack pointer */
+        mtlr    r0			/*  restore link register from r0 */
+        brl				/*  Return */

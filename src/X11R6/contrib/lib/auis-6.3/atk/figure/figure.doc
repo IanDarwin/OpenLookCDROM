@@ -1,0 +1,626 @@
+\begindata{text,538478848}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\define{indentexp
+menu:[Region~4,IndentExp]
+attr:[LeftMargin LeftMargin Cm 124846]
+attr:[Indent LeftMargin Cm -124846]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]}
+\chapter{\center{Figure: a Drawing Data Object}}
+
+
+A figure is a substrate which contains a subobject (of class figobj). 
+Normally, this subobject is a figogrp (subclass of figobj), which acts as a 
+group which can contain zero or more figobjs nested within it. Thus the figure 
+can contain a hierarchical tree of figobjs.
+
+
+Each figobj in a figure is assigned a long-integer reference number. Many 
+operations on the figure use these reference numbers, rather than struct 
+figobj pointers; this allows faster object lookup. The constant figure_NULLREF 
+(defined in figure.ch) is used as a "null" reference value.
+
+
+The single top-level subobject in a figure is called the root object. It 
+should always be of class figogrp. (In a newly created figure, the root 
+figogrp has already been created; in general, there is no reason to ever 
+delete it.) A figogrp contains a (possibly empty) linked list of figobjs. 
+
+Each figobj (except for the root group) is thus in a figogrp, which is called 
+that object's parent group. By convention, the parent group of the root group 
+is figure_NULLREF.
+
+
+For reasons of efficiency, the linked list of contents of a figogrp is stored 
+in the figure data structure, \italic{not} in the figogrp. \italic{Therefore, 
+a figogrp can have no contents until it is inserted into a figure.} Before it 
+has been inserted into a figure, it is not meaningful to talk about a 
+figogrp's contents, or to try to assign it any.
+
+
+A figure has an "origin" point. This is the position which will be at the 
+upper left-hand corner when the figure is printed. The origin is often, but 
+not always, at (0, 0).
+
+
+\section{Quick reference list:}
+
+
+\indentexp{figure_InsertObject(struct figobj *o, long parent, long depth) 
+returns long;
+
+figure_DeleteObject(struct figobj *o) returns boolean;
+
+figure_LinkObjectByRef(long ref, long parent, long depth);
+
+figure_UnlinkObjectByRef(long ref);
+
+figure_AlwaysInsertObject(struct figobj *o, long parent, long depth) returns 
+long;
+
+figure_AlwaysDeleteObject(struct figobj *o) returns boolean;
+
+figure_AlwaysLinkObjectByRef(long ref, long parent, long depth);
+
+figure_AlwaysUnlinkObjectByRef(long ref);
+
+figure_EnumerateObjects(struct rectangle *area, boolean allowoverlap, 
+procedure func, long rock) returns struct figobj *;
+
+figure_EnumerateObjectGroup(long groupref, struct rectangle *area, boolean 
+allowoverlap, procedure func, long rock) returns struct figobj *;
+
+figure_EnumerateObjectTree(long groupref, struct rectangle *area, boolean 
+allowoverlap, procedure func, long rock) returns struct figobj *;
+
+figure_FindRefByObject(struct figobj *o) returns long;
+
+figure_FindObjectByRef(long ref) returns struct figobj *;
+
+figure_FindRefByPos(long gref, boolean recursive, enum figobj_HitVal howhit, 
+long delta, long x, long y, long *ptref) returns long;
+
+figure_FindDepthByRef(long ref) returns long;
+
+figure_WritePartial(FILE *fp, long writeid, int level, long *list, long 
+listsize, struct point *origin);
+
+figure_ReadPartial(FILE *file, long id, long focus, struct point *origin) 
+returns long;
+
+figure_GetOverallBounds() returns struct rectangle *;
+
+figure_RootObjRef();
+
+figure_GetReadOnly(); 
+
+figure_SetReadOnly(boolean val);
+
+figure_GetOriginX();
+
+figure_GetOriginY();
+
+figure_GetPrintScaleX();
+
+figure_GetPrintScaleY();
+
+figure_SetPrintScale(double x, double y);
+
+}
+
+
+\section{Inserting and Removing Figobjs}
+
+
+\indentexp{long figure_AlwaysInsertObject(self, o, parent, depth)
+
+struct figure *self;
+
+struct figobj *o;
+
+long parent; 
+
+long depth;
+
+}
+This method inserts figobj \italic{o} into \italic{self}. \italic{o} must not 
+be already inserted into \italic{self} or any other figure. If \italic{o} is a 
+figogrp, it will have no contents once it is inserted.
+
+The figobj is placed into the figogrp referred to by \italic{parent}. If 
+\italic{parent} is figure_NULLREF, \italic{o} is placed into the root group.
+
+\italic{depth} determines where o is stacked in relation to the other objects 
+in the group. If \italic{depth} is 0, \italic{o} is placed behind all the 
+other objects; if 1, \italic{o} is placed in front of the rearmost object; if 
+2, \italic{o }is placed in front of the rearmost 2 objects; etc. If 
+\italic{depth} is -1, it is placed in front of all the other objects.
+
+figure_AlwaysInsertObject() returns the long reference number assigned to 
+\italic{o}. If the insertion fails, it returns figure_NULLREF.
+
+
+
+\indentexp{boolean figure_AlwaysDeleteObject(self, o)
+
+struct figure *self;
+
+struct figobj *o;
+
+}
+This method removes \italic{o} from \italic{self}. It can then be destroyed or 
+inserted into a different figure.
+
+If \italic{o} is a figogrp, all its contents are removed also. 
+
+figure_AlwaysDeleteObject() returns a flag indicating whether the deletion was 
+successful.
+
+
+
+\section{Linking and Unlinking Figobjs}
+
+
+It is often useful to move a group of objects around in the figure hierarchy, 
+while keeping the structure of the group intact. The naive solution, using 
+figure_AlwaysDeleteObject() and figure_AlwaysInsertObject(), is difficult, 
+since all information about what objects are in what groups is lost when the 
+group is deleted. figure_AlwaysUnlinkObjectByRef() and 
+figure_AlwaysLinkObjectByRef() provide a better solution.
+
+
+\indentexp{void figure_AlwaysUnlinkObjectByRef(self, ref)
+
+struct figure *self;
+
+long ref;
+
+}
+This "unlinks" the figobj referred to by \italic{ref}. That is, the figobj is 
+removed from the contents list of its parent, but not removed from the global 
+figure data structure. If the figobj is a figogrp, its contents are preserved, 
+and will continue to be valid when the figobj is linked in again.
+
+When you unlink a figobj, you should link it back in before the next view 
+update. 
+
+
+\indentexp{void figure_AlwaysLinkObjectByRef(self, ref, parent, depth)
+
+struct figure *self;
+
+long ref;
+
+long parent;
+
+long depth;
+
+}
+This links the figobj \italic{ref} back into \italic{self}. The figobj must 
+have originally been inserted in \italic{self}, and then unlinked with 
+figure_AlwaysUnlinkObjectByRef().
+
+The \italic{parent} and \italic{depth} arguments determine where the figobj is 
+linked back in; their meanings are the same as in figure_AlwaysInsertObject().
+
+
+
+\section{The Read-Only Flag}
+
+
+\indentexp{boolean figure_SetReadOnly(struct figure *self, boolean newvalue)} 
+   [macro]
+
+This sets the fig's read-only flag to \italic{newvalue}.
+
+
+\indentexp{boolean figure_GetReadOnly(struct figure *self)}    [macro]
+
+This returns the value of the read-only flag.
+
+
+\indentexp{long figure_InsertObject(struct figure *self, struct figobj *o, 
+long parent, long depth)
+
+boolean figure_DeleteObject(struct figure *self, struct figobj *o)
+
+void figure_LinkObjectByRef(struct figure *self, long ref, long parent, long 
+depth)
+
+void figure_UnlinkObjectByRef(struct figure *self, long ref)
+
+}
+These methods are exactly the same as the corresponding figure_Always....() 
+methods, except that they do nothing when the read-only flag is TRUE.
+
+
+
+\section{Getting Information About the Fig's Contents}
+
+
+\indentexp{long figure_RootObjRef(struct figure *self)}     [macro]
+
+
+This macro returns a reference to the root group.
+
+
+\indentexp{struct figobj *figure_FindObjectByRef(self, ref)
+
+struct figure *self;
+
+long ref;
+
+}
+This method returns a pointer to the figobj referred to by \italic{ref}. If 
+\italic{ref} is not a valid reference in \italic{self}, the method returns 
+NULL.
+
+
+\indentexp{long figure_FindRefByObject(self, o)
+
+struct figure *self;
+
+struct figobj *o;
+
+}
+This method returns the reference to the figobj \italic{o}. If \italic{o} is 
+not inserted into \italic{self}, the method returns figure_NULLREF.
+
+
+\indentexp{long figure_FindDepthByRef(self, ref)
+
+struct figure *self;
+
+long ref;
+
+}
+This method returns the depth of figobj \italic{ref} in its parent group. That 
+is, it returns 0 if \italic{ref} is the rearmost object in its group, 1 if it 
+is the second-rearmost, and so forth. If \italic{ref} is the frontmost of N 
+objects, the method returns N-1. 
+
+If \italic{ref} is not inserted into \italic{self}, the method returns -1.
+
+
+\indentexp{struct rectangle *figure_GetOverallBounds(self)
+
+struct figure *self;
+
+}
+This returns a pointer to a rectangle which bounds every object in the figure.
+
+The contents of the rectangle structure are used by other procedures, and 
+should not be overwritten or deallocated.
+
+
+
+\section{Iterating Functions Over The Contents Of the Fig
+
+}
+\indentexp{struct figobj *figure_EnumerateObjects(self, area, allowoverlap, 
+callfun, rock)
+
+struct figure *self;
+
+struct rectangle *area;
+
+boolean allowoverlap;
+
+boolean (*callfun)();
+
+any_t rock;
+
+}
+This method calls the boolean function \italic{callfun} on some or all figobjs 
+in \italic{self}. \italic{
+
+}If \italic{area} is NULL, the \italic{allowoverlap} argument is ignored, and 
+\italic{callfun} is called for each figobj in \italic{self} (including 
+groups), in an arbitrary order. (To call them in hierarchical order, use 
+figure_EnumerateObjectTree().) If \italic{callfun} returns TRUE for any 
+figobj, it is not called for any further figobjs, and 
+figure_EnumerateObjects() returns a pointer to that figobj. If \italic{callfun} 
+never returns TRUE, figure_EnumerateObjects() returns NULL.
+
+If \italic{area} is a pointer to a struct rectangle, \italic{callfun} is only 
+called for figobjs that are in that rectangle. If \italic{allowoverlap} is 
+FALSE, this means figobjs that are entirely within that rectangle; if TRUE, it 
+means those figobjs that intersect or are within the rectangle. Again, the 
+calls are made in an arbitrary order. Again, in either case, the enumeration 
+ceases and a figobj pointer is returned if any call to \italic{callfun} 
+returns TRUE; if no call returns TRUE, the method returns NULL.
+
+
+\italic{callfun} should fit the declaration
+
+
+\leftindent{\indentexp{boolean callfun(struct figobj *o, long ref, struct 
+figure *self, any_t rock)}
+
+}
+When \italic{callfun} is called for a figobj, \italic{o} will be a pointer to 
+the object, \italic{ref} will be the object's reference, \italic{self} will be 
+the figure, and \italic{rock} will be the \italic{rock} argument passed to 
+figure_EnumerateObjects(). 
+
+
+
+\indentexp{struct figobj *figure_EnumerateObjectGroup(self, grp, area, 
+allowoverlap, callfun, rock)
+
+struct figure *self;
+
+long grp;
+
+struct rectangle *area;
+
+boolean allowoverlap;
+
+boolean (*callfun)();
+
+long rock;
+
+}
+This call is similar to figure_EnumerateObjects(), but it restricts its 
+enumeration to subobjects of the figogrp \italic{grp}. The enumeration is not 
+recursive (that is, if \italic{grp} contains subgroups, \italic{callfun} is 
+not called on the contents of those subgroups.) If \italic{grp} is 
+figure_NULLREF, \italic{callfun} is called only on the top-level object in the 
+figure (the root group.)
+
+The calls are made in the order that objects are stacked in the group, from 
+back to front.
+
+The other arguments, the return value, and the parameters of \italic{callfun} 
+are the same as those of figure_EnumerateObjects().
+
+
+
+\indentexp{struct figobj *figure_EnumerateObjectTree(self, grp, area, 
+allowoverlap, callfun, rock)
+
+struct figure *self;
+
+long grp;
+
+struct rectangle *area;
+
+boolean allowoverlap;
+
+boolean (*callfun)();
+
+any_t rock;
+
+}
+This call is similar to figure_EnumerateObjects(), but it restricts its 
+enumeration to subobjects of the figogrp \italic{grp}. The enumeration 
+\italic{is} recursive (that is, if \italic{grp} contains subgroups, 
+\italic{callfun} is called on the contents of those subgroups as well as the 
+subgroups themselves.) However, \italic{callfun} is not called on the group 
+\italic{grp} itself. 
+
+If \italic{grp} is figure_NULLREF, \italic{callfun} is called on every figobj 
+in the figure, starting with the root group.
+
+The calls are made in the order that objects are stacked in the group, from 
+back to front. Groups are called before their contents.
+
+The other arguments, the return value, and the parameters of \italic{callfun} 
+are the same as those of figure_EnumerateObjects().
+
+
+
+\section{Locating the Figobj at a Given Position
+
+}
+\indentexp{long figure_FindRefByPos(self, gref, recursive, howhit, delta, x, 
+y, ptref)
+
+struct figure *self;
+
+long gref;
+
+boolean recursive;
+
+enum figobj_HitVal howhit;
+
+long delta;
+
+long x, y;
+
+long *ptref;
+
+}
+This method searches the figobjs in \italic{self} for one which is at the 
+point (\italic{x, y}).
+
+\italic{howhit} and \italic{delta} determine how precisely the point must hit 
+the figobj in order to be accepted. The possible values (defined in figobj.ch) 
+are: 
+
+\leftindent{figobj_HitHandle: (x, y) must be within \italic{delta} of a handle 
+of the figobj. The handle reference is returned in \italic{ptref}.
+
+figobj_HitBody: (x, y) must be within \italic{delta} of some part of the body 
+of the figobj. The body part reference is returned in \italic{ptref}.
+
+figobj_HitInside: (x, y) must be in the interior of the figobj. Nothing is 
+returned in \italic{ptref}.
+
+}(See figobj.doc for information on figobjs' handles, bodies, and interiors.)
+
+The method returns a reference to the figobj it finds, and puts in a handle or 
+body reference in *\italic{ptref}. If you are not interested in the handle / 
+body reference, you may let \italic{ptref} be NULL. If no figobj is found, the 
+method returns figure_NULLREF.
+
+
+If \italic{gref} is figure_NULLREF, every figobj in self is checked. If 
+\italic{gref} is a reference to a group, only the contents of the group are 
+checked; \italic{recursive} determines whether subgroups of \italic{gref} are 
+searched recursively.
+
+
+ 
+
+\section{The Origin Point
+
+}
+\indentexp{long figure_GetOriginX(struct figure *self)}    [macro]
+
+\indentexp{long figure_GetOriginY(struct figure *self)}    [macro]
+
+
+These return the X and Y coordinates of the origin point. 
+
+
+\indentexp{figure_SetOrigin(struct figure *self, long x, long y)}     [macro]
+
+
+This sets the origin point to the given coordinates.
+
+
+
+\section{The Printing Scale
+
+}
+\indentexp{figure_SetPrintScale(struct figure *self, double x, double y)} 
+    [macro]
+
+
+This sets the printing scale values. The default values are (1.0, 1.0), which 
+will print the document at a scale of 576 units per inch; this is about the 
+same size that the figure document is displayed in a figview at normal zoom.
+
+
+\indentexp{double figure_GetPrintScaleX(struct figure *self)}    [macro]
+
+\indentexp{double figure_GetPrintScaleY(struct figure *self)}    [macro]
+
+
+These get the X and Y printing scale values. 
+
+
+
+\section{Reading and Writing Selected Objects to a File}
+
+
+\indentexp{void figure_WritePartial(self, fp, writeid, level, list, listnum, 
+origin)
+
+struct figure *self;
+
+FILE *fp;
+
+long writeid;
+
+int level;
+
+long *list;
+
+long listnum;
+
+struct point *origin;
+
+}
+This method is similar to figure_Write(), and the \italic{fp}, 
+\italic{writeid}, and \italic{level} arguments have the same meaning. However, 
+instead of writing out the entire figure, it only writes out some of its 
+figobjs. \italic{list} should point to an array of figobj references, and 
+\italic{listnum} should be the size of the array. Only figobjs in the list 
+will be written out. If there are any figogrps in the list, their contents 
+(and contents' contents, etc.) will automatically be written out as well; such 
+subobjects should not be included in the list.
+
+The resulting datastream will describe a full-fledged figure. The origin of 
+that figure will be the top left corner of a rectangle containing all the 
+figobjs in the list; this will not, in general, be (0, 0). If you wish to know 
+what that origin point is, you can pass the address of a struct point in 
+\italic{origin}; the structure will be filled out with that origin point. If 
+\italic{origin} is NULL, that information is not returned. (The origin point 
+of self is in any case unaffected.)
+
+
+\indentexp{long figure_ReadPartial(self, fp, id, focus, origin)
+
+struct figure *self;
+
+FILE *fp;
+
+long id;
+
+long focus;
+
+struct point *origin;
+
+}
+This method is similar to figure_Read(), and the \italic{fp} and \italic{id} 
+arguments have the same meaning. However, instead of replacing the contents of 
+\italic{self} with the figure read from the datastream, the datastream is 
+\italic{added} to the contents of \italic{self}. All the objects read in are 
+inserted into the group whose reference is \italic{focus}. (\italic{focus} 
+must be a reference to a group; it may \italic{not} be figure_NULLREF.)
+
+The origin point of self is not affected. However, if you pass the address of 
+a struct point in \italic{origin}, it will be filled out with the value of the 
+origin point of the read-in figure. If \italic{origin} is NULL, that 
+information is not returned.
+
+This method returns the same kinds of values as figure_Read(). If it returns 
+an error (anything other than dataobject_NOREADERROR), the contents of 
+\italic{self} are not predictable; some of the figobjs may have been read in 
+and inserted, or none; some may have been inserted incorrectly.
+
+
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,810,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,538478848}

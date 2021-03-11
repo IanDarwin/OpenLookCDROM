@@ -1,0 +1,559 @@
+\begindata{text,539034464}
+\textdsversion{12}
+\template{help}
+\define{global
+}
+ 
+
+\chapter{AMS:  The Andrew Message System}
+
+
+This help document provides an overview of some technical aspects of the 
+Andrew Message System.  It is not necessary to read this document if you only 
+want to use the AMS programs ( \italic{\helptopic{Messages}}  and 
+ \italic{\helptopic{SendMessage} }, \italic{\helptopic{VUI} }, and 
+\italic{\helptopic{CUI} }).  However, if you are interested in understanding 
+more about the underlying components of the Andrew Message System and how they 
+work together to provide mail and bulletin board services to Andrew users, you 
+should read this document.  It includes sections on
+
+
+\leftindent{What the Andrew Message System is
+
+Major components of the Andrew Message System
+
+Mail delivery
+
+Message authentication and message captions
+
+Name validation: the White Pages
+
+Message-tree folder structure and maintenance
+
+One and two process versions
+
+Headmagic
+
+Related tools}
+
+
+Terms that are printed in \bold{bold} are defined or explained in this help 
+document.  Terms printed in little grey boxes have additional help information 
+available.  
+
+
+\section{What the Andrew Message System is
+
+}\leftindent{
+The Andrew Message System is the system by which mail and bulletin board 
+messages are transmitted on Andrew.  The Andrew Message System includes user 
+programs (such as Messages and SendMessage) as well as underlying programs and 
+subroutines (the message server, the CUI library, the SNAP remote procedure 
+call package, and the guardian).  The Andrew Message System also provides a 
+White Pages facility that can be used by mail-sending programs for matching 
+user names to user ids so that mail can be sent to Andrew users by their names 
+as well as by their user ids. 
+
+}
+\section{Major components of the Andrew Message System
+
+}\leftindent{
+The design of the Andrew Message System is strongly influenced by a desire to 
+provide "universal message service" to as wide a range of users and machines 
+as possible.  In other words, the goal is for users to be able to read mail 
+and/or bboards one day on an Andrew workstation, the next day on an IBM PC, 
+the next day on a Macintosh, and the next day on some yet-unknown machine, and 
+have the message system behave consistently and properly recognize which 
+messages you have and have not seen.
+
+
+To achieve this goal, the functions involved in message reading and sending 
+are divided into two parts:  a user program and a database access program. 
+ The database access program is called the Message Server, or \bold{ms}.  The 
+message server must run on an Andrew workstation and it manipulates messages 
+in a database stored in the Andrew File System.  User programs, such as 
+Messages or VUI, communicate with the message server via the 
+\italic{\helptopic{CUI}} library of subroutines and a remote procedure call 
+mechanism called \bold{SNAP}.
+
+
+Each user program is free to use whatever methods its designers deem best for 
+interacting with the users; there are three different officially-supported 
+user programs (\helptopic{Messages}, \helptopic{VUI}, and \helptopic{CUI}) and 
+a number of user-supported programs (like Batmail), all of which which 
+represent different ideas about how users want to manipulate messages. 
+  However, user agent programs all use the same library to perform their 
+underlying manipulations of the message database: the \bold{CUI library}. 
+  (CUI stands for Common User Interface.)  In other words, regardless of which 
+interface you are using, the underlying actions are the same, which means that 
+you can switch from one program to another without losing any status 
+information (that is, without having a message presented to you as "new" 
+twice).
+
+
+The CUI library translates requests that it receives from the user agent 
+program into remote procedure calls to the message server (using SNAP) and 
+returns to the user agent program the response it receives from the message 
+server.  When an interface program starts, it initializes the CUI library to 
+establish a connection to the message server.  The connection to the message 
+server is obtained via a process called the \bold{guardian}.  The CUI library 
+contacts the guardian on the machine where it hopes to find a message server. 
+ (On Andrew workstations, this is the machine to which the user is logged on, 
+but the message server can be run on a different workstation than the one you 
+are using.)
+
+
+The guardian performs Andrew File System authentication functions and keeps 
+track of existing services it knows about.  (For example, if there is already 
+a message server for the user on the machine, the guardian will connect 
+clients to that one instead of creating a new one; a message server can handle 
+multiple clients, as long as they are all being used by the same user.)  The 
+guardian can be configured to refuse requests from other machines, so that you 
+can guarantee that no one on another machine can run a message server on 
+yours.  (This is in fact the default; server machines require special 
+initialization, explained below)  
+
+
+The only purpose of the guardian in the message system is to establish the 
+connection between the CUI library and the message server.  Once that 
+connection is made, the CUI library communicates directly with the message 
+server (using SNAP calls) to perform the operations requested by the user 
+agent program.  (The guardian is also used in a different context to connect a 
+PC to the PC server.)
+
+
+At the very top of the system sit the user interface programs, using the CUI 
+library, SNAP, the guardian, and the message server to provide message service 
+to users.  
+
+}
+\section{Mail delivery
+
+}\leftindent{
+User programs deliver mail by two different methods on Andrew: the 
+\bold{\helptopic{dropoff}} library routine or the \italic{\helptopic{queuemail}} 
+program.  This section describes the actions of the dropoff routine, which is 
+easier for programmers to use and has better performance, and is consequently 
+used by many of the AMS user programs.  For detailed information on the use of 
+queuemail, consult the help file on \italic{queuemail}.
+
+
+\bold{Outgoing mail}.  Each of the current AMS mail sending programs uses the 
+message server to call the mail delivery routine, dropoff.
+
+
+Dropoff looks for a directory called .Outgoing in the user's home directory. 
+ If this directory is non-existent, dropoff will create it (with appropriate 
+protection).  Dropoff attempts to write three files into this directory.  The 
+names of each of these files are identical except for the first character; 
+they begin with SF, QF, or GF.  If the cache manager finishes storing the GF 
+file, the last one written, your mail has been safely put into a mail delivery 
+queue and will eventually be delivered.  Mail is not considered for delivery 
+until the GF file is written.  (Note that this is the same protocol that 
+\italic{\helptopic{queuemail}} uses.)
+
+
+If the files are successfully written to the .Outgoing directory the dropoff 
+routine then sends a signal to the local queuemail daemon running on the host 
+machine (see the help entry on \italic{\helptopic{queuemail}} for more 
+information).  The signal contains the user id of the user and his or her 
+current tokens, and tells queuemail to wake up and deliver all mail in 
+.Outgoing for the user.  Once this signal is sent successfully, dropoff 
+returns indicating success to the caller.  The signal is sent as an insecure 
+datagram, which means that there is a possibility that the signal will be lost 
+before it can be received by the queuemail daemon.  In many cases loss of the 
+datagram would mean that the piece of mail would not be delivered.  To catch 
+any mail stranded by loss of its datagram, a daemon runs on one of the 
+postoffice machine and looks through all .Outgoing directories for just such 
+undelivered mail.  When the daemon finds such a piece of mail, it delivers the 
+mail.
+
+
+If the attempt to write to .Outgoing fails, dropoff uses the same file name 
+protocol to attempt to write the message to one of a number of global File 
+System queues.
+
+
+If this second delivery attempt fails (as can only happen because of File 
+System problems), dropoff will try to queue your mail on the local machine. 
+  It attempts to write the SF, QF, and GF files into a directory on your local 
+disk.  Later a daemon on the local machine will try to transfer these files to 
+the File System, which should succeed sometime after the File System comes 
+back up.  However, this mechanism is not completely secure; anyone with 
+control over the workstation can delete items from the local queue. 
+ Eventually, we intend to provide mechanisms which let users choose whether to 
+allow mail to take this "insecure" path through the delivery system.
+
+
+\bold{Incoming mail}.  All incoming network mail for Andrew users is delivered 
+first to one of the postoffice machines (there are currently four) and then to 
+individual mailboxes in the file system by a daemon.
+
+}
+\section{Message authentication and message captions
+
+}\leftindent{
+The Andrew Message System tries to establish who sent which messages in order 
+to protect Andrew users from forged mail.  This process is called message 
+authentication.  There are three possible levels of authentication, each of 
+which is reflected in the message caption that accompanies the message.
+
+
+\description{1.  Complete authentication (messages from Andrew users can 
+generally be definitively authenticated)
+
+
+The caption of a fully-authenticated message looks like this:
+
+
+	24-Sep-87   Egg on my face  Jello Biafra
+
+
+2.  Partial authentication (messages that arrive from users on other networks 
+can be authenticated to the extent that the name of the host network or 
+address can be attached to the user name; however we do not guarantee that the 
+name of the host is correct, only that the mail originated somewhere other 
+than on Andrew)
+
+
+	25-Sep-87   Breakfast    Kyle Face@g.pg.cs.cmu.edu
+
+
+3.  Failed authentication (an attempt is made to demonstrate when a piece of 
+mail could not be authenticated in case forgery is involved.  Question marks 
+are added to the end of the user id if authentication is not accomplished.)
+
+
+	24-Sep-86   Re: Breakfast  Judith Biafra@???}
+
+
+When network names are too long to fit, both the name and the host may get 
+shortened arbitrarily, but there will always be at least an "@" and a few 
+characters of the host name, to indicate that the mail is not of local origin. 
+
+
+
+
+}\section{Name validation: the White Pages
+
+}\leftindent{
+The Andrew Message System provides a name-lookup service that can be used by 
+user programs to match names supplied by the user (for example, as recipients 
+for pieces of mail) with a database of user ids in order to validate that the 
+name supplied corresponds to an Andrew user to whom mail can be delivered. 
+ The database of user ids and the subroutines for using it are called the 
+\bold{White Pages}. 
+
+
+The presence of a name-lookup service means that mail can be sent to Andrew 
+users by their names as well as by their user ids.  If you are sending mail to 
+an Andrew user, you can use any name that will identify the person uniquely. 
+ Suppose, for example, that there were an Andrew user called Jello Biafra 
+whose user id was "jbRo".  The name "Jello Biafra" could be used as a mail 
+address because it would identify the Andrew user "jbRo" uniquely and be 
+accepted by the White Pages as a valid name.  However, the name "Biafra" might 
+not be sufficient to identify "jbRo" because there might be other Andrew users 
+whose names are also "Biafra."  
+
+
+Name validation is used two ways in the Andrew Message System.  First, name 
+validation can be done interactively if the user program chooses to offer 
+interactive validation.  For example, when you send a message with the 
+SendMessage program, SendMessage tries to validate the names given before it 
+submits the mail to be delivered.  If one or more of the names typed by the 
+user as recipients (in either the To: or CC: field) is ambiguous, it informs 
+you that an invalid name exists and waits for you to correct the problem and 
+attempt to send the message again.  If SendMessage finds more than one user 
+who could match a name that you supplied, it will often present a dialogue box 
+from which you can choose the user you intended.  In other words, SendMessage 
+attempts to catch and help you correct any names that would cause the mail to 
+be undeliverable and result in an "error notice" or "rejection notice" to you 
+from the underlying delivery mechanisms.  (You can also check the names 
+separately by using the optional \bold{Check Recipients} menu option in 
+SendMessage.  You cause this option to appear on your SendMessage menus by 
+using the \bold{Set Options} menus in Messages.  The CUI "whois" command can 
+also be used to check user names.)
+
+
+Name validation is also used on mail that comes to Andrew users from remote 
+sites, such as on BITNET or the ARPA Internet.  If the validation procedure 
+cannot match the name given with an Andrew user id, it will send an error 
+notice to the sender of the mail explaining that the name he or she supplied 
+is ambiguous or not found.  If there are only a few possible matches for the 
+name, the error notice will contain a list of possible recipients and their 
+user ids so that the sender can choose which recipient was intended.  
+
+
+When name validation is done on a user name, the user id that corresponds to 
+the user name is supplied with a "+" attached to the end.  In SendMessage, for 
+example, the name "Jello Biafra" would be replaced by the address
+
+
+jbRo+@andrew.cmu.edu
+
+
+The "+" is used in Andrew mail addresses to signify that the characters 
+preceding the "+" have a special meaning.  Usually the characters before the 
+"+" are an Andrew user id and the "+" tells the validation procedure that the 
+name is a legitimate mail address.  For more information about the uses of the 
+"+" in Andrew mail addresses, see the  \italic{\helptopic{ms-plus}}  help 
+file.
+
+}
+\section{Message-tree folder structure and maintenance
+
+}
+\leftindent{Messages, having been delivered to a Mailbox and processed, are 
+stored in folders beneath a message-tree root.  Folders are simply directories 
+that contain messages, a few files describing those messages, and other 
+folders.  A message-tree root is a directory whose name starts with .MESSAGES, 
+and contains files describing the folders beneath it.  Treeroots themselves 
+contain no messages.
+
+
+\bold{Adding a message to a folder:}
+
+When a message is filed into a folder, several pieces of information must be 
+found and (possibly) updated.  First, the message server decides which folder 
+the user is interested in by comparing the folder-name specified (such as 
+"mail.work") with names in the .SubscriptionMap files in the treeroots 
+specified in the *.mspath preference.  The treeroots' subscription maps are 
+searched in the following default order, unless the *.mspath preference is 
+changed:  
+
+\description{
+$MAIL (the user's own .MESSAGES root), 
+
+$OFFICIAL (the root holding official bboards, ~bb/off/.MESSAGES), 
+
+$OTHER (other Andrew bboards under ~bb/.MESSAGES, network bboards under 
+~netbb/.MESSAGES).}
+
+
+(See the  \italic{\helptopic{preferences}}  help document for more information 
+about *.mspath.) Each line of the .SubscriptionMap is a short folder-name 
+followed by the full pathname to that folder's directory.  Once the 
+folder-name has been resolved, its associated directory is opened for writing 
+and the directory's .MS_MsgDir file is read in.  The user must, of course, 
+have appropriate rights on the directory to do this.
+
+
+The .MS_MsgDir file contains a bunch of information about the messages in that 
+folder.  It is a binary file, and should not, in general, be edited by hand. 
+ Each message has a constant-length entry in the .MS_MsgDir holding (in hashed 
+form): the caption, date of insertion into the folder, date sent, message-ID, 
+chain link (for "related message" marking in Messages), In-Reply-To 
+message-ID, and various other things.  When a new message is added to the 
+folder, a new entry is built for the .MS_MsgDir.  The new entry is added 
+either to the end of the list of entries ("append" from Messages), or inserted 
+into the list chronologically by sending-date ("classify" from Messages).
+
+
+\bold{Reading a message from a folder:}
+
+Reading the messages in a folder is essentially the same process, except the 
+user only needs read and lookup access to the directory.  In order to show 
+only those messages appropriate to the kind of subscription the user has to 
+the folder, a list of all the folders the user has ever read and the insertion 
+date of the last message read in each folder is kept in ~/.AMS.prof .  This 
+file also contains a folder-name to directory mapping and the kind of 
+subscription the user has to each folder (none, ShowAll, Print, or normal).
+
+
+\bold{Orphans and Reconstruction:}
+
+A message with no associated .MS_MsgDir entry is called an orphan.  There is 
+no way for the message server to read the orphaned message since the message 
+has no handle in the .MS_MsgDir.  When this happens, messages will seem to 
+disappear out their folder.  Conversely, if adding a message to a folder fails 
+midway through, there may be an entry in the .MS_MsgDir for a message that 
+never got written into the folder.  This, too, will cause problems.
+
+
+The usual course of action is "reconstruction" of the .MS_MsgDir file.  The 
+wizard-level CUI command \bold{reconstruct} will replace the old .MS_MsgDir 
+file with a completely rebuilt one generated by looking at all of the message 
+files in the directory.  For more information about reconstruction, see the 
+ \italic{\helptopic{cui-wizard}}  help document.
+
+
+\bold{Epoch-ing:
+
+}From time to time, the bboard maintainers remove old message from a bboard. 
+ The CUI wizard-level \bold{epoch} command will remove all messages in a 
+folder and all its subfolders that were inserted before a specified date.  For 
+more information about \bold{epoch}, see the  \italic{\helptopic{cui-wizard}} 
+ help document.
+
+}
+\section{One and two-process versions}
+
+
+\leftindent{The Andrew Message System programs are available in two versions: 
+one in which the message server is a separate process (the "s" versions, for 
+"server") and one in which the message server is linked into the user 
+interface program (the "n" versions, for "no server").  The latter have 
+slightly better performance because they use less virtual memory in total.
+
+
+Currently, the default version (the one you get when you run "messages," 
+"sendmessage," or "cui") is the "n" version, without the message server as a 
+separate process.
+
+
+There are times when you might want to run the "s" version; the two process 
+version.  To run the two process version, several things need to be done.  
+
+
+\bold{The machine on which the message server is to be run} needs to have the 
+following:
+
+
+-- a file called /RemoteGuardianRequests.  The file does not need to contain 
+anything.
+
+
+-- a file called /etc/guardian.svc with the following contents:
+
+
+MS.mmm.nnn AUTH_ONLY TRUE 200 /usr/snap/services/MS.mmm.nnn
+
+
+(all on one line) for every AMS major (mmm) and minor (nnn) version 
+(AMS_MAJOR_VERSION and AMS_MINOR_VERSION in DESTDIR/include/ams/amsvers.h) you 
+expect to run.
+
+
+-- after these files are in place, the machine should be rebooted so guardian 
+will start accepting remote requests.
+
+
+\bold{The person running the interface} needs to do the following:
+
+
+-- specify the machine on which the message server will run by putting the 
+following line in their preferences:
+
+
+AMS_RemoteServer: machine.name
+
+
+-- explicitly run the message server as a separate process, by typint the name 
+of the program plus an "s":
+
+
+\bold{\leftindent{messagess}}
+
+
+If there is any ambiguity about which version you are running as the default, 
+you can explicitly use the one-process version by typing the name of the 
+program plus an "n":
+
+
+\leftindent{\bold{messagesn}}
+
+
+\bold{Security considerations.}  Currently both versions of the programs are 
+equally secure. However, the -s versions may become slightly less secure 
+(about as secure as butler) in the future. }
+
+
+\section{Headmagic}
+
+\leftindent{
+The Andrew Message System has a feature that allows you to specify that any 
+message containing a certain header field will be filtered through a certain 
+filter program.  
+
+
+It works for all AMS interfaces which work on machines that support filter 
+processes; in particular, on any machine where the libraries have 
+ENABLEFILTERING defined. At present, therefore, this works on all applications 
+running on UNIX machines.
+
+
+For more information, see the  \italic{\helptopic{ams-headmagic} } help file.}
+
+
+\section{Related tools
+
+}
+Select (highlight) one of the italicized names and choose "Show Help on 
+Selected Word" from the pop-up menu to see the help document for:
+
+
+\leftindent{\italic{\helptopic{Andrew}		}(the Tour)
+
+\italic{\helptopic{bboards}
+
+\helptopic{CUI}
+
+\helptopic{flames}}		(filtering language for the AMS)\italic{	          
+
+\helptopic{forward}		}(how to have your Andrew mail forwarded)\italic{
+
+\helptopic{mail}
+
+\helptopic{Messages}}
+
+\italic{\helptopic{ms-aliases}		}(how to do mail aliases on Andrew)
+
+\italic{\helptopic{ms-mailinglists}		}(how to do mailing lists on Andrew)
+
+\italic{\helptopic{ms-plus}		(}the + in local addresses)\italic{
+
+\helptopic{SendMessage}
+
+\helptopic{VUI}
+
+\helptopic{white-pages}
+
+\helptopic{headmagic}}}
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1447,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,539034464}

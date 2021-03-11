@@ -1,0 +1,286 @@
+#!/usr/local/bin/wish -f
+
+####################### Initialization #####################################3
+
+source /usr/local/lib/tk/tk.tcl
+
+if [info exists geometry] { wm geometry . $geometry }
+
+wm positionfrom	. user
+wm sizefrom 	. user
+wm title	. tkPlay
+wm iconname	. tkPlay
+wm geometry	. "+400+400"
+wm minsize	. 110 24
+wm maxsize	. 500 500
+
+foreach i [winfo child .] {catch {destroy $i}}
+
+set mkTKnam 0
+
+# where (for title) is a list of two positions
+# scroll can be horiz, vert or both ("" == none)
+
+proc mkTK { w
+    	    typ
+	    {title ""}
+	    {pos top}
+	    {options ""}
+    	    {where {top bottom}}
+	    {scroll ""}
+    	    {xCmd ""}
+	    {yCmd ""}} {
+    global mkTKnam mkTKtop
+    if {$w == "."} {set name $w$mkTKnam} {set name $w.$mkTKnam}
+    set mkTKtop $name
+    incr mkTKnam
+    if {[string length $title] || [string length $scroll]} {
+    	frame $name
+    	pack append $w $name $pos
+    	eval $typ $name.t $options
+    	if [string length $title] {
+    	    label $name.l -text $title
+    	    pack append $name $name.l [lindex $where 0]
+    	}
+    } {
+    	eval $typ $name $options
+    	pack append $w $name $pos
+    	return $name
+    }
+    if {$scroll == "horiz" || $scroll == "both"} {
+	if {$xCmd == ""} {
+       	    scrollbar $name.h -orient horizontal -command "$name.t xview"
+    	} { scrollbar $name.h -orient horizontal -command "$xCmd"
+    	}
+    	pack append $name $name.h {bottom fillx}
+    	$name.t config -xscroll "$name.h set"
+    }
+    if {$scroll == "vert" || $scroll == "both"} {
+	if {$yCmd == ""} {
+	    scrollbar $name.v -orient vertical -command "$name.t yview"
+	} { scrollbar $name.v -orient vertical -command "$yCmd"
+	}
+    	pack append $name $name.v {left filly}
+    	$name.t config -yscroll "$name.v set"
+    }
+    pack append $name $name.t [lindex $where 1]
+    return $name.t
+}
+
+# each button has a name and command OR
+#   	    	    name and sub-menu
+proc mkMenu { w title names {pos left}} {
+    global mkTKnam
+    if {$w == "."} {set mb $w$mkTKnam} {set mb $w.$mkTKnam}
+    set mb [mkTK $w menubutton "" $pos \
+        "-text $title -menu $mb.menu -relief raised"]
+    menu $mb.menu
+    foreach a $names {
+    	set nam [lindex $a 0]
+    	set cmd [lindex $a 1]
+    	if {[llength [lindex $cmd 0]] > 1} {
+    	    set menu2 $mb.menu.$mkTKnam
+    	    incr mkTKnam	    
+    	    $mb.menu add cascade -label $nam -menu $menu2
+    	    menu $menu2
+    	    foreach b $cmd {
+		set typ [lindex $b 2]
+		if {$typ == {}} {
+    	    	    set typ "command"
+		    set exe "-command \"[lindex $b 1]\""
+    	    	} { set exe [lindex $b 1]}
+	    	eval "$menu2 add $typ -label \"[lindex $b 0]\" $exe"
+    	    }
+    	} {
+    	    if {$nam == {}} {
+		$mb.menu add sep
+    	    } { $mb.menu add command -label $nam -command $cmd }
+    	}
+    }
+    return $mb
+}
+    
+set tk_library /usr/local/lib/tk
+set auto_path  "$tk_library /usr/local/lib/tcl"
+
+########################### procedures ####################################
+proc spawn {cmd} {
+  append cmd { >/dev/null 2>&1 & echo $!}
+  return [exec sh -c $cmd ]
+}
+
+proc updatePercent {} {
+  global	incr topRight state
+
+  if {$state != "play"} return
+
+  set  incr(curPercent) [expr "$incr(curPercent) + $incr(percent)"]
+  set  incr(curOffset)  [expr "$incr(curOffset)  + $incr(offset)"]
+
+  set tmp [split $incr(curPercent) .]
+  set tmp "[lindex $tmp 0].[string index [lindex $tmp 1] 0]%"
+  $topRight config -text $tmp
+  if {$incr(curPercent) > 100.0} {
+    $topRight config -text "100.0%"
+    set state "stop"
+    return
+  }
+
+  if {$state == "play"} {after $incr(time) updatePercent}
+}
+
+proc doKill {} {
+  global pid
+
+  catch { exec kill -INT $pid } error
+}
+
+proc doPause {} {
+  global pid state incr file switches
+
+  if {$state == "play"} {
+    set state stop
+    doKill
+  } {
+    set state play
+    set skip [expr "$incr(curOffset) / 1000"]
+    if {$incr(curOffset) == 0} {
+      set pid [spawn "aplay [join $switches] $file"]
+    } {
+      set pid [spawn "dd if=$file bs=1000 skip=$skip | aplay [join $switches]"]
+    }
+    after $incr(time) updatePercent
+  }
+}
+
+proc doRewind {} {
+  global pid incr state file topRight switches
+
+  set incr(curPercent) 0
+  set incr(curOffset) 0
+  $topRight config -text "$incr(curPercent)%"
+  if {$state == "play"} {
+    doKill
+    exec sleep 1
+    set pid [spawn "aplay [join $switches] $file"]
+    after $incr(time) updatePercent
+  }
+}
+
+proc doExit {} {
+  global pid state
+
+  if {$state == "play"} {
+    doKill
+  }
+  exit 0
+}
+
+proc NewSwitch {name val {update 1}} {
+  global switches state
+
+  set idx [lsearch $switches "$name*"]
+  if {$idx >= 0} {
+    set switches [lreplace $switches $idx $idx "$name $val"]
+  } {
+    lappend switches "$name $val"
+  }
+  if {$update} {
+    if {$state == "play"} {
+      set state stop
+      doKill
+     }
+    doRewind
+  }
+}
+
+proc GetDevs {} {
+  set devs {}
+  set info [split [exec aset q] "\n"]
+  for {set i 0} {$i < [llength $info]} {incr i} {
+    set line [lindex $info $i]
+    if [regexp {^ *([0-9]+) *In:} $line full num] {
+      incr i
+      if {$i < [llength $info]} {
+        set line [lindex $info $i]
+        if [regexp {^ *Out:.* ([A-Z][^ ]*) +([0-9]+) +([0-9])} $line \
+	      full type rate chans] {
+    	  lappend devs "{$num: $type ($rate/$chans)} {NewSwitch -d $num}"
+    	}
+      }
+    }
+  }
+  return $devs
+}
+
+proc GetEncs {} {
+  set encs {}
+  set info [split [exec sh -c "aplay -e xxx 2>&1;exit 0" ]]
+  set looking 3
+  for {set i 0} {$i < [llength $info]} {incr i} {
+    set word [lindex $info $i]
+    if {$looking == 3 && $word == "encoding"} {set looking 2} \
+    elseif {$looking == 2 && $word == "types"} {set looking 1} \
+    elseif {$looking == 1 && $word == "are:"} {set looking 0} \
+    elseif {$looking == 0 && [string length $word] > 0} {
+      lappend encs "{$word} {NewSwitch -e $word}"
+    }
+  }
+  return $encs
+}
+
+########################## main ########################################3
+
+# Parse command line
+set file ""
+set switches {}
+NewSwitch "-d" 1 0
+NewSwitch "-e" ulaw 0
+NewSwitch "-g" 0 0
+for {set i 0} {$i < $argc} {incr i} {
+  switch -glob -- [lindex $argv $i] {
+    -g* {incr i; wm geometry . [lindex $argv $i]}
+    -d* {incr i; NewSwitch "-d" [lindex $argv $i] 0}
+    -v* {incr i; NewSwitch "-g" [lindex $argv $i] 0}
+    -e* {incr i; NewSwitch "-e" [lindex $argv $i] 0}
+    default {set file [lindex $argv $i]}
+  }
+}
+if {$file == "" || [string match "-*" $file]} {
+  puts stdout \
+   {Usage: tkPlay [-g geom] [-dev device] [-e enc] [-v vol] fileName}
+  exit 1
+}
+if {! [file exists $file]} {
+puts stdout "tkPlay: $file does not exist"
+  exit 1
+}
+
+# Make the windows
+set top [mkTK . frame "" top "-bd 2 -relief raised"]
+set topLeft [mkTK $top label $file left "" left]
+set topRight [mkMenu $top Command [list \
+    {"Pause/Play" {doPause}} \
+    {"Rewind" {doRewind}} \
+    {"" {}} \
+    [list "Encoding"   [GetEncs]] \
+    [list "Device"   [GetDevs]] \
+    {"Volume" {
+      {-12	{NewSwitch -g -12}}
+      {-6	{NewSwitch -g  -6}}
+      {0	{NewSwitch -g   0}}
+      {6	{NewSwitch -g   6}}
+      {12	{NewSwitch -g  12}}}} \
+    {"" {}} \
+    {"Quit"  {doExit}}]]
+set size [file size $file]
+set incr(time) 200
+set incr(offset) [expr "8 * $incr(time)"]
+set incr(percent) [expr "$incr(offset) * 100.0 / $size"]
+set state play
+set incr(curPercent) 0
+set incr(curOffset) 0
+$topRight config -text "$incr(curPercent)%"
+set pid [spawn "aplay [join $switches] $file"]
+after $incr(time) updatePercent
+

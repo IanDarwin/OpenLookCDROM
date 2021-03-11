@@ -1,0 +1,134 @@
+@begin(header)
+author: ackerman@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+node_expert: ackerman=ag@ics.uci.edu
+expiration_date: 06/25/93
+last_modifier: ackerman@ics.uci.edu
+last_mod_date: 07/02/91
+mod_num: 2
+@end(header)
+Date: 24 Feb 90 00:23:24 GMT
+
+I've got a few questions about the quit functions of core clients in the R4 
+distribution.
+
+I'm writing an application that uses one of my own widgets under X11 R4
+Athena. For a while, I was following the examples of the source code in
+$TOP/clients. Most of these clients exit via a function that looks similar to
+this.
+
+Exit(w, call, client)
+    Widget w;
+    caddr_t call, client;
+    {
+    XtDestroyApplicationContext(app_con);
+    exit(0);
+    }
+
+Now, from my own trauma with my application I have found that this
+will NOT call ANY of the widget's destroyCallback procedures. I now
+understand why (thanks to Paul Asente). Now, many of the athena
+widgets do indeed have destroy callbacks, so it would seem that any
+application that exits in the above fashion is "doing the wrong
+thing".  Would you (Consortium Staff), say this is true? The reason I
+bring this up, is basically for clarification for myself, and others.
+The documentation covers XtDestroyWidget, and
+XtDestroyApplicationContext, but it doesn't address this phenomenom at
+all. If a widget writer puts a destroycallback into their widget,
+there is assumed to be a good reason for this. Now, In my eyes an
+application writer should not have to look through the widget code to
+see if the destroy callback is "worth calling" or not. In my case, it
+was imperative that my destroyCallback got called, beacuse it has to
+remove a 30MB tmp file.
+
+The hack I'm using (again, thanks to Paul Asente) is as follows:
+
+
+void Exit()
+    {
+    xtUnmapWidget(top);
+    XtDestroyWidget(top);
+    /* global flag */
+    exitFlag = True;
+    }
+
+MainLoop()
+    {
+    while (1)
+        {
+	/* dpy, and app_con are global */
+        XEvent event;
+        XtAppNextEvent(app_con, &event);
+        XtDispatchEvent(&event);
+        if (exitFlag)
+            {
+            XFlush(dpy);
+            break;
+            }
+        }
+    XtDestroyApplicationContext(app_con);
+    exit(0);
+    }
+
+In this way, by the time the flag is set, all the events (XtCallCallbacks)
+are already on the que, so XFlush, moves 'm on through, then we exit.
+
+I'm wondering what the deal is? Why did the Consortium Staff neglect this
+aspect of exiting? It is well documented, that XtDestoryWidget is a two pass
+operation, it's equally well ignored by the applciations in the
+distribution. What gives?
+
+Furthermore, I'm even more curious if this is the cause of the notorious
+"Memory Leaks". In other words, I'm curious if every application that uses 
+widgets, and exits without waiting for these callbacks are leaving stuff in 
+the server and therefore it would seem to continually grow?
+
+Also, Since every application that uses widgets has a toplevelshell, could 
+there perhaps be some sort of event dispatched when that shell is finally
+detroyed? Maybe you could then pass the toplevelwidget to a new
+XtAppMainLoop, and it would exit appropriately when the shell is dead?
+
+
+I would be really interested to hear what people think about this.
+My hope is that someone can give me an explanation for these
+inconsistencies or, explain to me (nicely please) why I don't know what 
+I'm talking about.
+
+@end(Q)
+@begin(A)
+Date: 28 Feb 90 22:23:33 GMT
+From: Paul Asente
+Organization: DEC Western Software Lab
+
+
+>...a bunch of stuff berating the MIT applications for ust exiting instead
+>of destroying their widgets...
+
+When you write a non-toolkit program that uses malloc, do you explicitly
+free all of the allocated storage before you exit?  Of course you don't.
+You know that malloc doesn't consume any system resources that won't be
+recovered when you program exits.  This places some future constraints on
+malloc (that it *never* be changed to consume resources that need explicit
+freeing) but it's considered a reasonable tradeoff not to have to do a
+whole slew of completely useless work before you exit the program.
+
+The situation with widgets is completely analogous.  If a widget consumes
+a resource that needs explicit freeing, the widget documentation had
+better document this so that the application can be sure to destroy the
+widget before exiting.  Otherwise there is no point in having the
+program spend time freeing storage, destroying windows, freeing fonts and
+graphics contexts, and so forth when these things would all be done
+automatically (and much more quickly) if the application just exits.
+
+The destroy methods and callbacks are mostly for applications that need to
+continue after destroying some or all of their widgets.  The toolkit was
+not designed to require or encourage explicit destruction in normal cases;
+the preferred way to exit an application has always been to call exit.
+
+We could have made things more convenient for the cases where a particular
+kind of widget needs to be destroyed, but the current scheme of setting a
+flag and writing your own event loop is not difficult to program and works
+just fine.
+@end(A)
+

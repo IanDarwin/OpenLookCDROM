@@ -1,0 +1,86 @@
+#!/bin/sh
+#
+# $Source: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/contrib/mit/fxlib/server/RCS/neos.add,v $
+# $Author: wdc $
+# $Header: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/contrib/mit/fxlib/server/RCS/neos.add,v 1.1 1992/02/13 20:36:18 wdc R6tape $
+#
+# This script does setup necessary to run the EOS file exchange server.
+# If you change $edir, be sure to change the message at end of this
+#   script as well as the message in the eos.del script.
+
+edir=/site/exchange
+fdir=$edir/files
+newserver=/afs/athena/astaff/project/eosdev/@sys/server/fxserver
+
+if [ ! -d $edir ]; then
+	echo -n "Creating directory $edir..."
+	mkdir $edir
+	echo "done."
+fi
+
+if [ ! -d $fdir ]; then
+	echo -n "Creating directory $fdir..."
+	mkdir $fdir
+	echo "done."
+fi
+
+cd $edir
+
+echo -n "Installing new fxserver program..."
+if [ ! -f fxserver.new ]; then
+	ln -s $newserver fxserver.new
+fi
+if [ -f fxserver ]; then
+	mv fxserver fxserver.old
+fi
+cp -p fxserver.new fxserver
+echo "done."
+
+# XXX Is hesiod the best source of the server list?
+
+if [ ! -f server.list ]; then
+	echo -n "Creating file server.list..."
+	if [ 0`hesinfo turnin sloc | grep -c -i $host` -eq 1 ]; then
+		hesinfo turnin sloc > server.list
+	else
+		hostname > server.list
+	fi
+	echo "done."
+fi
+
+# XXX Is moira the best thing to use to get the access control list?
+
+if [ ! -f $fdir/ACL-GOD ]; then
+	echo "Creating file $fdir/ACL-GOD..."
+	blanche -noauth -u f_l | awk '{ printf "%s.@ATHENA.MIT.EDU\n", $0 }'\
+	| tee $fdir/ACL-GOD
+	echo "done."
+fi
+
+# XXX Cut the following lines when FXSRV is a normal part of rc.local
+
+rc=/etc/rc
+if [ -f /etc/rc.local ]; then rc="$rc /etc/rc.local";fi
+if grep -s '${FXSRV}' $rc; then
+	echo "FXSRV variable already recognized in $rc."
+else
+	echo -n "Fixing /etc/rc.local..."
+	if [ ! -f /etc/rc.local ]; then
+		echo \#!/bin/sh > /etc/rc.local
+		chmod 755 /etc/rc.local
+	fi
+	echo ''					>> /etc/rc.local
+	echo 'if [ "${FXSRV}" = "true" ]; then'	>> /etc/rc.local
+	echo '	echo -n "fxserver..."'		>> /etc/rc.local
+	echo '	'$edir'/fxserver &'		>> /etc/rc.local
+	echo 'fi'				>> /etc/rc.local
+	echo done
+fi
+
+cat >> ${LOGFILE} << EOF
+===> Remember to get a srvtab with rcmd.<machine>.
+===> If /site is not on a large enough partition for storing files,
+===>   move the contents of /site/exchange to another partition and
+===>   make /site/exchange a symlink to the new directory.
+EOF
+exit 0

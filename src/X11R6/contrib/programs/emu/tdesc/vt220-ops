@@ -1,0 +1,647 @@
+/* vt220-ops,v 1.2 1994/05/26 21:02:36 me Exp */
+
+/*
+ * This file is part of the Emu system.
+ *
+ * Copyright 1990 by PCS Computer Systeme, GmbH. Munich, West Germany.
+ * 
+ * Copyright 1994 by Jordan K. Hubbard and Michael W. Elbel
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the
+ * "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to
+ * the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL PCS, THE AUTHORS, OR THEIR HOUSEPETS BE LIABLE FOR
+ * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. SO DON'T SUE US.
+ * THANK YOU.
+ */
+
+/*
+ * Input operations for the emu "xterm" terminal.
+ *
+ * Author: Steve Crooks, loosely based on the clumsy original, now really
+ * 	   does resemble a vt220
+ *
+ * Date: Feb 1992
+ * Description: This file describes, in essence, what the "vt220" terminal
+ * 		looks like
+ *
+ * Revision History:
+ *
+ * $Log $
+ */
+
+/* Register usage 					*/
+/* 	0 = Logical character set G0 ["ascii"]		*/
+/*	1 = Logical character set G1 ["uk"]		*/
+/*	2 = Logical character set G2 ["supplemental"]	*/
+/*	3 = Logical character set G3 ["graphics"]	*/
+/*	5 = In-use character table GL [0]		*/
+/*	6 = In-use character table GR [2]		*/
+/*	m = DECSC: state of character table GR		*/
+/*	n = DECSC: state of character table GL		*/
+/*	o = DECSC: state of logical character set G3	*/
+/*	p = DECSC: state of logical character set G2	*/
+/*	q = DECSC: state of logical character set G1	*/
+/*	r = DECSC: state of logical character set G0	*/
+/*	s = DECSC: vertical cursor position		*/
+/*	t = DECSC: horizontal cursor position		*/
+/*	u = DECSC: canvas attributes			*/
+/*	v = DECSC: wrap mode				*/
+
+*term.vt220-ops:							\
+/* compatibility level */						\
+OP_NOP		<\\E[%d\"p>			/* UNSUPPORTED */	\
+OP_NOP		<\\E[%d;%d\"p>			/* UNSUPPORTED */	\
+									\
+/* C0 (ascii) control characters recognized */				\
+/*	We have to catch them all or we'll spit out whatever */		\
+/*	character occupies the position in the font.	     */		\
+OP_NOP			<^2>				/* NUL */	\
+OP_NOP			<^\\s>				/* NUL */	\
+OP_NOP			<^A>				/* SOH */	\
+OP_NOP			<^B>				/* STX */	\
+OP_NOP			<^C>				/* ETX */	\
+OP_NOP			<^D>				/* EOT */	\
+OP_NOP			<%{ROP_ANSWERBACK R}^E>		/* ENQ */	\
+OP_NOP			<^F>				/* ACK */	\
+OP_RING_BELL		<^G>				/* BEL */	\
+OP_MOVE_REL_COLUMN	<%-1%px\\b>			/* BS */	\
+OP_HOR_TAB		<\\t>				/* HT */	\
+OP_MOVE_REL_ROW_SCROLLED<%1%py\\n>			/* LF */ 	\
+OP_MOVE_REL_ROW_SCROLLED<%1%py\\v>			/* VT */ 	\
+OP_MOVE_REL_ROW_SCROLLED<%1%py^L>			/* FF */ 	\
+OP_MOVE_ABS_COLUMN	<%0%px\\r>			/* CR */	\
+OP_NOP			<^P>				/* DLE */	\
+OP_NOP			<^Q>				/* DC1 */	\
+OP_NOP			<^R>				/* DC2 */	\
+OP_NOP			<^S>				/* DC3 */	\
+OP_NOP			<^T>				/* DC4 */	\
+OP_NOP			<^U>				/* NAK */	\
+OP_NOP			<^V>				/* SYN */	\
+OP_NOP			<^W>				/* ETB */	\
+OP_NOP			<^X>				/* CAN */	\
+OP_NOP			<^Y>				/* EM */	\
+OP_NOP			<^Z>				/* SUB */	\
+OP_NOP			<^4>				/* FS */	\
+OP_NOP			<^/>				/* FS */	\
+OP_NOP			<^5>				/* GS */	\
+OP_NOP			<^]>				/* GS */	\
+OP_NOP			<^6>				/* RS */	\
+OP_NOP			<^7>				/* US */	\
+OP_NOP			<^?>				/* US */	\
+									\
+/* C1 control characters recognized */					\
+/*	String terminator. */						\
+OP_NOP			<\\E\\\\\\>					\
+									\
+/* designating hard character sets */					\
+/* 	FLUT settings : G0 to G3 are stored in registers 0 to 3 */	\
+OP_NOP			<\\EB>						\
+OP_NOP			<\\E(%{		/* ascii -> G0 */		\
+		0 g5 = ? "ascii" pa 32 pb OP_CHANGE_FLUT C ;		\
+		0 g6 = ? "ascii" pa 160 pb OP_CHANGE_FLUT C ;		\
+		"ascii" p0						\
+		}B>							\
+OP_NOP			<\\E)%{		/* ascii -> G1 */		\
+		1 g5 = ? "ascii" pa 32 pb OP_CHANGE_FLUT C ;		\
+		1 g6 = ? "ascii" pa 160 pb OP_CHANGE_FLUT C ;		\
+		"ascii" p1						\
+		}B>							\
+OP_NOP			<\\E*%{		/* ascii -> G2 */		\
+		2 g5 = ? "ascii" pa 32 pb OP_CHANGE_FLUT C ;		\
+		2 g6 = ? "ascii" pa 160 pb OP_CHANGE_FLUT C ;		\
+		"ascii" p2						\
+		}B>							\
+OP_NOP			<\\E+%{		/* ascii -> G3 */		\
+		3 g5 = ? "ascii" pa 32 pb OP_CHANGE_FLUT C ;		\
+		3 g6 = ? "ascii" pa 160 pb OP_CHANGE_FLUT C ;		\
+		"ascii" p3						\
+		}B>							\
+OP_NOP			<\\E<>						\
+OP_NOP			<\\E(%{		/* supplemental -> G0 */	\
+		0 g5 = ? "supplemental" pa 32 pb OP_CHANGE_FLUT C ;	\
+		0 g6 = ? "supplemental" pa 160 pb OP_CHANGE_FLUT C ;	\
+		"supplemental" p0					\
+		}<>							\
+OP_NOP			<\\E)%{		/* supplemental -> G1 */	\
+		1 g5 = ? "supplemental" pa 32 pb OP_CHANGE_FLUT C ;	\
+		1 g6 = ? "supplemental" pa 160 pb OP_CHANGE_FLUT C ;	\
+		"supplemental" p1					\
+		}<>							\
+OP_NOP			<\\E*%{		/* supplemental -> G2 */	\
+		2 g5 = ? "supplemental" pa 32 pb OP_CHANGE_FLUT C ;	\
+		2 g6 = ? "supplemental" pa 160 pb OP_CHANGE_FLUT C ;	\
+		"supplemental" p2					\
+		}<>							\
+OP_NOP			<\\E+%{		/* supplemental -> G3 */	\
+		3 g5 = ? "supplemental" pa 32 pb OP_CHANGE_FLUT C ;	\
+		3 g6 = ? "supplemental" pa 160 pb OP_CHANGE_FLUT C ;	\
+		"supplemental" p3					\
+		}<>							\
+OP_NOP			<\\E0>						\
+OP_NOP			<\\E(%{		/* graphics ->G0 */		\
+		0 g5 = ? "graphics" pa 32 pb OP_CHANGE_FLUT C ;		\
+		0 g6 = ? "graphics" pa 160 pb OP_CHANGE_FLUT C ;	\
+		"graphics" p0						\
+		}0>							\
+OP_NOP			<\\E)%{         /* graphics -> G1 */		\
+		1 g5 = ? "graphics" pa 32 pb OP_CHANGE_FLUT C ;		\
+		1 g6 = ? "graphics" pa 160 pb OP_CHANGE_FLUT C ;	\
+		"graphics" p1						\
+		}0>							\
+OP_NOP			<\\E*%{         /* graphics -> G2 */		\
+		2 g5 = ? "graphics" pa 32 pb OP_CHANGE_FLUT C ;		\
+		2 g6 = ? "graphics" pa 160 pb OP_CHANGE_FLUT C ;	\
+		"graphics" p2						\
+		}0>							\
+OP_NOP			<\\E+%{		/* graphics -> G3 */		\
+		3 g5 = ? "graphics" pa 32 pb OP_CHANGE_FLUT C ;		\
+		3 g6 = ? "graphics" pa 160 pb OP_CHANGE_FLUT C ;	\
+		"graphics" p3						\
+		}0>							\
+/* Need to do some work here supporting all those nifty national */	\
+/* character sets.  It's not as easy as the others, because to   */	\
+/* use them you must select national mode.  Yuck.  At least they */	\
+/* can only go into G1, G2, and G3; *not* G0.  --ssc             */	\
+/*OP_NOP		<\\EA>		/* uk */			\
+/*OP_NOP		<\\E4>		/* dutch */			\
+/*OP_NOP		<\\EC>		/* finnish */			\
+/*OP_NOP		<\\E5>		/* finnish */			\
+/*OP_NOP		<\\ER>		/* french */			\
+/*OP_NOP		<\\EQ>		/* fc */			\
+/*OP_NOP		<\\EK>		/* german */			\
+/*OP_NOP		<\\EY>		/* italian */			\
+/*OP_NOP		<\\EE>		/* norwegian */			\
+/*OP_NOP		<\\E6>		/* norwegian */			\
+/*OP_NOP		<\\EZ>		/* spanish */			\
+/*OP_NOP		<\\EH>		/* swedish */			\
+/*OP_NOP		<\\E7>		/* swedish */			\
+/*OP_NOP		<\\E=>		/* swiss */			\
+									\
+/* invoking character sets using lock shifts */				\
+/* 	Actual FLUT changing, the arguments come from registers */	\
+/*	0 to 3, the character sets GL and GR are stored in      */	\
+/*	registers 5 and 6.				        */	\
+/*	(LS0) Lock shift G0. */						\
+OP_CHANGE_FLUT		<%{g0,0,p5,pa,32,pb}^O>				\
+/*	(LS1) Lock shift G1. */						\
+OP_CHANGE_FLUT		<%{g1,1,p5,pa,32,pb}^N>				\
+/*	(LS1R) Lock shift G1, right. */					\
+OP_CHANGE_FLUT		<\\E%{g1,1,p6,pa,160,pb}~>			\
+/*	(LS2) Lock shift G2. */						\
+OP_CHANGE_FLUT		<\\E%{g2,2,p5,pa,32,pb}n>			\
+/*	(LS2R) Lock shift G2, right. */					\
+OP_CHANGE_FLUT		<\\E%{g2,2,p6,pa,160,pb}\}>			\
+/*	(LS3) Lock shift G3. */						\
+OP_CHANGE_FLUT		<\\E%{g3,3,p5,pa,32,pb}o>			\
+/*	(LS3R) Lock shift G3, right. */					\
+OP_CHANGE_FLUT		<\\E%{g3,3,p6,pa,160,pb}|>			\
+									\
+/* invoking character sets using single shifts */			\
+/*	(SS2) Single shift G2. */					\
+OP_NOP			<\\EN%c%{					\
+		g2 pa 32 pb OP_CHANGE_FLUT C	     /* invoke g2 */	\
+ 		CB_STR_TYPE @ bs OP_INSERT C	     /* print char */	\
+		g5 '0' + G pa 32 pb OP_CHANGE_FLUT C /* restore flut */	\
+			}>						\
+/*	(SS3) Single shift G3. */					\
+OP_NOP			<\\EO%c%{					\
+		g3 pa 32 pb OP_CHANGE_FLUT C	     /* invoke g2 */	\
+ 		CB_STR_TYPE @ bs OP_INSERT C	     /* print char */	\
+		g5 '0' + G pa 32 pb OP_CHANGE_FLUT C /* restore flut */	\
+			}>						\
+									\
+/* select C1 control transmission */					\
+/*	(S7C1T) 7-bit C1 control transmission. */			\
+OP_NOP		<\\E F>				/* UNSUPPORTED */	\
+/*	(S8C1T) 8-bit C1 control transmission. */			\
+OP_NOP		<\\E G>				/* UNSUPPORTED */	\
+									\
+/* terminal modes */							\
+/* 	ANSI set mode. */						\
+OP_NOP			<\\E[%{						\
+	/* get the string and rip off the h at the end */		\
+	s D								\
+	/* now loop over the string to find the arguments */		\
+	La /* Loop head */						\
+		';' $ 		/* find the next delimiter (if any) */	\
+		CB_INT_TYPE @						\
+		D 2 = ?	      /* (KAM) Keyboard action - locked */	\
+			jb ;			/* UNSUPPORTED */	\
+		D 4 = ?	      /* (IRM) Insertion-replacement - insert */\
+			OP_INSERT_MODE C jb ;				\
+		D 12 = ?      /* (SRM) Send-receive - off */		\
+			jb ;			/* UNSUPPORTED */	\
+		D 20 = ?      /* (LNM) Line feed-new line - new line */	\
+			;			/* UNSUPPORTED */	\
+		Lb							\
+		X 		/* drop the processed item */		\
+		D l ? ja ;	/* jump back if there's anything left */\
+	X f}h>								\
+/*	ANSI reset mode. */						\
+OP_NOP			<\\E[%{						\
+	/* get the string and rip off the l at the end */		\
+	s D								\
+	/* now loop over the string to find the arguments */		\
+	La /* Loop head */						\
+		';' $ 		/* find the next delimiter (if any) */	\
+		CB_INT_TYPE @						\
+		D 2 = ?	     /* (KAM) Keyboard action - unlocked */	\
+			jb ;			/* UNSUPPORTED */	\
+		D 4 = ?	     /* (IRM) Insertion-replacement - replace */\
+			OP_OVERWRITE_MODE C jb ;			\
+		D 12 = ?     /* (SRM) Send-receive - on */		\
+			jb ;			/* UNSUPPORTED */	\
+		D 20 = ?     /* (LNM) Line feed-new line - line feed */	\
+			;			/* UNSUPPORTED */	\
+		Lb							\
+		X 		/* drop the processed item */		\
+		D l ? ja ;	/* jump back if there's anything left */\
+	X f}l>								\
+/* 	DEC private set mode. */					\
+OP_NOP			<\\E[?%{					\
+	s D								\
+	/* now loop over the string to find the arguments */		\
+	La /* Loop head */						\
+		';' $ 		/* find the next delimiter (if any) */	\
+		CB_INT_TYPE @						\
+		D 1 = ?	  /* (DECCKM) Cursor key - application */	\
+			"appCKeys" pa OP_OVERRIDE_TRANSLATIONS C jb ;	\
+		D 2 = ?   /* (DECANM) ANSI/VT52 */			\
+			jb ;			/* UNSUPPORTED */	\
+		D 3 = ?	  /* (DECCOLM) Column - 132 column */		\
+			OP_CANVAS_SIZE C /* get the current size */	\
+			132 px		 /* set 80 columns */		\
+			OP_SET_SCREEN_SIZE C jb ;			\
+		D 4 = ?   /* (DECSCLM) Scrolling - smooth */		\
+			jb ;			/* UNSUPPORTED */	\
+		D 5 = ?   /* (DECSCNM) Screen - reverse */		\
+			OP_REVERSE_VIDEO C jb ;				\
+		D 6 = ?   /* (DECOM) Origin mode - margin dependent */	\
+			OP_CURSOR_POS_REL_TO_SCR_REG C			\
+			0 px 0 py OP_MOVE_ABS C jb ; /* go to 0/0 */	\
+		D 7 = ?   /* (DECAWM) Auto wrap - on */			\
+			OP_WRAP_AROUND C jb ;				\
+		D 8 = ?   /* (DECARM) Auto repeat - on */		\
+			jb ; 			/* UNSUPPORTED */	\
+		D 18 = ?  /* (DECPFF) Print form feed - on */		\
+			jb ;			/* UNSUPPORTED */	\
+		D 19 = ?  /* (DECPEX) Print extent - full screen */	\
+			jb ;			/* UNSUPPORTED */	\
+		D 25 = ?  /* (DECTCEM) Text cursor enable - on */	\
+			OP_CURSOR_ON C jb ;				\
+		D 42 = ?  /* (DECNRCM) Character set - national */	\
+			;			/* UNSUPPORTED */	\
+		Lb							\
+		X 		/* drop the processed item */		\
+		D l ? ja ;	/* jump back if there's anything left */\
+	X f}h>								\
+/*	DEC private reset mode. */					\
+OP_NOP			<\\E[?%{					\
+	s D								\
+	/* now loop over the string to find the arguments */		\
+	La /* Loop head */						\
+		';' $ 		/* find the next delimiter (if any) */	\
+		CB_INT_TYPE @						\
+		D 1 = ?	  /* (DECCKM) Cursor key - application */	\
+			"normCKeys" pa OP_OVERRIDE_TRANSLATIONS C jb ;	\
+		D 2 = ?   /* (DECANM) ANSI/VT52 */			\
+			jb ;			/* UNSUPPORTED */	\
+		D 3 = ?	  /* (DECCOLM) Column - 132 column */		\
+			OP_CANVAS_SIZE C /* get the current size */	\
+			80 px 		 /* set 80 columns */		\
+			OP_SET_SCREEN_SIZE C jb ;			\
+		D 4 = ?   /* (DECSCLM) Scrolling - smooth */		\
+			jb ;			/* UNSUPPORTED */	\
+		D 5 = ?   /* (DECSCNM) Screen - reverse */		\
+			OP_NORMAL_VIDEO C jb ;				\
+		D 6 = ?   /* (DECOM) Origin mode - margin dependent */	\
+			OP_CURSOR_POS_ABSOLUTE C			\
+			0 px 0 py OP_MOVE_ABS C jb ; /* go to 0/0 */	\
+		D 7 = ?   /* (DECAWM) Auto wrap - on */			\
+			OP_DONT_WRAP C jb ;				\
+		D 8 = ?   /* (DECARM) Auto repeat - on */		\
+			jb ; 			/* UNSUPPORTED */	\
+		D 18 = ?  /* (DECPFF) Print form feed - on */		\
+			jb ;			/* UNSUPPORTED */	\
+		D 19 = ?  /* (DECPEX) Print extent - full screen */	\
+			jb ;			/* UNSUPPORTED */	\
+		D 25 = ?  /* (DECTCEM) Text cursor enable - off */	\
+			OP_CURSOR_OFF C jb ;				\
+		D 42 = ?  /* (DECNRCM) Character set - multinational */	\
+			;			/* UNSUPPORTED */	\
+		Lb							\
+		X 		/* drop the processed item */		\
+		D l ? ja ;	/* jump back if there's anything left */\
+	X f}l>								\
+/*	(DECKPAM) Keypad - application */				\
+OP_OVERRIDE_TRANSLATIONS<\\E%"appKeypad"%pa=>				\
+/*	(DECKPNM) Keypad - numeric */					\
+OP_OVERRIDE_TRANSLATIONS<\\E%"numKeypad"%pa\\>>				\
+									\
+/* cursor positioning */						\
+/*	(CUU) Cursor up. */						\
+OP_MOVE_REL_ROW		<\\E[%-1%pyA>					\
+OP_MOVE_REL_ROW		<\\E[%{d,-1,*,py}A>				\
+/*	(CUD) Cursor down. */						\
+OP_MOVE_REL_ROW		<\\E[%1%pyB>					\
+OP_MOVE_REL_ROW		<\\E[%d%pyB>					\
+/*	(CUF) Cursor forward. */					\
+OP_MOVE_REL_COLUMN	<\\E[%1%pxC>					\
+OP_MOVE_REL_COLUMN	<\\E[%{d,D,0,=,?,X,1,;,px}C>			\
+/*	(CUB) Cursor backward. */					\
+OP_MOVE_REL_COLUMN	<\\E[%-1%pxD>					\
+OP_MOVE_REL_COLUMN	<\\E[%{d,D,0,=,?,X,1,;,-1,*,px}D>		\
+/*	(CUP) Cursor position. */					\
+OP_MOVE_ABS		<\\E[%d;%d%{1,-,px,1,-,py}H>			\
+/*	Shortcut, no coordinates goto 0,0 */				\
+OP_MOVE_ABS		<\\E[%{0,py,0,px}H>				\
+/*	Shortcut, no x coordinate goto 0,y */				\
+OP_MOVE_ABS		<\\E[;%d%{1,-,py,0,px}H>			\
+/*	Shortcut, no y coordinate goto x,0 */				\
+OP_MOVE_ABS		<\\E[%d;%{1,-,px,0,py}H>			\
+/*	(HVP) Horizontal and vertical position. */			\
+OP_MOVE_ABS		<\\E[%{0,py,0,px}f>				\
+OP_MOVE_ABS		<\\E[%d;%d%{1,-,px,1,-,py}f>			\
+/*	(IND) Index. */							\
+OP_MOVE_REL_ROW_SCROLLED<\\E%1%pyD>					\
+/*	(RI) Reverse index. */						\
+OP_MOVE_REL_ROW_SCROLLED<\\E%-1%pyM>					\
+/*	(NEL) Next line. */						\
+OP_MOVE_REL_ROW_SCROLLED,OP_MOVE_ABS_COLUMN<\\E%1%py%0%pxE>		\
+/*	(DECSC) Save cursor. */						\
+/*	Regs m - v are used for storage */				\
+/*	save/restore state of origin mode	UNSUPPORTED */		\
+/*	save/restore state of selective erase  	UNSUPPORTED */		\
+OP_NOP			<\\E%{						\
+		g5 g6 pm pn				/* GL, GR     */\
+		g0 g1 g2 g3 po pp pq pr 		/* save fluts */\
+		OP_CANVAS_CURSOR_POS C gx gy ps pt	/* cursor pos */\
+		OP_CANVAS_ATTRIBS C ga pu		/* attributes */\
+		OP_CANVAS_WRAP_MODE C ga pv		/* wrap flag  */\
+		OP_SAVE_FLUT C				/* save flut  */\
+			}7>						\
+/*	(DECRC) Restore cursor. */					\
+OP_NOP			<\\E%{						\
+		gm gn p5 p6				/* GL, GR     */\
+		go gp gq gr p0 p1 p2 p3			/* fluts      */\
+		gs gt px py OP_MOVE_ABS C		/* cursor pos */\
+		15 pb OP_CLEAR_ATTRIBUTE C				\
+		gu pa OP_SET_ATTRIBUTE C		/* attributes */\
+		gv ? OP_WRAP_AROUND : OP_DONT_WRAP ; C	/* wrapping   */\
+		OP_RESTORE_FLUT C			/* restore it */\
+			}8>						\
+									\
+/* tab stops */								\
+/*	(HTS) Horizontal tab set. */					\
+OP_SET_TAB_CUR_COL	<\\EH>						\
+/*	(TBC) Tabulation clear. */					\
+OP_CLEAR_TAB_CUR_COL	<\\E[g>						\
+OP_CLEAR_TAB_CUR_COL	<\\E[0g>					\
+OP_NOP			<\\E[1g>					\
+OP_NOP			<\\E[2g>					\
+OP_CLEAR_ALL_TABS	<\\E[3g>					\
+									\
+/* (SGR) select graphic rendition */					\
+OP_CLEAR_ATTRIBUTE	<\\E[%15%pbm>					\
+OP_NOP			<\\E[%{						\
+	s D								\
+	/* clear everything and out */					\
+	/* now loop over the string to find the arguments */		\
+	La /* Loop head */						\
+		';' $ 		/* find the next delimiter (if any) */	\
+		CB_INT_TYPE @						\
+		D 0 = ?		/* all off */				\
+			15 pb OP_CLEAR_ATTRIBUTE C jb ;			\
+		D 1 = ?		/* bold */				\
+			ATT_BOLD pa OP_SET_ATTRIBUTE  C jb ;		\
+		D 4 = ?		/* underlined */			\
+			ATT_UNDERL pa OP_SET_ATTRIBUTE  C jb ;		\
+		D 5 = ?		/* blinking */				\
+			ATT_BLINK pa OP_SET_ATTRIBUTE  C jb ;		\
+		D 7 = ?		/* reverse video */			\
+			ATT_REVERSE pa OP_SET_ATTRIBUTE  C jb ;		\
+		D 22 = ?	/* bold off */				\
+			ATT_BOLD pb OP_CLEAR_ATTRIBUTE  C jb ;		\
+		D 24 = ?	/* underline off */			\
+			ATT_UNDERL pb OP_CLEAR_ATTRIBUTE  C jb ;	\
+		D 25 = ?	/* blinking off */			\
+			ATT_BLINK pb OP_CLEAR_ATTRIBUTE  C jb ;		\
+		D 27 = ?	/* reverse video off */			\
+			ATT_REVERSE pb OP_CLEAR_ATTRIBUTE  C jb ;	\
+		D 30 = ?	/* black fg */				\
+			1 pa OP_CHANGE_FG_COLOR  C jb ; 		\
+		D 31 = ?	/* red fg */				\
+			2 pa OP_CHANGE_FG_COLOR  C jb ;	        	\
+		D 32 = ?	/* green fg */				\
+			3 pa OP_CHANGE_FG_COLOR  C jb ; 		\
+		D 33 = ?	/* yellow fg */				\
+			4 pa OP_CHANGE_FG_COLOR  C jb ; 		\
+		D 34 = ?	/* blue fg */				\
+			5 pa OP_CHANGE_FG_COLOR  C jb ; 		\
+		D 35 = ?	/* magenta fg */			\
+			6 pa OP_CHANGE_FG_COLOR  C jb ;	        	\
+		D 36 = ?	/* cyan fg */				\
+			7 pa OP_CHANGE_FG_COLOR  C jb ; 		\
+		D 37 = ?	/* white fg */				\
+			8 pa OP_CHANGE_FG_COLOR  C jb ; 		\
+		D 40 = ?	/* black bg */				\
+			1 pb OP_CHANGE_BG_COLOR  C jb ; 		\
+		D 41 = ?	/* red bg */				\
+			2 pb OP_CHANGE_BG_COLOR  C jb ;	        	\
+		D 42 = ?	/* green bg */				\
+			3 pb OP_CHANGE_BG_COLOR  C jb ; 		\
+		D 43 = ?	/* yellow bg */				\
+			4 pb OP_CHANGE_BG_COLOR  C jb ; 		\
+		D 44 = ?	/* blue bg */				\
+			5 pb OP_CHANGE_BG_COLOR  C jb ; 		\
+		D 45 = ?	/* magenta bg */			\
+			6 pb OP_CHANGE_BG_COLOR  C jb ;	        	\
+		D 46 = ?	/* cyan bg */				\
+			7 pb OP_CHANGE_BG_COLOR  C jb ; 		\
+		D 47 = ?	/* white bg */				\
+			8 pb OP_CHANGE_BG_COLOR  C jb ; 		\
+		Lb							\
+		X 		/* drop the processed item */		\
+		D l ? ja ;	/* jump back if there's anything left */\
+	Lc								\
+	X f}m>								\
+									\
+/* (DECSCA) select character attributes */				\
+OP_NOP			<\\E[\"q>		/* UNSUPPORTED */	\
+OP_NOP			<\\E[%d\"q>		/* UNSUPPORTED */	\
+									\
+/* line attributes */							\
+/*	(DECDHL) Double-height line, top half. */			\
+OP_SET_LINE_ATTRIBUTES	<\\E#%{ LINE_D_UPPER pa}3>			\
+/*	(DECDHL) Double-height line, bottom half. */			\
+OP_SET_LINE_ATTRIBUTES	<\\E#%{ LINE_D_LOWER pa}4>			\
+/*	(DECSWL) Single-width line. */					\
+OP_SET_LINE_ATTRIBUTES	<\\E#%0%pa5>					\
+/*	(DECDWL) Double-width line. */					\
+OP_SET_LINE_ATTRIBUTES	<\\E#%{ LINE_D_WIDE pa}6>			\
+									\
+/* editing */								\
+/*	(IL) Insert line. */						\
+OP_INSERT_LINES		<\\E[%1%paL>					\
+OP_INSERT_LINES		<\\E[%d%paL>					\
+/*	(DL) Delete line. */						\
+OP_DELETE_LINES		<\\E[%1%paM>					\
+OP_DELETE_LINES		<\\E[%d%paM>					\
+/*	(ICH) Insert characters. */					\
+OP_NOP			<\\E[@>			/* UNSUPPORTED */	\
+OP_NOP			<\\E[%d@>		/* UNSUPPORTED */	\
+/*	(DCH) Delete character. */					\
+OP_DELETE_CHARS		<\\E[%1%paP>					\
+OP_DELETE_CHARS		<\\E[%d%paP>					\
+									\
+/* erasing */								\
+/*	(ECH) Erase character. */					\
+OP_ERASE_CHARS		<\\E[%d%paX>					\
+/*	(EL) Erase in line. */						\
+OP_DELETE_TO_EOL	<\\E[K>						\
+OP_DELETE_TO_EOL	<\\E[0K>					\
+OP_ERASE_LINE_LEFT	<\\E[1K>					\
+OP_ERASE_LINES		<\\E[2%1%paK>					\
+/*	(ED) Erase in display. */					\
+OP_DELETE_TO_EOSCR	<\\E[J>						\
+OP_DELETE_TO_EOSCR	<\\E[0J>					\
+OP_ERASE_FROM_TOSCR	<\\E[1J>					\
+OP_CLEAR_SCREEN		<\\E[2J>					\
+/*	(DECSEL) Selective erase in line. */				\
+OP_NOP			<\\E[?K>		/* UNSUPPORTED */	\
+OP_NOP			<\\E[?%dK>		/* UNSUPPORTED */	\
+/*	(DECSED) Selective erase in display. */				\
+OP_NOP			<\\E[?J>		/* UNSUPPORTED */	\
+OP_NOP			<\\E[?%dJ>		/* UNSUPPORTED */	\
+									\
+/* (DECSTBM) set top and bottom margins */				\
+OP_SET_SCROLL_REGION	<\\E[%d;%d%{1,-,pb,1,-,pa}r>			\
+OP_SET_SCROLL_REGION	<\\E[%d;%{1,-,pa,OP_CANVAS_SIZE,C,gy,1,-,pb}r>	\
+OP_SET_SCROLL_REGION	<\\E[%{OP_CANVAS_SIZE,C,gy,1,-,pb,0,pa}r>	\
+									\
+/* printing */								\
+OP_NOP			<\\E[i>			/* UNSUPPORTED */	\
+OP_NOP			<\\E[%di>		/* UNSUPPORTED */	\
+OP_NOP			<\\E[?%di>		/* UNSUPPORTED */	\
+									\
+/* (DECUDK) user defined keys */					\
+OP_NOP			<\\EP%s\\E\\\\\\>	/* UNSUPPORTED */	\
+									\
+/* (DRCS) down-line-loadable characters */	/* UNSUPPORTED */	\
+									\
+/* (DA) device attributes */						\
+/*	Host to VT220 (primary DA request) */				\
+OP_NOP			<\\E[%{ROP_PRIMARY_DA R}c>			\
+OP_NOP			<\\E[0%{ROP_PRIMARY_DA R}c>			\
+/*	Host to VT220 (secondary DA request) */				\
+OP_NOP			<\\E[\\>%{ROP_SECONDARY_DA R}c>			\
+OP_NOP			<\\E[\\>0%{ROP_SECONDARY_DA R}c>		\
+									\
+/* (DSR) device status report */					\
+/*	Host to VT220 (request for terminal status) */			\
+OP_NOP			<\\E[5%{ROP_TERM_STATUS R}n> /* UNSUPPORTED */	\
+/*	Host to VT220 (request for cursor position) */			\
+OP_NOP			<\\E[6%{OP_CANVAS_CURSOR_POS C ROP_CURSOR_POS R}n> \
+/*	Host to VT220 (request for printer status) */			\
+OP_NOP			<\\E[?15%{ROP_PRINTER_STATUS R}n> /* UNSUPPORTED */ \
+/*	Host to VT220 (request for UDK status) */			\
+OP_NOP			<\\E[?25%{ROP_UDK_STATUS R}n> /* UNSUPPORTED */	\
+/*	Host to VT220 (request for keyboard language) */		\
+OP_NOP			<\\E[?26%{ROP_KEYBOARD_STATUS R}n> /* UNSUPPORTED */ \
+									\
+/* (DECID) identification */						\
+OP_NOP			<\\E%{ROP_PRIMARY_DA R}Z>			\
+									\
+/* terminal reset */							\
+/*	(DECSTR) Soft terminal reset. */				\
+OP_NOP			<\\E[!p>		/* UNSUPPORTED */	\
+/*	(RIS) Hard terminal reset. */					\
+OP_NOP			<\\Ec>						\
+									\
+/* (DECTST) tests */							\
+OP_NOP			<\\E[4%{					\
+	s D								\
+	/* loop over for arguments */					\
+	La								\
+		';' $		/* find next delimiter */		\
+		CB_INT_TYPE @						\
+		D 0 = ?		/* Test 1, 2, 3, and 6 */		\
+			jb ;			/* UNSUPPORTED */	\
+		D 1 = ?		/* Power-up self-test */		\
+			jb ;			/* UNSUPPORTED */	\
+		D 2 = ?		/* EIA port data loopback test */	\
+			jb ;			/* UNSUPPORTED */	\
+		D 3 = ?		/* Printer port loopback test */	\
+			jb ;			/* UNSUPPORTED */	\
+		D 6 = ?	/* EIA port modem control line loopback test */	\
+			jb ;			/* UNSUPPORTED */	\
+		D 7 = ?		/* 20 mA port loopback test */		\
+			jb ;			/* UNSUPPORTED */	\
+		D 9 = ?	/* Repeat other test in parameter string */	\
+			;			/* UNSUPPORTED */	\
+		Lb							\
+		X		/* drop item */				\
+		D l ? ja ;	/* anything left? */			\
+	X f}y>								\
+									\
+/* (DECALN) adjustments */						\
+OP_NOP			<\\E#%{						\
+	OP_CANVAS_CURSOR_POS C gx gy					\
+	0 px 0 py OP_MOVE_ABS C						\
+	OP_CLEAR_SCREEN C						\
+	OP_CANVAS_SIZE C						\
+	gx								\
+	"" bs								\
+		Lb							\
+		"E" ba							\
+		1 - D ? jb ;						\
+	gy								\
+		La							\
+		OP_INSERT C						\
+		1 - D ? ja ;						\
+	 py px OP_MOVE_ABS C						\
+			}8>						\
+									\
+/* Turn on/off keyboard LEDs.  0 turns all off, 1-4 turn 1-4 on. */	\
+OP_NOP			<\\E[q>			/* UNSUPPORTED*/	\
+OP_NOP			<\\E[%{						\
+	s D								\
+	La /* Loop head */						\
+		';' $	/* next delimeter */				\
+		CB_INT_TYPE @						\
+		D 0 = ?		/* Turn all LEDs off - default */	\
+			jb ;			/* UNSUPPORTED */	\
+		D 1 = ?		/* Turn LED 1 on */			\
+			jb ;			/* UNSUPPORTED */	\
+		D 2 = ?		/* Turn LED 2 on */			\
+			jb ;			/* UNSUPPORTED */	\
+		D 3 = ?		/* Turn LED 3 on */			\
+			jb ;			/* UNSUPPORTED */	\
+		D 4 = ?		/* Turn LED 4 on */			\
+			;			/* UNSUPPORTED */	\
+		Lb							\
+		X							\
+		D l ? ja ;						\
+	X f}q>								\
+									\
+/* special features not vt220 but useful */				\
+/* 	Setting the title */						\
+OP_NOP			<\\E]2;%{s,D,t,f}\\007>				\
+/* 	Setting the icon */						\
+OP_NOP			<\\E]1;%{s,D,i,f}\\007>				\
+/* 	Setting title and icon */					\
+OP_NOP			<\\E]0;%{s,D,D,t,i,f}\\007>

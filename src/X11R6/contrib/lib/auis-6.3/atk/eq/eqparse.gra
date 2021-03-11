@@ -1,0 +1,446 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+ *        For full copyright information see:'andrew/config/COPYRITE'     *
+\* ********************************************************************** */
+/* $Disclaimer: 
+# Permission to use, copy, modify, and distribute this software and its 
+# documentation for any purpose is hereby granted without fee, 
+# provided that the above copyright notice appear in all copies and that 
+# both that copyright notice, this permission notice, and the following 
+# disclaimer appear in supporting documentation, and that the names of 
+# IBM, Carnegie Mellon University, and other copyright holders, not be 
+# used in advertising or publicity pertaining to distribution of the software 
+# without specific, written prior permission.
+# 
+# IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+# DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+# SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+# BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+# DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+# WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+# ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+# OF THIS SOFTWARE.
+#  $ */ 
+/*
+ * parse.y
+ * This module parses the datastream.
+ */
+ 
+%token Y_GOESTO Y_D Y_INT Y_EQ Y_OP Y_UNOP Y_BINOP
+%token Y_ITER Y_LIM Y_FUNC Y_ATOM Y_PRIME Y_DOT Y_BAD
+ 
+%token Y_OPEN Y_CLOSE Y_ROOT Y_BEGIN Y_OVER Y_END
+%token Y_SUP Y_SUB Y_PILE Y_EQSTYLE Y_SPACE
+ 
+%start choose
+ 
+%{
+ 
+union ptr {
+    struct node *n;
+    char *s;
+};
+ 
+#define YYSTYPE union ptr
+union ptr x(), value;
+#undef boolean
+#include <class.h>
+#include <eq.ih>
+#include <stdio.h>
+#include <cparser.h>
+%}
+ 
+%%
+ 
+ 
+/*
+ * Switch between the grammars depending on output desired
+ * yylex inserts one of 'c', 'e', etc. as the first token
+ */
+ 
+choose  :'c' c_prog                                    {value = $2; }
+        | 'e' e_prog                                    {value = $2; }
+        ;
+ 
+/*
+ * C translator
+ */
+c_prog	: Y_BEGIN Y_PILE Y_EQSTYLE c_lines Y_END		{$$=x("$4",&$0);}
+	;
+
+c_lines	: c_group					{$$=x("$1;\n",&$0);}
+	| c_lines c_group				{$$=x("$1$2;\n",&$0);}
+	;
+
+c_group	: Y_BEGIN c_expr Y_END				{$$=x("$2",&$0);}
+	;
+
+c_paren	: Y_OPEN c_group Y_CLOSE			{$$=x("$2",&$0);}
+	| Y_OPEN c_expr Y_CLOSE				{$$=x("$2",&$0);}
+	;
+
+c_cplx	: Y_ROOT c_group				{$$=x("sqrt($2)",&$0);}
+	| Y_BEGIN Y_PILE c_group Y_OVER c_group Y_END	{$$=x("(($3)/($5))",&$0);}
+	;
+
+c_sup	: Y_SUP c_group					{$$=x("$2",&$0);} ;
+c_sub	: Y_SUB c_group					{$$=x("$2",&$0);} ;
+c_atom	: Y_ATOM | Y_D;
+c_func	: c_atom | Y_FUNC;
+
+
+c_term	: c_xterm
+	| c_paren					{$$=x("($1)",&$0);}
+	| c_paren c_term				{$$=x("($1)*$2",&$0);}
+	;
+
+c_unit	: c_atom c_paren				{$$=x("$1($2)",&$0);}
+	| c_atom c_sub c_paren				{$$=x("$1[$2]($3)",&$0);}
+	| c_atom c_sup c_paren				{$$=x("pow($1($3),$2)",&$0);}
+	| c_atom c_sub c_sup c_paren			{$$=x("pow($1[$2]($4),$3)",&$0);}
+	| c_atom c_sup c_sub c_paren			{$$=x("pow($1[$3]($4),$2)",&$0);}
+
+	| c_cplx					{$$=x("$1",&$0);}
+	| c_cplx c_sub					{$$=x("$1[$2]",&$0);}
+	| c_cplx c_sup					{$$=x("pow($1,$2)",&$0);}
+	| c_cplx c_sub c_sup				{$$=x("pow($1[$2], c_$3)",&$0);}
+	| c_cplx c_sup c_sub				{$$=x("pow($1[$3], c_$2)",&$0);}
+	;
+
+c_unitx	: c_atom					{$$=x("$1",&$0);}
+	| c_atom c_sub					{$$=x("$1[$2]",&$0);}
+	| c_atom c_sup					{$$=x("pow($1,$2)",&$0);}
+	| c_atom c_sub c_sup				{$$=x("pow($1[$2], c_$3)",&$0);}
+	| c_atom c_sup c_sub				{$$=x("pow($1[$3], c_$2)",&$0);}
+	;
+
+c_xterm	: c_unitx
+	| c_unit
+	| c_unitx c_xterm				{$$=x("$1*$2",&$0);}
+	| c_unit c_term					{$$=x("$1*$2",&$0);}
+
+	| Y_FUNC c_term					{$$=x("$1($2)",&$0);}
+	| Y_FUNC c_sup c_term				{$$=x("pow($1($3),$2)",&$0);}
+
+	| Y_ITER c_term					{$$=x("$1($2)",&$0);}
+	| Y_ITER Y_SUB Y_BEGIN c_atom Y_EQ c_expr Y_END c_sup c_term
+							{$$=x("$1($4=$6,$8,$9)",&$0);}
+	| Y_ITER c_sup Y_SUB Y_BEGIN c_atom Y_EQ c_expr Y_END c_term
+							{$$=x("$1($5=$7,$2,$9)",&$0);}
+
+	| Y_INT c_term Y_SPACE Y_D c_atom		{$$=x("$1($5,$2)",&$0);}
+	| Y_INT c_sub c_term Y_SPACE Y_D c_atom		{$$=x("$1($6=$2,INF,$3)",&$0);}
+	| Y_INT c_sup c_term Y_SPACE Y_D c_atom		{$$=x("$1($6=-INF,$2,$3)",&$0);}
+	| Y_INT c_sub c_sup c_term Y_SPACE Y_D c_atom	{$$=x("$1($7=$2,$3,$4)",&$0);}
+	| Y_INT c_sup c_sub c_term Y_SPACE Y_D c_atom	{$$=x("$1($7=$3,$2,$4)",&$0);}
+
+	| Y_LIM c_xterm					{$$=x("$1($2)",&$0);}
+	| Y_LIM Y_SUB Y_BEGIN c_atom Y_GOESTO c_expr Y_END c_xterm
+							{$$=x("$1($4->$6,$8)",&$0);}
+	;
+
+
+c_binop	: Y_BINOP | Y_OP | Y_EQ | Y_GOESTO;
+c_unop	: Y_UNOP | Y_OP;
+
+c_opterm: c_term
+        | c_unop c_term                                 {$$=x("$1$2",&$0);}
+        ;
+ 
+c_expr  : c_opterm
+        | c_opterm c_binop c_expr                       {$$=x("$1 $2 $3",&$0);}
+        ;
+ 
+ 
+/*
+ * Eqn translator
+ */
+ 
+e_prog  : Y_BEGIN Y_PILE Y_EQSTYLE e_lines Y_END
+{$$=x(".EQ\n\
+delim ##\n\
+define above \"to\"\n\
+define below \"from\"\n\
+define zilch \"\"\n\
+define thick \" ~ \"\n\
+define med \" ^ \"\n\
+define thin \" ^ \"\n\
+define vartheta \"theta\"\n\
+define varsigma \"sigma\"\n\
+define varphi \"phi\"\n\
+define varomega \"omega\"\n\
+define Alpha \"A\"\n\
+define Beta \"B\"\n\
+define Epsilon \"E\"\n\
+define Zeta \"Z\"\n\
+define Eta \"H\"\n\
+define Iota \"I\"\n\
+define Kappa \"K\"\n\
+define Mu \"M\"\n\
+define Nu \"N\"\n\
+define Omicron \"O\"\n\
+define Rho \"P\"\n\
+define Tau \"T\"\n\
+define Chi \"X\"\n\
+define Gamma \"GAMMA\"\n\
+define Delta \"DELTA\"\n\
+define Theta \"THETA\"\n\
+define Lambda \"LAMBDA\"\n\
+define Xi \"XI\"\n\
+define Sigma \"SIGMA\"\n\
+define Upsilon \"UPSILON\"\n\
+define Phi \"PHI\"\n\
+define Psi \"PSI\"\n\
+define Omega \"OMEGA\"\n\
+define cint \"int\"\n\
+define product \"prod\"\n\
+define union_op \"union\"\n\
+define inter_op \"inter\"\n\
+define bold-a \"fat a\"\n\
+define * \"times\"\n\
+define down \"\\(da\"\n\
+define up \"\\(ua\"\n\
+define slash \"\\(sl\"\n\
+define approx \"\\(ap\"\n\
+define / \"\\(di\"\n\
+define cthick \" ~ \"\n\
+define cmed \" ^ \"\n\
+define cthin \" ^ \"\n\
+define or_op \"or\"\n\
+define and_op \"and\"\n\
+define -+ \"+-\"\n\
+gsize 12\n\
+.EN\n\
+$4",&$0);}
+	;
+
+e_group	: Y_BEGIN e_eqstyle e_expr Y_END			{$$=x("$3",&$0);}
+	;
+
+e_lines	: e_group					{$$=x("\n#$1#\n",&$0);}
+	| e_lines e_group				{$$=x("$1\n#$2#\n",&$0);}
+	;
+
+e_pile	: e_group					{$$=x("{$1}",&$0);}
+	| e_pile e_group				{$$=x("% <$1> above % <$2>",&$0);}
+	;
+
+e_eqstyle	: /* empty */
+	| Y_EQSTYLE
+	;
+
+e_thing	: Y_GOESTO | Y_D | Y_EQ | Y_OP | Y_UNOP | Y_BINOP
+	| Y_LIM | Y_FUNC | Y_ATOM | Y_BAD | Y_OPEN | Y_CLOSE
+	| Y_INT | Y_ITER | Y_SPACE			{$$=x("$1",&$0);}
+	| Y_BEGIN Y_PILE e_eqstyle e_pile Y_END		{$$=x("$2 {$4}",&$0);}
+	| Y_BEGIN Y_PILE e_group Y_OVER e_group Y_END	{$$=x("% <$3> over % <$5>",&$0);}
+	| Y_ROOT e_group				{$$=x("sqrt {$2}",&$0);}
+	| Y_OPEN e_group Y_CLOSE			{$$=x("left $1 $2 right $3",&$0);}
+	;
+
+e_scr	: e_thing
+	| e_thing Y_SUP Y_BEGIN e_accs Y_END		{$$=x("$1 $4",&$0);}
+	| e_thing Y_SUB e_group				{$$=x("$1 $2 <$3>",&$0);}
+	| e_thing Y_SUP e_group				{$$=x("$1 $2 <$3>",&$0);}
+	| e_thing Y_SUP e_group Y_SUB e_group		{$$=x("$1 $4 <$5> $2 <$3>",&$0);}
+	| e_thing Y_SUB e_group Y_SUP e_group		{$$=x("$1 $2 <$3> $4 <$5>",&$0);}
+	;
+
+e_accs	: e_acc
+	| e_accs e_acc					{$$=x("$1 $2",&$0);}
+	;
+
+e_acc	: Y_DOT						{$$=x("dot",&$0);}
+	| Y_PRIME					{$$=x("prime",&$0);}
+	;
+	
+e_expr	: e_scr
+	| e_expr e_scr					{$$=x("$1 $2",&$0);}
+	;
+
+%%
+static char *parse_rcsid = "$Header: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/atk/eq/RCS/eqparse.gra,v 1.4 1994/04/07 20:12:15 rr2b Exp $";
+
+ 
+ 
+#define NNODES 20              /* nodes to allocate at a time */
+
+/*NCHILDREN must be as large as the maximum number of components
+yacc will find on the right side of a rule */
+#define NCHILDREN 10            /* children per node */
+ 
+ 
+static struct node {
+    char *fmt;
+    union ptr children[10];
+} *first_node, *next_node, *last_node;
+ 
+static struct node_table {
+    struct node *first;
+    struct node *last;
+    struct node_table *next;
+} *all_nodes, *cur_nodes;
+
+static long posn;
+static struct eq *eqptr;
+static long which;
+ 
+static int yylex();
+eq__Parse(self, file, w)
+struct eq *self;
+FILE *file;
+long w;
+{
+    extern int yydebug;
+    struct parser *eqparse_New();
+    struct parser *p=eqparse_New();
+    /* make initial table of nodes */
+    all_nodes = (struct node_table *)malloc (sizeof(struct node_table));
+    all_nodes->next = NULL;
+    all_nodes->first = (struct node *) calloc(NNODES, sizeof(struct node));
+    all_nodes->last = &(all_nodes->first[NNODES-1]);
+
+    cur_nodes = all_nodes;
+    next_node = all_nodes->first;
+
+    eqptr = self;
+    which = w;
+    posn = -1;
+    if (!parser_Parse(p, yylex, NULL));
+        print(file, value);
+    fflush(file);
+ 
+    /* free all the nodes */
+    cur_nodes = all_nodes;
+    while (cur_nodes != NULL)
+        {
+	struct node_table *temp;
+	if (cur_nodes->first) free (cur_nodes->first);
+	temp = cur_nodes->next;
+	free (cur_nodes);
+	cur_nodes = temp;
+        }
+}
+ 
+ 
+static union ptr
+x(fmt, a0)
+char *fmt;
+union ptr *a0;
+{
+    union ptr ret;
+    register int i;
+ 
+    for (i=0; i<NCHILDREN; i++)
+        next_node->children[i] = a0[i];
+    next_node->fmt = fmt;
+    ret.n = next_node;
+    next_node += 1;
+
+    /* If the current table is full, allocate another and fill it. */
+    if (next_node > cur_nodes->last)
+        {
+	cur_nodes->next = (struct node_table *)malloc (sizeof(struct node_table));
+	cur_nodes = cur_nodes->next;
+	cur_nodes->next = NULL;
+	cur_nodes->first = (struct node *) calloc(NNODES, sizeof(struct node));
+	cur_nodes->last = &(cur_nodes->first[NNODES-1]);
+	next_node = cur_nodes->first;
+        }
+    return ret;
+}
+ 
+static int eqstyle = 1;  /* 1=display, 0=text, -1=script, ... */
+ 
+#define is_in_table(addr,table) \
+    ((table)->first<=(addr) && (addr)<=(table)->last)
+
+/*
+ * Go over list of all tables of nodes.
+ * See if this address is in any of the tables.
+ */
+
+static int is_node(addr)
+    struct node *addr;
+
+{
+    struct node_table *this;
+    for (this = all_nodes; this != NULL; this = this->next)
+        {
+	if (is_in_table (addr, this)) return 1;
+        }
+    return 0;
+}
+
+static
+print(file, ptr)
+FILE *file;
+union ptr ptr;
+{
+    if (is_node(ptr.n)) {
+	register char *s;
+	for (s = ptr.n->fmt;  *s;  s++) {
+	    if (*s == '$') {
+		register int i;
+		for (i=0; '0'<=s[1] && s[1]<='9'; s++)
+		    i = 10*i + s[1] - '0';
+		if (i<NCHILDREN)
+		    print(file, ptr.n->children[i]);
+		else
+		    fprintf(stderr, "Too many children!\n");
+	    } else if (*s == '<') {
+		fputs("{", file);
+		eqstyle--;
+	    } else if (*s == '>') {
+		eqstyle++;
+		fputs("}", file);
+	    } else if (*s == '%') {
+/*
+                if (eqstyle<=0)
+                    fprintf(file, "size -2");
+*/
+            } else
+                putc(*s, file);
+        }
+    } else if (ptr.s) {
+        fputs(ptr.s, file);
+    }
+}
+ 
+static int
+yylex(rock, pyylval)
+void *rock;
+YYSTYPE *pyylval;
+{
+    register struct formula *f;
+    if (posn==-1) {
+        posn = 0;
+        return parser_TranslateTokenNumber(parser_GetCurrentparser(), which);
+    }
+    f = eq_Access(eqptr, posn);
+    posn++;
+    if (f) {
+        pyylval->s = f->symbol->name;
+        return parser_TranslateTokenNumber(parser_GetCurrentparser(), f->symbol->y_genre);
+    } else {
+        return 0;
+    }
+}
+ 
+ 
+void eqparse_ErrorGuts(p, sev, sevname,s)
+struct parser *p;
+int sev;
+char *sevname;
+char *s;
+{
+    int i;
+    fprintf(stderr, "eqparse %s:%s\n", sevname, s);
+    if (posn>=1) {
+        for (i=posn-1; !eq_Access(eqptr, i)->has_hot_spot; i++);
+/*      eq_SetDot(eqptr, i, 0); */ /* does this ever get called? */
+    } else {
+        fprintf(stderr, "totally malformed\n");
+    }
+}

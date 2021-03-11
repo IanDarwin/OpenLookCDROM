@@ -1,0 +1,100 @@
+/* newvclip.psw -- general purpose: set viewclip for exposure event
+ *
+ * (c) Copyright 1990-1994 Adobe Systems Incorporated.
+ * All rights reserved.
+ * 
+ * Permission to use, copy, modify, distribute, and sublicense this software
+ * and its documentation for any purpose and without fee is hereby granted,
+ * provided that the above copyright notices appear in all copies and that
+ * both those copyright notices and this permission notice appear in
+ * supporting documentation and that the name of Adobe Systems Incorporated
+ * not be used in advertising or publicity pertaining to distribution of the
+ * software without specific, written prior permission.  No trademark license
+ * to use the Adobe trademarks is hereby granted.  If the Adobe trademark
+ * "Display PostScript"(tm) is used to describe this software, its
+ * functionality or for any other purpose, such use shall be limited to a
+ * statement that this software works in conjunction with the Display
+ * PostScript system.  Proper trademark attribution to reflect Adobe's
+ * ownership of the trademark shall be given whenever any such reference to
+ * the Display PostScript system is made.
+ * 
+ * ADOBE MAKES NO REPRESENTATIONS ABOUT THE SUITABILITY OF THE SOFTWARE FOR
+ * ANY PURPOSE.  IT IS PROVIDED "AS IS" WITHOUT EXPRESS OR IMPLIED WARRANTY.
+ * ADOBE DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL
+ * IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NON- INFRINGEMENT OF THIRD PARTY RIGHTS.  IN NO EVENT SHALL ADOBE BE LIABLE
+ * TO YOU OR ANY OTHER PARTY FOR ANY SPECIAL, INDIRECT, OR CONSEQUENTIAL
+ * DAMAGES OR ANY DAMAGES WHATSOEVER WHETHER IN AN ACTION OF CONTRACT,
+ * NEGLIGENCE, STRICT LIABILITY OR ANY OTHER ACTION ARISING OUT OF OR IN
+ * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.  ADOBE WILL NOT
+ * PROVIDE ANY TRAINING OR OTHER SUPPORT FOR THE SOFTWARE.
+ * 
+ * Adobe, PostScript, and Display PostScript are trademarks of Adobe Systems
+ * Incorporated which may be registered in certain jurisdictions
+ * 
+ * Author:  Adobe Systems Incorporated
+ */
+
+#include <DPS/dpsXclient.h>
+
+#define A_COEFF 0
+#define B_COEFF 1
+#define C_COEFF 2
+#define D_COEFF 3
+#define TX_CONS 4
+#define TY_CONS 5
+
+
+defineps PSWGetTransform(DPSContext ctxt | float ctm[6], invctm[6];
+                         int *xOffset, *yOffset)
+    
+    matrix currentmatrix dup ctm
+    matrix invertmatrix invctm
+    currentXoffset yOffset xOffset
+
+endps
+
+
+
+
+void
+NewViewClip(ctxt, exp)
+  DPSContext ctxt;
+  register XExposeEvent *exp;
+{
+  register float x, y;
+  float ctm[6], invctm[6];
+  int xoff, yoff;
+  float lx, rx, ty, by;
+  float l, r, t, b;
+  double fabs();
+  
+  /* First get the current transformation */
+
+  PSWGetTransform(ctxt, ctm, invctm, &xoff, &yoff);
+  
+  /* Now arrange the coordinates of the damaged rectangle */
+  
+                    ty = exp->y;
+  		/*  +----------+  */
+  lx = exp->x;  /*  |          |  */   rx = exp->x + exp->width;
+  		/*  +----------+  */
+  		    by = exp->y + exp->height;
+  		    
+  /* Compute the transformed coordinates */
+
+  /* left,bottom */
+  x = lx - xoff;
+  y = by - yoff;
+  l = invctm[A_COEFF]*x + invctm[C_COEFF]*y + invctm[TX_CONS];
+  b = invctm[B_COEFF]*x + invctm[D_COEFF]*y + invctm[TY_CONS];
+  /* right,top */
+  x = rx - xoff;
+  y = ty - yoff;
+  r = invctm[A_COEFF]*x + invctm[C_COEFF]*y + invctm[TX_CONS];
+  t = invctm[B_COEFF]*x + invctm[D_COEFF]*y + invctm[TY_CONS];
+  
+  /* Now set the new viewclip */
+
+  DPSrectviewclip(ctxt, l, b, (float)fabs(r-l), (float)fabs(t-b));
+}

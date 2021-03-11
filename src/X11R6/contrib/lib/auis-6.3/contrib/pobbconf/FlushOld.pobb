@@ -1,0 +1,85 @@
+#!/bin/csh -f
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+#
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+
+%include pobbconfig.defs
+#
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+
+%ifdef pobb_RunAMSDelivery
+%define tempUnion
+%endif pobb_RunAMSDelivery
+%ifdef pobb_NNTPIn
+%define tempUnion
+%endif pobb_NNTPIn
+
+%ifdef tempUnion
+#
+#   FlushOld <name> [interval]
+#
+
+set nonomatch
+set LOG=/tmp/FOLOG$$$$
+rm -f /tmp/FOLOG[0-9]*
+if ($$#argv >= 2) then
+	set Intvl=$$2
+else
+	set Intvl='3d'
+endif
+set What=$$1
+echo 'Date:' `?[arpadatepgm]` > $$LOG
+echo "From: ?[PostmasterName]+@`hostname`" >>& $$LOG
+echo "Subject: Log of purging old $$What entries on" `hostname` >>& $$LOG
+echo "To: ?[DaemonBB].purgesent@?[WorkstationCell]" >>& $$LOG
+echo '' >>& $$LOG
+
+echo "Purging old $$What entries on host" `hostname` >>& $$LOG
+echo '' >>& $$LOG
+
+echo "ls -l ?[DuplicateDB]/$$What*" >>& $$LOG
+ls -l ?[DuplicateDB]/$$What* >>& $$LOG
+echo '' >>& $$LOG
+
+set TIMESLEFT=5
+set ESTAT=1
+while ($$ESTAT == 1)
+echo "?[PurgeProgram] -f?[DuplicateDB]/$$What $$Intvl" >>& $$LOG
+?[PurgeProgram] -f?[DuplicateDB]/$$What $$Intvl >>& $$LOG
+set ESTAT=$$status
+echo "(exited with status $${ESTAT})" >>& $$LOG
+echo '' >>& $$LOG
+@ TIMESLEFT--
+if ($$TIMESLEFT <= 0) set ESTAT=0
+end
+
+echo "ls -l ?[DuplicateDB]/$$What*" >>& $$LOG
+ls -l ?[DuplicateDB]/$$What* >>& $$LOG
+echo '' >>& $$LOG
+
+echo 'Run ended at' `date` >>& $$LOG
+?[queuemail] -f $$LOG -a ?[DaemonBB].purgesent@?[WorkstationCell] >>& $$LOG
+rm -f $$LOG
+
+%endif tempUnion

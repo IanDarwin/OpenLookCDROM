@@ -1,0 +1,186 @@
+#!/bin/csh -f
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+
+%include pobbconfig.defs
+#
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+
+%ifdef pobb_GetHostTable
+
+set nonomatch
+
+ftp -i -n ?[GetHostTableHost] << xxFUNNYxx
+user anonymous guest
+get ?[GetHostTableDir]/hosts Xhosts
+get ?[GetHostTableDir]/gateways Xgateways
+get ?[GetHostTableDir]/networks Xnetworks
+quit
+xxFUNNYxx
+set FTPSTAT=$$status
+if ($$FTPSTAT != 0) then
+    echo "*** Problems with FTP--status" $$FTPSTAT "***"
+    ls -lR /etc/crontab*
+    rm -f Xhosts Xgateways Xnetworks
+    exit (1)
+endif
+sleep 20
+
+if (-r Xhosts && -r Xgateways && -r Xnetworks) then
+    if (-z Xhosts || -z Xgateways || -z Xnetworks) then
+	echo "*** Problems with FTP: a zero-length result ***"
+	ls -l
+	exit(1)
+    endif
+else
+	echo "*** Problems with FTP: not all files copied ***"
+	ls -l
+	exit(1)
+endif
+if (-r Xnetworks) then
+    if (-z Xnetworks) then
+	echo "*** Problems with FTP: a zero-length result (2) ***"
+	ls -l
+	exit(1)
+    endif
+else
+	echo "*** Problems with FTP: not all files copied (2) ***"
+	ls -l
+	exit(1)
+endif
+
+# Include special non-host addresses
+# Also, make sure the 128.2.xxx.xxx address comes first for cmu-gateway/gateway.cmu.edu
+echo '' > Yhosts
+egrep localhost Xhosts
+set ESTAT=$$status
+if ($$ESTAT == 1) then
+    echo "127.0.0.1	localhost" > Yhosts
+    sleep 20
+    if (-z Yhosts) then
+	echo "*** Yhosts is size zero! ***"
+	exit(2)
+    endif
+%ifdef pobbenv_CMU
+    echo "128.2.254.36    gw.cs.cmu.edu" >> Yhosts
+%endif pobbenv_CMU
+else if ($$ESTAT == 0) then
+%ifdef pobbenv_CMU
+    echo "128.2.254.36    gw.cs.cmu.edu" > Yhosts
+%endif pobbenv_CMU
+else 
+    echo "*** egrep on Xhosts exited with $$ESTAT ***"
+    exit (2)
+endif
+sleep 20
+cat Yhosts Xhosts > Zhosts
+sleep 20
+set foo=`ls -l Yhosts`
+set size1=$$foo[4]
+set foo=`ls -l Xhosts`
+set size2=$$foo[4]
+set foo=`ls -l Zhosts`
+set size3=$$foo[4]
+set size4=`expr $$size1 + $$size2`
+if ($$size1 == 0 || $$size2 == 0 || $$size3 == 0) then
+    echo "*** Yhosts is length zero! ***"
+    exit(3)
+else
+    if ($$size4 != $$size3) then
+	echo "*** Sum of Yhosts and Xhosts, Zhosts sizes differ: $$size4 $$size3 ***"
+	exit(3)
+    endif
+endif
+rm -f Xhosts Yhosts
+mv Zhosts Xhosts
+
+egrep loopback-net Xnetworks
+set ESTAT=$$status
+if ($$ESTAT == 1) then
+    echo "loopback-net	127		software-loopback-net" > Ynetworks
+    cat Ynetworks Xnetworks > Znetworks
+    sleep 20
+    set foo=`ls -l Ynetworks`
+    set size1=$$foo[4]
+    if ($$size1 == 0) then
+	echo "Ynetworks is length zero!"
+	exit(4)
+    else
+	set foo=`ls -l Xnetworks`
+	set size2=$$foo[4]
+	set foo=`ls -l Znetworks`
+	set size3=$$foo[4]
+	set size4=`expr $$size1 + $$size2`
+	if ($$size4 != $$size3) then
+	    echo "Sum of Ynetworks and Xnetworks, Znetworks sizes differ: $$size4 $$size3"
+	    exit(4)
+	endif
+	rm -f Xnetworks Ynetworks
+	mv Znetworks Xnetworks
+    endif
+else if ($$ESTAT != 0) then
+    echo "*** egrep on Xnetworks exited with $$ESTAT ***"
+    exit(5)
+endif
+
+if (-r Xhosts && -r Xgateways && -r Xnetworks) then
+    if (-z Xhosts || -z Xgateways || -z Xnetworks) then
+	echo "*** Problems with space: a zero-length result ***"
+	exit(6)
+    endif
+else
+	echo "*** Problems with space: not all files copied ***"
+	exit(6)
+endif
+
+echo ''
+
+# Compare old and new files
+set FILES="hosts gateways networks"
+foreach filename ($$FILES)
+	cmp -s ?[IPFilePrefix]/$${filename}?[IPFileSuffix] X$${filename}
+	if ($$status == 0) then
+	    echo "No $${filename} changes: deleting new $${filename} file."
+	    rm X$${filename}
+	else
+	    echo "Changes between old $${filename} table and new $${filename} table:"
+	    diff ?[IPFilePrefix]/$${filename}?[IPFileSuffix] X$${filename}
+	endif
+	echo ''
+end
+
+# Install any changed files into AFS
+echo "Installing any changes into AFS:"
+foreach filename ($$FILES)
+	chmod +w ?[IPFilePrefix]/$${filename}?[IPFileSuffix]
+	install -m 644 X$${filename} ?[IPFilePrefix]/$${filename}?[IPFileSuffix]
+	chmod +w ?[IPFilePrefix]/$${filename}?[IPFileSuffix]
+end
+
+echo ''
+
+rm -f Xhosts Xgateways Xnetworks
+echo 'Sub-run ended at' `date`
+
+%endif pobb_GetHostTable

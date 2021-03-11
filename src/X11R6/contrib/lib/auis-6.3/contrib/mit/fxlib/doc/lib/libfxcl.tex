@@ -1,0 +1,491 @@
+\documentstyle{article}
+
+% $Author: wdc $
+% $Source: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/contrib/mit/fxlib/doc/lib/RCS/libfxcl.tex,v $
+% $Header: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/contrib/mit/fxlib/doc/lib/RCS/libfxcl.tex,v 1.1 1992/02/13 20:12:23 wdc R6tape $
+% Copyright (c) 1989, Massachusetts Institute of Technology
+
+\title{File Exchange Client Library}
+\author{Bruce R. Lewis}
+\date{March 12, 1990}
+
+\addtolength{\oddsidemargin}{-.5in}
+\addtolength{\evensidemargin}{-.5in}
+\addtolength{\textwidth}{1in}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Overview}
+
+The File Exchange Client Library helps C programmers write
+applications which imitate the paper handling done in a classroom.  A
+variety of paper types is supported.
+
+\begin{description}
+
+\item [EXCHANGE] papers can be written and read by
+anyone.\footnote{For a more precise idea of who ``anyone'' is and who
+``graders'' are, see the section on access control lists.}  An EXCHANGE
+paper can be removed by its author or by any grader.
+
+\item [TURNEDIN] papers can be written
+by anyone but can be read only by graders and the papers' authors.  The
+various types distinguish the stages in grading.
+
+\item [TAKEN] is the paper type to which papers are moved when a grader
+decides to grade them.  This avoids a condition of more than one grader
+taking the same paper at the same time.  Any grader can also move a
+paper back to type TURNEDIN upon deciding that it was taken by mistake,
+or that the grader who took it will never grade it.
+
+\item [GRADED] papers are written by graders.  (Usually they are papers
+previously turned in by someone else, which the grader has modified to
+add comments and possibly a grade).  A graded paper can be read by
+graders and by the paper's author.
+
+\item [PICKEDUP] is the paper type to which the orignal author moves a
+GRADED paper to show that it's now ok for a grader to remove the paper
+from the server (assuming the grader doesn't want to keep it for
+archival purposes.)
+
+\item [HANDOUT] papers can be written by graders and read by anyone.
+
+\item [TEACHERS\_ARCHIVE and TEACHERS\_HANDOUT] papers can be written
+and read only by graders.
+
+\end{description}
+
+This document describes the library functions needed to handle these
+papers by communicating with the file exchange server.
+
+\pagebreak[3]
+
+\section{Opening a File Exchange}
+
+A file exchange is a distributed database of papers on some number of
+servers, but this does not affect client programs; the distributed
+nature of the file exchange is hidden below the abstraction barrier of
+the FX structure, which is handled much like the Unix FILE structure.
+
+\subsection{Using fx\_open() and fx\_close()}
+
+\begin{verbatim}
+
+#include <fxcl.h>
+
+FX *fx_open(s, codep)
+     char *s;
+     long *codep;
+
+void fx_close(fxp)
+     FX *fxp;
+
+\end{verbatim}
+
+Here \verb+s+ is the name of the file exchange, and \verb+codep+ (if
+non-null) will be filled in with an error code.  There are three
+possibilities for the error status of \verb+fx_open()+.
+
+\begin{enumerate}
+
+\item A non-null pointer is returned and \verb+*codep+ is zero,
+meaning no error was encountered.
+
+\item A non-null pointer is returned and \verb+*codep+ is non-zero,
+meaning some error was encountered that may limit access to the file
+exchange.
+
+\item A null pointer is returned and \verb+*codep+ is non-zero,
+meaning the file exchange could not be opened.
+
+\end{enumerate}
+
+Normally, a file exchange should not be held open while waiting for
+user input, because each open file exchange uses up at least one file
+descriptor at the server.  If more than fifty users might be using a
+server at the same time, it is imperative that the client program open
+the file exchange, do what needs to be done, and close the file
+exchange immediately.
+
+NOTE: On some systems, closing a file exchange twice may cause
+subsequent calls to \verb+malloc()+ not to function correctly.  To be
+sure this doesn't happen, follow this convention:
+
+\begin{verbatim}
+	if (fxp) { fx_close(fxp); fxp = NULL; }
+\end{verbatim}
+
+\subsection{Overriding the Default Server Path}
+
+Normally, \verb+fx_open()+ uses hesiod information\footnote{In the
+Athena computing environment, one types
+\verb+hesinfo turnin sloc+ to see the default server path.} to find
+which server machines it should try to contact.  A user can
+override this by setting the environment variable FXPATH to
+host1:host2:etc.
+
+\subsection{Error Handling}
+
+The \verb+fx_open()+ function may have to try several servers before it
+can actually connect to one.  In the worst case, several timeouts may
+occur, so that the user does not know why a program is taking so long.
+To combat this situation, \verb+fx_open()+, when it fails to connect
+to a host, will print an error message if there are still hosts to try
+to contact. This behavior can be modified by changing
+\verb+fx_open_error_hook+.
+
+\begin{verbatim}
+void (*fx_open_error_hook)() = fx_open_perror;
+
+void fx_open_perror(fxp, code)
+     FX *fxp;
+     long code;
+{
+  if (code)
+    com_err(fxp->host, code, "(%s)", fxp->name);
+}
+
+\end{verbatim}
+
+Client programs may use alternate error reporting routines with the
+same parameters as \verb+fx_open_perror()+.  Such routines may make
+use of \verb+fxp->host+, the machine for which the error occurred, and
+\verb+fxp->name+, the file exchange for which the error occurred.  For
+details on \verb+com_err+, see the MIT Student Information Processing
+Board's document, {\it A Common Error Description Library for UNIX}.
+
+\pagebreak[3]
+
+\section{Creating a New File Exchange}
+
+Not all users can create file exchanges, only those in the server's
+global access-control list.  One authenticates to the server upon
+opening a file exchange.  A nameless file exchange (\verb+""+) can always be
+opened for the purpose of authentication before creating new file
+exchanges.
+
+\subsection{Using fx\_create()}
+
+\begin{verbatim}
+
+long fx_create(fxp, name)
+     FX *fxp;
+     char *name;
+
+\end{verbatim}
+
+Here \verb+fxp+ is the file exchange already opened for
+authentication, and \verb+name+ is the name of the file exchange to be
+created.  The error code returned can be diagnosed by \verb+com_err+.
+
+\subsection{Overview of Access Control Lists}
+
+The first thing to do after creating a file exchange is to adjust the
+access control lists \verb+ACL_TURNIN+, \verb+ACL_GRADER+, and
+\verb+ACL_MAINT+.  Initially only the creator of the course is in
+each of these lists.  Everyone connected with the file exchange should
+be in the turnin list.  Add \verb+"*"+ if all authenticated users in
+your kerberos realm should have access.  (To give access to users in,
+say, the LCS.MIT.EDU, add \verb+"*@LCS.MIT.EDU"+.)  Graders get the
+privileges described in the overview.  Users in the maint list are
+allowed to change the access control lists.
+
+\subsection{Using fx\_acl\_add() and fx\_acl\_del()}
+
+\begin{verbatim}
+
+long fx_acl_add(fxp, aclname, person)
+     FX *fxp;
+     char *aclname, *person;
+
+long fx_acl_del(fxp, aclname, person)
+     FX *fxp;
+     char *aclname, *person;
+
+\end{verbatim}
+
+Here \verb+fxp+ is the file exchange whose access control lists are to
+be changed, \verb+aclname+ is one of \verb+ACL_TURNIN+,
+\verb+ACL_GRADER+, \verb+ACL_MAINT+, and \verb+person+ is a username
+or kerberos principal.
+
+\subsection{Using fx\_acl\_list()}
+
+The contents of the access control lists may be retrieved from the
+server into a \verb+stringlist_res+ structure, which should be
+destroyed after use to free allocated memory.
+
+\begin{verbatim}
+
+typedef struct stringnode *stringlist;
+
+struct stringnode {
+        char *s;
+        stringlist next;
+};
+typedef struct stringnode stringnode;
+
+struct stringlist_res {
+        long errno;
+        union {
+                stringlist list;
+        } stringlist_res_u;
+};
+typedef struct stringlist_res stringlist_res;
+
+\end{verbatim}
+
+Client programs are only concerned with the stringlist\_res\_u.list
+member of the structure, since errno will be returned by the
+\verb+fx_acl_list()+ function.  It may seem awkward to have to deal
+with a pointer to such an unwieldy structure rather than just a simple
+stringlist, but this is the best way to allow the entire structure
+returned by the server to be destroyed at the discretion of the
+client program.
+
+The structure is retrieved by \verb+fx_acl_list()+, which returns
+error status, and destroyed by \verb+fx_acl_list_destroy()+, which
+always succeeds.
+
+The strings returned are the usernames of members of the access control
+list if those users are in the same kerberos realm as the user who
+retrieves the ACL.  If there are members of the list from other realms,
+the full kerberos principal will be returned.
+
+\begin{verbatim}
+
+long fx_acl_list(fxp, aclname, ret)
+     FX *fxp;
+     char *aclname;
+     stringlist_res **ret;
+
+void fx_acl_list_destroy(list)
+     stringlist_res **list;
+
+\end{verbatim}
+
+\section{Sending a Paper}
+
+\subsection{A Simple Example using paper\_clear(), fx\_send\_file() and fx\_send()}
+
+The following program sends a file called ``essay.dvi'' to the file
+exchange given on the command line, and then sends a corresponding
+``essay.PS'' without actually creating the file locally.  It serves as
+an example of how easy it is to use paper\_clear(), fx\_send\_file()
+and fx\_send() to send files.
+
+\pagebreak[4]
+
+\begin{verbatim}
+#include <stdio.h>
+#include <fxcl.h>
+
+main(argc, argv)
+     int argc;
+     char *argv[];
+{
+  FX *fxp;
+  long code;
+  Paper p;
+  FILE *pipe;
+
+  if (argc != 2) {
+    fprintf(stderr, "Usage: %s <exchange>\n", argv[0]);
+    exit(1);
+  }
+  fxp = fx_open(argv[1], &code);
+  if (!fxp) {
+    com_err(argv[0], code, "while opening %s", argv[1]);
+    exit(1);
+  }
+  /* Send the essay.dvi file */
+  paper_clear(&p);
+  code = fx_send_file(fxp, &p, "essay.dvi");
+  if (code) {
+    com_err(argv[0], code, "while sending essay.dvi");
+    exit(1);
+  }
+  pipe = popen("dvi2ps -r essay.dvi", "r");
+  if (!pipe) {
+    fprintf(stderr, "%s: Could not run dvi2ps\n", argv[0]);
+    exit(1);
+  }
+  /* Send the essay.PS file */
+  p.filename = "essay.PS";
+  code = fx_send(fxp, &p, pipe);
+  if (code) {
+    com_err(argv[0], code, "while sending essay.PS");
+    exit(1);
+  }
+  fx_close(fxp);
+  (void) pclose(pipe);
+  exit(0);
+}
+\end{verbatim}
+
+\subsection{Setting Paper Properties}
+
+Notice that in the preceding example the programmer was not obligated
+to specify the paper type; it defaults to EXCHANGE.  Assignment
+defaults to 1.  Filename defaults to the name of the local file for
+\verb+fx_send_file()+ and to ``x'' for \verb+fx_send()+.  Author
+defaults to the sender, but a grader may attribute the authorship of a
+paper to someone else.  (The file exchange server will set authorship
+to the sender for everyone else.)  In summary, the preceding program
+could have set
+
+\begin{itemize}
+
+\item {\tt p.assignment} to an integer, the assignment number.
+
+\item {\tt p.type} to any PaperType listed in the overview of this
+document.
+
+\item {\tt p.filename} to any valid Unix base filename.
+
+\item {\tt p.author} to any string (preferably username or kerberos
+principal).
+
+\end{itemize}
+
+\section{Getting a List of Papers}
+
+\subsection{Using fx\_list()}
+
+Lists of papers may be retrieved from the
+server into a \verb+Paperlist_res+ structure, which should be
+destroyed after use to free allocated memory.
+
+\begin{verbatim}
+
+typedef struct PaperNode *Paperlist;
+
+struct PaperNode {
+        Paper p;
+        Paperlist next;
+};
+typedef struct PaperNode PaperNode;
+
+struct Paperlist_res {
+        long errno;
+        union {
+                Paperlist list;
+        } Paperlist_res_u;
+};
+typedef struct Paperlist_res Paperlist_res;
+
+\end{verbatim}
+
+Client programs are only concerned with the Paperlist\_res\_u.list
+member of the structure, since errno will be returned by the
+\verb+fx_list()+ function.  It may seem awkward to have to deal
+with a pointer to such an unwieldy structure rather than just a simple
+Paperlist, but this is the best way to allow the entire structure
+returned by the server to be destroyed at the discretion of the
+client program.
+
+The structure is retrieved by \verb+fx_list()+, which returns
+error status, and destroyed by \verb+fx_list_destroy()+, which
+always succeeds.
+
+The paper pointer, pp, passed to \verb+fx_list()+ should first be
+cleared with \verb+paper_clear()+ (see the example program in a previous
+section), and then filled in with criteria for the list.  For example,
+if you were only searching for papers associated with assignment 2, you
+would set \verb+pp->assignment = 2+.
+
+A user who is not in the grader list will not be able to list papers by
+other authors except for types EXCHANGE and HANDOUT.
+
+\begin{verbatim}
+
+long fx_list(fxp, pp, ret)
+     FX *fxp;
+     Paper *pp;
+     Paperlist_res **ret;
+
+void fx_list_destroy(plist)
+     Paperlist_res **plist;
+
+\end{verbatim}
+
+\section{What To Do With a List of Papers}
+
+\subsection{Using paper\_copy()}
+
+Modifying the contents of a paper in the list returned by
+\verb+fx_list()+ may cause problems when you later destroy that list,
+it is better to copy into a new paper first.
+
+\begin{verbatim}
+paper_copy(src, dest)
+     Paper *src, *dest;
+\end{verbatim}
+
+Do not destroy the list until you are done with all Papers copied from
+nodes of the list.
+
+\subsection{Using fx\_retrieve\_file() and fx\_retrieve()}
+
+These functions take the same types of parameters as
+\verb+fx_send_file()+ and \verb+fx_send()+, but the paper pointer
+passed must be taken from the list returned by \verb+fx_list()+.
+
+\subsection{Using fx\_copy() and fx\_move()}
+
+In each of the declarations below, src should come from the list
+returned by \verb+fx_list()+, and dest should be a modified copy of
+src.
+
+\begin{verbatim}
+
+long fx_move(fxp, src, dest)
+     FX *fxp;
+     Paper *src, *dest;
+
+long fx_copy(fxp, src, dest)
+     FX *fxp;
+     Paper *src, *dest;
+
+\end{verbatim}
+
+The most frequent use of \verb+fx_move()+ is to change the PaperType
+during grading.  A TURNEDIN file should be changed to TAKEN before a
+grader retrieves it for annotating.  The annotated version should be
+sent with type GRADED.  After retrieving the file, a student should
+change the status to PICKEDUP.
+
+One possible use of \verb+fx_copy()+ would be to use a TURNEDIN file
+as an example for the whole class to look at, changing it to type
+HANDOUT.
+
+\subsection{Using fx\_delete()}
+
+In the declaration below, p should come from the list
+returned by \verb+fx_list()+.
+
+\begin{verbatim}
+long fx_delete(fxp, p)
+     FX *fxp;
+     Paper *p;
+\end{verbatim}
+
+\end{document}
+
+\section{What This Document Doesn't Cover and Why}
+
+You'll have to look at the source code for fx_stat(), which returns a
+lot of different server statistics.  There may be other functions in the
+fx library I haven't thought of.  Look at the Makefiles to see the order
+in which you link libraries (there are a lot of libraries you need.)
+
+The NEOS project has been on the back burner for 2 years as of this
+writing (November '91).  We've wanted to make the multi-server code
+reliable and then release it, but time has not allowed for that.  It's
+time to admit we're not going to fix it and just release what we have,
+which is very useful and has worked reliably at MIT for 3 years.
+
+So what you see is what you get.  Share and enjoy.

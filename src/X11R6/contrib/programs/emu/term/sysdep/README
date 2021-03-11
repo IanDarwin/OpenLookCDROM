@@ -1,0 +1,102 @@
+When porting the term widget to a new machine, you should provide
+support for several system dependent routines which are placed
+by convention in this directory.  If a routine calls for a function that
+your system does not support, and the routine is marked "optional", it's
+safe to just implement it as a routine that does nothing (though in no
+case can you simply ignore it - at minimum a "stub" should exist or emu
+will not link).  Most routines are needed in some way, however, so don't be
+surprised if things don't work quite the way you expect should you do
+this.  Routines not marked optional MUST do something functional.
+
+There are a number of currently provided implementations classed by
+operating system "family", specific operating system revision, or machine
+type (for which, presumably, only one rather custom type of operating system
+exists).  Though it doesn't really matter how you organise any additional
+support files you may add, it is recommended that you try to adopt something
+similar to this convention since it makes what you do as reusable as possible.
+In order to best understand the organizational structure, look first in
+tty.c and process.c - there you will see the "top level" includes for specific
+system types.  All files included at this level contain hardcoded
+implementations of the routines called for below, the other files in sysdep
+containing only "generic" implementations meant to be included by some top
+level tty_<foo>.i or proc_<foo>.i file.  For good examples, look at
+tty_sun.i & proc_sun.i, or tty_gen_svr4.i & proc_gen_svr4.i.
+
+The following routines should be implemented for process handling
+in your proc_<sys>.i file:
+
+void process_init(w)
+TermWidget w;
+
+Should do whatever's necessary to fork() off a process, initialize the
+new process group, chown the slave end appropriately, etc etc.  Look
+at one of the existing examples for more details.
+
+int process_wait(failcode)
+int *failcode;
+
+Does whatever's necessary to wait() for a process that's died (this
+routine is only called in the event of child death). The routine
+should return the process id of the recently deceased with the value
+it returned (unmodified) being also stored in "failcode".
+
+The following routines should be implemented for tty handling
+in some tty_<sys>.i file:
+
+String tty_find_pty(w)
+TermWidget w;
+
+Search for a free pty on the system and open it, assigning the
+appropriate Term widget file descriptors to the newly opened master end.
+Return the name of the master end as a string. Look at the existing
+examples for a good place to start; they're already pretty general.
+
+void tty_set_size(w, rows, cols, width, height)
+TermWidget w;
+int rows, cols, width, height;
+
+Do whatever SIGWINCH'y type things that are necessary to let term's
+subprocess know that the window size has changed. This routing is
+optional, though certain editors may misbehave without it.
+
+void tty_add_utmp(w)
+TermWidget w;
+
+Add a utmp and/or wtmp entry for the term widget's tty. This routine
+is optional, though certain unix programs may fail without it.
+
+void tty_remove_utmp(w)
+TermWidget w;
+
+Remove a utmp and/or wtmp entry for the term widget's tty. This routine
+is optional, though it most certainly should be implemented if
+tty_add_utmp() is.
+
+The next three routines pass a private data structure around (the contents
+of which are left to their discretion) which is treated as a "generic"
+pointer value by the rest of the system.
+
+Generic tty_get_values(w)
+TermWidget w;
+
+Returns the current tty values for term's PTY. If "w" is NULL, then returns
+current values for invoking tty (only done once). This routine is optional,
+though performance without it may be marginal on some systems, depending
+on defaults.
+
+Generic tty_get_sane(w)
+TermWidget w;
+
+Returns a "sane" set of values which will result in law and order
+being restored on a PTY when applied. This routine is optional, though
+performance without it may be marginal on some systems, depending on
+defaults.
+
+void tty_set_values(w, values)
+TermWidget w;
+Generic values;
+
+Sets tty values for term's PTY to be "values" (assumed to be the
+product of an earlier call to tty_get_values() or tty_get_sane()).
+This routine is optional, though performance without it may be
+marginal on some systems, depending on defaults.

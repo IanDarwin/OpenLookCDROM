@@ -1,0 +1,5646 @@
+\begindata{text,539970000}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\center{\bold{\bigger{Library Functions in ELI, the Embedded Lisp Interpreter}
+
+by Bob Glickstein
+
+26-May-1988}}
+
+
+\heading{Introduction}
+
+This document is a reference guide to functions available in the ELI library, 
+and is intended for use by programmers writing applications which embed ELI. 
+ An index to this document appears in /usr/andrew/doc/ams/libcalls.idx.  Each 
+function is listed with its parameters, the source file in which it can be 
+found (in andrew/overhead/eli/lib), and a brief description, augmented in some 
+cases with examples.  Many of these functions are internal to ELI, not needed 
+by client programmers, and included strictly for completeness.  (Such 
+functions are so noted.)
+
+
+The format of an entry is:
+
+
+\bold{FunctionName
+
+}\indent{\italic{source-file}
+
+FunctionName(param\subscript{1}, param\subscript{2}, ... , param\subscript{n})
+
+\indent{type param\subscript{1};
+
+type param\subscript{2};
+
+...
+
+type param\subscript{n};
+
+\indent{\italic{A brief discussion of the function's parameters, return value 
+(if any) and side effects.}}
+
+\bold{Example}: A usage example.
+
+\bold{Note}: An important aside regarding the use of this function.
+
+}}
+This document does not discuss the ELI data structures, nor does it give 
+extensive programming examples; for those, see Eli-ProgramExamples.d.
+
+
+Functions implementing ELI primitives all have names beginning with "Prim_" 
+(they are, furthermore, the only functions with such names).  They are 
+included in the section entitled "Primitives", but none should ever be called 
+by a client.  If it becomes necessary to call one of these functions, use the 
+method outlined in the section entitled "Calling a Primitive".  More about the 
+primitives appears in a forthcoming document.
+
+
+\heading{Note to Non-Math Majors}
+
+The word "iff" (which occurs a few times in this document) is short for "if 
+and only if".
+
+
+\heading{Final Note}
+
+Symbol names in ELI are mapped to all-caps during parsing.  In this document, 
+symbol names usually appear in mixed upper- and lower-case for readability. 
+ Keep in mind that lower-case is folded into upper-case during parsing, 
+however, and that any references to symbol names that do not go through the 
+parser (such as symtab_getcheck, which searches for a symbol with a given 
+name, or EliPrimDef, which binds a function to a given symbol name) must be in 
+all-caps.  Functions where this is necessary are so noted.
+
+
+\heading{Library Functions}
+
+
+\bold{EliAddToList
+
+}\indent{\italic{eliCommon.c}
+
+EliCons_t *EliAddToList(st, list, node)
+
+\indent{EliState_t *st;
+
+EliCons_t *list;
+
+EliSexp_t *node;
+
+\indent{\italic{\bold{St} is the state variable, \bold{list} is a cons list, 
+\bold{node} is a sexp node.  Extends the list \bold{list} with a cell whose 
+car is the node \bold{node}.  If \bold{list} is NULL, creates a new list with 
+the single element \bold{node}.  Returns NULL if an error occurred (and flags 
+an error in \bold{st}), otherwise returns the resulting list.}}
+
+\bold{Note}: The list referred to by \bold{list} is actually altered.
+
+\bold{Example}: If \bold{list} is the list \typewriter{(Lots-of "Infernal")} 
+and \bold{node} refers to the string \typewriter{"Stupid Parentheses"}, then 
+EliAddToList will return the list \typewriter{(Lots-of "Infernal" "Stupid 
+Parentheses")}.  This list will also be the new value of \bold{list}.
+
+}}
+\bold{EliBind
+
+}\indent{\italic{stack.c}
+
+int EliBind(st, varlist, arglist)
+
+\indent{EliState_t *st;
+
+EliCons_t *varlist, *arglist;
+
+\indent{\italic{\bold{St} is the state variable, \bold{varlist} is a cons 
+list, \bold{arglist} is a cons list.  The symbols in \bold{varlist} are placed 
+on the evaluation stack in \bold{st}, with the sexps in \bold{arglist} as 
+their respective bound values.  In actual fact, a new symbol is created for 
+each symbol in \bold{varlist}, having the same name.  This is to avoid binding 
+values to "global" symbols, whose values should be temporarily superseded by 
+stack variables, not permanently replaced.  If there are too few values in 
+\bold{arglist}, then the leftover symbols will have the symbol NIL bound to 
+them; if there are too many values in \bold{arglist}, the leftover values will 
+be ignored.  In either case, EliBind does not complain.  This function is 
+exactly like EliEvalAndBind, except that this one does not evaluate the sexps 
+in \bold{arglist} before binding them to the symbols in varlist.  This 
+function returns the number of items actually placed on the stack.}}
+
+\bold{Note}: The number returned by this function is explicitly needed by the 
+caller to free up the appropriate number of items on the stack at the end of 
+evaluation (see EliEvalStk_PopN).  Also, since this function knows very little 
+about error recovery, it may evaluate and place some items on the stack before 
+encountering an error, and not pop anything off the stack afterward.  It is 
+the caller's responsibility in this case to use the number returned by the 
+function to maintain the stack in an appropriate state.
+
+\bold{Example}: If \bold{varlist} is the list
+
+\example{(a b c)}
+
+and \bold{arglist} is the list
+
+\example{("hey" 'hot-mama 12 (+ 9 7)),}
+
+EliBind will (barring allocation errors, etc.) bind the string 
+\typewriter{"hey"} to the symbol \italic{a}, the list \typewriter{(quote 
+hot-mama)} to the symbol \italic{b}, and the number \typewriter{12} to the 
+symbol \italic{c}, ignoring the expression \typewriter{(+ 9 7)}.  \italic{A}, 
+\italic{b} and \italic{c} will then be placed on the stack, and EliBind will 
+return 3.  Alternatively, if \bold{varlist} is the list
+
+\example{(a "a string" b)}
+
+and \bold{arglist} is the list
+
+\example{(1 2 3),}
+
+EliBind will (barring allocation errors, etc., again) bind \typewriter{1} to 
+the symbol \italic{a}, then encounter an error trying to bind \typewriter{2} 
+to the non-symbol \typewriter{"a string"}.  \italic{A} will have been placed 
+on the stack by now, and EliBind will flag an error and return 1.
+
+}}
+\bold{EliCatchFn
+
+}\indent{\italic{eliCommon.c}
+
+void (*EliCatchFn(st))()
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns a pointer to the 
+error-handling function for \bold{st}.}}
+
+}}
+\bold{EliCatchMask
+
+}\indent{\italic{eliCommon.c}
+
+int EliCatchMask(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns the error-catching 
+mask for \bold{st}.}}
+
+}}
+\bold{EliClearErr
+
+}\indent{\italic{eliCommon.c}
+
+void EliClearErr(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  If an error has been flagged 
+in \bold{st}, it is cleared.  If an "offending sexp" node was provided when 
+the error was flagged, then that node's reference count is decremented.  See 
+EliReset.}}
+
+}}
+\bold{EliCons_BindCar
+
+}\indent{\italic{cons.c}
+
+void EliCons_BindCar(st, cell, val)
+
+\indent{EliState_t *st;
+
+EliCons_t *cell;
+
+EliSexp_t *val;
+
+\indent{\italic{\bold{St} is the state variable, \bold{cell} is a cons cell, 
+\bold{val} is a sexp node.  Binds \bold{val} to the car of \bold{cell}, 
+incrementing the reference count of \bold{val} and decrementing the reference 
+count of the sexp node previously bound to the car of \bold{cell}.}}
+
+}}
+\bold{EliCons_BindCdr
+
+}\indent{\italic{cons.c}
+
+void EliCons_BindCdr(st, cell, val)
+
+\indent{EliState_t *st;
+
+EliCons_t *cell;
+
+EliSexp_t *val;
+
+\indent{\italic{\bold{St} is the state variable, \bold{cell} is a cons cell, 
+\bold{val} is a sexp node.  Binds \bold{val} to the cdr of \bold{cell}, 
+incrementing the reference count of \bold{val} and decrementing the reference 
+count of the sexp node previously bound to the cdr of \bold{cell}.}}}
+
+}
+\bold{EliCons_GetCar
+
+}\indent{\italic{cons.c}
+
+EliSexp_t *EliCons_GetCar(cell)
+
+\indent{EliCons_t *cell;
+
+\indent{\italic{\bold{Cell} is a cons cell.  Returns the sexp node bound to 
+the car of \bold{cell}.}}
+
+\bold{Note}: Even newly-allocated cons cells have a sexp node bound to their 
+cars; in these cases, however, the sexp nodes are of type e_data_none.
+
+}}
+\bold{EliCons_GetCdr
+
+}\indent{\italic{cons.c}
+
+EliSexp_t *EliCons_GetCdr(cell)
+
+\indent{EliCons_t *cell;
+
+\indent{\italic{\bold{Cell} is a cons cell.  Returns the sexp node bound to 
+the cdr of \bold{cell}.}}
+
+\bold{Note}: Even newly-allocated cons cells have a sexp node bound to their 
+cdrs; in these cases, however, the sexp nodes are of type e_data_none.
+
+}}
+\bold{EliCons_GetNew
+
+}\indent{\italic{interface.c}
+
+EliCons_t *EliCons_GetNew(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Allocates, initializes and 
+returns a new cons cell, or NULL if an error occurred (flagging an error in 
+\bold{st} if so).  Maintains important error-recovery information about node 
+allocation.}}
+
+}}
+\bold{EliDebug
+
+}\indent{\italic{eliCommon.c}
+
+void EliDebug(level, msg, st, freeP)
+
+\indent{int level;
+
+char *msg;
+
+EliState_t *st;
+
+int freeP;
+
+\indent{\italic{\bold{Level} is an integer, \bold{msg} is a null-terminated 
+string, \bold{st} is a state variable, \bold{freeP} is an integer.  If the 
+current debug level (in the variable EliProcessInfo.debugStuff.curDebugLevel) 
+is greater than or equal to \bold{level}, then the message \bold{msg} is 
+placed in the queue of debugging messages along with a number uniquely 
+representing the particular state variable \bold{st} with which \bold{msg} is 
+associated.  (It is possible to have more than one state variable in an ELI 
+process; they behave as two separate Lisp data spaces.  If \bold{msg} is not 
+associated with a particular state variable, \bold{st} should be NULL.)  This 
+debugging entry is also assigned a unique history number starting with 1.  The 
+size of the debugging-message queue is fixed at NUM_DEBUG_ENTRIES (currently 
+64).  Inserting a new entry into a full queue causes the oldest entry to be 
+lost.  The parameter \bold{freeP}, if TRUE, instructs EliDebug to call free() 
+on the message string of any debugging entry that falls off the end of the 
+queue.  \bold{FreeP} should be TRUE when \bold{msg} is a string that has been 
+created with malloc and you wish it to be freed automatically at the 
+appropriate time without having to keep track of it yourself.}}
+
+}}
+\bold{EliDebugFPrint
+
+}\indent{\italic{eliCommon.c}
+
+int EliDebugFPrint(fp, num)
+
+\indent{FILE *fp;
+
+int num;
+
+\indent{\italic{\bold{Fp} is a pointer to a file opened for writing with 
+fopen(), \bold{num} is an integer.  Prints the latest n debugging messages on 
+the file \bold{fp}, where n is the smallest number among \bold{num}, 
+NUM_DEBUG_ENTRIES (currently 64) and the number of entries actually in the 
+debugging-message queue.  The messages are printed in FIFO (chronological) 
+order, according to the format "%s (state id = %d)\\n", where %s is the 
+message and %d is the unique number of the state variable with which the 
+message is associated.  (Messages not associated with any particular state 
+variable have "state id" 0.)  Returns the number of entries printed.}}
+
+}}
+\bold{EliDebugFPrintSince
+
+}\indent{\italic{eliCommon.c}
+
+long EliDebugFPrintSince(fp, since)
+
+\indent{FILE *fp;
+
+long since;
+
+\indent{\italic{\bold{Fp} is a pointer to a file opened for writing with 
+fopen(), \bold{since} is a long integer.  Prints all the debugging messages 
+still in the debugging-message queue whose history numbers are greater than 
+\bold{since}.  Messages are printed in FIFO (chronological) order, according 
+to the format "%s (state id = %d)\\n", where %s is the message and %d is the 
+unique number of the state variable with which the message is associated. 
+ (Messages not associated with any particular state variable have "state id" 
+0.)  Returns the history number of the last message printed, or 0 if none were 
+printed.}}
+
+}}
+\bold{EliDebugHistNum
+
+}\indent{\italic{eliCommon.c}
+
+int EliDebugHistNum(n)
+
+\indent{int n;
+
+\indent{\italic{\bold{N} is an integer.  Returns the history number of the 
+\bold{n}\superscript{th} entry in the debugging queue.  Entries in the queue 
+are numbered from 0 through NUM_DEBUG_ENTRIES - 1 (NUM_DEBUG_ENTRIES is 
+currently 64), where 0 is always the most recent entry.  If \bold{n} does not 
+refer to a valid entry, returns 0.}}
+
+}}
+\bold{EliDebugMessage
+
+}\indent{\italic{eliCommon.c}
+
+char *EliDebugMessage(n)
+
+\indent{int n;
+
+\indent{\italic{\bold{N} is an integer.  Returns the debugging message of the 
+\bold{n}\superscript{th} entry in the debugging queue.  Entries in the queue 
+are numbered from 0 through NUM_DEBUG_ENTRIES - 1 (NUM_DEBUG_ENTRIES is 
+currently 64), where 0 is always the most recent entry.  If \bold{n} does not 
+refer to a valid entry, returns NULL.}}
+
+}}
+\bold{EliDebugStateNum
+
+}\indent{\italic{eliCommon.c}
+
+int EliDebugStateNum(n)
+
+\indent{int n;
+
+\indent{\italic{\bold{N} is an integer.  Returns the unique number identifying 
+the state variable with which the  \bold{n}\superscript{th} entry in the 
+debugging queue is associated.  Entries in the queue are numbered from 0 
+through NUM_DEBUG_ENTRIES - 1 (NUM_DEBUG_ENTRIES is currently 64), where 0 is 
+always the most recent entry.  If the \bold{n}\superscript{th} entry is not 
+associated with a particular state variable, returns 0.  If \bold{n} does not 
+refer to a valid entry, returns -1.}}
+
+}}
+\bold{EliDisplaySexp
+
+}\indent{\italic{eliCommon.c}
+
+void EliDisplaySexp(expr)
+
+\indent{EliSexp_t *expr;
+
+\indent{\italic{\bold{Expr} is a sexp node.  Displays the sexp on the standard 
+output in the usual Lisp output format.}}
+
+}}
+\bold{EliErr_Backtrace
+
+}\indent{\italic{errops.c}
+
+EliCons_t *EliErr_Backtrace(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  If an error has been flagged 
+in \bold{st}, returns the cons list of the expressions which led up to the 
+error, if any.  Whether one is available can be determined with 
+EliErr_BacktraceP.  In any case, if no list is available, this function will 
+return NULL.}}
+
+}}
+\bold{EliErr_BacktraceP
+
+}\indent{\italic{errops.c}
+
+int EliErr_BacktraceP(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  If an error has been flagged 
+in \bold{st}, returns the truth value of whether a cons list of the 
+expressions which led up to the error is available for examination.}}
+
+}}
+\bold{EliErr_BadSexp
+
+}\indent{\italic{errops.c}
+
+EliSexp_t *EliErr_BadSexp(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  If an error has been flagged 
+in \bold{st}, returns the "offending sexp" recorded along with the error, if 
+any.  Whether one is available can be determined with EliErr_BadSexpP.  In any 
+case, if no sexp is available, this function will return NULL.}}
+
+}}
+\bold{EliErr_BadSexpP
+
+}\indent{\italic{errops.c}
+
+int EliErr_BadSexpP(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  If an error has been flagged 
+in \bold{st}, returns the truth value of whether an "offending sexp" is 
+available for examination.}}
+
+}}
+\bold{EliErr_ErrCode
+
+}\indent{\italic{errops.c}
+
+int EliErr_ErrCode(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  If an error has been flagged 
+in \bold{st}, returns the ELI error code of that error.}}
+
+}}
+\bold{EliErr_ErrLoc
+
+}\indent{\italic{errops.c}
+
+char *EliErr_ErrLoc(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  If an error has been flagged 
+in \bold{st}, returns the string describing the location of the error.}}
+
+}}
+\bold{EliErr_ErrP
+
+}\indent{\italic{errops.c}
+
+int EliErr_ErrP(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns the truth value of 
+whether an error has been flagged in \bold{st}.}}
+
+}}
+\bold{EliErr_UnixErr
+
+}\indent{\italic{errops.c}
+
+int EliErr_UnixErr(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  If an error has been flagged 
+in \bold{st}, returns the unix error number (errno) associated with that error 
+(or zero if one was not provided at the time the error was flagged).}}
+
+}}
+\bold{EliErrNode
+
+}\indent{\italic{eliCommon.c}
+
+eliErrStuff_t *EliErrNode(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns the error-handling 
+node for \bold{st}.}}
+
+}}
+\bold{EliErrStr
+
+}\indent{\italic{eliError.c}
+
+char *EliErrStr(code)
+
+\indent{int code;
+
+\indent{\italic{\bold{Code} is an ELI error code.  Returns a short string 
+describing the error.  Possible values are: "Error from ELI client" (code 0x0 
+[ELI_ERR_CLIENT]); "Out of Memory" (code 0x1 [ELI_ERR_OUT_OF_MEM]); "Bad 
+Syntax" (code 0x2 [ELI_ERR_BAD_SYNTAX]); "Unbound Atom" (code 0x4 
+[ELI_ERR_UNBOUND]); "Undefined Function" (code 0x8 [ELI_ERR_FN_UNDEF]); "Bad 
+Function Parameter" (code 0x10 [ELI_ERR_BAD_PARAM]); "Bad Argument" (code 0x20 
+[ELI_ERR_BAD_ARGS]); "Symbol Does Not Exist" (code 0x40 [ELI_ERR_NOSYM]); 
+"Wrong Number of Arguments to Function" (code 0x80 [ELI_ERR_ARGLISTSIZE]); 
+"System Error" (code 0x100 [ELI_ERR_SYSERROR]); "User Error" (code 0x200 
+[ELI_ERR_USERERROR]).}}
+
+}}
+\bold{EliError
+
+}\indent{\italic{eliError.c}
+
+void EliError(st, errtype, node, loc, unixerr)
+
+\indent{EliState_t *st;
+
+int errtype;
+
+EliSexp_t *node;
+
+char *loc;
+
+int unixerr;
+
+\indent{\italic{\bold{St} is the state variable, \bold{errtype} is an ELI 
+error code, \bold{node} is a sexp node, \bold{loc} is a null-terminated 
+string, unixerr is an integer.  Flags an error in \bold{st} and records 
+\bold{node} as the offending sexp (if applicable/available; if not, passing 
+\bold{node} as NULL signifies that no such node is available) and \bold{loc} 
+as a string describing the location of the error.  If \bold{unixerr} is 
+non-zero, it is taken to be the value of the Unix global ``errno'' and will 
+also be recorded along with the error (a string describing error number 
+\bold{unixerr} can be found in sys_errlist[\bold{unixerr}]).  If \bold{node} 
+is non-NULL, then its reference count is incremented.  If the error-catching 
+mask in \bold{st} (set with EliSetCatchMask) catches errors of type 
+\bold{errtype}, then EliError calls the error-handling function set with 
+EliSetCatchFn.  Possible values for \bold{errtype} are ELI_ERR_CLIENT (0x0), 
+ELI_ERR_OUT_OF_MEM (0x1), ELI_ERR_BAD_SYNTAX (0x2), ELI_ERR_UNBOUND (0x4), 
+ELI_ERR_FN_UNDEF (0x8), ELI_ERR_BAD_PARAM (0x10), ELI_ERR_BAD_ARGS (0x20), 
+ELI_ERR_NOSYM (0x40), ELI_ERR_ARGLISTSIZE (0x80), ELI_ERR_SYSERROR (0x100), 
+ ELI_ERR_USERERROR (0x200).}}
+
+}}
+\bold{EliEval
+
+}\indent{\italic{eliCommon.c}
+
+EliSexp_t *EliEval(st, expr)
+
+\indent{EliState_t *st;
+
+EliSexp_t *expr;
+
+\indent{\italic{\bold{St} is the state variable, \bold{expr} is a sexp node. 
+ Returns a newly-allocated node containing the result of evaluating 
+\bold{expr}.  Returns NULL (and flags an error in \bold{st}) if an error 
+occurred.}}
+
+}}
+\bold{EliEvalAndBind
+
+}\indent{\italic{stack.c}
+
+int EliEvalAndBind(st, varlist, arglist)
+
+\indent{EliState_t *st;
+
+EliCons_t *varlist, *arglist;
+
+\indent{\italic{\bold{St} is the state variable, \bold{varlist} is a list of 
+symbols, \bold{arglist} is a list of sexps.  Evaluates each of the expressions 
+in \bold{arglist}, binding the results to the corresponding symbols in 
+\bold{varlist} and placing them on the evaluation stack in \bold{st} (and 
+incrementing their reference counts).  In actual fact, a new symbol is created 
+for each symbol in \bold{varlist}, having the same name.  This is to avoid 
+binding values to "global" symbols, whose values should be temporarily 
+superseded by stack variables, not permanently replaced.  Returns the number 
+of items placed on the stack.  If there are too few symbols in \bold{varlist} 
+for the number of sexps in \bold{arglist}, only the number of sexps that can 
+be bound are evaluated (does not flag an error!); conversely, if there are 
+fewer sexps in \bold{arglist} than symbols in \bold{varlist}, then the 
+left-over symbols have NIL bound to them.  May flag any one of a number of 
+different kinds of errors.}}
+
+\bold{Note}: The number returned by this function is explicitly needed by the 
+caller to free up the appropriate number of items on the stack at the end of 
+evaluation (see EliEvalStk_PopN).  Also, since this function knows very little 
+about error recovery, it may evaluate and place some items on the stack before 
+encountering an error, and not pop anything off the stack afterward.  It is 
+the caller's responsibility in this case to use the number returned by the 
+function to maintain the stack in an appropriate state.  Note also that the 
+usefulness of this function is limited at best.  It places bound variables on 
+the stack as soon as it evaluates them, which means that evaluating a variable 
+near the end of the list may involve a variable bound earlier in the list. 
+ This is sometimes what is desired, but usually it is not.  In general, the 
+desired effect is to evaluate all variables independently, then place them on 
+the stack at once.  To achieve this, use a sequence of EliEvalListToList 
+followed by EliBind.
+
+\bold{Example}: If \bold{varlist} is the list
+
+\example{(a b c)}
+
+and \bold{arglist} is the list
+
+\example{("hey" 'hot-mama 12 (+ 9 7)),}
+
+EliEvalAndBind will (barring allocation errors, etc.) bind the string 
+\typewriter{"hey"} to the symbol \italic{a}, the symbol \typewriter{hot-mama} 
+to the symbol \italic{b}, and the number \typewriter{12} to the symbol 
+\italic{c}, ignoring the expression \typewriter{(+ 9 7)}.  \italic{A}, 
+\italic{b} and \italic{c} will then be placed on the stack, and EliEvalAndBind 
+will return 3.  Alternatively, if \bold{varlist} is the list
+
+\example{(a "a string" b)}
+
+and arglist is the list
+
+\example{(1 2 3),}
+
+EliEvalAndBind will (barring allocation errors, etc., again) bind 
+\typewriter{1} to the symbol \italic{a}, then encounter an error trying to 
+bind \typewriter{2} to the non-symbol \typewriter{"a string"}.  \italic{A} 
+will have been placed on the stack by now, and EliEvalAndBind will flag an 
+error and return 1.  Finally, if \bold{varlist} is
+
+\example{(a b c)}
+
+and \bold{arglist} is
+
+\example{(3 4 (+ a b)),}
+
+then 3 will be bound to \italic{a}, 4 to \italic{b} and 7 to \italic{c} (since 
+by the time \italic{c} is evaluated, \italic{a} and \italic{b} will have been 
+placed on the evaluation stack).
+
+}}
+\bold{EliEvalListToList
+
+}\indent{\italic{eliCommon.c}
+
+EliCons_t *EliEvalListToList(st, list)
+
+\indent{EliState_t *st;
+
+EliCons_t *list;
+
+\italic{\indent{\bold{St} is the state variable, \bold{list} is a cons list. 
+ Returns a newly-allocated list containing the results of evaluating each 
+sexp.  Returns NIL if \bold{list} is NIL; returns NULL (and flags an error in 
+\bold{st}) if an error occurred.}}
+
+\bold{Example}: If \bold{list} refers to the list
+
+\example{((+ 3 4) "bobg" NIL sym),}
+
+and the string "foo" is bound to \italic{sym}, and no errors occur, then 
+EliEvalListToList returns the list
+
+\example{(7 "bobg" NIL "foo").}
+
+}}
+\bold{EliEvalStack
+
+}\indent{\italic{eliCommon.c}
+
+eliEvalStack_t *EliEvalStack(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns the evaluation stack 
+for \bold{st}.}}
+
+}}
+\bold{EliEvalStk_FindSym
+
+}\indent{\italic{stk.c}
+
+EliSym_t *EliEvalStk_FindSym(st, name)
+
+\indent{EliState_t *st;
+
+char *name;
+
+\indent{\italic{\bold{Name} is a null-terminated string.  Searches down the 
+evaluation stack in \bold{st} for a symbol whose name is \bold{name}, 
+returning the latest occurrence of such a symbol.  If no such symbol exists, 
+returns NULL.}}
+
+\bold{Note}: Any alphabetic characters in the symbol name \bold{name} must be 
+in all-caps.
+
+}}
+\bold{EliEvalStk_PopN
+
+}\indent{\italic{stack.c}
+
+void EliEvalStk_PopN(st, n)
+
+\indent{EliState_t *st;
+
+int n;
+
+\indent{\italic{\bold{St} is the state variable, \bold{n} is an integer.  Pops 
+\bold{n} items off the evaluation stack in \bold{st} and decrements their 
+reference counts.  \bold{N} is usually provided by EliEvalAndBind or EliBind. 
+ The reference count of each popped item is decremented.  If \bold{n} is 
+greater than the number of items on the stack, EliEvalStk_PopN will pop as 
+many as it can without complaining.}}
+
+}}
+\bold{EliFGetSexp
+
+}\indent{\italic{interface.c}
+
+EliSexp_t *EliFGetSexp(st, fp)
+
+\indent{EliState_t *st;
+
+FILE *fp;
+
+\indent{\italic{\bold{St} is the state variable, \bold{fp} is a pointer to a 
+file opened for reading with fopen.  Parses the next Lisp expression contained 
+in the file \bold{fp} and places the result in a newly-allocated sexp node, 
+which is returned.  Returns NULL (and flags an error in \bold{st}) if an error 
+occurs.  See eliFGetSexp.}}
+
+}}
+\bold{EliFindSym
+
+}\indent{\italic{eliCommon.c}
+
+EliSym_t *EliFindSym(st, name)
+
+\indent{EliState_t *st;
+
+char *name;
+
+\indent{\italic{\bold{St} is the state variable, \bold{name} is a 
+null-terminated string.  Searches first the evaluation stack, then the symbol 
+table in \bold{st} for the symbol whose name is \bold{name}, returning the 
+latest instance of such a symbol.  If no such symbol is found, NULL is 
+returned.}}
+
+\bold{Note}: All alphabetic characters in the symbol \bold{name} name must be 
+in all-caps.
+
+}}
+\bold{EliFreeAllEvalStackNodes
+
+}\indent{\italic{eliCommon.c}
+
+int EliFreeAllEvalStackNodes(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  If the memory-allocation 
+scheme for \bold{st} is e_mem_pool (see EliInit), and if there are currently 
+no evaluation-stack nodes in use ("in use" means something, like the stack, 
+points to it), this function will call free() on all the blocks of 
+evaluation-stack nodes that have been allocated in \bold{st}, restoring this 
+memory to the malloc pool.  Returns TRUE if the blocks were freed, and FALSE 
+if they weren't.  It is always safe to call this function; it will refuse to 
+free the blocks if even one evaluation-stack node is still in use, or if the 
+memory scheme is not e_mem_pool.}}
+
+}}
+\bold{EliFreeAllTraceStackNodes
+
+}\indent{\italic{eliCommon.c}
+
+int EliFreeAllTraceStackNodes(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  If the memory-allocation 
+scheme for \bold{st} is e_mem_pool (see EliInit), and if there are currently 
+no trace-stack nodes in use ("in use" means something, like the stack, points 
+to it), this function will call free() on all the blocks of trace-stack nodes 
+that have been allocated in \bold{st}, restoring this memory to the malloc 
+pool.  Returns TRUE if the blocks were freed, and FALSE if they weren't.  It 
+is always safe to call this function; it will refuse to free the blocks if 
+even one trace-stack node is still in use, or if the memory scheme is not 
+e_mem_pool.}}
+
+\bold{Note}: EliTraceStk_Purge should be called (at the appropriate time) to 
+empty the trace stack.  This will ensure that no trace-stack nodes are in use.
+
+}}
+\bold{EliGetListCars
+
+}\indent{\italic{eliCommon.c}
+
+int EliGetListCars(list, nodes, max)
+
+\indent{EliCons_t *list;
+
+EliSexp_t *nodes[];
+
+int max;
+
+\indent{\italic{\bold{List} is a cons list, \bold{nodes} is an array of sexp 
+nodes, \bold{max} is an integer.  If \bold{list} contains \bold{max} sexps or 
+fewer, then the array \bold{nodes} is filled with the sexps in the cars of the 
+cells of \bold{list} up to the length of \bold{list}, and this length is 
+returned.  If \bold{list} contains more than \bold{max} sexps, then no 
+assignment takes place and -1 is returned.}}
+
+\bold{Example}: If \bold{list} is the list
+
+\example{(foo "bar" 7 'baz)}
+
+and \bold{max} is 6, then the first four elements of \bold{nodes} will contain 
+the expressions \typewriter{foo}, \typewriter{"bar"}, \typewriter{7} and 
+\typewriter{(quote baz)}, respectively, and EliGetListCars will return 4.  If 
+\bold{list} is the list
+
+\example{(hello (there))}
+
+and \bold{max} is 1, then \bold{nodes} will not be altered and EliGetListCars 
+will return -1.  Finally, if \bold{list} is NIL and \bold{max} is 0 or 
+greater, then no assignment takes place and EliGetListCars returns 0.
+
+}}
+\bold{EliGetNextCell
+
+}\indent{\italic{eliCommon.c}
+
+EliCons_t *EliGetNextCell(cell)
+
+\indent{EliCons_t *cell;
+
+\indent{\italic{\bold{Cell} is a cell in a cons list.  Returns the next cell 
+in the cons list, if one exists; otherwise, returns NULL.}}
+
+\bold{Example}: If \bold{cell} is the list
+
+\example{(judie segal),}
+
+then EliGetNextCell will return the list
+
+\example{(segal).}
+
+\bold{Programming Note}: A cell in a list is indistinguishable from the list 
+itself; if the list is "really"
+
+\example{(miss judie segal),}
+
+passing EliGetNextCell the second cell in the list is the same as passing it 
+the list
+
+\example{(judie segal).}
+
+}}
+\bold{EliGetSexp
+
+}\indent{\italic{interface.c}
+
+EliSexp_t *EliGetSexp(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Parses the next Lisp 
+expression on the standard input and places the result in a newly-allocated 
+sexp node, which is returned.  Returns NULL (and flags an error in \bold{st}) 
+if an error occurs.  See eliGetSexp.}}
+
+}}
+\bold{EliGetStateNum
+
+}\indent{\italic{interface.c}
+
+int EliGetStateNum(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns the unique number 
+identifying \bold{st}.  State variables are assigned numbers in sequence, 
+starting from 1, by EliInit.}}
+
+}}
+\bold{EliInit
+
+}\indent{\italic{eliCommon.c}
+
+void EliInit(st, scheme)
+
+\indent{EliState_t *st;
+
+eliMemSchemes_t scheme;
+
+\indent{\italic{\bold{St} is the state variable, \bold{scheme} is a 
+memory-management scheme code.  Initializes the state variable \bold{st}, 
+defining for it all the standard ELI primitives in the process.  Also assigns 
+a unique identifying number to st, starting from 1.  (This number is useful 
+with the EliDebug* routines.)  Possible values for \bold{scheme} are 
+e_mem_malloc, e_mem_pool.  The first scheme causes the *_GetNew functions to 
+malloc a new object every time one is needed, and calls free on these objects 
+when their reference counts go to zero.  The latter (and usually more 
+efficient) scheme causes objects to be allocated in large blocks at a time, 
+enabling *_GetNew to pull objects out of these pools and eliminating a great 
+deal of malloc overhead.}}
+
+\bold{Note}: Do not call this function on an already-initialized state 
+\bold{st}.  A state de-initializing function is forthcoming.
+
+}}
+\bold{EliLambdaSym
+
+}\indent{\italic{eliCommon.c}
+
+EliSym_t *EliLambdaSym(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns a pointer to the 
+symbol LAMBDA in \bold{st}.}}
+
+}}
+\bold{EliLambdaqSym
+
+}\indent{\italic{eliCommon.c}
+
+EliSym_t *EliLambdaqSym(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns a pointer to the 
+symbol LAMBDAQ in \bold{st}.}}
+
+}}
+\bold{EliLambdavSym
+
+}\indent{\italic{eliCommon.c}
+
+EliSym_t *EliLambdavSym(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns a pointer to the 
+symbol LAMBDAV in \bold{st}.}}
+
+}}
+\bold{EliLambdavqSym
+
+}\indent{\italic{eliCommon.c}
+
+EliSym_t *EliLambdavqSym(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns a pointer to the 
+symbol LAMBDAVQ in \bold{st}.}}
+
+}}
+\bold{EliLastCell
+
+}\indent{\italic{cons.c}
+
+EliCons_t *EliLastCell(cell)
+
+\indent{EliCons_t *cell;
+
+\indent{\italic{\bold{Cell} is a cons list.  Traverses the list at the top 
+level, returning the last cell at that level.}}
+
+\bold{Example}: If \bold{cell} refers to the list
+
+\example{((you knock me) offa my ((feet now) baby)),}
+
+then EliLastCell will return the cell corresponding to the last item in that 
+list, namely
+
+\example{(((feet now) baby)).}
+
+}}
+\bold{EliLastCellP
+
+}\indent{\italic{eliCommon.c}
+
+int EliLastCellP(l)
+
+\indent{EliCons_t *l;
+
+\indent{\italic{\bold{L} is a cons cell.  Returns the truth value of whether 
+\bold{l} is the last cell; i.e., its cdr is empty.}}
+
+\bold{Note}: EliLastCellP(foo) and (EliListLen(foo) < 2) are equivalent 
+conditions.
+
+}}
+\bold{EliListFromCars
+
+}\indent{\italic{eliCommon.c}
+
+EliCons_t *EliListFromCars(st, nodes, numNodes)
+
+\indent{EliState_t *st;
+
+EliSexp_t *nodes[];
+
+int numNodes;
+
+\indent{\italic{\bold{St} is the state variable, \bold{nodes} is an array of 
+sexp nodes, \bold{numNodes} is an integer.  Creates and returns a cons list 
+whose members are the sexps in \bold{nodes}; \bold{numNodes} is a count of how 
+many nodes there are, and must be greater than zero.  Returns NULL if an error 
+occurred (flagging an error in \bold{st} if so).}}
+
+}}
+\bold{EliListLen
+
+}\indent{\italic{eliCommon.c}
+
+int EliListLen(l)
+
+\indent{EliCons_t *l;
+
+\indent{\italic{\bold{L} is a cons list.  Returns the length of the list 
+\bold{l}; the empty list has length 0.}}
+
+\bold{Example}: If \bold{l} is the list
+
+\example{(fox (in socks)),}
+
+then EliListLen(\bold{l}) will return 2.
+
+}}
+\bold{EliNilP
+
+}\indent{\italic{eliCommon.c}
+
+int EliNilP(st, node)
+
+\indent{EliState_t *st;
+
+EliSexp_t *node;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node} is a sexp node. 
+ Returns the truth value of whether \bold{node} has the Lisp value NIL (i.e., 
+it is the symbol NIL or it is an empty cons list).}}
+
+\bold{Note}: From personal experience, it is easy to forget the first 
+argument, \bold{st}, because it is not immediately clear why it is necessary. 
+ EliNilP uses the value EliNilSym(\bold{st}) (a pre-defined pointer to the 
+pre-defined NIL symbol) to determine whether \bold{node} is NIL in the case 
+that node is a symbol.
+
+}}
+\bold{EliNilSym
+
+}\indent{\italic{eliCommon.c}
+
+EliSym_t *EliNilSym(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns a pointer to the 
+symbol NIL in \bold{st}.}}
+
+}}
+\bold{EliParseStr
+
+}\indent{\italic{eliCommon.c}
+
+char *EliParseStr(s)
+
+\indent{char *s;
+
+\indent{\italic{\bold{S} is a null-terminated string.  Translates 
+backslash-escapes and strips out delimiting quotation marks (which must appear 
+at the ends of \bold{s}).  The result is returned in a static buffer 
+(overwritten with each call).  The buffer is dynamically allocated and has no 
+pre-set maximum size.}}
+
+\bold{Example}: If \bold{s} is the string
+
+\example{"Bob \\"The Dude\\" Glickstein\\n"}
+
+(where the quotation marks on the ends are actually parts of the string), then 
+EliParseStr returns the string
+
+\example{Bob "The Dude" Glickstein}
+
+(which has a literal newline at the end).
+
+\bold{Note}: This function uses a static buffer provided by EliStringOpBuf. 
+ Any call to any function which uses EliStringOpBuf will overwrite the result 
+of this call.
+
+}}
+\bold{EliPrimDef
+
+}\indent{\italic{primitives.c}
+
+void EliPrimDef(st, name, fn)
+
+\indent{EliState_t *st;
+
+char *name;
+
+EliFn_t *fn;
+
+\indent{\italic{\bold{St} is the state variable, \bold{name} is a 
+null-terminated string, \bold{fn} is a function node.  Binds the function node 
+\bold{fn} to the symbol named by \bold{name} (creating it if necessary).  The 
+symbol is placed in the global (with respect to \bold{st}) symbol table, 
+making the function globally (with respect to \bold{st}) available.  If the 
+symbol already existed globally (with respect to \bold{st}) and already had a 
+function node bound to it, then that function node has its reference count 
+decremented.  \bold{Fn}'s reference count is incremented.  An error is flagged 
+if one occurs.}}
+
+\bold{Note}: Any alphabetic characters in the symbol name \bold{name} must be 
+in all-caps.
+
+}}
+\bold{EliProcessList
+
+}\indent{\italic{interface.c}
+
+int EliProcessList(st, list, min, max, sexpBufV, errBuf, typeV, evalV)
+
+\indent{EliState_t *st;
+
+EliCons_t *list;
+
+int min, max;
+
+EliSexp_t *sexpBufV[], **errBuf;
+
+eliDataTypes_t typeV[];
+
+int evalV[];
+
+\indent{\italic{\bold{St} is the state variable, \bold{list} is a cons list, 
+\bold{min} is an integer, \bold{max} is an integer, \bold{sexpBufV} is an 
+array of sexp pointers, \bold{errBuf} is a pointer to a sexp pointer, 
+\bold{typeV} is an array of sexp types, \bold{evalV} is an array of integers. 
+ This function is almost indispensible in the processing of arguments to an 
+ELI primitive.  The list \bold{list} is checked to see whether its length is 
+in the range \bold{min} to \bold{max} (inclusive).  If it is, then the array 
+\bold{sexpBufV} is filled in with the cars of \bold{list}, as in 
+EliGetListCars, but with special processing that may occur according to how 
+the various arguments are supplied:
+
+\description{\bold{TypeV}: \bold{TypeV}[i] must match the type of the 
+i\superscript{th} element of \bold{list} before it can be assigned to 
+\bold{sexpBufV}[i] (the first element is number 0).  If type-checking is 
+required for some but not all elements, it can be turned off for element i by 
+setting \bold{typeV}[i] to e_data_none.  Type checking can be disabled 
+entirely by passing in NULL as \bold{typeV} instead of an array.  Note that an 
+empty cons list () matches both the types e_data_symbol and e_data_list (since 
+it is equivalent to the symbol NIL).  The same is true for the symbol NIL.
+
+\bold{EvalV}: The i\superscript{th} element of \bold{list} is evaluated before 
+being assigned to \bold{sexpBufV}[i] iff \bold{evalV}[i] is TRUE.  If an 
+element is to be both evaluated and type-checked (as determined by the 
+\bold{typeV} argument), then it is type-checked after, not before, evaluation. 
+ Evaluation can be disabled entirely for all elements by passing in NULL as 
+\bold{evalV} instead of an array.
+
+\bold{Errbuf}: If \bold{errbuf} is not NULL, then if an error occurs, it will 
+be made to point to the offending sexp.  This is not true in all cases, 
+however.  If an evaluation error occurs while processing one of the arguments 
+in \bold{list}, then \bold{errbuf} will not be set; however, an error will 
+have been flagged in \bold{st} and the offending sexp can then be accessed 
+with EliErr_BadSexp.  If any sexp has the wrong type (as determined by the 
+\bold{typeV} argument), then \bold{errbuf} will always be set.  If \bold{list} 
+has the wrong length (as determined by \bold{min} and \bold{max}), then 
+\bold{errbuf} should point to a sexp containing \bold{list}, however 
+allocating a sexp to contain \bold{list} may fail (with an out-of-memory 
+error), in which case *\bold{errbuf} will be NULL upon return.}
+
+This function returns -1 if \bold{list} was too short (shorter than 
+\bold{min}); -2 if \bold{list} was too long (longer than \bold{max}); -(1000 + 
+i) if element i was of the wrong type; -(2000 + i) if the evaluation of 
+element i failed; otherwise it returns the number of elements placed in 
+\bold{sexpBufV} (which can be zero if list is empty).}}
+
+\bold{Note}: \bold{sexpBufV} must be big enough to hold \bold{max} elements if 
+necessary.
+
+\bold{Example}: The following is the code for the ELI primitive INT-TO-STR, 
+which expects a single argument which must evaluate to an integer, and which 
+returns a string containing the ASCII representation of that integer. 
+ EliProcessList is the heart of this primitive:
+
+\example{void \bold{Prim_INT_TO_STR}(st, arglist, resbuf)
+
+EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+\{
+
+  char buf[32];
+
+  eliDataTypes_t typeV[1];
+
+  EliSexp_t *args[1], *err;
+
+  int paramStat, evalV[1];
+
+  EliStr_t *strNode;
+
+
+  typeV[0] = e_data_integer;
+
+  evalV[0] = TRUE;
+
+  paramStat = EliProcessList(st, arglist,
+
+                                 1, 1, args,
+
+                                 &err, typeV,
+
+                                 evalV);
+
+  if ((paramStat == -1)
+
+      || (paramStat == -2)) \{
+
+    EliError(st, ELI_ERR_ARGLISTSIZE,
+
+             err,
+
+             "ELI-PRIMITIVE
+
+                 [INT-TO-STR
+
+                     (checking arglist size)]");
+
+    return;
+
+  \}
+
+  if (paramStat == -1000) \{
+
+    EliError(st, ELI_ERR_BAD_ARGS,
+
+             err,
+
+             "ELI-PRIMITIVE
+
+                 [INT-TO-STR
+
+                     (arg is not an integer)]");
+
+    return;
+
+  \}
+
+  if (paramStat < 0)
+
+    return;
+
+  sprintf(buf, "%ld", EliSexp_GetInt(args[0]));
+
+  if (!(strNode =
+
+        EliStringTable_FindOrMake(st, buf)))
+
+    return;
+
+  EliSexp_SetStr(st, resbuf, strNode);
+
+\}}
+
+}}
+\bold{EliQuoteSym
+
+}\indent{\italic{eliCommon.c}
+
+EliSym_t *EliQuoteSym(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns a pointer to the 
+symbol QUOTE in \bold{st}.}}
+
+}}
+\bold{EliReset
+
+}\indent{\italic{interface.c}
+
+void EliReset(st, freeP)
+
+\indent{EliState_t *st;
+
+int freeP;
+
+\indent{\italic{\bold{St} is the state variable.  If an error has been flagged 
+in \bold{st}, it is cleared.  Also, the trace stack is popped until it is 
+empty.  Furthermore, if freeP is TRUE, then EliFreeAllEvalStackNodes and 
+EliFreeAllTraceStackNodes are called.  This function must be called 
+periodically (optimally between evaluations) to keep the ELI process from 
+growing unmanageably large, real fast.}}
+
+\bold{Note}: See the document Eli-ProgramExamples.d for a discussion of the 
+appropriate times to use this call.
+
+}}
+\bold{EliSGetSexp
+
+}\indent{\italic{interface.c}
+
+EliSexp_t *EliSGetSexp(st, string)
+
+\indent{EliState_t *st;
+
+char *string;
+
+\indent{\italic{\bold{St} is the state variable, \bold{string} is a 
+null-terminated string.  Parses the Lisp expression contained in \bold{string} 
+and places the result in a newly-allocated sexp node, which is returned. 
+ Returns NULL (and flags an error in \bold{st}) if an error occurs.  See 
+eliSGetSexp.}}
+
+}}
+\bold{EliSPutSexp
+
+}\indent{\italic{eliCommon.c}
+
+char *EliSPutSexp(expr)
+
+\indent{EliSexp_t *expr;
+
+\indent{\italic{\bold{Expr} is a sexp node.  Returns a static character buffer 
+containing a human-readable form of the sexp in \bold{expr}.  The buffer is 
+provided by the function EliStringOpBuf; any call to any other functions which 
+use EliStringOpBuf will cause the result of this call to be overwritten.}}
+
+}}
+\bold{EliSaveString
+
+}\indent{\italic{eliCommon.c}
+
+char *EliSaveString(s)
+
+\indent{char *s;
+
+\indent{\italic{\bold{S} is a null-terminated string.  Calls malloc to store a 
+new copy of the string \bold{s}.  Returns this new copy, or NULL if an error 
+(out of memory) occurred.}}
+
+\bold{Note}: It is the caller's responsibility to free the space allocated by 
+this function.
+
+}}
+\bold{EliSetCatchFn
+
+}\indent{\italic{eliCommon.c}
+
+void EliSetCatchFn(st, fn)
+
+\indent{EliState_t *st;
+
+void (*fn)();
+
+\indent{\italic{\bold{St} is the state variable, \bold{fn} is a pointer to a 
+void function.  Sets the error-catching function for \bold{st} to \bold{fn}, 
+provided that \bold{fn} is a void function taking as a single argument a 
+pointer to a state variable (type (EliState_t *)).  \bold{Fn} will then be 
+called on \bold{st} every time an error is flagged in \bold{st}, provided that 
+the error code of the flagged error is caught by the error-catching mask (see 
+EliSetCatchMask).}}
+
+}}
+\bold{EliSetCatchMask
+
+}\indent{\italic{eliCommon.c}
+
+void EliSetCatchMask(st, errs)
+
+\indent{EliState_t *st;
+
+int errs;
+
+\indent{\italic{\bold{St} is the state variable, \bold{errs} is an integer. 
+ Sets the error-catching mask for \bold{st} to \bold{errs}.  \bold{Errs} 
+should be constructed by or-ing the types of errors the client wishes to 
+catch.  Possible values are ELI_ERR_CLIENT (0x0), ELI_ERR_OUT_OF_MEM (0x1), 
+ELI_ERR_BAD_SYNTAX (0x2), ELI_ERR_UNBOUND (0x4), ELI_ERR_FN_UNDEF (0x8), 
+ELI_ERR_BAD_PARAM (0x10), ELI_ERR_BAD_ARGS (0x20), ELI_ERR_NOSYM (0x40), 
+ELI_ERR_ARGLISTSIZE (0x80), ELI_ERR_SYSERROR (0x100), ELI_ERR_USERERROR 
+(0x200).  When an error in the error mask is flagged in \bold{st}, and if an 
+error-catching function is provided by EliSetCatchFn, then that function will 
+be called on \bold{st}.}}
+
+\bold{Note}: Since client errors (ELI_ERR_CLIENT) have the value 0, they 
+cannot be caught.
+
+}}
+\bold{EliSexp_GetCons
+
+}\indent{\italic{Node.c}
+
+EliCons_t *EliSexp_GetCons(n)
+
+\indent{EliSexp_t *n;
+
+\indent{\italic{\bold{N} is a sexp node.  Returns the referrent of \bold{n}, 
+when that object is a cons list (that is, when EliSexp_GetType(\bold{n}) 
+returns e_data_list).}}
+
+}}
+\bold{EliSexp_GetFn
+
+}\indent{\italic{Node.c}
+
+EliFn_t *EliSexp_GetFn(n)
+
+\indent{EliSexp_t *n;
+
+\indent{\italic{\bold{N} is a sexp node.  Returns the referrent of \bold{n}, 
+when that object is a function node (that is, when EliSexp_GetType(\bold{n}) 
+returns e_data_fn).}}}
+
+}
+\bold{EliSexp_GetInt
+
+}\indent{\italic{Node.c}
+
+long EliSexp_GetInt(n)
+
+\indent{EliSexp_t *n;
+
+\indent{\italic{\bold{N} is a sexp node.  Returns the referrent of \bold{n}, 
+when that object is an integer (that is, when EliSexp_GetType(\bold{n}) 
+returns e_data_integer).}}}
+
+}
+\bold{EliSexp_GetNew
+
+}\indent{\italic{interface.c}
+
+EliSexp_t *EliSexp_GetNew(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Allocates, initializes and 
+returns a new sexp node, or NULL if an error occurred (flagging an error in 
+\bold{st} if so).  Maintains important error-recovery information about node 
+allocation.}}
+
+}}
+\bold{EliSexp_GetStr
+
+}\indent{\italic{Node.c}
+
+EliStr_t *EliSexp_GetStr(n)
+
+\indent{EliSexp_t *n;
+
+\indent{\italic{\bold{N} is a sexp node.  Returns the referrent of \bold{n}, 
+when that object is a string (that is, when EliSexp_GetType(\bold{n}) returns 
+e_data_string).}}}
+
+}
+\bold{EliSexp_GetSym
+
+}\indent{\italic{Node.c}
+
+EliSym_t *EliSexp_GetSym(n)
+
+\indent{EliSexp_t *n;
+
+\indent{\italic{\bold{N} is a sexp node.  Returns the referrent of \bold{n}, 
+when that object is a symbol (that is, when EliSexp_GetType(\bold{n}) returns 
+e_data_symbol).}}}
+
+}
+\bold{EliSexp_GetType
+
+}\indent{\italic{Node.c}
+
+eliDataTypes_t EliSexp_GetType(node)
+
+\indent{EliSexp_t *node;
+
+\indent{\italic{\bold{Node} is a sexp node.  Returns the type of \bold{node}'s 
+referrent, which can be one of the following: e_data_none (for empty nodes, 
+which is the case for newly-allocated nodes); e_data_integer; e_data_symbol; 
+e_data_string; e_data_list; e_data_fn (for function nodes).}}
+
+}}
+\bold{EliSexp_SetCons
+
+}\indent{\italic{Node.c}
+
+void EliSexp_SetCons(st, node, val)
+
+\indent{EliState_t *st;
+
+EliSexp_t *node;
+
+EliCons_t *val;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node} is a sexp node, 
+\bold{val} is a cons list.  Binds the cons list \bold{val} to \bold{node}, 
+setting \bold{node}'s type to e_data_list.  Any previous referrent of 
+\bold{node} has its reference count decremented, and \bold{val} has its 
+reference count incremented.}}
+
+}}
+\bold{EliSexp_SetFn
+
+}\indent{\italic{Node.c}
+
+void EliSexp_SetFn(st, node, val)
+
+\indent{EliState_t *st;
+
+EliSexp_t *node;
+
+EliFn_t *val;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node} is a sexp node, 
+\bold{val} is a function node.  Binds the function node \bold{val} to 
+\bold{node}, setting \bold{node}'s type to e_data_fn.  Any previous referrent 
+of \bold{node} has its reference count decremented, and \bold{val} has its 
+reference count incremented.}}}
+
+}
+\bold{EliSexp_SetInt
+
+}\indent{\italic{Node.c}
+
+void EliSexp_SetInt(st, node, val)
+
+\indent{EliState_t *st;
+
+EliSexp_t *node;
+
+long val;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node} is a sexp node, 
+\bold{val} is a long integer.  Binds the long integer \bold{val} to 
+\bold{node}, setting \bold{node}'s type to e_data_integer.  Any previous 
+referrent of \bold{node} has its reference count decremented.  (Integers have 
+no reference count, so nothing is incremented.)}}}
+
+}
+\bold{EliSexp_SetSexp
+
+}\indent{\italic{Node.c}
+
+void EliSexp_SetSexp(st, node1, node2)
+
+\indent{EliState_t *st;
+
+EliSexp_t *node1, *node2;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node1} is a sexp node, 
+\bold{node2} is a sexp node.  Binds the referrent of \bold{node2} to 
+\bold{node1}, using the appropriate EliSexp_Set* function based on the type of 
+\bold{node2}.}}
+
+}}
+\bold{EliSexp_SetStr
+
+}\indent{\italic{Node.c}
+
+void EliSexp_SetStr(st, node, val)
+
+\indent{EliState_t *st;
+
+EliSexp_t *node;
+
+EliStr_t *val;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node} is a sexp node, 
+\bold{val} is a string node.  Binds the string node \bold{val} to \bold{node}, 
+setting \bold{node}'s type to e_data_string.  Any previous referrent of 
+\bold{node} has its reference count decremented, and \bold{val} has its 
+reference count incremented.}}}
+
+}
+\bold{EliSexp_SetSym
+
+}\indent{\italic{Node.c}
+
+void EliSexp_SetSym(st, node, val)
+
+\indent{EliState_t *st;
+
+EliSexp_t *node;
+
+EliSym_t *val;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node} is a sexp node, 
+\bold{val} is a symbol node.  Binds the symbol node \bold{val} to \bold{node}, 
+setting \bold{node}'s type to e_data_symbol.  Any previous referrent of 
+\bold{node} has its reference count decremented, and \bold{val} has its 
+reference count incremented.}}}
+
+}
+\bold{EliSexpEq
+
+}\indent{\italic{eliCommon.c}
+
+int EliSexpEq(node1, node2)
+
+\indent{EliSexp_t *node1, *node2;
+
+\indent{\italic{\bold{Node1} is a sexp node, \bold{node2} is a sexp node. 
+ Returns the truth value of whether or not the two sexps are equal.  Equal, in 
+this case, is defined as follows: integer sexps are equal iff the integers are 
+arithmetically equal; strings are equal iff they are the exact same object 
+(should always be true if the strings strcmp to zero); symbols are equal iff 
+they are the exact same object (not true, for instance, when comparing a 
+"global" symbol with a temporary one, even if the names are the same); cons 
+lists are equal iff they are the exact same object (usually true only when 
+comparing two symbols bound to the same thing); functions are the same iff 
+they are the exact same object.  No two objects of different types are ever 
+equal, including the case of empty lists and the symbol NIL.}}
+
+\bold{Note}: See the entry for the primitive EQ in Eli-Primitives.d for 
+examples of when two objects are "equal" in this sense.
+
+}}
+\bold{EliSexpEqual
+
+}\indent{\italic{eliCommon.c}
+
+int EliSexpEqual(st, node1, node2)
+
+\indent{EliState_t *st;
+
+EliSexp_t *node1, *node2;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node1} is a sexp node, 
+\bold{node2} is a sexp node.  Returns the truth value of whether or not the 
+two sexps are equal.  This is a weaker definition of equality than the one for 
+EliSexpEq; in general, two objects are "equal" in this sense if their printed 
+representations are the same.  In particular, cons lists need not be identical 
+objects in memory in order to be "equal"; they will be equal if they have the 
+same structure and contents.  Also, NIL is "equal" to the empty list.}}
+
+\bold{Note}: This call, unlike EliSexpEq, requires the state variable 
+\bold{st}.  Don't forget it.  See the entry for the primitive EQUAL in 
+Eli-Primitives.d for examples of when two objects are "equal" in this sense.
+
+}}
+\bold{EliStr_GetNew
+
+}\indent{\italic{interface.c}
+
+EliStr_t *EliStr_GetNew(st, string)
+
+\indent{EliState_t *st;
+
+char *string;
+
+\indent{\italic{\bold{St} is the state variable, \bold{string} is a 
+null-terminated string.  Allocates, initializes and returns a new string node 
+with \bold{string} as its string, placing this node in a hash table in 
+\bold{st}, or returns NULL if an error occurred (flagging an error in \bold{st} 
+if so).  A new copy of \bold{string} is created.  Maintains important 
+error-recovery information}}
+
+}}
+\bold{EliStr_GetString
+
+}\indent{\italic{str.c}
+
+char *EliStr_GetString(node)
+
+\indent{EliStr_t *node;
+
+\indent{\italic{\bold{Node} is a string node.  Returns the string referred to 
+by \bold{node}.}}
+
+}}
+\bold{EliStringOpBuf
+
+}\indent{\italic{eliCommon.c}
+
+char *EliStringOpBuf(size)
+
+\indent{int size;
+
+\indent{\italic{\bold{Size} is an integer.  Returns a pointer to a static 
+character buffer at least \bold{size} bytes long, providing a common such 
+buffer for any functions that need one (and thus saving memory space).  If the 
+current buffer is too small, it is expanded accordingly; the buffer is shrunk 
+using realloc iff the requested size is less than half the current size of the 
+buffer.  Returns NULL if it could not allocate a suitable buffer.}}
+
+\bold{Note}: This function does not flag an error if it could not allocate a 
+suitable buffer.
+
+}}
+\bold{EliStringTable
+
+}\indent{\italic{eliCommon.c}
+
+eliHashTable_t *EliStringTable(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns the string table for 
+\bold{st}, which contains all strings nodes currently referenced by objects in 
+\bold{st}.}}
+
+}}
+\bold{EliStringTable_Find
+
+}\indent{\italic{strtab.c}
+
+EliStr_t *EliStringTable_Find(st, name)
+
+\indent{EliState_t *st;
+
+char *name;
+
+\indent{\italic{\bold{St} is the state variable, \bold{name} is a 
+null-terminated string.  Searches for a string node in the string table in 
+\bold{st} whose string is \bold{name}, returning it if found, otherwise 
+returning NULL.  Assumes that the hash table contains only string nodes.}}
+
+}}
+\bold{EliStringTable_FindOrMake
+
+}\indent{\italic{strtab.c}
+
+EliStr_t *EliStringTable_FindOrMake(st, string)
+
+\indent{EliState_t *st;
+
+char *string;
+
+\indent{\italic{\bold{St} is the state variable, \bold{string} is a 
+null-terminated string.  Looks for the string node whose string is 
+\bold{string} in the string table in \bold{st}; if it's there, returns it, 
+otherwise creates a new string node with \bold{string} as its string, places 
+it in the string table, and returns that.  Returns NULL (and flags an error in 
+\bold{st}) if no new node could be created.}}
+
+}}
+\bold{EliStringTable_Make
+
+}\indent{\italic{strtab.c}
+
+EliStr_t *EliStringTable_Make(st, string)
+
+\indent{EliState_t *st;
+
+char *string;
+
+\indent{\italic{\bold{St} is the state variable, \bold{string} is a 
+null-terminated string.  Creates a new string node with \bold{string} as its 
+string, places it in the string table in \bold{st} and returns it.  Returns 
+NULL (and flags an error in \bold{st}) if no new node could be created.}}
+
+}}
+\bold{EliSym_BindFn
+
+}\indent{\italic{sym.c}
+
+void EliSym_BindFn(st, node, val)
+
+\indent{EliState_t *st;
+
+EliSym_t *node;
+
+EliFn_t *val;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node} is a symbol, 
+\bold{val} is a function node.  Binds \bold{val} to the function-value field 
+of \bold{node}, incrementing \bold{val}'s reference count and decrementing the 
+reference count of \bold{node}'s previous function value, if any.}}
+
+}}
+\bold{EliSym_BindSexp
+
+}\indent{\italic{sym.c}
+
+void EliSym_BindSexp(st, node, val)
+
+\indent{EliState_t *st;
+
+EliSym_t *node;
+
+EliSexp_t *val;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node} is a symbol, 
+\bold{val} is a sexp node.  Binds \bold{val} to the value field of 
+\bold{node}, incrementing \bold{val}'s reference count and decrementing the 
+reference count of \bold{node}'s previous value, if any.}}}
+
+}
+\bold{EliSym_GetFn
+
+}\indent{\italic{sym.c}
+
+EliFn_t *EliSym_GetFn(node)
+
+\indent{EliSym_t *node;
+
+\indent{\italic{\bold{Node} is a symbol.  Returns the function-value of 
+\bold{node}.}}
+
+}}
+\bold{EliSym_GetName
+
+}\indent{\italic{sym.c}
+
+EliStr_t *EliSym_GetName(node)
+
+\indent{EliSym_t *node;
+
+\indent{\italic{\bold{Node} is a symbol.  Returns the string node containing 
+\bold{node}'s name.}}
+
+}}
+\bold{EliSym_GetNew_StrNode
+
+}\indent{\italic{interface.c}
+
+EliSym_t *EliSym_GetNew_StrNode(st, name)
+
+\indent{EliState_t *st;
+
+EliStr_t *name;
+
+\indent{\italic{\bold{St} is the state variable, \bold{name} is a string node. 
+ Allocates, initializes and returns a new symbol node with the string in 
+\bold{name} as its name.  Returns NULL if an error occurred (flagging an error 
+in st if so).  Maintains important error-recovery information.}}
+
+\bold{Note}: Any alphabetic characters in the string in \bold{name} must be in 
+all-caps.
+
+}}
+\bold{EliSym_GetNew_String
+
+}\indent{\italic{interface.c}
+
+EliSym_t *EliSym_GetNew_String(st, name)
+
+\indent{EliState_t *st;
+
+char *name;
+
+\indent{\italic{\bold{St} is the state variable, \bold{name} is a 
+null-terminated string.  Allocates, initializes and returns a new symbol node 
+with \bold{name} as its name.  Returns NULL if an error occurred (flagging an 
+error in \bold{st} if so).  Maintains important error-recovery information.}}
+
+\bold{Note}: Any alphabetic characters in \bold{name} must be in all-caps.
+
+}}
+\bold{EliSym_GetSexp
+
+}\indent{\italic{sym.c}
+
+EliSexp_t *EliSym_GetSexp(node)
+
+\indent{EliSym_t *node;
+
+\indent{\bold{Node} is a symbol node.  Returns the sexp bound to \bold{node}'s 
+value field.}
+
+}}
+\bold{EliSymTab_Find
+
+}\indent{\italic{symtab.c}
+
+EliSym_t *EliSymTab_Find(st, name)
+
+\indent{EliState_t *st;
+
+char *name;
+
+\indent{\italic{\bold{St} is the state variable, \bold{name} is a 
+null-terminated string.  Searches the symbol table in \bold{st} for a symbol 
+whose name is \bold{name}, returning it if found, or NULL if it's not.}}
+
+\bold{Note}: Any alphabetic characters in the symbol name \bold{name} must be 
+in all-caps.}}
+
+
+\bold{EliSymTab_FindOrMake
+
+}\indent{\italic{symtab.c}
+
+EliSym_t *EliSymTab_FindOrMake(st, name)
+
+\indent{EliState_t *st;
+
+char *name;
+
+\indent{\italic{\bold{St} is the state variable, \bold{name} is a 
+null-terminated string.  Checks the symbol table in \bold{st} for a symbol 
+whose name is \bold{name}.  If it is found, then it is returned; otherwise, a 
+new symbol is created with the name \bold{name} (and no value) and is placed 
+in the symbol table and returned.  Returns NULL if an error occurred (flagging 
+an error in \bold{st} if so).}}
+
+}}
+\bold{EliSymTab_FindOrMakeAndBind
+
+}\indent{\italic{symtab.c}
+
+EliSym_t *EliSymTab_FindOrMakeAndBind(st, name, val)
+
+\indent{EliState_t *st;
+
+char *name;
+
+EliSexp_t *val;
+
+\indent{\italic{\bold{St} is the state variable, \bold{name} is a 
+null-terminated string, \bold{val} is a sexp node.  Checks the symbol table in 
+\bold{st} for a symbol whose name is \bold{name}.  If it is found, then 
+\bold{val} is bound to that node's value field; otherwise, a new symbol is 
+created with the name \bold{name} and value \bold{val}, and is placed in the 
+symbol table.  Returns the symbol to which \bold{val} was bound, or NULL if an 
+error occurred (flagging an error in \bold{st} if so).}}
+
+\bold{Note}: Any alphabetic characters in the symbol name \bold{name} must be 
+in all-caps.
+
+}}
+\bold{EliSymTab_Make
+
+}\indent{\italic{symtab.c}
+
+EliSym_t *EliSymTab_Make(st, name)
+
+\indent{EliState_t *st;
+
+char *name;
+
+\indent{\italic{\bold{St} is the state variable, \bold{name} is a 
+null-terminated string.  Creates a new symbol with the name \bold{name} and 
+places it in the symbol table in \bold{st}.  Returns the new symbol, or NULL 
+if an error occurred (flagging an error in \bold{st} if so).}}
+
+\bold{Note}: Any alphabetic characters in the symbol name name must be in 
+all-caps.  This function shouldn't be used unless it is known that no symbol 
+with the same name exists in \bold{st}'s symbol table.
+
+}}
+\bold{EliSymTab_MakeAndBind
+
+}\indent{\italic{symtab.c}
+
+EliSym_t *EliSymTab_MakeAndBind(st, name, val)
+
+\indent{EliState_t *st;
+
+char *name;
+
+EliSexp_t *val;
+
+\indent{\italic{\bold{St} is the state variable, \bold{name} is a 
+null-terminated string, \bold{val} is a sexp node.  Creates a new symbol with 
+the name \bold{name} and value \bold{val}, and places it in the symbol table 
+in \bold{st}.  Returns the new symbol, or NULL if an error occurred (flagging 
+an error in \bold{st} if so).}}
+
+\bold{Note}: Any alphabetic characters in the symbol name \bold{name} must be 
+in all-caps.  This function shouldn't be used unless it is known that no 
+symbol with the same name exists in \bold{st}'s symbol table.
+
+}}
+\bold{EliSymbolTable
+
+}\indent{\italic{eliCommon.c}
+
+eliHashTable_t *EliSymbolTable(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns the symbol table for 
+\bold{st}, which contains globally (with respect to \bold{st}) available 
+symbols, such as those created with setq or defun, etc..}}
+
+}}
+\bold{EliTSym
+
+}\indent{\italic{eliCommon.c}
+
+EliSym_t *EliTSym(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns a pointer to the 
+symbol T in \bold{st}.}}
+
+}}
+\bold{EliTempSymTable
+
+}\indent{\italic{eliCommon.c}
+
+eliHashTable_t *EliTempSymTable(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns the temporary symbol 
+table for \bold{st}, which contains all symbols currently referenced by 
+objects in \bold{st} but which are not globally (with respect to \bold{st}) 
+available (i.e., the symbols were not created with setq or defun, etc.).}}
+
+}}
+\bold{EliTraceStk
+
+}\indent{\italic{eliCommon.c}
+
+eliTraceStack_t *EliTraceStk(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns the trace stack for 
+\bold{st}.}}
+
+}}
+\bold{EliTraceStk_Purge
+
+}\indent{\italic{errstkops.c}
+
+void EliTraceStk_Purge(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Pops all the elements off of 
+the trace stack in \bold{st}.  Typically used in conjunction with EliClearErr 
+as part of the error-resetting sequence.  See EliReset.}}
+
+}}
+\bold{EliUnParseStr
+
+}\indent{\italic{eliCommon.c}
+
+char *EliUnParseStr(s)
+
+\indent{char *s;
+
+\indent{\italic{\bold{S} is a null-terminated string.  Surrounds \bold{s} with 
+quotation marks and translates standard unprintable or magic characters to 
+their backslash-escape equivalents.  The result is returned in a static buffer 
+(overwritten with each call).}}
+
+\bold{Example}: If \bold{s} is the string
+
+\example{Bob "The Dude" Glickstein}
+
+with, say, a literal newline at the end, then EliUnParseStr returns the string
+
+\example{"Bob \\"The Dude\\" Glickstein\\n".}
+
+\bold{Note}: This function uses a static buffer provided by EliStringOpBuf. 
+ Any call to any function which uses EliStringOpBuf will overwrite the result 
+of this call.
+
+}}
+\bold{EliUpCaseStr
+
+}\indent{\italic{eliCommon.c}
+
+void EliUpCaseStr(string)
+
+}\indent{\indent{char *string;
+
+\indent{\italic{\bold{String} is a null-terminated string.  Converts the 
+alphabetic characters in the string \bold{string} to all-caps.  The operation 
+is done in place, overwriting the old contents of \bold{string}.}}}
+
+}
+\bold{EliVersion
+
+}\indent{\italic{eliCommon.c}
+
+void EliVersion(major, minor)
+
+\indent{int *major, *minor;
+
+\indent{\italic{\bold{Major} is a pointer to an integer, \bold{minor} is a 
+pointer to an integer.  Upon return, \bold{major} and \bold{minor} will point 
+to the major and minor version numbers (respectively) of this version of ELI.}}
+
+}}
+\bold{eliBind
+
+}\indent{\italic{stack.c}
+
+int eliBind(st, s, varlist, arglist)
+
+\indent{EliState_t *st;
+
+eliEvalStack_t *s;
+
+EliCons_t *varlist, *arglist;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is an evaluation 
+stack (such as EliEvalStack(\bold{st})), \bold{varlist} is a cons list, 
+\bold{arglist} is a cons list.  The symbols in \bold{varlist} are placed on 
+the stack \bold{s}, with the sexps in \bold{arglist} as their respective bound 
+values.  In actual fact, a new symbol is created for each symbol in 
+\bold{varlist}, having the same name.  This is to avoid binding values to 
+"global" symbols, whose values should be temporarily superseded by stack 
+variables, not permanently replaced.  If there are too few values in 
+\bold{arglist}, then the leftover symbols will have the symbol NIL bound to 
+them; if there are too many values in \bold{arglist}, the leftover values will 
+be ignored.  In either case, eliBind does not complain.  This function is 
+exactly like eliEvalAndBind, except that this one does not evaluate the sexps 
+in \bold{arglist} before binding them to the symbols in varlist.  This 
+function returns the number of items actually placed on the stack.}}
+
+\bold{Note}: The number returned by this function is explicitly needed by the 
+caller to free up the appropriate number of items on the stack at the end of 
+evaluation (see EliEvalStk_PopN).  Also, since this function knows very little 
+about error recovery, it may evaluate and place some items on the stack before 
+encountering an error, and not pop anything off the stack afterward.  It is 
+the caller's responsibility in this case to use the number returned by the 
+function to maintain the stack in an appropriate state.
+
+\bold{Example}: If \bold{varlist} is the list
+
+\example{(a b c)}
+
+and \bold{arglist} is the list
+
+\example{("hey" 'hot-mama 12 (+ 9 7)),}
+
+eliBind will (barring allocation errors, etc.) bind the string 
+\typewriter{"hey"} to the symbol \italic{a}, the list \typewriter{(quote 
+hot-mama)} to the symbol \italic{b}, and the number \typewriter{12} to the 
+symbol \italic{c}, ignoring the expression \typewriter{(+ 9 7)}.  \italic{A}, 
+\italic{b} and \italic{c} will then be placed on the stack, and eliBind will 
+return 3.  Alternatively, if \bold{varlist} is the list
+
+\example{(a "a string" b)}
+
+and \bold{arglist} is the list
+
+\example{(1 2 3),}
+
+eliBind will (barring allocation errors, etc., again) bind \typewriter{1} to 
+the symbol \italic{a}, then encounter an error trying to bind \typewriter{2} 
+to the non-symbol \typewriter{"a string"}.  \italic{A} will have been placed 
+on the stack by now, and eliBind will flag an error and return 1.
+
+}}
+\bold{eliBucket_Delete
+
+}\indent{\italic{bucket.c}
+
+void eliBucket_Delete(st, b, key)
+
+\indent{EliState_t *st;
+
+eliBucket_t *b;
+
+char *key;
+
+\indent{\italic{\bold{St} is the state variable, \bold{b} is a hash table 
+bucket, \bold{key} is a null-terminated string.  Removes the first node in 
+\bold{b} whose key is the string \bold{key}, if one exists; otherwise, does 
+nothing.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliBucket_Find
+
+}\indent{\italic{bucket.c}
+
+EliSexp_t *eliBucket_Find(b, key)
+
+\indent{eliBucket_t *b;
+
+char *key;
+
+\indent{\italic{\bold{B} is a hash table bucket, \bold{key} is a 
+null-terminated string.  Finds the first node in \bold{b} whose key is the 
+string \bold{key}, and returns that node's sexp.  If no such node exists in 
+\bold{b}, NULL is returned.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliBucket_Find_aux
+
+}\indent{\italic{bucket.c}
+
+eliBucketNode_t *eliBucket_Find_aux(b, key)
+
+\indent{eliBucket_t *b;
+
+char *key;
+
+\indent{\italic{\bold{B} is a hash table bucket, \bold{key} is a 
+null-terminated string.  Finds the first node in \bold{b} whose key is the 
+string \bold{key}, and returns that node.  If no such node exists in \bold{b}, 
+NULL is returned.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliBucket_Init
+
+}\indent{\italic{bucket.c}
+
+void eliBucket_Init(b)
+
+\indent{eliBucket_t *b;
+
+\indent{\italic{\bold{B} is a hash table bucket.  Initializes the data 
+structures in \bold{b}.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliBucket_Insert
+
+}\indent{\italic{bucket.c}
+
+void eliBucket_Insert(b, bnode)
+
+\indent{eliBucket_t *b;
+
+eliBucketNode_t *bnode;
+
+\indent{\italic{\bold{B} is a hash table bucket, \bold{bnode} is a hash table 
+bucket entry.  Inserts \bold{bnode} into \bold{b}.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliBucketNode_DecrRefcount
+
+}\indent{\italic{bucketnode.c}
+
+void eliBucketNode_DecrRefcount(st, bnode)
+
+\indent{EliState_t *st;
+
+eliBucketNode_t *bnode;
+
+\indent{\italic{\bold{St} is the state variable, \bold{bnode} is a hash table 
+bucket entry.  Decrements the reference count of \bold{bnode}, de-allocating 
+it (and decrementing the reference count of its referrent) if the reference 
+count goes to zero.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliBucketNode_GetSexp
+
+}\indent{\italic{bucketnode.c}
+
+EliSexp_t *eliBucketNode_GetSexp(bnode)
+
+\indent{eliBucketNode_t *bnode;
+
+\indent{\italic{\bold{Bnode} is a hash table bucket entry.  Returns the sexp 
+in this entry.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliBucketNode_GetKey
+
+}\indent{\italic{bucketnode.c}
+
+EliStr_t *eliBucketNode_GetKey(bnode)
+
+\indent{eliBucketNode_t *bnode;
+
+\indent{\italic{\bold{Bnode} is a hash table bucket entry.  Returns the string 
+node containing this entry's key.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliBucketNode_GetNew
+
+}\indent{\italic{bucketnode.c}
+
+eliBucketNode_t *eliBucketNode_GetNew(st, datum, key)
+
+\indent{EliState_t *st;
+
+EliSexp_t *datum;
+
+char *key;
+
+\indent{\italic{\bold{St} is the state variable, \bold{datum} is a sexp node, 
+\bold{key} is a null-terminated string.  Allocates, initializes and returns a 
+new hash table bucket entry with \bold{datum} as its referrent and \bold{key} 
+as its key.  Increments the reference count of \bold{datum}.  Returns NULL 
+(without incrementing the reference count of \bold{datum}) if an error 
+occurred (flagging an error in \bold{st} if so).}}
+
+\bold{Note}: It is strongly recommended that this function not be used by 
+clients; instead, use eliBucketNode_GetNew_trace, which is an interface to 
+eliBucketNode_GetNew that maintains some error-recovery information.  Anyway, 
+you don't need this function.  It is internal to the hash table package.
+
+}}
+\bold{eliBucketNode_GetNew_trace
+
+}\indent{\italic{errstkops.c}
+
+eliBucketNode_t *eliBucketNode_GetNew_trace(st, s, datum, key)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+EliSexp_t *datum;
+
+char *key;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(\bold{st})), \bold{datum} is a sexp node, \bold{key} is a 
+null-terminated string.  Allocates, initializes and returns a new hash table 
+bucket entry with \bold{datum} as its referrent and \bold{key} as its key. 
+ Increments the reference count of \bold{datum}.  Returns NULL (without 
+incrementing the reference count of \bold{datum}) if an error occurred 
+(flagging an error in \bold{st} if so).  Maintains important error-recovery 
+information about node allocation.
+
+}}\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliBucketNode_GetNewBlock
+
+}\indent{\italic{bucketnode.c}
+
+eliBucketNode_t *eliBucketNode_GetNewBlock(numnodes)
+
+\indent{int numnodes;
+
+\indent{\italic{\bold{Numnodes} is a number of new hash table bucket entries 
+to allocate using malloc.  These new nodes are linked into the current 
+free-hash-table-bucket-entry list.  Called when no hash table bucket entries 
+are available in any existing block.}}
+
+\bold{Note}: This call is completely internal to ELI, is used by 
+eliBucketNode_GetNew, and should never be needed by a client.  Anyway, you 
+don't need this function.  It is internal to the hash table package.
+
+}}
+\bold{eliBucketNode_GetNext
+
+}\indent{\italic{bucketnode.c}
+
+eliBucketNode_t *eliBucketNode_GetNext(bnode)
+
+\indent{eliBucketNode_t *bnode;
+
+\indent{\italic{\bold{Bnode} is a hash table bucket entry.  Returns the next 
+entry in the bucket, or NULL if \bold{bnode} is the last entry.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliBucketNode_GetPrev
+
+}\indent{\italic{bucketnode.c}
+
+eliBucketNode_t *eliBucketNode_GetPrev(bnode)
+
+\indent{eliBucketNode_t *bnode;
+
+\indent{\italic{\bold{Bnode} is a hash table bucket entry.  Returns the 
+previous entry in the bucket, or NULL if \bold{bnode} is the first entry.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliBucketNode_IncrRefcount
+
+}\indent{\italic{bucketnode.c}
+
+void eliBucketNode_IncrRefcount(bnode)
+
+\indent{eliBucketNode_t *bnode;
+
+\indent{\italic{\bold{Bnode} is a hash table bucket entry.  Increments the 
+reference count of \bold{bnode}; used every time an object which did not point 
+to the node is made to point to it.}}
+
+\bold{Note}: In normal practice, this call should never be necessary; the 
+*_GetNew, *_trace functions and the various calls which bind hash table bucket 
+entries to other objects always ensure that the reference count is properly 
+maintained.  Don't use it unless you're doing something tricky, and you know 
+what you are doing.  Anyway, you don't need this function.  It is internal to 
+the hash table package.}
+
+}
+\bold{eliBucketNode_SetNext
+
+}\indent{\italic{bucketnode.c}
+
+void eliBucketNode_SetNext(bnode, val)
+
+\indent{eliBucketNode_t *bnode, *val;
+
+\indent{\italic{\bold{Bnode} is a hash table bucket entry, \bold{val} is a 
+hash table bucket entry.  Makes \bold{val} the next entry in the bucket after 
+\bold{bnode}.  Increments the reference count of \bold{val}.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliBucketNode_SetPrev
+
+}\indent{\italic{bucketnode.c}
+
+void eliBucketNode_SetPrev(bnode, val)
+
+\indent{eliBucketNode_t *bnode, *val;
+
+\indent{\italic{\bold{Bnode} is a hash table bucket entry, \bold{val} is a 
+hash table bucket entry.  Makes \bold{val} the previous entry in the bucket 
+before \bold{bnode}.  Increments the reference count of \bold{val}.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.}
+
+}
+\bold{eliCons_DecrRefcount
+
+}\indent{\italic{cons.c}
+
+int eliCons_DecrRefcount(st, cell)
+
+\indent{EliState_t *st;
+
+EliCons_t *cell;
+
+\indent{\italic{\bold{St} is the state variable, \bold{cell} is a cons cell. 
+ Decrements the reference count of \bold{cell}; used every time an object 
+which used to point to the cell no longer does.  If the reference count goes 
+to zero, the cell is de-allocated; but first, the reference count of its 
+referrents (car and cdr) are decremented.}}
+
+\bold{Note}: In normal practice, this call should never be necessary; the 
+*_GetNew, *_trace functions and the various calls which bind cells to other 
+objects always ensure that the reference count is properly maintained.  Don't 
+use it unless you're doing something tricky, and you know what you are doing.}
+
+}
+\bold{eliCons_GetNew
+
+}\indent{\italic{cons.c}
+
+EliCons_t *eliCons_GetNew(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Allocates, initializes and 
+returns a new cons cell, or NULL if an error occurred (flagging an error in 
+\bold{st} if so).}}
+
+\bold{Note}: It is strongly recommended that this function not be used by 
+clients; instead, use EliCons_GetNew, which is an interface to eliCons_GetNew 
+that maintains some error-recovery information.}
+
+}
+\bold{eliCons_GetNew_trace
+
+}\indent{\italic{errstkops.c}
+
+EliCons_t *eliCons_GetNew_trace(st, s)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(\bold{st})).  Allocates, initializes and returns a new 
+cons cell, or NULL if an error occurred (flagging an error in \bold{st} if 
+so).  Maintains important error-recovery information about node allocation.}}}
+
+}
+\bold{eliCons_GetNewBlock
+
+}\indent{\italic{cons.c}
+
+EliCons_t *eliCons_GetNewBlock(numcells)
+
+\indent{int numcells;
+
+\indent{\italic{\bold{Numcells} is a number of new cons cells to allocate 
+using malloc.  These new nodes are linked into the current free-cons-cell 
+list.  Called when no cons cells are available in any existing block.}}
+
+\bold{Note}: This call is completely internal to ELI, is used by 
+eliCons_GetNew, and should never be needed by a client.}
+
+}
+\bold{eliCons_IncrRefcount
+
+}\indent{\italic{cons.c}
+
+void eliCons_IncrRefcount(cell)
+
+\indent{EliCons_t *cell;
+
+\indent{\italic{\bold{Cell} is a cons cell.  Increments the reference count of 
+\bold{cell}.  Increments the reference count of \bold{cell}; used every time 
+an object which did not point to the cell is made to point to it.}}
+
+\bold{Note}: In normal practice, this call should never be necessary; the 
+*_GetNew, *_trace functions and the various calls which bind function nodes to 
+other objects always ensure that the reference count is properly maintained. 
+ Don't use it unless you're doing something tricky, and you know what you are 
+doing.}
+
+}
+\bold{eliConsStringLen
+
+}\indent{\italic{eliCommon.c}
+
+int eliConsStringLen(cell)
+
+\indent{EliCons_t *cell;
+
+\indent{\italic{\bold{Cell} is a cons cell.  Returns the length of the string 
+required to hold a human-readable representation of the list in \bold{cell}, 
+minus two for the surrounding parentheses, for which this function does not 
+account.}}
+
+\bold{Note}: This function is auxiliary to eliSexpStringLen; you do not need 
+it.
+
+}}
+\bold{eliDecrRefcount_SexpRef
+
+}\indent{\italic{eliCommon.c}
+
+void eliDecrRefcount_SexpRef(st, node)
+
+\indent{EliState_t *st;
+
+EliSexp_t *node;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node} is a sexp node. 
+ Decrements the reference count of \bold{node}'s referrent, choosing the 
+appropriate *_DecrRefcount call based on the type of \bold{node}.  If 
+\bold{node}'s referrent's reference count goes to zero (and is therefore 
+de-allocated), \bold{node}'s type is set to e_data_none; i.e., the type of an 
+empty node.}}
+
+\bold{Note}: In normal practice, this call should never be necessary; the 
+*_GetNew, *_trace functions and the various calls which bind objects to other 
+objects always ensure that the reference count is properly maintained.  Don't 
+use it unless you're doing something tricky, and you know what you are doing.
+
+}}
+\bold{eliDecrRefcount_SexpRef_aux
+
+}\indent{\italic{eliCommon.c}
+
+int eliDecrRefcount_SexpRef_aux(st, u, type)
+
+\indent{EliState_t *st;
+
+eliSexpUnion_t *u;
+
+eliDataTypes_t type;
+
+\indent{\italic{\bold{St} is the state variable, \bold{u} is the union in a 
+sexp node which contains a pointer to the appropriate type of object, 
+\bold{type} is a sexp type.  This is an auxiliary routine to 
+eliDecrRefcount_SexpRef which you should never use.}}
+
+}}
+\bold{eliDisplayCons
+
+}\indent{\italic{eliCommon.c}
+
+void eliDisplayCons(expr)
+
+\indent{EliCons_t *expr;
+
+\indent{\italic{\bold{Expr} is a cons list.  Displays each sexp in \bold{expr} 
+(with recursive calls to EliDisplaySexp) on the standard output, each 
+separated by a single space.  Does not display the outer parentheses around 
+the list elements.}}
+
+\bold{Example}: If \bold{expr} refers to the list
+
+\example{((you are) my (lucky) star),}
+
+then eliDisplayCons will display
+
+\example{(you are) my (lucky) star.}
+
+\bold{Note}: This function is auxiliary to EliDisplaySexp and shouldn't be 
+required by the client programmer.
+
+}}
+\bold{eliErr_GetBacktrace}
+
+\indent{\italic{errnode.c}
+
+EliSexp_t *eliErr_GetBacktrace(e)
+
+\indent{eliErrStuff_t *e;
+
+\indent{\italic{\bold{E} is an error-handling node (such as EliErrNode(st) 
+when st is the state variable).  If an error has been flagged, returns the 
+cons list of the expressions which led up to the error (or NULL if one was not 
+created).}}
+
+\bold{Note}: This routine is internal and should not be called by the client. 
+ Instead, use the interface to this function, EliErr_Backtrace.
+
+}}
+\bold{eliErr_GetCode
+
+}\indent{\italic{errnode.c}
+
+int eliErr_GetCode(e)
+
+\indent{eliErrStuff_t *e;
+
+\indent{\italic{\bold{E} is an error-handling node (such as EliErrNode(st) 
+when st is the state variable).  If an error has been flagged, returns the ELI 
+error code of that error.}}
+
+\bold{Note}: This routine is internal and should not be called by the client. 
+ Instead, use the interface to this function, EliErr_ErrCode.
+
+}}
+\bold{eliErr_GetLoc
+
+}\indent{\italic{errnode.c}
+
+char *eliErr_GetLoc(e)
+
+\indent{eliErrStuff_t *e;
+
+\indent{\italic{\bold{E} is an error-handling node (such as EliErrNode(st) 
+when st is the state variable).  If an error has been flagged, returns the 
+string describing the location of the error.}}
+
+\bold{Note}: This routine is internal and should not be called by the client. 
+ Instead, use the interface to this function, EliErr_ErrLoc.
+
+}}
+\bold{eliErr_GetNode}
+
+\indent{\italic{errnode.c}
+
+EliSexp_t *eliErr_GetNode(e)
+
+\indent{eliErrStuff_t *e;
+
+\indent{\italic{\bold{E} is an error-handling node (such as EliErrNode(st) 
+when st is the state variable).  If an error has been flagged, returns the 
+offending sexp (or NULL if one was not provided at the time of the error).}}
+
+\bold{Note}: This routine is internal and should not be called by the client. 
+ Instead, use the interface to this function, EliErr_BadSexp.
+
+}}
+\bold{eliErr_GetUnixErr
+
+}\indent{\italic{errnode.c}
+
+int eliErr_GetUnixErr(e)
+
+\indent{eliErrStuff_t *e;
+
+\indent{\italic{\bold{E} is an error-handling node (such as EliErrNode(st) 
+when st is the state variable).  If an error has been flagged, returns the 
+Unix error number (errno) of the error (or zero if one was not provided at the 
+time of the error).}}
+
+\bold{Note}: This routine is internal and should not be called by the client. 
+ Instead, use the interface to this function, EliErr_UnixErr.
+
+}}
+\bold{eliErr_Init
+
+}\indent{\italic{errnode.c}
+
+void eliErr_Init(e)
+
+\indent{eliErrStuff_t *e;
+
+\indent{\italic{\bold{E} is an error-handling node (such as EliErrNode(st) 
+when st is the state variable).  Initializes the data structures in \bold{e}.}}
+
+\bold{Note}: This is handled by EliInit, and you don't need this function.
+
+}}
+\bold{eliErr_Set
+
+}\indent{\italic{errnode.c}
+
+void eliErr_Set(st, e, code, node, loc, unixerr)
+
+\indent{EliState_t *st;
+
+eliErrStuff_t *e;
+
+int code;
+
+EliSexp_t *node;
+
+char *loc;
+
+int unixerr;
+
+\indent{\italic{\bold{St} is the state variable, \bold{e} is an error-handling 
+node (such as EliErrNode(\bold{st})), \bold{code} is an ELI error code, 
+\bold{node} is a sexp node, \bold{loc} is a null-terminated string, 
+\bold{unixerr} is an integer.  Records an error of type \bold{code}, with 
+\bold{node} as the offending sexp (\bold{node} can be NULL) and \bold{loc} as 
+a string describing the location of the error.  If \bold{unixerr} is non-zero, 
+it is taken to be the value of the Unix global ``errno''.}}
+
+\bold{Note}: This function is auxiliary to EliError, which is the function to 
+use for recording errors.
+
+}}
+\bold{eliErr_SexpP}
+
+\indent{\italic{errnode.c}
+
+int eliErr_SexpP(e)
+
+\indent{eliErrStuff_t *e;
+
+\indent{\italic{\bold{E} is an error-handling node (such as EliErrNode(st) 
+when st is the state variable).  If an error has been flagged, returns the 
+truth value of whether an "offending sexp" is available for examination.}}
+
+\bold{Note}: This routine is internal and should not be called by the client. 
+ Instead, use the interface to this function, EliErr_BadSexpP.
+
+}}
+\bold{eliEval
+
+}\indent{\italic{eval.c}
+
+void eliEval(st, expr, resbuf)
+
+\indent{EliState_t *st;
+
+EliSexp_t *expr, *resbuf;
+
+\indent{\italic{\bold{St} is the state variable, \bold{expr} is a sexp node, 
+\bold{resbuf} is a sexp node.  Evaluates the sexp \bold{expr} and places the 
+result in \bold{resbuf}.  May flag any one of a number of errors.}}
+
+\bold{Note}: You may or may not find EliEval more useful.
+
+}}
+\bold{eliEvalAndBind
+
+}\indent{\italic{stack.c}
+
+int eliEvalAndBind(st, s, varlist, arglist)
+
+\indent{EliState_t *st;
+
+eliEvalStack_t *s;
+
+EliCons_t *varlist, *arglist;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is an evaluation 
+stack (such as EliEvalStack(\bold{st})), \bold{varlist} is a list of symbols, 
+\bold{arglist} is a list of sexps.  Evaluates each of the expressions in 
+\bold{arglist}, binding the results to the corresponding symbols in 
+\bold{varlist} and placing them on the stack \bold{s} (and incrementing their 
+reference counts).  In actual fact, a new symbol is created for each symbol in 
+\bold{varlist}, having the same name.  This is to avoid binding values to 
+"global" symbols, whose values should be temporarily superseded by stack 
+variables, not permanently replaced.  Returns the number of items placed on 
+the stack.  If there are too few symbols in \bold{varlist} for the number of 
+sexps in \bold{arglist}, only the number of sexps that can be bound are 
+evaluated (does not flag an error!); conversely, if there are fewer sexps in 
+\bold{arglist} than symbols in \bold{varlist}, then the left-over symbols have 
+NIL bound to them.  May flag any one of a number of different kinds of errors.}}
+
+\bold{Note}: The number returned by this function is explicitly needed by the 
+caller to free up the appropriate number of items on the stack at the end of 
+evaluation (see EliEvalStk_PopN).  Also, since this function knows very little 
+about error recovery, it may evaluate and place some items on the stack before 
+encountering an error, and not pop anything off the stack afterward.  It is 
+the caller's responsibility in this case to use the number returned by the 
+function to maintain the stack in an appropriate state.  Note also that the 
+usefulness of this function is limited at best.  It places bound variables on 
+the stack as soon as it evaluates them, which means that evaluating a variable 
+near the end of the list may involve a variable bound earlier in the list. 
+ This is sometimes what is desired, but usually it is not.  In general, the 
+desired effect is to evaluate all variables independently, then place them on 
+the stack at once.  To achieve this, use a sequence of EliEvalListToList 
+followed by EliBind.
+
+\bold{Example}: If \bold{varlist} is the list
+
+\example{(a b c)}
+
+and \bold{arglist} is the list
+
+\example{("hey" 'hot-mama 12 (+ 9 7)),}
+
+eliEvalAndBind will (barring allocation errors, etc.) bind the string 
+\typewriter{"hey"} to the symbol \italic{a}, the symbol \typewriter{hot-mama} 
+to the symbol \italic{b}, and the number \typewriter{12} to the symbol 
+\italic{c}, ignoring the expression \typewriter{(+ 9 7)}.  \italic{A}, 
+\italic{b} and \italic{c} will then be placed on the stack, and eliEvalAndBind 
+will return 3.  Alternatively, if \bold{varlist} is the list
+
+\example{(a "a string" b)}
+
+and arglist is the list
+
+\example{(1 2 3),}
+
+eliEvalAndBind will (barring allocation errors, etc., again) bind 
+\typewriter{1} to the symbol \italic{a}, then encounter an error trying to 
+bind \typewriter{2} to the non-symbol \typewriter{"a string"}.  \italic{A} 
+will have been placed on the stack by now, and eliEvalAndBind will flag an 
+error and return 1.  Finally, if \bold{varlist} is
+
+\example{(a b c)}
+
+and \bold{arglist} is
+
+\example{(3 4 (+ a b)),}
+
+then 3 will be bound to \italic{a}, 4 to \italic{b} and 7 to \italic{c} (since 
+by the time \italic{c} is evaluated, \italic{a} and \italic{b} will have been 
+placed on the evaluation stack).
+
+}}
+\bold{eliEvalLambda
+
+}\indent{\italic{eval.c}
+
+void eliEvalLambda(st, lambdalist, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *lambdalist, *arglist;
+
+EliSexp_t *resbuf;
+
+\indent{\italic{\bold{St} is the state variable, \bold{lambdalist} is a cons 
+list, \bold{arglist} is a cons list, \bold{resbuf} is a sexp node.  Evaluates 
+the sexps in \bold{arglist}, then evaluates \bold{lambdalist} using the list 
+of evaluated sexps from \bold{arglist} as its parameter list.  Places the 
+result in \bold{resbuf}.  If the number of arguments supplied in \bold{arglist} 
+does not match the number that the lambda list expects, eliEvalLambda doesn't 
+complain; see EliEvalAndBind.  May flag any one of a number of errors.}}
+
+\bold{Example}: If \bold{lambdalist} refers to the list
+
+\example{(lambda (x y) (+ x y))}
+
+and arglist refers to the list
+
+\example{((+ 1 2) (+ 3 4))}
+
+then eliEvalLambda will first evaluate the arguments into the list
+
+\example{(3 7)}
+
+and will use this list as the parameter list for the lambda list, placing the 
+result \typewriter{10} in \bold{resbuf}.
+
+\bold{Note}: The car of \bold{lambdalist} is assumed to be the symbol 
+\italic{LAMBDA}.  This function is auxiliary to eliEval and shouldn't be 
+called by a client.
+
+}}
+\bold{eliEvalLambdaq
+
+}\indent{\italic{eval.c}
+
+void eliEvalLambdaq(st, lambdaqlist, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *lambdaqlist, *arglist;
+
+EliSexp_t *resbuf;
+
+\indent{\italic{\bold{St} is the state variable, \bold{lambdaqlist} is a cons 
+list, \bold{arglist} is a cons list, \bold{resbuf} is a sexp node.  Evaluates 
+\bold{lambdaqlist} using \bold{arglist} as its parameter list.  Places the 
+result in \bold{resbuf}.  If the number of arguments supplied in \bold{arglist} 
+does not match the number that the lambdaq list expects, eliEvalLambdaq 
+doesn't complain; see EliBind.  May flag any one of a number of errors.}}
+
+\bold{Example}: If \bold{lambdaqlist} refers to the list
+
+\example{(lambdaq (x y) (+ x y))}
+
+and arglist refers to the list
+
+\example{(3 7)}
+
+then eliEvalLambdaq will place the result \typewriter{10} in \bold{resbuf}.
+
+\bold{Note}: The car of \bold{lambdaqlist} is assumed to be the symbol 
+\italic{LAMBDAQ}.  This function is auxiliary to eliEval and shouldn't be 
+called by a client.  Note also that \italic{lambdaq} is exactly like 
+\italic{lambda} except that lambdaq lists do not evaluate their arguments.}
+
+}
+\bold{eliEvalLambdav
+
+}\indent{\italic{eval.c}
+
+void eliEvalLambdav(st, lambdavlist, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *lambdavlist, *arglist;
+
+EliSexp_t *resbuf;
+
+\indent{\italic{\bold{St} is the state variable, \bold{lambdavlist} is a cons 
+list, \bold{arglist} is a cons list, \bold{resbuf} is a sexp node.  Evaluates 
+\bold{lambdavlist} on the arguments in \bold{arglist}, placing the result in 
+\bold{resbuf}.}}
+
+\bold{Note}: The car of \bold{lambdavlist} is assumed to be the symbol 
+\italic{LAMBDAV}, which is like \italic{LAMBDA} but allows functions to take 
+variable-length argument lists.  The parameter list in a \italic{lambdav} list 
+must contain exactly one symbol.  When the function is called, the arguments 
+are evaluated, placed in a list and then bound to the variable in the 
+\italic{lambdav} list's parameter list.  That is to say, when
+
+\example{(lambdav (x) x)}
+
+is evaluated against the argument list
+
+\example{((+ 3 4) 'foo)}
+
+\italic{x} will get the value \typewriter{(7 foo)}.
+
+}}
+\bold{eliEvalLambdavq
+
+}\indent{\italic{eval.c}
+
+void eliEvalLambdavq(st, lambdavqlist, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *lambdavqlist, *arglist;
+
+EliSexp_t *resbuf;
+
+\indent{\italic{\bold{St} is the state variable, \bold{lambdavqlist} is a cons 
+list, \bold{arglist} is a cons list, \bold{resbuf} is a sexp node.  Evaluates 
+\bold{lambdavqlist} on the arguments in \bold{arglist}, placing the result in 
+resbuf.}}
+
+\bold{Note}: The car of \bold{lambdavqlist} is assumed to be the symbol 
+\italic{LAMBDAVQ}, which is like \italic{LAMBDAQ} but allows functions to take 
+variable-length argument lists.  The parameter list in a \italic{lambdavq} 
+list must contain exactly one symbol.  When the function is called, the 
+arguments are placed in a list and then bound to the variable in the 
+\italic{lambdavq} list's parameter list.  That is to say, when
+
+\example{(lambdavq (x) x)}
+
+is evaluated against the argument list
+
+\example{((+ 3 4) 'foo)}
+
+\italic{x} will get the value \typewriter{((+ 3 4) 'foo)}.
+
+}}
+\bold{eliEvalList
+
+}\indent{\italic{eval.c}
+
+void eliEvalList(st, lcar, lcdr, resbuf)
+
+\indent{EliState_t *st;
+
+EliSexp_t *lcar, *lcdr, *resbuf;
+
+\indent{\italic{\bold{St} is the state variable, \bold{lcar} is a sexp node, 
+\bold{lcdr} is a sexp node.  Evaluates the list whose car is \bold{lcar} and 
+whose cdr is \bold{lcdr}, placing the result in \bold{resbuf}.  May flag any 
+one of a number of errors.}}
+
+\bold{Note}: This function is auxiliary to eliEval and shouldn't be called by 
+a client.  See the section entitled "An aside" in the document 
+Eli-ProgramExamples for a brief discussion of the workings of eliEvalList.
+
+}}
+\bold{eliEvalStk_FindSym
+
+}\indent{\italic{stk.c}
+
+EliSym_t *eliEvalStk_FindSym(s, name)
+
+\indent{eliEvalStack_t *s;
+
+char *name;
+
+\indent{\italic{\bold{S} is an evaluation stack, \bold{name} is a 
+null-terminated string.  Searches down \bold{s} for a symbol whose name is 
+\bold{name}, returning the latest occurrence of such a symbol.  If no such 
+symbol exists, returns NULL.}}
+
+\bold{Note}: Any alphabetic characters in the symbol name \bold{name} must be 
+in all-caps.
+
+}}
+\bold{eliEvalStk_Init
+
+}\indent{\italic{stk.c}
+
+void eliEvalStk_Init(s)
+
+\indent{eliEvalStack_t *s;
+
+\indent{\italic{\bold{S} is an evaluation stack.  Initializes the data 
+structures in \bold{s}.}}
+
+\bold{Note}: You don't need this function.
+
+}}
+\bold{eliEvalStk_Pop
+
+}\indent{\italic{stk.c}
+
+void eliEvalStk_Pop(st, s)
+
+\indent{EliState_t *st;
+
+eliEvalStack_t *s;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is an evaluation 
+stack.  Pops the top element off of \bold{s} (decrementing its reference 
+count).  If s is empty when you try this, you will get an unpleasant surprise.}}
+
+\bold{Note}: You don't need this function.
+
+}}
+\bold{eliEvalStk_PopN
+
+}\indent{\italic{stack.c}
+
+void eliEvalStk_PopN(st, s, n)
+
+\indent{EliState_t *st;
+
+eliEvalStack_t *s;
+
+int n;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is an evaluation 
+stack (such as EliEvalStack(\bold{st})), \bold{n} is an integer.  Pops \bold{n} 
+items off the stack and decrements their reference counts.  \bold{N} is 
+usually provided by EliEvalAndBind or EliBind.  The reference count of each 
+popped item is decremented.  If \bold{n} is greater than the number of items 
+on the stack, you will get an unpleasant surprise.}}
+
+}}
+\bold{eliEvalStk_Push
+
+}\indent{\italic{stk.c}
+
+int eliEvalStk_Push(st, s, node)
+
+\indent{EliState_t *st;
+
+eliEvalStack_t *s;
+
+EliSym_t *node;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is an evaluation 
+stack, \bold{node} is a symbol.  Pushes \bold{node} onto \bold{s}, 
+incrementing the reference count of \bold{node}.  Returns TRUE for success, 
+FALSE if an error occurred (allocating a new stack entry).  Does not flag an 
+error in \bold{st}.}}
+
+\bold{Note}: You don't need this function.
+
+}}
+\bold{eliEvalStk_Top
+
+}\indent{\italic{stk.c}
+
+EliSexp_t *eliEvalStk_Top(s)
+
+\indent{eliEvalStack_t *s;
+
+\indent{\italic{\bold{S} is an evaluation stack.  Returns the sexp in the top 
+element of \bold{s}, or NULL if \bold{s} is empty.}}
+
+\bold{Note}: You don't need this function.
+
+}}
+\bold{eliFGetSexp
+
+}\indent{\italic{eliCommon.c}
+
+EliSexp_t *eliFGetSexp(st, fp)
+
+\indent{EliState_t *st;
+
+FILE *fp;
+
+\indent{\italic{\bold{St} is the state variable, \bold{fp} is a pointer to a 
+readable stream file.  Returns the result of parsing the next ASCII sequence 
+corresponding to a sexp in the file \bold{fp}, or NULL if an error occurred 
+(flagging an error in \bold{st} if so).  The variable EliProcessInfo.u_wrap 
+will be TRUE immediately following this call iff end-of-input was encountered 
+during parsing.}}
+
+\bold{Example}: If the file referred to by \bold{fp} contains the character 
+sequence
+
+\example{'(foo bar baz),}
+
+then eliFGetSexp will return a node containing the parsed sexp
+
+\example{(quote (foo bar baz)).}
+
+\bold{Note}: It is strongly recommended that this function not be used by 
+clients; instead, use EliFGetSexp, which is an interface to eliFGetSexp that 
+maintains some error-recovery information.
+
+}}
+\bold{eliFGetSexp_trace
+
+}\indent{\italic{errstkops.c}
+
+EliSexp_t *eliFGetSexp_trace(st, s, fp)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+FILE *fp;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(\bold{st})), \bold{fp} is a pointer to a readable stream 
+file.  Returns the result of parsing the next ASCII sequence corresponding to 
+a sexp in the file \bold{fp}, or NULL if an error occurred (flagging an error 
+in \bold{st} if so).  The variable EliProcessInfo.u_wrap will be TRUE 
+immediately following this call iff end-of-input was encountered during 
+parsing.  Maintains important error-recovery information about node 
+allocation.}}
+
+\bold{Example}: If the file referred to by \bold{fp} contains the character 
+sequence
+
+\example{'(foo bar baz),}
+
+then eliFGetSexp_trace will return a node containing the parsed sexp
+
+\example{(quote (foo bar baz)).}
+
+}}
+\bold{eliFindPrefix
+
+}\indent{\italic{primitives.c}
+
+char *eliFindPrefix(s1, s2, ignoreCase)
+
+\indent{char *s1, *s2;
+
+int ignoreCase;
+
+\indent{\italic{\bold{S1} is a null-terminated string, \bold{s2} is a 
+null-terminated string, \bold{ignoreCase} is an integer.  If the string 
+\bold{s1} is found in \bold{s2}, returns that part of \bold{s2} that begins 
+with \bold{s1} (and ends at the end of \bold{s2}), otherwise returns NULL.  If 
+\bold{ignoreCase} is non-zero, then alphabetic case is ignored during the 
+search.}}
+
+\bold{Example}: If \bold{s1} is the string "Prudence" and \bold{s2} is the 
+string "Dear Prudence won't you come out to play?", then eliFindPrefix returns 
+the string "Prudence won't you come out to play?"
+
+\bold{Note}: The string returned is a pointer into the original copy of 
+\bold{s2}, so be careful with it.
+
+}}
+\bold{eliFn_DecrRefcount
+
+}\indent{\italic{FnNode.c}
+
+int eliFn_DecrRefcount(st, node)
+
+\indent{EliState_t *st;
+
+EliFn_t *node;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node} is a function 
+node.  Decrements the reference count of \bold{node}; used every time an 
+object which used to point to the node no longer does.  If the reference count 
+goes to zero, the node is de-allocated; but first, if the node contains a 
+cons-list function (such as a lambda list, as opposed to a "hardwired" C-level 
+primitive), the reference count of that cons list is decremented with 
+eliCons_DecrRefcount.}}
+
+\bold{Note}: In normal practice, this call should never be necessary; the 
+*_GetNew, *_trace functions and the various calls which bind function nodes to 
+other objects always ensure that the reference count is properly maintained. 
+ Don't use it unless you're doing something tricky, and you know what you are 
+doing.
+
+}}
+\bold{eliFn_GetCompiled
+
+}\indent{\italic{FnNode.c}
+
+void (*eliFn_GetCompiled(node))()
+
+\indent{EliFn_t *node;
+
+\indent{\italic{\bold{Node} is a function node.  Returns the C-level function 
+referred to by \bold{node}, when that function is indeed a C-level function 
+(i.e., eliFn_GetType(\bold{node}) returns e_fn_compiled).}}
+
+}}
+\bold{eliFn_GetCons
+
+}\indent{\italic{FnNode.c}
+
+EliCons_t *eliFn_GetCons(node)
+
+\indent{EliFn_t *node;
+
+\indent{\italic{\bold{Node} is a function node.  Returns the function list 
+bound to \bold{node}, when the function bound to \bold{node} is indeed a 
+function list, such as a lambda list (i.e., eliFn_GetType(\bold{node}) returns 
+e_fn_list).}}
+
+}}
+\bold{eliFn_GetNew
+
+}\indent{\italic{FnNode.c}
+
+EliFn_t *eliFn_GetNew(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Allocates, initializes and 
+returns a new function node, or NULL if an error occurred (flagging an error 
+in \bold{st} if so).}}
+
+\bold{Note}: It is strongly recommended that this function not be used by 
+clients; instead, use eliFn_GetNew_trace, which is an interface to 
+eliFn_GetNew that maintains some error-recovery information.
+
+}}
+\bold{eliFn_GetNew_trace
+
+}\indent{\italic{errstkops.c}
+
+EliFn_t *eliFn_GetNew_trace(st, s)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(\bold{st})).  Allocates, initializes and returns a new 
+function node, or NULL if an error occurred (flagging an error in \bold{st} if 
+so).  Maintains important error-recovery information about node allocation.}}
+
+}}
+\bold{eliFn_GetNewBlock
+
+}\indent{\italic{FnNode.c}
+
+EliFn_t *eliFn_GetNewBlock(numcells)
+
+\indent{int numcells;
+
+\indent{\italic{\bold{Numcells} is a number of new function nodes to allocate 
+using malloc.  These new nodes are linked into the current free-function-node 
+list.  Called when no function nodes are available in any existing block.}}
+
+\bold{Note}: This call is completely internal to ELI, is used by eliFn_GetNew, 
+and should never be needed by a client.
+
+}}
+\bold{eliFn_GetType
+
+}\indent{\italic{FnNode.c}
+
+eliFnTypes_t eliFn_GetType(node)
+
+\indent{EliFn_t *node;
+
+\indent{\italic{\bold{Node} is a function node.  Returns the type of this 
+function; possible values are e_fn_none, e_fn_list, and e_fn_compiled for an 
+empty node (this is the case with newly-allocated nodes), a cons-list 
+function, and a C-level primitive, respectively.}}
+
+}}
+\bold{eliFn_IncrRefcount
+
+}\indent{\italic{FnNode.c}
+
+void eliFn_IncrRefcount(node)
+
+\indent{EliFn_t *node;
+
+\indent{\italic{\bold{Node} is a function node.  Increments the reference 
+count of \bold{node}; used every time an object which did not point to the 
+node is made to point to it.}}
+
+\bold{Note}: In normal practice, this call should never be necessary; the 
+*_GetNew, *_trace functions and the various calls which bind function nodes to 
+other objects always ensure that the reference count is properly maintained. 
+ Don't use it unless you're doing something tricky, and you know what you are 
+doing.
+
+}}
+\bold{eliFn_SetCompiled
+
+}\indent{\italic{FnNode.c}
+
+void eliFn_SetCompiled(st, node, fn)
+
+\indent{EliState_t *st;
+
+EliFn_t *node;
+
+void (*fn)();
+
+\indent{\italic{\bold{St} is the state variable, \bold{node} is a function 
+node, \bold{fn} is a C-level function.  Binds \bold{fn} to \bold{node}, 
+setting \bold{node}'s type to e_fn_compiled.  Decrements the reference count 
+of \bold{node}'s previous referrent, if a) there was one and b) it was a 
+cons-list as opposed to a C-level function.}}
+
+}}
+\bold{eliFn_SetCons
+
+}\indent{\italic{FnNode.c}
+
+void eliFn_SetCons(st, node, fn)
+
+\indent{EliState_t *st;
+
+EliFn_t *node;
+
+EliCons_t *fn;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node} is a function 
+node, \bold{fn} is a cons-list function.  Binds \bold{fn} to \bold{node}, 
+setting \bold{node}'s type to e_fn_list.  Increments the reference count of 
+\bold{fn} and decrements the reference count of \bold{node}'s previous 
+referrent, if a) there was one and b) it was a cons-list as opposed to a 
+C-level function.}}}
+
+}
+\bold{eliGetSexp
+
+}\indent{\italic{eliCommon.c}
+
+EliSexp_t *eliGetSexp(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Returns the result of 
+parsing the next ASCII sequence corresponding to a sexp in the standard input, 
+or NULL if an error occurred (flagging an error in \bold{st} if so).  The 
+variable EliProcessInfo.u_wrap will be TRUE immediately following this call 
+iff end-of-input was encountered during parsing.}}
+
+\bold{Example}: If the standard input contains the character sequence
+
+\example{'(foo bar baz),}
+
+then eliGetSexp will return a node containing the parsed sexp
+
+\example{(quote (foo bar baz)).}
+
+\bold{Note}: It is strongly recommended that this function not be used by 
+clients; instead, use EliGetSexp, which is an interface to eliGetSexp that 
+maintains some error-recovery information.}
+
+}
+\bold{eliGetSexp_trace
+
+}\indent{\italic{errstkops.c}
+
+EliSexp_t *eliGetSexp_trace(st, s)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(\bold{st})).  Returns the result of parsing the next 
+ASCII sequence corresponding to a sexp in the standard input, or NULL if an 
+error occurred (flagging an error in \bold{st} if so).  The variable 
+EliProcessInfo.u_wrap will be TRUE immediately following this call iff 
+end-of-input was encountered during parsing.  Maintains important 
+error-recovery information about node allocation.}}
+
+\bold{Example}: If the standard input contains the character sequence
+
+\example{'(foo bar baz),}
+
+then eliGetSexp_trace will return a node containing the parsed sexp
+
+\example{(quote (foo bar baz)).}}
+
+}
+\bold{eliHT_Delete
+
+}\indent{\italic{ht.c}
+
+void eliHT_Delete(st, h, key)
+
+\indent{EliState_t *st;
+
+eliHashTable_t *h;
+
+char *key;
+
+\indent{\italic{\bold{St} is the state variable, \bold{h} is a hash table, 
+\bold{key} is a null-terminated string.  Deletes the node from \bold{h} whose 
+key is \bold{key}.  If there is no such node, does nothing.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliHT_Find
+
+}\indent{\italic{ht.c}
+
+EliSexp_t *eliHT_Find(h, key)
+
+\indent{eliHashTable_t *h;
+
+char *key;
+
+\indent{\italic{\bold{H} is a hash table, \bold{key} is a null-terminated 
+string.  Returns the sexp in \bold{h} whose hash table key is \bold{key}.  If 
+no such sexp exists, returns NULL.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliHT_Hash
+
+}\indent{\italic{ht.c}
+
+int eliHT_Hash(key)
+
+\indent{char *key;
+
+\indent{\italic{\bold{Key} is a null-terminated string.  Returns the result of 
+hashing the string \bold{key} into an integer, according to a simple (though 
+probably not optimal) hashing algorithm.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliHT_Init
+
+}\indent{\italic{ht.c}
+
+void eliHT_Init(h)
+
+\indent{eliHashTable_t *h;
+
+\indent{\italic{\bold{H} is a hash table.  Initializes the data structures in 
+\bold{h}.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliHT_Insert
+
+}\indent{\italic{ht.c}
+
+void eliHT_Insert(st, h, datum, key)
+
+\indent{EliState_t *st;
+
+eliHashTable_t *h;
+
+EliSexp_t *datum;
+
+char *key;
+
+\indent{\italic{\bold{St} is the state variable, \bold{h} is a hash table, 
+\bold{datum} is a sexp node, \bold{key} is a null-terminated string.  Inserts 
+\bold{datum} into a node in \bold{h} using \bold{key} as a hashing key.  Flags 
+an error in \bold{st} if no node could be allocated to hold \bold{datum}.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliHT_SetHashFn
+
+}\indent{\italic{ht.c}
+
+void eliHT_SetHashFn(h, fn)
+
+\indent{eliHashTable_t *h;
+
+int (*fn)();
+
+\indent{\italic{\bold{H} is a hash table, \bold{fn} is a pointer to a function 
+returning an integer.  Sets the hashing function for \bold{h} to \bold{fn}, 
+provided that \bold{fn} takes as a single argument a string upon which to 
+hash.  By default, the hashing function for a hash table initialized with 
+eliHT_Init is eliHT_Hash.}}
+
+\bold{Note}: You don't need this function.  It is internal to the hash table 
+package.
+
+}}
+\bold{eliIncrRefcount_SexpRef
+
+}\indent{\italic{eliCommon.c}
+
+void eliIncrRefcount_SexpRef(node)
+
+\indent{EliSexp_t *node;
+
+\indent{\italic{\bold{Node} is a sexp node.  Increments the reference count of 
+\bold{node}'s referrent, choosing the appropriate *_IncrRefcount call based on 
+the type of \bold{node}.}}
+
+\bold{Note}: In normal practice, this call should never be necessary; the 
+*_GetNew, *_trace functions and the various calls which bind objects to other 
+objects always ensure that the reference count is properly maintained.  Don't 
+use it unless you're doing something tricky, and you know what you are doing.}
+
+}
+\bold{eliNumDigits
+
+}\indent{\italic{eliCommon.c}
+
+int eliNumDigits(num, base)
+
+\indent{long num;
+
+int base;
+
+\indent{\italic{\bold{Num} is a long integer, \bold{base} is an integer. 
+ Returns the number of characters that would be required to display the ASCII 
+representation of the number \bold{num} in the base \bold{base}.  \bold{Num} 
+must be non-negative.  (\bold{Base}, of course, must be two or greater.)  This 
+function presumes that a digit can always be displayed with a single character 
+in any base.}}
+
+}}
+\bold{eliParseStrLen
+
+}\indent{\italic{eliCommon.c}
+
+int eliParseStrLen(s, action)
+
+\indent{char *s;
+
+int action;
+
+\indent{\italic{\bold{S} is a null-terminated string, \bold{action} is an 
+integer.  Returns the length of a string that would be generated if 
+EliParseStr(\bold{s}) or EliUnParseStr(\bold{s}) were to be called on \bold{s} 
+based on whether \bold{action} has the value PARSESTRING (1) or UNPARSESTRING 
+(2) respectively.}}
+
+\bold{Note}: This function is auxiliary to EliParseStr and EliUnParseStr and 
+shouldn't be called by a client.
+
+}}
+\bold{eliPrimDefCompiled
+
+}\indent{\italic{primitives.c}
+
+void eliPrimDefCompiled(st, name, fn)
+
+\indent{EliState_t *st;
+
+char *name;
+
+void (*fn)();
+
+\indent{\italic{\bold{St} is the state variable, \bold{name} is a 
+null-terminated string, \bold{fn} is a pointer to a void function.  Places 
+\bold{fn} in a newly-allocated function node, then binds this node to the 
+symbol named in \bold{name} using EliPrimDef.  Flags an error in \bold{st} if 
+one occurs.}}
+
+\bold{Note}: Any alphabetic characters in the symbol name \bold{name} must be 
+in all-caps.  Also, note that all C-level functions which hope to be ELI 
+primitives must return void, and must take three arguments as follows: the 
+(EliState_t *) state variable first, followed by the (EliCons_t *) list of 
+arguments to the function (the cdr of the list being evaluated), followed by 
+an initialized (EliSexp_t *) sexp node which will contain the result of the 
+evaluation.  So when evaluating a list like
+
+\example{(and a b c),}
+
+the primitive can be called as
+
+\example{Prim_AND(st, arglist, resbuf)}
+
+where \italic{arglist} is the list \typewriter{(a b c)}.  See 
+Eli-ProgramExamples.d for more on how to write C-level primitives for ELI. 
+ (Note also that primitives are never directly called by any function other 
+than eliEvalList.  See Eli-ProgramExamples.d and the example at the end of 
+this document for more about how to use the primitives from within ELI.)
+
+}}
+\bold{eliPrimInit
+
+}\indent{\italic{primitives.c}
+
+void eliPrimInit(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Binds all the standard ELI 
+primitives to the appropriate symbols using eliPrimDefCompiled (since all 
+[well, nearly all] ELI primitives are defined as C-level functions instead of 
+cons lists).}}
+
+\bold{Note}: This function is used by EliInit and should not be called by a 
+client.
+
+}}
+\bold{eliSGetSexp
+
+}\indent{\italic{eliCommon.c}
+
+EliSexp_t *eliSGetSexp(st, s)
+
+\indent{EliState_t *st;
+
+char *s;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a character 
+string.  Returns the result of parsing the next ASCII sequence corresponding 
+to a sexp in the string \bold{s}, or NULL if an error occurred (flagging an 
+error in \bold{st} if so).  The variable EliProcessInfo.u_wrap will be TRUE 
+immediately following this call iff end-of-input was encountered during 
+parsing.  (End-of-input for strings is defined as the null character '\\0'.)}}
+
+\bold{Example}: If the string contains the character sequence
+
+\example{'(foo bar baz),}
+
+then eliSGetSexp will return a node containing the parsed sexp
+
+\example{(quote (foo bar baz)).}
+
+\bold{Note}: It is strongly recommended that this function not be used by 
+clients; instead, use EliSGetSexp, which is an interface to eliSGetSexp that 
+maintains some error-recovery information.}
+
+}
+\bold{eliSGetSexp_trace
+
+}\indent{\italic{errstkops.c}
+
+EliSexp_t *eliSGetSexp_trace(st, s, string)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+char *string;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(\bold{st})), \bold{string} is a character string. 
+ Returns the result of parsing the next ASCII sequence corresponding to a sexp 
+in the string \bold{string}, or NULL if an error occurred (flagging an error 
+in \bold{st} if so).  The variable EliProcessInfo.u_wrap will be TRUE 
+immediately following this call iff end-of-input was encountered during 
+parsing.  (End-of-input for strings is defined as the null character '\\0'.) 
+ Maintains important error-recovery information about node allocation.}}
+
+\bold{Example}: If the string contains the character sequence
+
+\example{'(foo bar baz),}
+
+then eliSGetSexp_trace will return a node containing the parsed sexp
+
+\example{(quote (foo bar baz)).}}
+
+}
+\bold{eliSPutCons_buf
+
+}\indent{\italic{eliCommon.c}
+
+void eliSPutCons_buf(cell, buf)
+
+\indent{EliCons_t *cell;
+
+char *buf;
+
+\indent{\italic{\bold{Cell} is a cons cell, \bold{buf} is a pointer to a 
+character buffer.  Places a human-readable form of the contents of the list in 
+\bold{cell} into the character buffer \bold{buf}, minus the surrounding 
+parentheses.}}
+
+\bold{Note}: This function is auxiliary to EliSPutSexp; you don't need it.
+
+}}
+\bold{eliSPutSexp_buf
+
+}\indent{\italic{eliCommon.c}
+
+void eliSPutSexp_buf(expr, buf, len)
+
+\indent{EliSexp_t *expr;
+
+char *buf;
+
+int len;
+
+\indent{\italic{\bold{Expr} is a sexp node, \bold{buf} is a pointer to a 
+character buffer, \bold{len} is an integer.  Places a human-readable form of 
+the sexp in \bold{expr} into the buffer \bold{buf}.  The resulting string must 
+be \bold{len} bytes long, although providing \bold{len} beforehand does not 
+mean that eliSPutSexp_buf checks for overflow of the buffer \bold{buf} (it 
+doesn't).  \bold{Len} can be determined with a call to eliSexpStringLen.}}
+
+\bold{Note}: This function is auxiliary to EliSPutSexp; you don't need it.
+
+}}
+\bold{eliSetClientLibrary
+
+}\indent{\italic{eliCommon.c}
+
+eliSetClientLibrary(st, var, ext, defpath)
+
+\indent{EliState_t *st;
+
+char *var, *ext, *defpath;
+
+}}
+\bold{eliSexp_DecrRefcount
+
+}\indent{\italic{Node.c}
+
+void eliSexp_DecrRefcount(st, node)
+
+\indent{EliState_t *st;
+
+EliSexp_t *node;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node} is a sexp node. 
+ Decrements the reference count of \bold{node}; used every time an object 
+which used to point to the node no longer does.  If the reference count goes 
+to zero, the node is de-allocated; but first, the reference count of its 
+referrent is decremented.}}
+
+\bold{Note}: In normal practice, this call should never be necessary; the 
+*_GetNew, *_trace functions and the various calls which bind sexp nodes to 
+other objects always ensure that the reference count is properly maintained. 
+ Don't use it unless you're doing something tricky, and you know what you are 
+doing.}
+
+}
+\bold{eliSexp_GetNew
+
+}\indent{\italic{Node.c}
+
+EliSexp_t *eliSexp_GetNew(st)
+
+\indent{EliState_t *st;
+
+\indent{\italic{\bold{St} is the state variable.  Allocates, initializes and 
+returns a new sexp node, or NULL if an error occurred (flagging an error in 
+\bold{st} if so).}}
+
+\bold{Note}: It is strongly recommended that this function not be used by 
+clients; instead, use EliSexp_GetNew, which is an interface to eliSexp_GetNew 
+that maintains some error-recovery information.}
+
+}
+\bold{eliSexp_GetNew_trace
+
+}\indent{\italic{errstkops.c}
+
+EliSexp_t *eliSexp_GetNew_trace(st, s)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(\bold{st})).  Allocates, initializes and returns a new 
+sexp node, or NULL if an error occurred (flagging an error in \bold{st} if 
+so).  Maintains important error-recovery information about node allocation.}}}
+
+}
+\bold{eliSexp_GetNewBlock
+
+}\indent{\italic{Node.c}
+
+EliSexp_t *eliSexp_GetNewBlock(numcells)
+
+\indent{int numcells;
+
+\indent{\italic{\bold{Numcells} is a number of new sexp nodes to allocate 
+using malloc.  These new nodes are linked into the current free-sexp-node 
+list.  Called when no sexp nodes are available in any existing block.}}
+
+\bold{Note}: This call is completely internal to ELI, is used by 
+eliSexp_GetNew, and should never be needed by a client.}
+
+}
+\bold{eliSexp_IncrRefcount
+
+}\indent{\italic{Node.c}
+
+void eliSexp_IncrRefcount(node)
+
+\indent{EliSexp_t *node;
+
+\indent{\italic{\bold{Node} is a sexp node.  Increments the reference count of 
+\bold{node}; used every time an object which did not point to the node is made 
+to point to it.}}
+
+\bold{Note}: In normal practice, this call should never be necessary; the 
+*_GetNew, *_trace functions and the various calls which bind sexp nodes to 
+other objects always ensure that the reference count is properly maintained. 
+ Don't use it unless you're doing something tricky, and you know what you are 
+doing.}
+
+}
+\bold{eliSexp_SetType
+
+}\indent{\italic{Node.c}
+
+void eliSexp_SetType(node, type)
+
+\indent{EliSexp_t *node;
+
+eliDataTypes_t type;
+
+\indent{\italic{\bold{Node} is a sexp node, \bold{type} is a sexp type.  Sets 
+the type of \bold{node} to \bold{type}.}}
+
+\bold{Note}: Use this function and die.  The EliSexp_Set* functions properly 
+maintain the types of nodes, and all changes to node types should take place 
+through these functions.
+
+}}
+\bold{eliSexpStringLen
+
+}\indent{\italic{eliCommon.c}
+
+int eliSexpStringLen(expr)
+
+\indent{EliSexp_t *expr;
+
+\indent{\italic{\bold{Expr} is a sexp node.  Returns the length of the string 
+that would be required to hold \bold{expr} in a human-readable format.}}
+
+}}
+\bold{eliStr_DecrRefcount
+
+}\indent{\italic{str.c}
+
+int eliStr_DecrRefcount(st, node)
+
+\indent{EliState_t *st;
+
+EliStr_t *node;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node} is a string node. 
+ Decrements the reference count of \bold{node}; used every time an object 
+which used to point to the node no longer does.  If the reference count goes 
+to zero, the node is de-allocated.}}
+
+\bold{Note}: In normal practice, this call should never be necessary; the 
+*_GetNew, *_trace functions and the various calls which bind string nodes to 
+other objects always ensure that the reference count is properly maintained. 
+ Don't use it unless you're doing something tricky, and you know what you are 
+doing.
+
+\bold{Confession}: The above description is a lie.  The node is actually 
+de-allocated when the reference count goes to two.  The reason for this is 
+that as soon as a string node is allocated (with eliStr_GetNew or 
+eliStr_GetNew_trace), it is placed in a hash table of strings.  In the hash 
+table, the string node itself serves as both the key and the datum, and hence 
+the minimum reference count for a string node is two.  When the reference 
+count returns to two, the string node is deleted from the table first, 
+bringing its reference count to zero.  It is then de-allocated.}
+
+}
+\bold{eliStr_GetNew
+
+}\indent{\italic{str.c}
+
+EliStr_t *eliStr_GetNew(st, string)
+
+\indent{EliState_t *st;
+
+char *string;
+
+\indent{\italic{\bold{St} is the state variable, \bold{string} is a 
+null-terminated string.  Allocates, initializes and returns a new string node 
+with \bold{string} as its string, placing this node in a hash table in 
+\bold{st}, or returns NULL if an error occurred (flagging an error in \bold{st} 
+if so).  A new copy of \bold{string} is created.}}
+
+\bold{Note}: It is strongly recommended that this function not be used by 
+clients; instead, use EliStr_GetNew, which is an interface to eliStr_GetNew 
+that maintains some error-recovery information.}
+
+}
+\bold{eliStr_GetNew_trace
+
+}\indent{\italic{errstkops.c}
+
+EliStr_t *eliStr_GetNew_trace(st, s, string)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+char *string;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(\bold{st})), \bold{string} is a null-terminated string. 
+ Allocates, initializes and returns a new string node with \bold{string} as 
+its string, placing this node in a hash table in \bold{st}, or returns NULL if 
+an error occurred (flagging an error in \bold{st} if so).  A new copy of 
+\bold{string} is created.  Maintains important error-recovery information}}}
+
+}
+\bold{eliStr_GetNewBlock
+
+}\indent{\italic{str.c}
+
+EliStr_t *eliStr_GetNewBlock(numnodes)
+
+\indent{int numnodes;
+
+\indent{\italic{\bold{Numnodes} is a number of new string nodes to allocate 
+using malloc.  These new nodes are linked into the current free-string-node 
+list.  Called when no string nodes are available in any existing block.}}
+
+\bold{Note}: This call is completely internal to ELI, is used by 
+eliStr_GetNew, and should never be needed by a client.}
+
+}
+\bold{eliStr_IncrRefcount
+
+}\indent{\italic{str.c}
+
+void eliStr_IncrRefcount(node)
+
+\indent{EliStr_t *node;
+
+\indent{\italic{\bold{Node} is a string node.  Increments the reference count 
+of \bold{node}; used every time an object which did not point to the node is 
+made to point to it.}}
+
+\bold{Note}: In normal practice, this call should never be necessary; the 
+*_GetNew, *_trace functions and the various calls which bind string nodes to 
+other objects always ensure that the reference count is properly maintained. 
+ Don't use it unless you're doing something tricky, and you know what you are 
+doing.}
+
+}
+\bold{eliStrCat
+
+}\indent{\italic{primitives.c}
+
+char *eliStrCat(s1, s2)
+
+\indent{char *s1, *s2;
+
+\indent{\italic{\bold{S1} and \bold{s2} are null-terminated strings.  This is 
+a version of strcat which returns its result in a static buffer (overwritten 
+with each call), rather than appending \bold{s2} onto \bold{s1}.}}
+
+\bold{Note}: All (most) ELI functions that return strings in static buffers 
+use a buffer provided by (and resident in) one function, EliStringOpBuf; 
+\italic{any} call to \italic{any} of these functions will overwrite the result 
+from \italic{any} previous call to any of these functions.
+
+}}
+\bold{eliStringTable_Find
+
+}\indent{\italic{strtab.c}
+
+EliStr_t *eliStringTable_Find(strtab, name)
+
+\indent{eliHashTable_t *strtab;
+
+char *name;
+
+\indent{\italic{\bold{Strtab} is a hash table, \bold{name} is a 
+null-terminated string.  Searches for a string node in \bold{strtab} whose 
+string is \bold{name}, returning it if found, otherwise returning NULL. 
+ Assumes that the hash table contains only string nodes.}}
+
+}}
+\bold{eliStringTable_FindOrMake
+
+}\indent{\italic{strtab.c}
+
+EliStr_t *eliStringTable_FindOrMake(st, strtab, string)
+
+\indent{EliState_t *st;
+
+eliHashTable_t *strtab;
+
+char *string;
+
+\indent{\italic{\bold{St} is the state variable, \bold{strtab} is a hash table 
+(such as EliStringTable(\bold{st})), \bold{string} is a null-terminated 
+string.  Looks for the string node whose string is \bold{string} in the table 
+\bold{strtab}; if it's there, returns it, otherwise creates a new string node 
+with \bold{string} as its string, places it in \bold{strtab}, and returns 
+that.  Returns NULL (and flags an error in \bold{st}) if no new node could be 
+created.}}
+
+}}
+\bold{eliStringTable_Make
+
+}\indent{\italic{strtab.c}
+
+EliStr_t *eliStringTable_Make(st, strtab, string)
+
+\indent{EliState_t *st;
+
+eliHashTable_t *strtab;
+
+char *string;
+
+\indent{\italic{\bold{St} is the state variable, \bold{strtab} is a hash table 
+(such as EliStringTable(\bold{st})), \bold{string} is a null-terminated 
+string.  Creates a new string node with \bold{string} as its string, places it 
+in \bold{strtab} and returns it.  Returns NULL (and flags an error in 
+\bold{st}) if no new node could be created.}}
+
+}}
+\bold{eliSym_DecrRefcount
+
+}\indent{\italic{sym.c}
+
+int eliSym_DecrRefcount(st, node)
+
+\indent{EliState_t *st;
+
+EliSym_t *node;
+
+\indent{\italic{\bold{St} is the state variable, \bold{node} is a symbol node. 
+ Decrements the reference count of \bold{node}; used every time an object 
+which used to point to the node no longer does.  If the reference count goes 
+to zero, the node is de-allocated; but first, the reference counts of 
+\bold{node}'s value and function value are decremented..}}
+
+\bold{Note}: In normal practice, this call should never be necessary; the 
+*_GetNew, *_trace functions and the various calls which bind string nodes to 
+other objects always ensure that the reference count is properly maintained. 
+ Don't use it unless you're doing something tricky, and you know what you are 
+doing.
+
+\bold{Confession}: Some symbols (those whose scope type is e_sym_known) are 
+de-allocated when their reference count goes to one.  This is because all 
+symbols which are "known" (as opposed to "global") are stored by default in a 
+hash table not unlike the hash table for string nodes (see the Confession 
+under eliStr_DecrRefcount).}
+
+}
+\bold{eliSym_GetNew
+
+}\indent{\italic{sym.c}
+
+EliSym_t *eliSym_GetNew(st, strnode)
+
+\indent{EliState_t *st;
+
+EliStr_tnode *strnode;
+
+\indent{\italic{\bold{St} is the state variable, \bold{strnode} is a string 
+node.  Allocates, initializes and returns a new symbol node with \bold{strnode} 
+as the node containing its name.  Returns NULL if an error occurred (flagging 
+an error in \bold{st} if so).}}
+
+\bold{Note}: Any alphabetic characters in the string in \bold{strnode} must be 
+in all-caps.  It is strongly recommended that this function not be used by 
+clients; instead, use EliSym_GetNew, which is an interface to eliSym_GetNew 
+that maintains some error-recovery information.}
+
+}
+\bold{eliSym_GetNew_trace
+
+}\indent{\italic{errstkops.c}
+
+EliSym_t *eliSym_GetNew_trace(st, s, strnode)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+EliStr_tnode *strnode;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(\bold{st})), \bold{strnode} is a string node.  Allocates, 
+initializes and returns a new symbol node with \bold{strnode} as the node 
+containing its name.  Returns NULL if an error occurred (flagging an error in 
+\bold{st} if so).  Maintains important error-recovery information.}}
+
+\bold{Note}: Any alphabetic characters in the string in \bold{strnode} must be 
+in all-caps.
+
+}}
+\bold{eliSym_GetNewBlock
+
+}\indent{\italic{sym.c}
+
+EliSym_t *eliSym_GetNewBlock(numnodes)
+
+\indent{int numnodes;
+
+\indent{\italic{\bold{Numnodes} is a number of new symbol nodes to allocate 
+using malloc.  These new nodes are linked into the current free-symbol-node 
+list.  Called when no symbol nodes are available in any existing block.}}
+
+\bold{Note}: This call is completely internal to ELI, is used by 
+eliSym_GetNew, and should never be needed by a client.}
+
+}
+\bold{eliSym_GetRefcount
+
+}\indent{\italic{sym.c}
+
+int eliSym_GetRefcount(node)
+
+\indent{EliSym_t *node;
+
+\indent{\italic{\bold{Node} is a symbol node.  Returns the reference count of 
+\bold{node}.}}
+
+\bold{Note}: You don't need this function.
+
+}}
+\bold{eliSym_GetScope
+
+}\indent{\italic{sym.c}
+
+eliSymScopes_t eliSym_GetScope(node)
+
+\indent{EliSym_t *node;
+
+\indent{\italic{\bold{Node} is a symbol node.  Returns the symbol's scope 
+type.  Possible values are e_sym_unknown, e_sym_known, e_sym_global.}}
+
+\bold{Note}: You don't need this function.
+
+}}
+\bold{eliSym_IncrRefcount
+
+}\indent{\italic{sym.c}
+
+void eliSym_IncrRefcount(node)
+
+\indent{EliStr_t *node;
+
+\indent{\italic{\bold{Node} is a symbol node.  Increments the reference count 
+of \bold{node}; used every time an object which did not point to the node is 
+made to point to it.}}
+
+\bold{Note}: In normal practice, this call should never be necessary; the 
+*_GetNew, *_trace functions and the various calls which bind string nodes to 
+other objects always ensure that the reference count is properly maintained. 
+ Don't use it unless you're doing something tricky, and you know what you are 
+doing.}
+
+}
+\bold{eliSym_SetScope
+
+}\indent{\italic{sym.c}
+
+void eliSym_SetScope(node, val)
+
+\indent{EliSym_t *node;
+
+eliSymScopes_t val;
+
+\indent{\italic{\bold{Node} is a symbol node, \bold{val} is a scope type. 
+ Sets the scope type of \bold{node} to \bold{val}.  Possible values are 
+e_sym_unknown, e_sym_known, e_sym_global.}}
+
+\bold{Note}: You don't need this function.
+
+}}
+\bold{eliSymTab_Find
+
+}\indent{\italic{symtab.c}
+
+EliSym_t *eliSymTab_Find(symtab, name)
+
+\indent{eliHashTable_t *symtab;
+
+char *name;
+
+\indent{\italic{\bold{Symtab} is a hash table, \bold{name} is a 
+null-terminated string.  Searches \bold{symtab} for a symbol whose name is 
+\bold{name}, returning it if found, or NULL if it's not.}}
+
+\bold{Note}: Any alphabetic characters in the symbol name \bold{name} must be 
+in all-caps.}}
+
+
+\bold{eliSymTab_FindOrMake
+
+}\indent{\italic{symtab.c}
+
+EliSym_t *eliSymTab_FindOrMake(st, symtab, name)
+
+\indent{EliState_t *st;
+
+eliHashTable_t *symtab;
+
+char *name;
+
+\indent{\italic{\bold{St} is the state variable, \bold{symtab} is a hash 
+table, \bold{name} is a null-terminated string.  Checks \bold{symtab} for a 
+symbol whose name is \bold{name}.  If it is found, then it is returned; 
+otherwise, a new symbol is created with the name \bold{name} (and no value) 
+and is placed in \bold{symtab} and returned.  Returns NULL if an error 
+occurred (flagging an error in \bold{st} if so).}}
+
+}}
+\bold{eliSymTab_FindOrMakeAndBind
+
+}\indent{\italic{symtab.c}
+
+EliSym_t *eliSymTab_FindOrMakeAndBind(st, symtab, name, val)
+
+\indent{EliState_t *st;
+
+eliHashTable_t *symtab;
+
+char *name;
+
+EliSexp_t *val;
+
+\indent{\italic{\bold{St} is the state variable, \bold{symtab} is a hash 
+table, \bold{name} is a null-terminated string, \bold{val} is a sexp node. 
+ Checks \bold{symtab} for a symbol whose name is \bold{name}.  If it is found, 
+then \bold{val} is bound to that node's value field; otherwise, a new symbol 
+is created with the name \bold{name} and value \bold{val}, and is placed in 
+\bold{symtab}.  Returns the symbol to which \bold{val} was bound, or NULL if 
+an error occurred (flagging an error in \bold{st} if so).}}
+
+\bold{Note}: Any alphabetic characters in the symbol name \bold{name} must be 
+in all-caps.
+
+}}
+\bold{eliSymTab_Make
+
+}\indent{\italic{symtab.c}
+
+EliSym_t *eliSymTab_Make(st, tab, name)
+
+\indent{EliState_t *st;
+
+eliHashTable_t *tab;
+
+char *name;
+
+\indent{\italic{\bold{St} is the state variable, \bold{tab} is a hash table, 
+\bold{name} is a null-terminated string.  Creates a new symbol with the name 
+\bold{name} and places it in \bold{tab}.  Returns the new symbol, or NULL if 
+an error occurred (flagging an error in \bold{st} if so).}}
+
+\bold{Note}: Any alphabetic characters in the symbol name name must be in 
+all-caps.  This function shouldn't be used unless it is known that no symbol 
+with the same name exists in \bold{tab}.
+
+}}
+\bold{eliSymTab_MakeAndBind
+
+}\indent{\italic{symtab.c}
+
+EliSym_t *eliSymTab_MakeAndBind(st, symtab, name, val)
+
+\indent{EliState_t *st;
+
+eliHashTable_t *symtab;
+
+char *name;
+
+EliSexp_t *val;
+
+\indent{\italic{\bold{St} is the state variable, \bold{symtab} is a hash 
+table, \bold{name} is a null-terminated string, \bold{val} is a sexp node. 
+ Creates a new symbol with the name \bold{name} and value \bold{val}, and 
+places it in \bold{symtab}.  Returns the new symbol, or NULL if an error 
+occurred (flagging an error in \bold{st} if so).}}
+
+\bold{Note}: Any alphabetic characters in the symbol name \bold{name} must be 
+in all-caps.  This function shouldn't be used unless it is known that no 
+symbol with the same name exists in \bold{symtab}.
+
+}}
+\bold{eliTraceStk_Init
+
+}\indent{\italic{errstk.c}
+
+void eliTraceStk_Init(s)
+
+\indent{eliTraceStack_t *s;
+
+\indent{\italic{\bold{S} is a trace stack (such as EliTraceStk(st) when st is 
+the state variable).  Initializes the data structures in \bold{s}.}}
+
+\bold{Note}: An understanding of the error-recovery package is necessary to 
+use this function.  Unless you are planning to do advanced error-recovery, you 
+do not need this.
+
+}}
+\bold{eliTraceStk_Pop
+
+}\indent{\italic{errstk.c}
+
+void eliTraceStk_Pop(st, s)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(\bold{st})).  Pops the top element off of \bold{s}.  If 
+\bold{s} is empty when you try this, you will get an unpleasant surprise. 
+ Decrements the reference count of the popped error-stack node.}}
+
+\bold{Note}: An understanding of the error-recovery package is necessary to 
+use this function.  Unless you are planning to do advanced error-recovery, you 
+do not need this.
+
+}}
+\bold{eliTraceStk_Purge
+
+}\indent{\italic{errstkops.c}
+
+void eliTraceStk_Purge(st, s)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(\bold{st})).  Pops all the elements off of \bold{s}. 
+ Typically used in conjunction with EliClearErr as part of the error-resetting 
+sequence.  See EliReset.}}
+
+}}
+\bold{eliTraceStk_PurgeN
+
+}\indent{\italic{errstkops.c}
+
+int eliTraceStk_PurgeN(st, s, n)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+int n;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(\bold{st})), \bold{n} is an integer.  Pops \bold{n} items 
+off of \bold{s}.  If \bold{s} contains fewer than \bold{n} elements, you will 
+be in for a big surprise.  Returns the number of elements popped.}}
+
+\bold{Note}: An understanding of the error-recovery package is necessary to 
+use this function.  Unless you are planning to do advanced error-recovery, you 
+do not need this.
+
+}}
+\bold{eliTraceStk_PushBucketNode
+
+}\indent{\italic{errstk.c}
+
+int eliTraceStk_PushBucketNode(st, s, node)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+eliBucketNode_t *node;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(st) when st is the state variable), \bold{node} is a hash 
+table bucket node.  Pushes \bold{node} onto the top of \bold{s}, incrementing 
+\bold{node}'s reference count.  Returns TRUE for success, FALSE if an error 
+occurred (couldn't allocate a new stack entry).  Does not flag an error in 
+\bold{st}.}}
+
+\bold{Note}: An understanding of the error-recovery package is necessary to 
+use this function.  Unless you are planning to do advanced error-recovery, you 
+do not need this.
+
+}}
+\bold{eliTraceStk_PushCons
+
+}\indent{\italic{errstk.c}
+
+int eliTraceStk_PushCons(st, s, node)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+EliCons_t *node;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(st) when st is the state variable), \bold{node} is a cons 
+cell.  Pushes \bold{node} onto the top of \bold{s}, incrementing \bold{node}'s 
+reference count.  Returns TRUE for success, FALSE if an error occurred 
+(couldn't allocate a new stack entry).  Does not flag an error in \bold{st}.}}
+
+\bold{Note}: An understanding of the error-recovery package is necessary to 
+use this function.  Unless you are planning to do advanced error-recovery, you 
+do not need this.
+
+}}
+\bold{eliTraceStk_PushFn
+
+}\indent{\italic{errstk.c}
+
+int eliTraceStk_PushFn(st, s, node)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+EliFn_t *node;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(st) when st is the state variable), \bold{node} is a 
+function node.  Pushes \bold{node} onto the top of \bold{s}, incrementing 
+\bold{node}'s reference count.  Returns TRUE for success, FALSE if an error 
+occurred (couldn't allocate a new stack entry).  Does not flag an error in 
+\bold{st}.}}
+
+\bold{Note}: An understanding of the error-recovery package is necessary to 
+use this function.  Unless you are planning to do advanced error-recovery, you 
+do not need this.
+
+}}
+\bold{eliTraceStk_PushSexp
+
+}\indent{\italic{errstk.c}
+
+int eliTraceStk_PushSexp(st, s, node)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+EliSexp_t *node;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(st) when st is the state variable), \bold{node} is a sexp 
+node.  Pushes \bold{node} onto the top of \bold{s}, incrementing \bold{node}'s 
+reference count.  Returns TRUE for success, FALSE if an error occurred 
+(couldn't allocate a new stack entry).  Does not flag an error in \bold{st}.}}
+
+\bold{Note}: An understanding of the error-recovery package is necessary to 
+use this function.  Unless you are planning to do advanced error-recovery, you 
+do not need this.
+
+}}
+\bold{eliTraceStk_PushStr
+
+}\indent{\italic{errstk.c}
+
+int eliTraceStk_PushStr(st, s, node)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+EliStr_t *node;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(st) when st is the state variable), \bold{node} is a 
+string node.  Pushes \bold{node} onto the top of \bold{s}, incrementing 
+\bold{node}'s reference count.  Returns TRUE for success, FALSE if an error 
+occurred (couldn't allocate a new stack entry).  Does not flag an error in 
+\bold{st}.}}
+
+\bold{Note}: An understanding of the error-recovery package is necessary to 
+use this function.  Unless you are planning to do advanced error-recovery, you 
+do not need this.
+
+}}
+\bold{eliTraceStk_PushSym
+
+}\indent{\italic{errstk.c}
+
+int eliTraceStk_PushSym(st, s, node)
+
+\indent{EliState_t *st;
+
+eliTraceStack_t *s;
+
+EliSym_t *node;
+
+\indent{\italic{\bold{St} is the state variable, \bold{s} is a trace stack 
+(such as EliTraceStk(st) when st is the state variable), \bold{node} is a 
+symbol node.  Pushes \bold{node} onto the top of \bold{s}, incrementing 
+\bold{node}'s reference count.  Returns TRUE for success, FALSE if an error 
+occurred (couldn't allocate a new stack entry).  Does not flag an error in 
+\bold{st}.}}
+
+\bold{Note}: An understanding of the error-recovery package is necessary to 
+use this function.  Unless you are planning to do advanced error-recovery, you 
+do not need this.
+
+}}
+\bold{eliTraceStk_Top
+
+}\indent{\italic{errstk.c}
+
+eliTraceStackNode_t *eliTraceStk_Top(s)
+
+\indent{eliTraceStack_t *s;
+
+\indent{\italic{\bold{S} is a trace stack (such as EliTraceStk(st) when st is 
+the state variable).  Returns the top element of \bold{s}, or NULL if \bold{s} 
+is empty.}}
+
+\bold{Note}: An understanding of the error-recovery package is necessary to 
+use this function.  Unless you are planning to do advanced error-recovery, you 
+do not need this.
+
+}}
+\bold{eliTraceStk_TopType
+
+}\indent{\italic{errstk.c}
+
+eliObjTypes_t eliTraceStk_TopType(s)
+
+\indent{eliTraceStack_t *s;
+
+\indent{\italic{\bold{S} is a trace stack (such as EliTraceStk(st) when st is 
+the state variable).  Returns the type of the object referred to by the top 
+element of \bold{s}.  Possible types are e_types_integer, e_types_string, 
+e_types_symbol, e_types_list, e_types_Node, e_types_FnNode, 
+e_types_bucketnode.}}
+
+\bold{Note}: \bold{S} may not be empty.  An understanding of the 
+error-recovery package is necessary to use this function.  Unless you are 
+planning to do advanced error-recovery, you do not need this.
+
+}}
+\bold{eliyyerror
+
+}\indent{\italic{eliError.c}
+
+void eliyyerror(s)
+
+\indent{char *s;
+
+\indent{\italic{\bold{S} is a null-terminated string.  A no-op function 
+required by the yacc-generated ELI parser.}}
+
+\bold{Note}: Not for client use.
+
+}}
+\bold{eliyywrap
+
+}\indent{\italic{eliError.c}
+
+int eliyywrap()
+
+\indent{\indent{\italic{Called by the yacc-generated ELI parser on 
+end-of-input.  Sets the end-of-input flag in EliProcessInfo (the universe 
+variable).}}
+
+\bold{Note}: Not for client use.
+
+}}
+\heading{Calling a Primitive}
+
+As mentioned in the Introduction, ELI primitives should not be called 
+directly, but rather through the EliEval function.  For example, FLAMES (the 
+Filtering Language for the Andrew MEssage System) makes use of the Prim_READ 
+primitive to read the contents of a user's ~/.AMS.flames file.  (Recall that 
+\typewriter{(read "/usr/jbRo/foo.eli")} will read all the Lisp expressions in 
+the file /usr/jbRo/foo.eli, returning a list of the results of evaluating all 
+the expressions.)  Of course, Prim_READ is not called directly.  Instead, a 
+Lisp expression is placed in a string, parsed with eliSGetSexp_trace, then 
+eliEval'd.  Here is an outline of how it's done:
+
+
+\example{EliState_t *st;    }\italic{/* Pointer to an initialized state 
+variable */}\example{
+
+EliSexp_t *parsedExpr, *evaledExpr;
+
+char exprBuffer[BUFLEN], *fileName = "/usr/jbRo/foo.eli";
+
+
+sprintf(exprBuffer, "(read \\"%s\\")", fileName);
+
+if (!(parsedExpr = EliSGetSexp(st, exprBuffer))) \{
+
+    }\italic{/* An error occurred during parsing */}\example{
+
+\}
+
+else \{
+
+    }\italic{/* parsedExpr contains the expression (READ "/usr/jbRo/foo.eli") 
+*/}\example{
+
+    if (!(evaledExpr = EliEval(st, parsedExpr))) \{
+
+        }\italic{/* An error occurred evaluating or allocating return buffer 
+*/}\example{
+
+    \}
+
+    else \{
+
+        }\italic{/* evaledExpr contains the result of the READ */}\example{
+
+    \}
+
+\}}
+
+
+For further information on programming techniques in ELI, see 
+Eli-ProgramExamples.d.
+
+
+\heading{Primitives}
+
+
+\bold{Prim_AND
+
+}\indent{\italic{primitives.c}
+
+void Prim_AND(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_APPEND
+
+}\indent{\italic{primitives.c}
+
+void Prim_APPEND(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_ASSOC
+
+}\indent{\italic{primitives.c}
+
+void Prim_ASSOC(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_ATOM
+
+}\indent{\italic{primitives.c}
+
+void Prim_ATOM(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_BOUNDP
+
+}\indent{\italic{primitives.c}
+
+void Prim_BOUNDP(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_CAR
+
+}\indent{\italic{primitives.c}
+
+void Prim_CAR(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_CDR
+
+}\indent{\italic{primitives.c}
+
+void Prim_CDR(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_COND
+
+}\indent{\italic{primitives.c}
+
+void Prim_COND(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_CONS
+
+}\indent{\italic{primitives.c}
+
+void Prim_CONS(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_CONSP
+
+}\indent{\italic{primitives.c}
+
+void Prim_CONSP(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_DEBUG
+
+}\indent{\italic{primitives.c}
+
+void Prim_DEBUG(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_DEFUN
+
+}\indent{\italic{primitives.c}
+
+void Prim_DEFUN(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_DEFUNQ
+
+}\indent{\italic{primitives.c}
+
+void Prim_DEFUNQ(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_DEFUNV
+
+}\indent{\italic{primitives.c}
+
+void Prim_DEFUNV(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_DEFUNVQ
+
+}\indent{\italic{primitives.c}
+
+void Prim_DEFUNVQ(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_DISCARD
+
+}\indent{\italic{primitives.c}
+
+void Prim_DISCARD(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_DIV
+
+}\indent{\italic{primitives.c}
+
+void Prim_DIV(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_DO
+
+}\indent{\italic{primitives.c}
+
+void Prim_DO(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_DOSTAR
+
+}\indent{\italic{primitives.c}
+
+void Prim_DOSTAR(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_EQ
+
+}\indent{\italic{primitives.c}
+
+void Prim_EQ(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_EQUAL
+
+}\indent{\italic{primitives.c}
+
+void Prim_EQUAL(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_ERROR
+
+}\indent{\italic{primitives.c}
+
+void Prim_ERROR(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_EVAL
+
+}\indent{\italic{primitives.c}
+
+void Prim_EVAL(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_FILTER
+
+}\indent{\italic{primitives.c}
+
+void Prim_FILTER(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_FUNCTION
+
+}\indent{\italic{primitives.c}
+
+void Prim_FUNCTION(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_GENSYM
+
+}\indent{\italic{primitives.c}
+
+void Prim_GENSYM(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_GETENV
+
+}\indent{\italic{primitives.c}
+
+void Prim_GETENV(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_INDEX
+
+}\indent{\italic{primitives.c}
+
+void Prim_INDEX(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_INT_TO_STR
+
+}\indent{\italic{primitives.c}
+
+void Prim_INT_TO_STR(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_LCSTRING
+
+}\indent{\italic{primitives.c}
+
+void Prim_LCSTRING(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_LESSP
+
+}\indent{\italic{primitives.c}
+
+void Prim_LESSP(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_LET
+
+}\indent{\italic{primitives.c}
+
+void Prim_LET(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_LETSTAR
+
+}\indent{\italic{primitives.c}
+
+void Prim_LETSTAR(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_LIST
+
+}\indent{\italic{primitives.c}
+
+void Prim_LIST(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_LOAD
+
+}\indent{\italic{primitives.c}
+
+void Prim_LOAD(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_MINUS
+
+}\indent{\italic{primitives.c}
+
+void Prim_MINUS(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_NOT
+
+}\indent{\italic{primitives.c}
+
+void Prim_NOT(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_NUMBERP
+
+}\indent{\italic{primitives.c}
+
+void Prim_NUMBERP(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_OR
+
+}\indent{\italic{primitives.c}
+
+void Prim_OR(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_PLUMBER
+
+}\indent{\italic{primitives.c}
+
+void Prim_PLUMBER(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_PLUS
+
+}\indent{\italic{primitives.c}
+
+void Prim_PLUS(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_PRINT
+
+}\indent{\italic{primitives.c}
+
+void Prim_PRINT(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_PRINTF
+
+}\indent{\italic{primitives.c}
+
+void Prim_PRINTF(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_PROGN
+
+}\indent{\italic{primitives.c}
+
+void Prim_PROGN(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_PUTS
+
+}\indent{\italic{primitives.c}
+
+void Prim_PUTS(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_READ
+
+}\indent{\italic{primitives.c}
+
+void Prim_READ(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_RE_STRCONTAINS
+
+}\indent{\italic{primitives.c}
+
+void Prim_RE_STRCONTAINS(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_RE_STRDECOMPOSE
+
+}\indent{\italic{primitives.c}
+
+void Prim_RE_STRDECOMPOSE(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_RE_STRDECOMPOSEPLUS
+
+}\indent{\italic{primitives.c}
+
+void Prim_RE_STRDECOMPOSEPLUS(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_RINDEX
+
+}\indent{\italic{primitives.c}
+
+void Prim_RINDEX(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_SETQ
+
+}\indent{\italic{primitives.c}
+
+void Prim_SETQ(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_STRCAT
+
+}\indent{\italic{primitives.c}
+
+void Prim_STRCAT(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_STRCONTAINS
+
+}\indent{\italic{primitives.c}
+
+void Prim_STRCONTAINS(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_STRDECOMPOSE
+
+}\indent{\italic{primitives.c}
+
+void Prim_STRDECOMPOSE(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_STRINGP
+
+}\indent{\italic{primitives.c}
+
+void Prim_STRINGP(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_STRLEN
+
+}\indent{\italic{primitives.c}
+
+void Prim_STRLEN(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_STRSTARTS
+
+}\indent{\italic{primitives.c}
+
+void Prim_STRSTARTS(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_STR_TO_INT
+
+}\indent{\italic{primitives.c}
+
+void Prim_STR_TO_INT(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_SUBSTRING
+
+}\indent{\italic{primitives.c}
+
+void Prim_SUBSTRING(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_SYMBOLP
+
+}\indent{\italic{primitives.c}
+
+void Prim_SYMBOLP(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_SYM_TO_STR
+
+}\indent{\italic{primitives.c}
+
+void Prim_SYM_TO_STR(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_SYSTEM
+
+}\indent{\italic{primitives.c}
+
+void Prim_SYSTEM(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_TERPRI
+
+}\indent{\italic{primitives.c}
+
+void Prim_TERPRI(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_TIMES
+
+}\indent{\italic{primitives.c}
+
+void Prim_TIMES(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_UCSTRING
+
+}\indent{\italic{primitives.c}
+
+void Prim_UCSTRING(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_UNBIND
+
+}\indent{\italic{primitives.c}
+
+void Prim_UNBIND(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_UNBINDFN
+
+}\indent{\italic{primitives.c}
+
+void Prim_UNBINDFN(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+\bold{Prim_VERSION
+
+}\indent{\italic{primitives.c}
+
+void Prim_VERSION(st, arglist, resbuf)
+
+\indent{EliState_t *st;
+
+EliCons_t *arglist;
+
+EliSexp_t *resbuf;
+
+}}
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1742,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,539970000}

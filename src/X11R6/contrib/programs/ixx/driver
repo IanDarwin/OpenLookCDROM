@@ -1,0 +1,237 @@
+#! /bin/csh -f
+#
+# This is a driver script for the interface translator.
+#
+
+# Variables:
+#
+#   idlfile - input .idl file name
+#   hdrfile - output .h file name
+#   stubfile - output .cxx file name with client stubs
+#   serverfile - output .cxx file name with server code
+#   cpp - C preprocessor command
+#   cppflags - flags for invocation of cpp
+#   ixx - interface translator executable
+#   includes - default include statements
+#   indirect - indirect flag
+#   filter - filter implementation file
+#   ixxflags - additional flags to translator
+#   vflag - verbose output
+#   nflag - echo what we would do, but don't actually do it
+#	
+
+set rm = "/bin/rm -f"
+set mv = "/bin/mv"
+set cpp = "/lib/cpp"
+set cppflags = ""
+set ixx = "ixx"
+set includes = ""
+set ixxflags = ""
+set indirect = "-indirect _"
+
+while ($#argv > 0)
+    set arg = $1
+    switch ($arg)
+    case "-h":
+	if ($?hdrfile) then
+	    echo "Only one -h flag allowed"
+	    goto Usage
+	endif
+	shift
+	if ($#argv == 0) then
+	    echo "Missing filename after $arg"
+	    goto Usage
+	endif
+	set hdrfile = $1
+	breaksw
+    case "-x":
+	shift
+	if ($#argv == 0) then
+	    echo "Missing program name after $arg"
+	    goto Usage
+	endif
+	set ixx = $1
+	breaksw
+    case "-i":
+    case "-include":
+	shift
+	if ($#argv == 0) then
+	    echo "Value needed after $arg"
+	    goto Usage
+	endif
+	set includes = "$includes $arg $1"
+	breaksw
+    case "-direct":
+	set indirect = ""
+	breaksw
+    case "-indirect":
+	shift
+	if ($#argv == 0) then
+	    echo "value needed after $arg"
+	    goto Usage
+	endif
+	set indirect = "$arg $1"
+	breaksw
+    case "-filter":
+	shift
+	if ($#argv == 0) then
+	    echo "value needed after $arg"
+	    goto Usage
+	endif
+	set filter = $1
+	breaksw
+    case "-c":
+    case "-stubclass":
+    case "-env":
+    case "-except":
+    case "-exch":
+    case "-extern":
+    case "-inclext":
+    case "-m":
+    case "-metaclass":
+    case "-mb":
+    case "-path":
+    case "-r":
+    case "-request":
+    case "-s":
+    case "-superclass":
+    case "-stubfile":
+    case "-serverfile":
+    case "-stubinclude":
+    case "-serverinclude":
+	shift
+	if ($#argv == 0) then
+	    echo "Value needed after $arg"
+	    goto Usage
+	endif
+	set ixxflags = "$ixxflags $arg $1"
+	breaksw
+    case "-C":
+    case "-I*":
+    case "-D*":
+    case "-U*":
+	set cppflags = "$cppflags $1"
+	breaksw
+    case "-MDupdate":
+	shift
+	if ($#argv == 0) then
+	    echo "Value needed after $arg"
+	    goto Usage
+	endif
+	set cppflags = "$cppflags $arg $1"
+	breaksw
+    case "-n":
+	set nflag
+	set vflag
+	breaksw
+    case "-v":
+	set vflag
+	breaksw
+    case "-*":
+	set ixxflags = "$ixxflags $arg"
+	breaksw
+    default:
+	if ($?idlfile) then
+	    goto Usage
+	else
+	    set idlfile=$1
+	endif
+	breaksw
+    endsw
+    shift
+end
+goto Ok
+
+Usage:
+    echo "Usage: ix [flags] name.idl"
+    echo "Flags are:"
+    echo "    -h name.h (output header file)"
+    echo "    -stubfile name-stubs.cxx (output stubs)"
+    echo "    -serverfile name-server.cxx (output receive)"
+    echo "    -direct (don't generate indirect classes)"
+    echo "    -s superclass (base class for objects)"
+    echo "    -m metaclass (class for types)"
+    echo "    -r request (class for dynamic invocation)"
+    echo "    -env envclass (class for method environment)"
+    echo "    -extern stream (generate externalization methods)"
+    echo "    -c client (class suffix for stubs, default is Stub)"
+    echo "    -i '<file>' (put #include <file> in header)"
+    echo "    -stubinclude '<file>' (put #include <file> in stubs)"
+    echo "    -serverinclude '<file>' (put #include <file> in server code)"
+    echo "    -C, -Idir, -Dname, -Dname=def, -Uname (cpp flags)"
+    echo "    -x program (specify translator)"
+    echo "    -v (verbose)"
+    echo "    -n (no execution, implies -v)"
+    exit 1
+
+Ok:
+if (! $?idlfile) then
+    echo "Missing idl file"
+    goto Usage
+endif
+if (! $?nflag && ! -r $idlfile) then
+    echo "Can't read $idlfile"
+    exit 1
+endif
+if ($?filter) then
+    if (! $?nflag && ! -w $filter) then
+	echo "Can't update $filter"
+	exit 1
+    endif
+    set out = $filter-new
+    if (-e $out) then
+	if ($?vflag) then
+	    echo "$rm $out"
+	endif
+	if (! $?nflag) then
+	    $rm $out
+	    if ($status != 0) then
+		echo "Can't remove $out"
+		exit 1
+	    endif
+	endif
+    endif
+    set ixxflags = "$ixxflags $indirect -filter $filter"
+    if ($?vflag) then
+	echo $cpp $cppflags $idlfile "|" $ixx $ixxflags ">" $out
+	echo $mv $out $filter
+    endif
+    if (! $?nflag) then
+	$cpp $cppflags $idlfile | $ixx $ixxflags > $out
+	if ($status == 0) then
+	    $mv $out $filter
+	else
+	    $rm $out
+	endif
+    endif
+else
+    if (! $?hdrfile) then
+	set hdrfile = $idlfile:r.h
+    endif
+    if (! $?filter && -e $hdrfile) then
+	if ($?vflag) then
+	    echo "$rm $hdrfile"
+	endif
+	if (! $?nflag) then
+	    $rm $hdrfile
+	    if ($status != 0) then
+		echo "Can't remove $hdrfile"
+		exit 1
+	    endif
+	endif
+    endif
+
+    if ("$includes" == "") then
+	set includes = "-i <object.h> -stubinclude "'"'$hdrfile'"'
+    endif
+    set ixxflags = "$ixxflags $indirect $includes -file $idlfile"
+    if ($?vflag) then
+	echo $cpp $cppflags $idlfile "|" $ixx $ixxflags ">" $hdrfile
+    endif
+    if (! $?nflag) then
+	$cpp $cppflags $idlfile | $ixx $ixxflags > $hdrfile
+	if ($status == 0) then
+	    chmod 444 $hdrfile
+	endif
+    endif
+endif

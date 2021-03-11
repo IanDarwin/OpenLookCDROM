@@ -1,0 +1,2128 @@
+\begindata{text,539016412}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\define{itemize
+}
+\majorheading{\bigger{\bold{White Pages Programmer's Guide}}}
+
+
+\chapter{About this document }
+
+This is a guide to the programmer's interface for the White Pages part of the 
+Andrew distribution.  It contains a brief description of the White Pages 
+database, and detailed descriptions of all the routines in the White Pages 
+interface. 
+
+
+A more detailed overview of the White Pages can be found in the WP.ovr 
+document.  Instructions for installing and maintaining a White Pages database 
+can be found in the WP.ins and WP.adm documents, respectively. 
+
+
+\chapter{About the White Pages }
+
+The White Pages (or WP) is a database of user information, implemented as a 
+B\superscript{link}-tree (see Lehman & Yao, ACM Transactions on Database 
+Systems, Dec '81, p. 650).  It has been designed to support the needs of sites 
+with thousands of users, replacing the standard UNIX single-file passwd 
+mechanism with a faster B-tree that is divided into many medium-sized files. 
+ The WP provides a superset of the information in the usual 
+\typewriter{/etc/passwd} file, including nicknames, phonetic names, special 
+mail delivery addresses, forwarding addresses, alternate names, etc.  It can 
+be extended to include additional information. 
+
+
+The WP programmer's interface is a set of routines designed to allow fast, 
+flexible lookups and searches in the WP database.  These routines are built 
+into the \typewriter{\italic{ANDREWDIR}/lib/libutil.a} library.  The interface 
+declarations are in \typewriter{\italic{ANDREWDIR}/include/wp.h}; you should 
+\typewriter{#include} this header file into your application code.   If you 
+use any of the passwd-compatibility routines, you should also include the 
+standard \typewriter{pwd.h} header file.
+
+
+\chapter{Structure of the WP Database}
+
+There are two distinct levels of organization in the WP database:  the set of 
+files that make up the database, and the internal structure of information in 
+the database.
+
+
+\section{External Structure }
+
+The White Pages database is stored as a collection of files in a single, 
+distinguished directory.  The medium size of the files was chosen primarily to 
+exploit the whole-file transfer mechanism of the Andrew File System (AFS). 
+ Each file is a node in the WP B-tree. 
+
+
+The B\superscript{link}-tree variety of B-tree used by the WP permits reading 
+without synchronization or locking, and requires writers to lock at most three 
+nodes, or files, at a time to maintain consistency.  While the 
+B\superscript{link}-tree is not the most space-efficient B-tree, the advantage 
+of lock-free reading in a file server oriented environment is tremendous. 
+
+
+\section{Internal Structure }
+
+The material in this section is helpful for understanding how the interface 
+search routines work, but learning it is not strictly necessary if you just 
+want to write code using the WP interface.  The database is internally 
+organized as a collection of four kinds of (key,value) pairs.  They are listed 
+here, then explained in detail below. 
+
+
+\leftindent{\bold{(prime key, basic entry)}  mapping from a prime key 
+(obtained from a query or lookup) to an user/mail-address "basic entry". 
+
+
+\bold{(query key, query value)}  mapping from a query on some fields of the 
+basic entry to a sequence of prime keys. 
+
+
+\bold{(phonetic key, phonetic value)}  mapping from a fuzzy phonetic key to a 
+sequence of phonetic representations of given names.. 
+
+
+\bold{(override key, override value)}  mapping from a non-phonetic nickname 
+key to a common given-name. (for example, ``Chuck'' ->  ``Charles'')}
+
+
+A \bold{basic entry} is a set of information, in text form, relating to a user 
+or mail address.  The possible contents of a basic entry are described below 
+in section 4, \bold{Information Stored in a WP Basic Entry}.  The key for a 
+basic entry is called a \bold{prime key}, since it refers to an entry and not 
+an index.  Prime keys are a sequence of exactly eight characters generated 
+from the \typewriter{ID} and \typewriter{NI} or \typewriter{SI} fields of the 
+basic entry to which they refer (descriptions of these fields can be found in 
+Table 1, below).  The format for a key is not important, since your 
+application should never have to directly manipulate the contents of a key, 
+but it is important to note that the key is derivable from the entry and no 
+two distinct basic entries will generate the same key. 
+
+
+A \bold{query key} is derived from a question one could ask about the contents 
+of the WP, such as ``what users are there whose last name sounds like 
+\italic{Yang}?''.  The query key maps to a \bold{query value}, which is the 
+answer to the question.  The query value is simply a concatenated set of prime 
+keys:  if there are three entries that satisfy the question (e.g, there is a 
+``Chris Yang'', a ``Hong Yang'', and a ``Jun Yang''), the query value will 
+consist of three prime keys, and be 3x8=\bold{24} characters long. 
+
+
+This (query key, query value) indexing scheme could have been implemented by 
+creating several B-trees, one for each kind of question that could be asked 
+about the WP contents.  Using this structure, query keys would then simply be 
+the probe value:  to find an answer to the question mentioned above, one would 
+look up the query value corresonding to the query key ``yang'' in the 
+phonetic-match B-tree.  However, in order to reduce the number of B-tree 
+files, the query key is instead composed of the probe string, a double quote 
+(") character, and a single-character flag that specifies the kind of question 
+being asked.  The query key for our example question would be \bold{yang"t}, 
+where the \bold{t} flag means ``do a phonetic \bold{t}oken search using the 
+probe \bold{yang}''.  A complete list of all the different kinds of searches 
+one can perform in the WP can be found in the description of the 
+\typewriter{wp_SetUp()} routine below. 
+
+
+The \bold{phonetic} and \bold{override} keys are used by the search heuristics 
+that attempt to treat a name probe as a nickname.  A phonetic key is a 
+phonetically-canonicalized version of a name probe; it maps to a 
+\bold{phonetic value} that is a space-separated list of 
+phonetically-canonicalized first names for which the phonetic key may be a 
+nickname.  The nickname heuristics take this list of possible first names and 
+search for them in the database, but only after less heuristic searches have 
+been attempted. 
+
+
+\bold{override} mappings map nicknames that are so common that a phonetic 
+mapping would be too fuzzy, such as ``Chuck'' to ``Charles''.  The 
+\bold{override key} is a nickname, and the \bold{override value} is a single 
+first name for which the override key is a common nickname. 
+
+
+\begindata{bp,540341256}
+\enddata{bp,540341256}
+\view{bpv,540341256,1659,0,0}
+\chapter{Information Stored in a WP Basic Entry}
+
+A basic entry is made up of one or more of the fields listed in Table 1. 
+ Fields that are analogous to \typewriter{passwd(5)} fields are indicated by a 
+ "struct passwd" field name, such as \typewriter{pw_gecos}.
+
+
+The fields in a basic entry that are indexed in the B-tree can be searched on 
+by a search routine (such as wp_Search).  The following fields are indexed:
+
+
+N, WN, ID, NI, D, X.
+
+
+The remaining nonindexed fields can be used to constrain a search on one or 
+more of the indexed fields; see the wp_Constrain routine.
+
+
+\center{\bold{Table 1:  \index{Basic Entry Fields}}}
+
+\smaller{N
+
+\leftindent{User/mail-address' full name, the way it should be displayed. 
+ Used as 'name parts' in a WP search.
+
+Example:  Jello Biafra
+
+passwd analog:  pw_gecos}
+
+
+Tk
+
+\leftindent{Sequence of tokenized N or WN fields.  Generated automatically.
+
+\italic{temporary}
+
+}
+WN
+
+\leftindent{Semicolon-separated list of alternate full names.  These will be 
+considered additional 'name parts' in a WP search.
+
+Example:  Jello B. Biafra;J. Biafra
+
+}
+ID
+
+\leftindent{Login name of this entry.  Used in UID searches.
+
+Example:  jbRo
+
+passwd analog:  pw_name
+
+}
+EK
+
+\leftindent{Integer; indicates sources for this entry.  Value is sum over the 
+makeboth source passes of 2\superscript{pass#}.  Pass# is 0-3 (Source pass 
+number minus one).
+
+Example:  2 (indicating the sole source for this entry is makeboth pass 2: 
+ wpadd.)}
+
+
+NI
+
+\leftindent{Numeric ID of this entry.  Used in NID searches.
+
+Example:  950
+
+passwd analog:  pw_uid}
+
+
+GI
+
+\leftindent{Group ID of this entry.
+
+Example:  10
+
+passwd analog:  pw_gid
+
+}
+PW
+
+\leftindent{Encrypted password field
+
+Example:  wsHpKxsM
+
+passwd analog:  pw_passwd
+
+}
+HD
+
+\leftindent{Home (initial login) directory
+
+Example:  /usr/jbRo
+
+passwd analog:  pw_dir
+
+}
+Sh
+
+\leftindent{Login shell for this entry.
+
+Example:  /bin/csh
+
+passwd analog:  pw_shell
+
+}
+Af
+
+\leftindent{Affiliation (e.g., departmental)
+
+Example:  Statistics
+
+}
+Fwd
+
+\leftindent{Mail forwarding address used by AMDS.
+
+Example:  jbiafra@gp.zorro.edu
+
+}
+DK
+
+\leftindent{``Delivery Kind'' indicating, if present, an alternate method for 
+local delivery of mail addressed to this entry.  Used by AMDS.
+
+Example:  DIST
+
+}
+DP
+
+\leftindent{``Delivery Parameter'' giving additional information, if 
+necessary, for the DK field. (e.g., pathname of file containing distribution 
+list).  See WP.adm for more info.
+
+Example:  /usr/jbRo/dists/broadcast.dl
+
+}
+D
+
+\leftindent{Phonetically-canonicalized versions of all the surnames in the N 
+and WN fields.
+
+Example:  bfr
+
+}
+X
+
+\leftindent{Phonetically-canonicalized versions of all the name parts (from 
+the Tk field).  Used in phonetic name-part searches.
+
+Example:  jl bfr
+
+}
+SI
+
+\leftindent{Sequence number.  For entries that have no NI field, such as most 
+of those in wpadd.  Each entry must have a unique SI or NI field out of which 
+its prime key is constructed.
+
+Example:  1892
+
+}
+NPA
+
+\leftindent{Network Preferred Address integer. Magnitude indicates priority of 
+this address.  Not yet used by AMDS.
+
+Example:  5
+
+}
+Dt
+
+\leftindent{time this entry was last updated, from a call to time(0)
+
+Example:  500128421
+
+}
+A2
+
+\leftindent{affiliation abbreviation
+
+Example:  stat
+
+}
+HA
+
+CA
+
+OA
+
+\leftindent{Home, campus, and office addresses.  A semicolon in this field 
+represents a newline.
+
+Example:  ITC;UCC 220}
+
+
+HP
+
+CX
+
+OP
+
+\leftindent{Home phone, campus extension, and office phone.
+
+Example:  268-6743
+
+}}
+
+Each basic entry is represented by ASCII text somewhere in the B-tree.  Each 
+line is a field name, field value pair.  The field name is preceded by a 
+dollarsign, and not all fields need exist, or contain information.  For 
+example, the text (empty fields omitted) of the entry for user Jello Biafra 
+might be: 
+
+
+\typewriter{$N Jello Biafra 
+
+$WN Jello B. Biafra;Jello Brand Biafra 
+
+$ID jbRo 
+
+$EK 1 
+
+$NI 696 
+
+$GI 9 
+
+$PW X 
+
+$HD /afs/catalyst.barking.edu/usr3/jbRo 
+
+$Sh /bin/csh 
+
+$Af Mass Action Institute 
+
+$D bfr 
+
+$X jl bfr 
+
+$A2 mai 
+
+$CA MAI Building, Room 4D 
+
+$CX x6970}
+
+
+Note that the programmer does not have to deal directly with the format of a 
+basic entry. All b-tree parsing and data extraction is done for the programmer 
+by the WP interface routines, particularly wp_Read.
+
+
+\begindata{bp,540341192}
+\enddata{bp,540341192}
+\view{bpv,540341192,1660,0,0}
+\chapter{Overview of the WP Interface}
+
+
+The lowest-level WP interface routines are the most general.  At this level, 
+an application opens a WP database (which could be in another cell, or a 
+nonstandard location) and receives a pointer to a \typewriter{struct wp_cd} 
+token for that WP.  Then a particular search is specified by a call to 
+\typewriter{wp_SetUp()}, which returns a pointer to a 
+ \typewriter{wp_SearchToken}.  The specified search can be narrowed to match 
+only those entries with a certain value in a certain (possibly unindexed) 
+field by passing the search token and a constraint to 
+\typewriter{wp_Constrain()}.  The search token and WP token are passed to the 
+\typewriter{cwp_Lookup()} or \typewriter{cwp_Search()} routine to get the 
+results of the search:  either a single prime key or a set of prime keys.  A 
+prime key is passed to \typewriter{cwp_Read()} to extract the strings in the 
+fields of the entry referred to by that prime key.  Calls to 
+\typewriter{wp_DeAllocate()} and \typewriter{wp_Terminate()} reclaim resources 
+and close the WP. 
+
+
+There are several different kinds of searches that can be specified in the 
+\italic{SearchKind} parameter to \typewriter{wp_SetUp()}.  In general, the WP 
+will search for a match to the supplied probe string according to the strategy 
+requested by this parameter.  A related parameter is \italic{MaxQuality}, 
+passed to one of the search routines, which tells the search routines how 
+fuzzily they are allowed to view the probe string while trying to find a 
+match.  The \italic{MatchQuality}, passed back by a search routine, indicates 
+how hard the routine actually had to try (that is, how far it fuzzed the key) 
+ in order to find a match. 
+
+If your application program will only need to use the site WP database for the 
+local domain, you can use those routines that do not take a \typewriter{wp_cd} 
+token argument.  For example, compare the routines \typewriter{wp_Initialize()} 
+and \typewriter{wp_InitializeCell()}; the first opens only the local cell's 
+WP, while the second can be used to open any cell's WP.  While the second is 
+more flexible, it requires the programmer to use and keep track of a 
+\typewriter{wp_cd} token. 
+
+
+In addition to the low-level routines described above, the WP interface 
+provides several routines that resemble the \typewriter{getpwent(3)} passwd 
+interface (e.g., \typewriter{getcwpent()}, \typewriter{getvpwnam(),} etc.). 
+ Most are not totally calling-compatible with their \typewriter{getpwent(3)} 
+counterparts; however, for backward compatibility they are 
+\typewriter{define}-ed to their \typewriter{getpwent()} counterparts in the 
+library if the library was built without \typewriter{WHITEPAGES_ENV} defined. 
+
+
+\begindata{bp,540341128}
+\enddata{bp,540341128}
+\view{bpv,540341128,1661,0,0}
+\chapter{WP Interface Reference} 
+
+This section provides descriptions of all the data types and routines in the 
+WP interface.  Note that B-tree manipulator routines are not part of the 
+documented WP interface. 
+
+
+\section{Quick Reference Summary} 
+
+Table 3 lists all the routines in the WP interface with a brief description of 
+each.  See subsequent sections for more verbose descriptions of the routines. 
+
+
+\typewriter{wp_Initialize()}
+
+\leftindent{Opens this cell's WP database}
+
+
+\typewriter{wp_InitializeCell()}
+
+\leftindent{Opens the specified cell's WP database}
+
+
+\typewriter{wp_InitializeDir()}
+
+\leftindent{Opens a WP database residing in the specified directory
+
+}
+\typewriter{cwp_Terminate()
+
+wp_Terminate()}
+
+\leftindent{Closes a WP database
+
+}
+\typewriter{wp_SetUp()}
+
+\leftindent{Passed probe string, kind of search to be performed; returns a 
+search token.
+
+}
+\typewriter{wp_Constrain()}
+
+\leftindent{Annotates a search token to further constrain matches to include a 
+specific string in a specific field.
+
+}
+\typewriter{cwp_Search()
+
+wp_Search()}
+
+\leftindent{Carry out a search specified by a passed search token.  Returns a 
+set of prime keys and the match quality.
+
+}
+\typewriter{cwp_Lookup()
+
+wp_Lookup()}
+
+\leftindent{Carry out a lookup, returns the single best-match prime key and 
+the match quality.
+
+}
+\typewriter{cwp_GetNIDOnly()
+
+wp_GetNIDOnly()}
+
+\leftindent{Returns the single prime key matching the supplied NID with no 
+constraints.  Shortcut routine; no search token is needed.}
+
+
+\typewriter{cwp_GetUIDOnly()
+
+wp_GetUIDOnly()}
+
+\leftindent{Returns the single prime key matching the supplied UID with no 
+constraints.  Shortcut routine; no search token is needed.
+
+}
+\typewriter{cwp_Read()
+
+wp_Read()}
+
+\leftindent{Reads WP entries.  Given a prime key and a field index, returns 
+the string in the specified field of the entry referred to by the prime key.
+
+}
+\typewriter{cwp_Generate()
+
+wp_Generate()}
+
+\leftindent{Generates subsequent prime keys.  Given a null prime key, returns 
+the first one in the database; given the first prime key, returns the second, 
+etc.
+
+}
+\typewriter{wp_ErrorString()}
+
+\leftindent{Passed a \typewriter{wp_ErrorCode} value, returns the English 
+error text.
+
+}
+\typewriter{wp_SetDebugging()}
+
+\leftindent{Pass non-zero int to set debugging level.
+
+}
+\typewriter{wp_SetTiming()}
+
+\leftindent{Turns on/off collection of timing stats.
+
+}
+\typewriter{wp_FieldNameToIndex()}
+
+\leftindent{Translates a passed field name to a field index, for use in 
+\typewriter{cwp_Read()}, for example.
+
+}
+\typewriter{wp_AllFields()}
+
+\leftindent{Field-name generator.  Given a field index, returns the name of 
+that field.  Returns an error if the field index is out of bounds.
+
+}
+\typewriter{wp_DeAllocate()}
+
+\leftindent{Clean-up routine.  Deallocates specified prime key sets and search 
+tokens.
+
+}
+\typewriter{getvpwuid()
+
+getcpwuid()
+
+getvpwnam()
+
+getcpwnam()
+
+getvpwent()
+
+setvpwent()
+
+endvpwent()}
+
+\leftindent{\typewriter{passwd(5)} compatibility routines
+
+}
+\begindata{bp,540341064}
+\enddata{bp,540341064}
+\view{bpv,540341064,1662,0,0}
+\section{The WP Interface Data} 
+
+This section describes the types of data used in the WP interface. 
+
+
+\typewriter{typedef int \bold{wp_ErrorCode}}
+
+
+\leftindent{Most of the WP interface routines return a 
+\typewriter{wp_ErrorCode} to indicate their measure of success.  A 
+\typewriter{wp_ErrorCode} can be passed to \typewriter{wp_ErrorString()} to 
+obtain an English string describing the error.}
+
+
+\typewriter{typedef char \bold{*wp_SearchToken}}
+
+
+\leftindent{A pointer to static storage for a WP search token.  Search tokens 
+are described above in section 5.}
+
+
+\typewriter{typedef char \bold{*wp_PrimeKey}}
+
+
+\leftindent{A pointer to static storage for a prime key.  A prime key is a 
+unique eight-character key for a basic entry in the WP database; prime keys 
+are described in section 3.2, above.}
+
+
+\typewriter{typedef struct wp_PrimeKeySetStr \bold{wp_PrimeKeySet}, 
+\bold{*wp_PrimeKeySetPtr}}
+
+
+\leftindent{A \typewriter{wp_PrimeKeySet} consists of an integer that counts 
+the number of keys in the set, and a pointer to a catenated set of prime keys. 
+ Since each prime key is of constant length, the \typewriter{wp_PrimeKeySet}'s 
+key pointer can be treated like an array base.}
+
+
+\typewriter{struct \bold{wp_cd}}
+
+
+\leftindent{A token containing AFS cell and directory information for an 
+opened WP.
+
+}
+\typewriter{typedef int \bold{wp_FieldIndex}}
+
+
+\leftindent{An index into the array of storage for fields comprising a basic 
+entry.  Note that fields in a basic entry are referenced by a 
+\typewriter{wp_FieldIndex}, not a field name.
+
+}
+\typewriter{enum \bold{wp_ConstraintKind}}
+
+
+\leftindent{Passed to \typewriter{wp_Constrain()} only.  Describes how a 
+constraint is to match the contents of a specific field; one of: 
+\typewriter{wpc_WholeKey}, \typewriter{wpc_BeginKey}, 
+\typewriter{wpc_ContainKey}.}
+
+
+\begindata{bp,540341000}
+\enddata{bp,540341000}
+\view{bpv,540341000,1663,0,0}
+\section{Low-Level Routines} 
+
+This section contains descriptions for the lower-level routines in the WP 
+interface. 
+
+
+\subsection{Beginning and Ending WP Access} 
+
+These routines  open and close WP databases. \formatnote{
+
+
+\begindata{bp,540340936}
+\enddata{bp,540340936}
+\view{bpv,540340936,1664,0,0}
+
+\index{\paragraph{wp_Initialize}}
+
+
+\typewriter{wp_ErrorCode \bold{wp_Initialize()}}
+
+
+\bold{Description}
+
+\leftindent{Opens the WP database of the local cell.  Note that the cell is 
+not actually specified when calling this routine.}
+
+
+\bold{Error Codes}
+
+\leftindent{\typewriter{wperr_NoPrimaryCell}
+
+Primary cell cannot be determined.}
+
+
+\begindata{bp,540340872}
+\enddata{bp,540340872}
+\view{bpv,540340872,1665,0,0}
+
+\index{\paragraph{wp_InitializeCell}}
+
+
+\typewriter{wp_ErrorCode \bold{wp_InitializeCell(cellname, cdp)}
+
+    char *cellname;
+
+    struct wp_cd **cdp;}
+
+
+\bold{Description}
+
+\leftindent{Opens an existing WP database in the default location in a given 
+cell; that is, the database residing in the directory 
+\typewriter{/afs/\italic{cellname}/service/wp/}.  Private information about 
+the database is placed in a \typewriter{wp_cd} token to be passed to other 
+routines.
+
+
+If the cell to be opened is the same as \italic{ThisDomain}, and the 
+AndrewSetup option \italic{ThisDomainWPDirectory} is given, the value of that 
+option is taken as the path to use instead of 
+ \typewriter{/afs/\italic{cellname}/service/wp/}.
+
+}
+\bold{Error Codes}
+
+\leftindent{\typewriter{wperr_WPInWrongCell}
+
+The WP database directory for the cell you requested is actually stored in a 
+different cell.}
+
+
+\begindata{bp,540340808}
+\enddata{bp,540340808}
+\view{bpv,540340808,1666,0,0}
+
+\index{\paragraph{wp_InitializeDir}}
+
+
+\typewriter{wp_ErrorCode \bold{wp_InitializeDir(dirname, cdp)}
+
+    char *dirname;
+
+    struct wp_cd **cdp;}
+
+
+\bold{Description}
+
+\leftindent{Opens an existing WP database in the specified directory.  Private 
+information about the database is placed in a \typewriter{wp_cd} token to be 
+passed to other routines.}
+
+\begindata{bp,540340744}
+\enddata{bp,540340744}
+\view{bpv,540340744,1667,0,0}
+
+\index{\paragraph{cwp_ReInitialize}}
+
+
+\typewriter{wp_ErrorCode \bold{cwp_ReInitialize(cd)}
+
+    struct wp_cd *cd;}
+
+
+\bold{Description}
+
+\leftindent{Reopens the WP database specified by the wp_cd token obtained from 
+a previous call to a cellular WP initialization routine.
+
+
+Use this routine to clear a transient WP error state, especially those which 
+could be caused by a filesystem outage.  The utility routine wp_RetryThis 
+(q.v.) can be used to easily determine whether the last error condition might 
+be cured by a call to cwp_ReInitialize.
+
+
+It is often a good idea to sleep() for a short time between repeated calls to 
+cwp_ReInitialize to allow transient error conditions to sort themselves out.}
+
+
+\begindata{bp,540340680}
+\enddata{bp,540340680}
+\view{bpv,540340680,1668,0,0}
+\index{\paragraph{wp_Terminate}}
+
+
+\typewriter{wp_ErrorCode \bold{wp_Terminate()}
+
+}
+\indexi{cwp_Terminate}\typewriter{
+
+wp_ErrorCode \formatnote{\bold{cwp_Terminate(cd)}}
+
+    struct wp_cd *cd\typewriter{
+
+}}
+}\bold{Description}
+
+\leftindent{These routines close a WP database.  \typewriter{wp_Terminate()} 
+closes a database that was opened with \typewriter{wp_Initialize()}. 
+ \typewriter{cwp_Terminate()} takes one argument; a pointer to a 
+\typewriter{wp_cd} token, closes the database referred to by that token, and 
+frees the token.}
+
+
+\begindata{bp,540340616}
+\enddata{bp,540340616}
+\view{bpv,540340616,1669,0,0}
+\subsection{Setting Up a Search/Lookup and Extracting Information}
+
+These routines set up a search token, optionally constrain it to only those 
+entries that match on certain fields, and perform searches and lookups. 
+
+
+There are two important parameters involved with searches:  the 
+\italic{SearchKind} and the \italic{MaxQuality}.  The \italic{SearchKind} is 
+in integer that tells the setup routine what style of search will be 
+performed, such as by User ID, by User ID before last name, by phonetics, etc. 
+ A list of all the \italic{SearchKinds} can be found below in the description 
+of the \typewriter{wp_SetUp()} routine and the \typewriter{wp.h} file. 
+
+
+The \italic{MaxQuality} is an integer passed to a searching routine, such as 
+\typewriter{wp_Search()},  that places an upper bound on how hard the search 
+should look for a match.  In general, the smaller the integer 
+\italic{MaxQuality}, the closer the match is required to be.  A 
+\italic{MatchQuality} integer is passed back from a searching routine by a 
+reference parameter; the returned value measures how hard the search actually 
+had to look to find a match.  A list of all the 
+\italic{MaxQuality}/\italic{MatchQuality} values can be found below in the 
+description of the \typewriter{wp_Search()} routine and the \typewriter{wp.h} 
+file. 
+
+
+\begindata{bp,540340552}
+\enddata{bp,540340552}
+\view{bpv,540340552,1670,0,0}
+
+\index{\paragraph{wp_SetUp}}
+
+
+\formatnote{\typewriter{wp_ErrorCode \formatnote{\bold{wp_SetUp(NameProbe, 
+SearchKind, STPointer)}}
+
+    char *NameProbe;
+
+    int SearchKind;
+
+    wp_SearchToken *STPointer;
+
+}}
+\bold{Description}
+
+\leftindent{Begin setting up a search token for a new database search.  This 
+initial search token specifies that the \italic{NameProbe} string is to be 
+searched for according to the style given by the \italic{SearchKind} 
+parameter.  This search can therefore look, for example, at Numeric IDs only, 
+User IDs only, User IDs before names, User IDs before name abbreviations, and 
+User IDs last of all.  The routine returns a pointer to an unspecified search 
+token through the out parameter \italic{STPointer}; this token can then be 
+used for actual database searches.}
+
+
+\bold{Notes}
+
+\leftindent{This routine \typewriter{malloc}'s storage to hold the search 
+token.  It is the client program's responsibility to call 
+\typewriter{wp_DeAllocate()} of that storage to deallocate it.  If storage 
+allocation fails, this routine will have allocated nothing and will return 
+code \typewriter{wperr_OutOfMemory}.}
+
+
+Following is a complete list of possible values for \italic{SearchKind}.  The 
+list is generally ordered from least permissive search to most permissive. 
+ The names in the first column are \typewriter{#define}-ed to the integers in 
+the second column by \typewriter{wp.h}.
+
+
+\smaller{\bold{Defined Constant		Int value	Searches On
+
+}}
+\smaller{LookupNIDOnly		0	Numeric ID only
+
+
+LookupUIDOnly		1	User ID (``username'') only
+
+
+LookupUIDFirst		10	User ID before all other indexed fields.
+
+
+LookupUIDWithFull		20	User ID and full name ($N field).
+
+
+LookupUIDOverPart		30\formatnote{	}User ID before a part of the full name
+
+
+LookupUIDWithLastPart	40	User ID and part of last name
+
+
+LookupUIDOverFirstAbbrev	50	User ID before abbreviated first name
+
+
+LookupUIDWithFirstAbbrev	60	User ID and abbreviated first name
+
+
+LookupUIDOverAbbrev		70	User ID before abbreviated full name part
+
+
+LookupUIDWithLastNameAbbrev	75	User ID and abbreviated last name
+
+
+LookupUIDWithAnyNamePart	80	User ID and any part of any name
+
+
+LookupUIDWithAnyNameAbbrev	85	User ID and any abbreviation of any name
+
+
+LookupUIDOverPhonetics	86	User ID before phonetic heuristics
+
+
+LookupUIDLast		145	All indexed fields before User ID}
+
+
+
+\begindata{bp,540340488}
+\enddata{bp,540340488}
+\view{bpv,540340488,1671,0,0}
+
+\index{\paragraph{wp_Constrain}}
+
+
+\typewriter{wp_ErrorCode \bold{wp_Constrain(STPointer, FieldNum, Content, 
+ConstraintKind)}
+
+    wp_SearchToken *STPointer;
+
+    wp_FieldIndex FieldNum;
+
+    char *Content;
+
+    enum wp_ConstraintKind ConstraintKind;
+
+}
+\bold{Description}
+
+\leftindent{Constrain the search implied by the search token pointed to by 
+\italic{STPointer} so that the field \italic{FieldNum} must begin with the 
+string given in \italic{Content}.  \italic{ConstraintKind} dictates how the 
+given \italic{Content} must relate to the contents of the field specified by 
+\italic{FieldNum}.  The \italic{STPointer} pointer is modified to point to a 
+new, also unspecified, piece of storage.}
+
+
+\bold{Notes}
+
+\leftindent{A search token must be created via \typewriter{wp_SetUp()} before 
+this routine can be called to constrain it.
+
+
+You can use the \typewriter{wp_FieldNameToIndex(FieldName)} routine to 
+translate a field name (such as \typewriter{WN}) to its corresponding 
+\typewriter{FieldIndex}.}
+
+
+\begindata{bp,540340424}
+\enddata{bp,540340424}
+\view{bpv,540340424,1672,0,0}
+
+\index{\paragraph{wp_Search}}
+
+
+\formatnote{\typewriter{wp_ErrorCode \formatnote{\bold{wp_Search(cd, 
+SearchToken, MaxResults, MaxQuality, MatchQuality, PKSetPointer)}}
+
+
+}\indexi{cwp_Search}}
+
+\typewriter{wp_ErrorCode \bold{cwp_Search(SearchToken, MaxResults, MaxQuality, 
+MatchQuality, PKSetPointer)}
+
+ 
+
+    struct wp_cd *cd;
+
+    wp_SearchToken SearchToken;
+
+    int MaxResults, MaxQuality, *MatchQuality;
+
+    wp_PrimeKeySetPtr *PKSetPointer}
+
+
+\bold{Description}
+
+\leftindent{Carries out the search specified by \italic{SearchToken} and 
+returns the prime keys of the matching entries via \italic{PKSetPointer}.  The 
+search will match as many entries as possible up to the number given in 
+\italic{MaxResults}; a value of \typewriter{-1} for \italic{MaxResults} 
+requests that all matches be returned.  
+
+
+The parameter \italic{MaxQuality} specifies the most ambitious search to carry 
+out; the return parameter \italic{MatchQuality} tells the client what level of 
+search was actually successful.
+
+
+Storage is \typewriter{malloc}-ed to hold the returned prime keys.  It is the 
+responsiblilty of the client program to deallocate this storage with an 
+appropriate call to \typewriter{wp_Deallocate()}.
+
+
+If no entries are found that match the specifications in \italic{SearchToken}, 
+\typewriter{wperr_NoKeysFound} is returned and no storage is allocated.
+
+
+The \typewriter{cwp_Search()} routine accepts one additional parameter; a 
+\typewriter{wp_cd} token, obtained from a prior call to 
+\typewriter{wp_InitializeCell()} or \typewriter{wp_InitializeDir()}, that 
+specifies which WP database to search.}
+
+
+\bold{Errors}
+
+\leftindent{\formatnote{\typewriter{wperr_NoKeysFound}}
+
+The search could not find any prime keys that matched the probe and 
+constraints specified in the supplied \italic{SearchToken}.
+
+\formatnote{\typewriter{wperr_TooManyKeysFound}}
+
+The number of prime keys that matched the probe and constraints was greater 
+than the integer specified in \italic{MaxResults}.  The first 
+\italic{MaxResults}+1 prime keys will still be returned via 
+\italic{PKSetPointer}.}
+
+
+\bold{Notes}
+
+\leftindent{To look up a single entry, use \typewriter{wp_Lookup()} instead of 
+\typewriter{wp_Search()}.}
+
+
+Following is a list of all the \typewriter{Match...} constants defined in 
+\typewriter{wp.h}.  One of these constants is passed to 
+\typewriter{wp_Search()} in the \italic{MaxQuality} parameter, and another 
+(possibly different, but always equal or less) is passed back via the 
+\italic{MatchQuality} parameter.  The \typewriter{Match...} types are 
+attempted by the search routine in the order listed in the table below.
+
+
+For example, if you pass \typewriter{MatchLastNameAbbrev} (see table) in the 
+\italic{MaxQuality} parameter, you are requesting that the search halt if it 
+can't find any entries that have surnames that, when abbreviated, match the 
+probe string.  The search would return \typewriter{MatchNamePart} via 
+\italic{MatchQuality} if it was able to find a surname (or surnames) that 
+matched exactly (that is, without abbreviating surnames); the search returns 
+once it finds some matches and all prime keys it returns will be at the same 
+match quality.
+
+
+Table Format:
+
+\smaller{\bold{Defined Constant
+
+	Int value	Descrip. of Match	(Searches giving this match on UID match)}}
+
+
+\smaller{\typewriter{MatchIDExact}
+
+	0 	User ID or Numeric ID exactly 	(LookupUIDFirst)
+
+
+\typewriter{MatchNameExact}
+
+	1 	User ID or full name exactly 	(LookupUIDWithFull)
+
+
+\typewriter{MatchIDNameExact}
+
+	20 	User ID exactly 	(LookupUIDOverPart)
+
+
+\typewriter{MatchNamePart }
+
+	40 	Full surnames 	(LookupUIDWithLastPart)
+
+
+\typewriter{MatchIDNamePart}
+
+	60 	User ID exactly 	(LookupUIDOverFirstAbbrev)
+
+
+\typewriter{MatchFirstNameAbbrev}
+
+	80 	Full surnames 	(LookupUIDWithFirstAbbrev)
+
+
+\typewriter{MatchIDFirstNameAbbrev}
+
+	100 	User ID exactly 	(LookupUIDOverAbbrev)
+
+
+\typewriter{MatchLastNameAbbrev}
+
+	106 	Abbreviated surnames 	(LookupUIDWithLastNameAbbrev)
+
+
+\typewriter{MatchAnyName}
+
+	114 	Any part without abbreviations 	(LookupUIDWithAnyNamePart)
+
+
+\typewriter{MatchAnyEx}
+
+	MatchAnyName 	same as above
+
+
+\typewriter{MatchNameAbbrev}
+
+	120 	Any part with abbreviation 	(LookupUIDWithAnyNamePart)
+
+
+\typewriter{MatchAnyAb}	
+
+	MatchNameAbbrev 	same as above
+
+
+\typewriter{MatchIDNameAbbrev}
+
+	130 	UID exactly after trying all above matches (LookupUIDOverPhonetics)
+
+
+\typewriter{MatchNoHeuristics}
+
+	MatchIDNameAbbrev 	same as above
+
+
+\typewriter{MatchExOv}
+
+	133 	exact surname and other parts with override mappings
+
+
+\typewriter{MatchAbOv}
+
+	136 	abbreviated surname and other parts with override mappings
+
+
+\typewriter{MatchExPh}
+
+	139	exact surname and other parts with exact phonetics
+
+
+\typewriter{MatchAbPh}
+
+	142 	abbreviated surname and other parts with exact phonetics
+
+
+\typewriter{MatchExPA}
+
+	145 	exact surname and other parts with abbreviated phonetics
+
+
+\typewriter{MatchAbPA}
+
+	148 	abbreviated surname and other parts with abbreviated phonetics
+
+
+\typewriter{MatchPhEx}
+
+	151 	exact phonetic surname and other parts exactly
+
+
+\typewriter{MatchPhAb}
+
+	154 	exact phonetic surname and other parts abbreviated
+
+
+\typewriter{MatchPhOv}
+
+	157 	exact phonetic surname and other parts with override mappings
+
+
+\typewriter{MatchPhPh}
+
+	160 	exact phonetics for all parts
+
+
+\typewriter{MatchPhPA}
+
+	163 	exact phonetic surname and other parts with abbreviated phonetics
+
+
+\typewriter{MatchAnyOv}
+
+	166 	any part with override mappings
+
+
+\typewriter{MatchAnyPh}
+
+	169 	any part exactly phonetically
+
+
+\typewriter{MatchPAEx}
+
+	172 	abbreviated phonetic surname and other parts exactly 	
+
+
+\typewriter{MatchPAAb}
+
+	175 	abbreviated phonetic surname and other parts abbreviated
+
+
+\typewriter{MatchPAOv}
+
+	178 	abbreviated phonetic surname and other parts with override mappings
+
+
+\typewriter{MatchPAPh}
+
+	181 	abbreviated phonetic surname with other parts phonetically
+
+
+\typewriter{MatchPAPA}
+
+	184 	all parts with abbreviated phonetics
+
+
+\typewriter{MatchAnyPA}
+
+	187 	any part with abbreviated phonetics
+
+
+\typewriter{MatchIDPhonetics}
+
+	200 	User ID exactly 	(LookupUIDLast)
+
+
+\typewriter{MatchIDHeuristic}
+
+	210 	via a heuristic, such as converting l to 1 (one) and o to 0 (zero).
+
+		Heuristics are automatically applied from an internally defined set.
+
+
+\typewriter{MatchAll}
+
+	250 	catch-all for most permissive match possible (input only, output will 
+
+		specify what level of match was successful)}
+
+\begindata{bp,540340360}
+\enddata{bp,540340360}
+\view{bpv,540340360,1673,0,0}
+
+\index{\paragraph{wp_Lookup
+
+}}
+\typewriter{wp_ErrorCode \bold{wp_Lookup(SearchToken, MinMatchesFound, 
+MaxQuality, MatchQuality, PKPointer)}
+
+}
+\indexi{cwp_Lookup}
+
+
+\typewriter{wp_ErrorCode \formatnote{\bold{cwp_Lookup(cd, SearchToken, 
+MinMatchesFound, MaxQuality, MatchQuality, PKPointer)}}
+
+
+    wp_SearchToken SearchToken;
+
+    int *MinMatchesFound, MaxQuality, *MatchQuality;
+
+    wp_PrimeKey PKPointer;
+
+    struct wp_cd *cd;}
+
+
+\bold{Description}
+
+\leftindent{Carries out a lookup specified by \italic{SearchToken}.  Similar 
+to \typewriter{wp_Search()}, described above, but only returns the single best 
+match.  
+
+
+The parameter \italic{MaxQuality} specifies the most ambitious search to carry 
+out; the return parameter \italic{MatchQuality} tells the client what level of 
+search was actually successful.  
+
+
+This routine allocates storage to hold the returned prime key.  It is the 
+client program's responsibility to deallocate this storage with an appropriate 
+call to \typewriter{wp_Deallocate()}.  
+
+
+If more than one entry matches the probe and constraints specified in 
+\italic{SearchToken}, that is, there is no ``best match'', no storage will be 
+allocated and the lower bound on the number of matching entries will be 
+returned via \italic{MinMatchesFound}.  If no entries can be found, the 
+integer pointed to by \italic{MinMatchesFound} is set to zero.
+
+
+The \typewriter{cwp_Lookup()} routine accepts one additional parameter; a 
+\typewriter{wp_cd} token, obtained from a prior call to 
+\typewriter{wp_InitializeCell()} or \typewriter{wp_InitializeDir()}, that 
+specifies which WP database to perform the lookup in.}
+
+
+\bold{Errors}
+
+\leftindent{\typewriter{wperr_NoKeysFound}
+
+The search could not find any prime keys that matched the probe and 
+constraints specified in the supplied \italic{SearchToken}.
+
+
+\typewriter{wperr_TooManyKeysFound}
+
+The number of prime keys that matched the probe and constraints was greater 
+than one.}
+
+
+\bold{Notes}
+
+\leftindent{A list of all the possible values for \italic{MaxQuality} and 
+\italic{MatchQuality} can be found above in the description of the 
+\typewriter{wp_Search()} routine.}
+
+
+\begindata{bp,540340296}
+\enddata{bp,540340296}
+\view{bpv,540340296,1674,0,0}
+
+\index{\paragraph{wp_GetNIDOnly, wp_GetUIDOnly}}
+
+
+\indexi{cwp_GetNIDOnly, cwp_GetUIDOnly
+
+}
+\typewriter{wp_ErrorCode \bold{wp_GetNIDOnly(NID, PKPointer)
+
+}
+wp_ErrorCode \bold{cwp_GetNIDOnly(cd, NID, PKPointer)
+
+}
+wp_ErrorCode\bold{ wp_GetUIDOnly(UID, PKPointer)
+
+}
+wp_ErrorCode \bold{cwp_GetUIDOnly(cd, UID, PKPointer)
+
+}
+    int NID;
+
+    wp_PrimeKey *PKPointer;
+
+    struct wp_cd *cd;}
+
+
+\bold{Description}
+
+\leftindent{These routines essentially perform a \typewriter{wp_Lookup()} 
+(\italic{q.v.}) asking for a search kind of  \typewriter{LookupNIDOnly} or 
+\typewriter{LookupUIDOnly}, respectively, with no constraints.  Note that no 
+\italic{SearchToken} is necessary; one is internally built, used, and 
+deallocated by each of these routines.
+
+
+The \typewriter{cwp} versions take an additional \typewriter{wp_cd} token 
+parameter, obtained from a prior call to \typewriter{wp_InitializeDir()} or 
+\typewriter{wp_InitializeCell()}, that specifies which WP database to perform 
+the lookup in.}
+
+
+\bold{Errors}
+
+\leftindent{\typewriter{wperr_TooManyKeysFound}
+
+More than one WP entry matched the supplied UID or NID.
+
+}
+\begindata{bp,540340232}
+\enddata{bp,540340232}
+\view{bpv,540340232,1675,0,0}
+
+\index{\paragraph{wp_Read}}
+
+
+\typewriter{wp_ErrorCode \formatnote{\bold{wp_Read(PKey, FieldIx, 
+FieldValPointer)}}
+
+}
+\indexi{cwp_Read}\typewriter{
+
+
+wp_ErrorCode \bold{cwp_Read(cd, PKey, FieldIx, FieldValPointer)}
+
+
+    wp_PrimeKey PKey;
+
+    wp_FieldIndex FieldIx;
+
+    char **FieldValPointer;
+
+    struct wp_cd *cd;}
+
+
+\bold{Description}
+
+\leftindent{Reads a field of a basic entry given a prime key \italic{PKey} 
+referring to the entry and the index of the field of interest \italic{FieldIx} 
+in the entry.  The string value is returned by modifying 
+\italic{FieldValPointer} to point to static storage containing the string.
+
+
+\typewriter{cwp_Read()} takes one additional argument:  a \typewriter{wp_cd} 
+token, obtained from a prior call to \typewriter{wp_InitializeDir()} or 
+\typewriter{wp_InitializeCell()}, indicating which WP database this call 
+refers to.
+
+}
+\bold{Notes}
+
+\leftindent{Use this routine to read the contents of a basic entry after you 
+have performed a \typewriter{wp_Search()} or \typewriter{wp_Lookup()} to 
+obtain a prime key or set of prime keys.
+
+
+You must copy the resulting string value from static storage to your own 
+storage if you wish to save it, since a subsequent call to a WP routine may 
+overwrite the static storage.
+
+
+Use the \typewriter{wp_FieldNameToIndex()} routine to get the field index of a 
+given field name.  For example, the field named \typewriter{WN} (alternate 
+names) may have the index \typewriter{2} in the array of fields.}
+
+
+\bold{Errors}
+
+\leftindent{\typewriter{wperr_NoSuchKey}
+
+There is no entry in the WP database that has the prime key you have supplied.
+
+
+\formatnote{\typewriter{wperr_KeyError}}
+
+The prime key you supplied is malformed.
+
+
+\typewriter{wperr_NoSuchField}
+
+The basic entry you specified was found, but it contains no field with the 
+given field index.
+
+
+\typewriter{wperr_FieldIndexOutOfBounds}
+
+The field index you supplied is not the index for any field.}
+
+
+\begindata{bp,539693000}
+\enddata{bp,539693000}
+\view{bpv,539693000,1676,0,0}
+
+\index{\paragraph{wp_Generate}}
+
+
+\typewriter{wp_ErrorCode \bold{wp_Generate(PKPointer)}}
+
+
+\indexi{cwp_Generate}
+
+
+\typewriter{wp_ErrorCode \bold{cwp_Generate(cd, PKPointer)}
+
+
+    wp_PrimeKey *PKPointer;
+
+    wp_cd *cd;}
+
+
+\bold{Description}
+
+\leftindent{Given a null prime key via \italic{PKPointer}, this routine 
+returns the first prime key in the database by overwriting \italic{PKPointer}. 
+ Given \italic{PKPointer} back, it deallocates that prime key and sets 
+\italic{PKPointer} to point to the next one.  If given the last prime key in 
+the database, it sets \italic{PKPointer} to NULL and returns 
+\typewriter{wperr_NoError}.}
+
+
+\bold{Notes}
+
+\leftindent{This routine can be used as part of a program to, for example, 
+dump the entire WP database, or rebuild the source \typewriter{passwd} file, 
+or enumerate all the users.
+
+
+Provided that the WP database sources are self-consistent, the unique prime 
+key ordering in the WP database is guaranteed.  In the current implementation, 
+the ``next'' prime key is the one alphabetically greater then the current 
+prime key.  There is no guarantee, however, that the alphabetic construction 
+of a prime key will discernably have anything to do with the userid, or full 
+name, or any other field of the basic entry belonging to the prime key.}
+
+
+\begindata{bp,539692936}
+\enddata{bp,539692936}
+\view{bpv,539692936,1677,0,0}
+\section{Utility Routines
+
+}This section describes routines that perform utility functions. 
+
+
+\begindata{bp,539692872}
+\enddata{bp,539692872}
+\view{bpv,539692872,1678,0,0}
+
+\index{\paragraph{wp_RetryThis}}
+
+
+\typewriter{int \bold{wp_RetryThis(errcode)}
+
+    wp_ErrorCode errcode;
+
+}
+\bold{Description}
+
+\leftindent{Returns non-zero if the passed \italic{errcode} looks like it 
+could have been caused by a transient error condition, and thus might be cured 
+be a retry.  Returns zero if the passed \italic{errcode} indicates an error 
+condition that will probably not be fixed by a retry.}
+
+
+\begindata{bp,539692808}
+\enddata{bp,539692808}
+\view{bpv,539692808,1679,0,0}
+
+\index{\paragraph{wp_ErrorString}}
+
+
+\formatnote{\typewriter{char \formatnote{\bold{*wp_ErrorString(errcode)}}
+
+
+    wp_ErrorCode errcode;}}
+
+
+\bold{Description}
+
+\leftindent{Returns a pointer to a static string containing an English 
+description of the passed \typewriter{wp_ErrorCode} \italic{errcode}.}
+
+
+\bold{Notes}
+
+\leftindent{The static storage containing the error description is guaranteed 
+not to be overwritten by other WP routines, however, subsequent calls to this 
+routine will overwrite the previously stored string.}
+
+
+\begindata{bp,539692744}
+\enddata{bp,539692744}
+\view{bpv,539692744,1680,0,0}
+
+\index{\paragraph{wp_SetDebugging}}
+
+
+\typewriter{int \bold{wp_SetDebugging(val)}
+
+    int val;}
+
+
+\bold{Description}
+
+\leftindent{Sets the debugging global int and returns the old value.  If 
+\italic{val} is non-zero, debugging messages will be written to stderr.  If 
+\italic{val} is zero, debugging messages will be suppressed.  The debugging 
+int is initialized to zero on startup.}
+
+
+\begindata{bp,539692680}
+\enddata{bp,539692680}
+\view{bpv,539692680,1681,0,0}
+
+\index{\paragraph{wp_SetTiming}}
+
+
+\typewriter{int \bold{wp_SetTiming(level)}
+
+    int level;}
+
+
+\bold{Description}
+
+\leftindent{Sets the global int that turns timing statistics on and off to 
+\italic{level}.  Returns the old value.  If \italic{level} is non-zero, timing 
+statistics will be collected.
+
+}
+\bold{Notes}
+
+\leftindent{The timing int is set to zero (collection of timing stats is 
+turned off) at a call to \typewriter{wp_Terminate()}.}
+
+
+\begindata{bp,539692616}
+\enddata{bp,539692616}
+\view{bpv,539692616,1682,0,0}
+
+\index{\paragraph{wp_FieldNameToIndex}}
+
+
+\typewriter{wp_FieldIndex \bold{wp_FieldNameToIndex(FieldName)}
+
+    char *FieldName;}
+
+
+\bold{Description}
+
+\leftindent{Translates a \italic{FieldName} to its corresponding 
+\typewriter{wp_FieldIndex}.  Returns the field index, or \typewriter{-1} if 
+the field name is not known.}
+
+
+\bold{Notes}
+
+\leftindent{Field indices are passed to the \typewriter{wp_Read()} routine to 
+read the contents of a field.
+
+
+See Table 1 above, in section 4, for a complete list of all the field names.}
+
+
+\begindata{bp,539692552}
+\enddata{bp,539692552}
+\view{bpv,539692552,1683,0,0}
+
+\index{\paragraph{wp_AllFields}}
+
+
+\typewriter{wp_ErrorCode \bold{wp_AllFields(FieldIx, FieldNamePointer)}
+
+    wp_FieldIndex FieldIx;
+
+    char **FieldNamePointer;}
+
+
+\bold{Description}
+
+\leftindent{Modifies \italic{FieldNamePointer} to point to static storage 
+containing the name of the \italic{FieldIx}'th field.  Returns the error 
+\typewriter{wp_FieldIndexOutOfBounds} if \italic{FieldIx} is not a known 
+field.}
+
+
+\bold{Notes}
+
+\leftindent{Fields are numbered (indexed) beginning with zero.
+
+
+This routine can be used in reading every field of an entry.  Set up a loop 
+beginning with zero that calls \typewriter{wp_AllFields()} to find the name of 
+the field, then \typewriter{wp_Read()} to read the contents of the field. 
+ Continue until \typewriter{wp_AllFields()} returns 
+\typewriter{wp_FieldIndexOutOfBounds}.}
+
+
+\begindata{bp,539692488}
+\enddata{bp,539692488}
+\view{bpv,539692488,1684,0,0}
+
+\index{\paragraph{wp_DeAllocate}}
+
+
+\typewriter{wp_ErrorCode \bold{wp_DeAllocate(Pointer)}
+
+    union \{wp_PrimeKeySet *XX, wp_SearchToken YY;\} Pointer;}
+
+
+\bold{Description}
+
+\leftindent{Deallocates prime key sets or search tokens \typewriter{malloc}-ed 
+for the client.  All other data types used in the WP interface can be 
+deallocated directly by the client.}
+
+
+\begindata{bp,539692424}
+\enddata{bp,539692424}
+\view{bpv,539692424,1685,0,0}
+\section{\typewriter{passwd(5)} Compatibility Routines
+
+
+}This section describes the \typewriter{passwd(5)} compatibility routines. 
+ These routines emulate the \typewriter{passwd(5)} interface by performing all 
+the necessary calls to the WP interface and returning information in a struct 
+passwd format.  The only indications a program has that it is using the WP and 
+not the \typewriter{passwd} interface is a difference of one character in the 
+names of these routines versus their \typewriter{passwd} counterparts, and the 
+presence of an additional argument.  See the \typewriter{passwd(5)} man page 
+for more information about the \typewriter{passwd} interface. 
+
+
+Code that uses these routines is still portable to Andrew sites that do not 
+have a WP installed, since such sites have all these routines defined to the 
+usual passwd interface routines in the libutil.a library.
+
+
+\begindata{bp,539692360}
+\enddata{bp,539692360}
+\view{bpv,539692360,1686,0,0}
+
+\index{\paragraph{getcpwuid}}
+
+
+\typewriter{struct passwd \formatnote{\bold{*getcpwuid(uid, cellname)}}
+
+    int uid; 
+
+    char *cellname; }
+
+
+\bold{Description}
+
+\leftindent{Emulates the \typewriter{getpwuid()} routine.  Takes one extra 
+argument; the \italic{cellname} of an AFS cell, in the form "andrew.cmu.edu", 
+to perform the lookup in.  Returns a pointer to a  \typewriter{struct passwd} 
+data block for the supplied \italic{uid}. }
+
+
+\bold{Notes}
+
+\leftindent{If \italic{cellname} is NULL or \italic{*cellname} is empty, the 
+name of the cell the machine is authenticated in is used. 
+
+
+If the WP database of the cell is not accessible, this routine will return the 
+result of a call to \typewriter{getpwuid()}. }
+
+
+\begindata{bp,539692296}
+\enddata{bp,539692296}
+\view{bpv,539692296,1687,0,0}
+
+\index{\paragraph{getcpwnam}}
+
+
+\typewriter{struct passwd \bold{*getcpwnam(username, cellname)}
+
+    char *username, *cellname;}
+
+
+\bold{Description}
+
+\leftindent{Emulates the \typewriter{getpwnam()} routine.  Takes one extra 
+argument; the \italic{cellname} of an AFS cell, in the form "andrew.cmu.edu", 
+to perform the lookup in.  Returns a pointer to a  \typewriter{struct passwd} 
+data block for the supplied \italic{username}. }
+
+
+\bold{Notes}
+
+\leftindent{If \italic{cellname} is NULL or \italic{*cellname} is empty, the 
+name of the cell the machine is authenticated in is used. 
+
+
+If the WP database of the cell is not accessible, this routine will return the 
+result of a call to \typewriter{getpwnam(username)}. }
+
+
+\begindata{bp,539692232}
+\enddata{bp,539692232}
+\view{bpv,539692232,1688,0,0}
+
+\index{\paragraph{getvpwuid}}
+
+
+\typewriter{struct passwd\bold{ \formatnote{*getvpwuid(uid)}}
+
+    int uid;}
+
+
+\bold{Description}
+
+\leftindent{Emulates the \typewriter{getpwuid()} routine.  Uses the WP 
+database in the local AFS cell.  Returns a pointer to a  \typewriter{struct 
+passwd} data block for the supplied \italic{uid}. }
+
+
+\bold{Notes}
+
+\leftindent{If the WP database of the cell is not accessible, this routine 
+will return the result of a call to \typewriter{getpwuid(uid)}. }
+
+
+\begindata{bp,539692168}
+\enddata{bp,539692168}
+\view{bpv,539692168,1689,0,0}
+
+\index{\index{getvpwnam}}
+
+
+\typewriter{struct passwd \bold{*getvpwnam(username)}
+
+   char *username;}
+
+
+\bold{Description}
+
+\leftindent{Emulates the \typewriter{getpwnam()} routine.  Uses the WP 
+database in the local AFS cell.  Returns a pointer to a  \typewriter{struct 
+passwd} data block for the supplied \italic{username}. 
+
+}
+\bold{Notes}
+
+\leftindent{If the WP database of the cell is not accessible, this routine 
+will return the result of a call to \typewriter{getpwnam(username)}. }
+
+
+\begindata{bp,539692104}
+\enddata{bp,539692104}
+\view{bpv,539692104,1690,0,0}
+
+\index{\paragraph{getvpwent}}
+
+
+\typewriter{struct passwd \bold{*getvpwent()}}
+
+
+\bold{Description}
+
+\leftindent{Emulates the \typewriter{getpwent()} routine.  Returns a pointer 
+to the next \typewriter{passwd} (actually, WP) entry via a call to 
+\typewriter{wp_Generate()} (\italic{q.v.}). }
+
+
+\begindata{bp,539692040}
+\enddata{bp,539692040}
+\view{bpv,539692040,1691,0,0}
+
+\index{\paragraph{setvpwent}}
+
+
+\typewriter{int \bold{setvpwent()}
+
+}
+\bold{Description}
+
+\leftindent{Emulates the \typewriter{setpwent()} routine.  Instead of opening 
+the \typewriter{passwd} file, this opens the WP database. }
+
+
+\bold{Notes}
+
+\leftindent{It is not necessary to call \typewriter{setvpwent()} at all to use 
+the other \typewriter{passwd}-compatibility routines; the WP database is 
+automatically opened when needed.}
+
+
+\begindata{bp,539691976}
+\enddata{bp,539691976}
+\view{bpv,539691976,1692,0,0}
+
+\index{\paragraph{endvpwent}}
+
+
+\typewriter{int \bold{endvpwent()}}
+
+
+\bold{Description}
+
+\leftindent{Emulates the \typewriter{endpwent()} routine.  Instead of closing 
+the \typewriter{passwd} file, this closes the WP database. 
+
+}
+\bold{Notes}
+
+\leftindent{It is not necessary to call \typewriter{endvpwent()} at all to use 
+the other \typewriter{passwd}-compatibility routines.  The WP database is 
+opened and closed by every call to a lookup routine.}
+
+
+\begindata{bp,539691912}
+\enddata{bp,539691912}
+\view{bpv,539691912,1693,0,0}
+\section{Error Codes
+
+
+}This section describes all the errors that the WP interface can return. 
+ Errors that begin with \typewriter{wperr_} are generated in a called WP 
+routine while errors the begin with \typewriter{bterr_} are generated in the 
+B-tree manipulator routines.  Your program should never need to directly call 
+a B-tree manipulator routine, so most \typewriter{bterr_} errors are just 
+curiousities since you can't usually do much about them. 
+
+
+Almost every WP interface routine returns status of type 
+\typewriter{wp_ErrorCode}.  The routine \typewriter{wp_ErrorString()} can be 
+used to translate a \typewriter{wp_ErrorCode} to an explanatory English 
+string. 
+
+
+\smaller{\bold{Defined Error Constant	Description
+
+}}
+\smaller{\description{\typewriter{wperr_NoError}		Returned OK, no error. 
+
+
+\typewriter{wperr_OutOfMemory}		Unable to allocate memory. 
+
+
+\typewriter{wperr_NoKeysFound}		A search didn't find any prime keys that 
+matched. 
+
+
+\typewriter{wperr_TooManyKeysFound}	A search found more prime keys than you 
+asked for. 
+
+
+\typewriter{wperr_NoSuchKey}		A \typewriter{wp_PrimeKey} was passed to routine 
+that subsequently couldn't find it.  The key mave have been deleted between 
+creation and use if some other client is modifying the database. 
+
+
+\typewriter{wperr_KeyError}		Malformed \typewriter{wp_PrimeKey}. 
+
+
+\typewriter{wperr_NoSuchField}		A field index referred to a field that did not 
+exist in the specified basic entry. 
+
+
+\typewriter{wperr_IndeterminateResult}	\italic{not used}
+
+
+\typewriter{wperr_FieldIndexOutOfBounds}	A \typewriter{wp_FieldIndex} was 
+given that does not refer to any field. 
+
+
+\typewriter{wperr_NoSuchTokenKind}	(\italic{internal error}) A token was 
+probably improperly built by hand. 
+
+
+\typewriter{wperr_TokenMalformed}	Malformed search or  \typewriter{wp_cd} 
+token. 
+
+
+\typewriter{wperr_UnImplementedFunction}	A \typewriter{Lookup...}-kind integer 
+(see \typewriter{wp_SetUp}) was out of the range of defined types of searches. 
+
+
+
+\typewriter{wperr_InternalError}	Internal error. 
+
+
+\typewriter{wperr_UndifferentiatedFileSystemError}	\italic{not used}
+
+
+\typewriter{wperr_UndifferentiatedGritsError}	\italic{not used}
+
+
+\typewriter{wperr_UndifferentiatedBTreeError}	 \italic{not used}
+
+
+\typewriter{wperr_BTreeTempFail}	Temporary problem in accessing the B-tree. 
+ At AFS sites, usually caused by a temporary filesystem outage.
+
+
+\typewriter{wperr_IndexedRecordNotFound}		Several retries after a temporary 
+failure couldn't get at a record.  The record may be there, it just can't be 
+accessed right now. 
+
+
+\typewriter{wperr_NotInited}			A routine was called that expects a WP database 
+to have been previously opened, or ``inited'', but no database was open. 
+
+
+\typewriter{wperr_NotACD}			The token passed was expected to be of type 
+\typewriter{wp_cd}, but was not.  Possibly an internal error. 
+
+
+\typewriter{wperr_WPInWrongCell}		A site WP database appears to be in a 
+different AFS cell than its pathname implies. 
+
+
+\typewriter{wperr_NoPrimaryCell}		The local, or ``primary'', AFS cell could 
+not be determined. 
+
+
+\bold{B-tree Errors}
+
+
+\typewriter{bterr_NoError}		Returned normally, no error. 
+
+
+\typewriter{bterr_OutOfMemory}		No memory left for allocation. 
+
+
+\typewriter{bterr_NotABTree}		A structure was expected to be a B-tree, but was 
+not. 
+
+
+\typewriter{bterr_NoFileNamesLeft}	The number of files needed to hold the 
+b-tree is larger than the namespace the implementation uses. 
+
+
+\typewriter{bterr_NoSuchMode}		bt_Open() was called with an invalid 
+file-opening mode. 
+
+
+\typewriter{bterr_BTreeNotCurrVersion}	The b-tree is a different version than 
+the one this implementation is designed to handle. 
+
+
+\typewriter{bterr_BTreeDamaged}\formatnote{		}A b-tree file is damaged. 
+
+
+\typewriter{bterr_NotOpeningRoot}\formatnote{	}File given to 
+\typewriter{bt_Open()} is not the root of a b-tree. 
+
+
+\typewriter{bterr_NoLockPermission}\formatnote{	}Caller has insuffiient 
+permissions to lock a b-tree file. 
+
+
+\typewriter{bterr_CursorTreeDamaged}	\italic{internal error}
+
+
+\typewriter{bterr_IntermediateNameTooLong}	Internally-generated name of a 
+b-tree file is too long. 
+
+
+\typewriter{bterr_NotAtKey}		B-tree cursor is not pointing at a key. 
+
+
+\typewriter{bterr_NoNextKey}		Tried to find the next key in the b-tree, but 
+there isn't one. 
+
+
+\typewriter{bterr_EmptyTree}		The b-tree is empty. 
+
+
+\typewriter{bterr_InternalInconsistency}	The b-tree is internally 
+inconsistent. 
+
+
+\typewriter{bterr_OpenReadOnly}		A write operation was attempted on a b-tree 
+that was opened read-only. 
+
+
+\typewriter{bterr_NoDuplicateInsert}	Key to insert in the b-tree is already 
+present. 
+
+
+\typewriter{bterr_ModifyKeyMissing}	Key to replace or delete is not in the 
+b-tree. 
+
+
+\typewriter{bterr_ValueTooLarge}	Value (data) for insertion in the b-tree is 
+too large. 
+
+
+\typewriter{bterr_IllegalKey}		Key is of zero length. 
+
+
+\typewriter{bterr_OldValueDifferent}	Old Value is different from specified 
+Value. 
+
+
+\typewriter{bterr_UninitializedCursor}	Cursor not initialized in 
+\typewriter{bt_NextCursor()}. 
+
+}}
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1695,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,539016412}

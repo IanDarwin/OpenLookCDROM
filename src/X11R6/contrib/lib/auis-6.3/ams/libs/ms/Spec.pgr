@@ -1,0 +1,505 @@
+\begindata{text,538478712}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\chapter{1	The Spec File Programming Language}
+
+
+\section{1.1	About this Document}
+
+
+Everything in this chapter has been made obsolete by a Lisp-like language 
+called Flames, the Filtering Language for the Andrew MEssage System.  A 
+document describing Flames is in:
+
+
+/usr/andrew/doc/ams/Flames.pgr
+
+
+This document is about Spec and is written for people who already have spec 
+files and want to know how they work, in hope that it might help in 
+translating the spec files into Flames.   People have found, though, that it 
+is easier to forget about Spec entirely and just re-write their Mailbox 
+processing files in Flames.
+
+
+If you are using EZ to read this document, you can open an interactive Table 
+of Contents window by choosing \bold{Table of Contents} from the \italic{Page} 
+menu card.  Clicking on a heading in the Table of Contents window that appears 
+scrolls this document to bring the heading into view.
+
+
+\begindata{bp,539690888}
+\enddata{bp,539690888}
+\view{bpv,539690888,1566,0,0}
+\section{1.2	About Spec Files}
+
+
+Spec files are files which contain programs, in a very idiosyncratic language, 
+which describe how messages in a mailbox are to be placed into message 
+directories.  In general, the spec file for a mailbox should be stored as 
+".MS.spec" in the parent of the mailbox directory.  However, you can debug 
+spec files stored in other locations, using the cui "check" command ("check 
+<mailbox> <specfile>").  It is strongly recommended that you debug your new 
+spec files for working message domains by using a test directory as your 
+mailbox and some other file as your spec file, using the "check" command, 
+rather than by simply putting your changes into the deployed spec file and 
+seeing what happens.
+
+\begindata{bp,539690568}
+\enddata{bp,539690568}
+\view{bpv,539690568,1567,0,0}
+\section{1.3	The Spec File Language Structure}
+
+
+The spec file language is a stack-oriented language.  If you don't know what a 
+stack is, give up now.  Really.  Just give up.  Or at least, go read an 
+introductory computer science text and find out what a stack is.  You will be 
+utterly unable to program in this language if you don't understand what a 
+stack is.
+
+
+The spec file language is also a terrible language.  It was intended as only 
+an interim language, to get the bboards running until a serious programming 
+language (Flames) could be put in its place.  
+
+
+Most operations are performed on the top of the stack, but the language is not 
+that consistent; some are performed via arguments after the command name. 
+ Think of each command as an idiosyncratic language of its own, and you'll be 
+on the right track.
+
+
+As of ms version 3.21 (corresponding to messages 3.5 and cui 3.15), it is 
+impossible for a spec file to put the same message in a directory more than 
+once.  That is, if you put the following two lines in a spec file, the second 
+line will be ignored:
+
+\example{
+$addtodir /foo/bar/baz
+
+$addtodir /foo/bar/baz
+
+}
+The program is always run\italic{ implicitly} over a single message.  That is, 
+your program is run once for each message in the mailbox, and since it only 
+deals with one message at a time, it never needs to mention that message by 
+name.  The message is just magically \italic{there}.  Like the language 
+itself.
+
+
+Good luck.
+
+\begindata{bp,539690504}
+\enddata{bp,539690504}
+\view{bpv,539690504,1568,0,0}
+\section{1.4	The Spec File Language Syntax}
+
+
+Leading white space (spaces and tabs) in a spec file program line will be 
+ignored.  All other white space is highly significant, often in ill-defined 
+ways.
+
+
+Every line in the spec file is interpreted as a command.  If a line begins 
+with a dollar sign ("$"), it is a special command; otherwise, it is 
+interpreted as an implicit "push" command, and the line is simply pushed onto 
+the stack.
+
+
+One special command is the "$#" command.  This is the comment command.  It 
+must be followed by a space, but everything after that is ignored.  You can 
+use it for comments.  You should do so.  You will need them.
+
+
+Here are the remaining commands, for what they're worth:
+
+\description{
+'$bogus' -- this is a pre-defined invalid command.  I cannot imagine why 
+anyone, including me, would ever want this command, since it behaves exactly 
+like any other invalid command.  That is, badly.
+
+
+'$$ <arg>' -- this command can be used to push a line onto the stack if it 
+begins with a dollar sign, but only if the dollar sign is followed by a space. 
+ That is, "$$ foo" will push "$ foo" onto the stack, but "$$foo" will give you 
+an error.  As far as I can tell, this is useless too.  (You can tell I had fun 
+deciding which commands to document first.)  If you really want to push 
+something literally, use the $push command.
+
+
+'$# <comment' -- this is the comment command.  Comments must all start with 
+"$# " and cannot be on the same line as a command.  Pretty neat, huh?
+
+
+'$push <literal>' -- this can be used to push anything onto the stack, even if 
+it starts with a dollar sign, even if it the dollar sign is not followed by a 
+space.   Mind-boggling.
+
+
+'$pop <n>'  -- this command will pop n items off the stack, effectively 
+throwing them away.  If n is not supplied, or if the argument to pop is 
+non-numeric, one item will be popped.  (Thus a cryptic spec file could 
+deliberately say "pop ten" or "pop until you're blue in the face", instead of 
+"pop 1".  Security through obscurity.  Isn't that a great feature?)
+
+
+'$clear' -- this command clears the stack.
+
+
+'$exec' -- this command pops the top element of the stack and treats it as a 
+command in the spec file language.  This was added to help make sure that the 
+language was Turing equivalent, a very important feature if you want to use 
+spec files to solve the Tower of Hanoi puzzle.
+
+
+'$stop' -- this command tells the server that whatever else it believes, it is 
+done reading the spec file.   There is an implicit '$stop' command at the end 
+of every spec file, so you don't need one there.
+
+
+'$header <name>' -- This command pushes  the contents of the named header onto 
+the stack.  Thus if you say '$header to', the contents of the message's "To:" 
+header will be pushed on to the stack.  If there is no such header, the null 
+string will be pushed.  The header name you give should be all lower case, and 
+the comparison will then be performed in a case-insensitive manner.  If you 
+have any upper case letters in the header name of the $header command, you 
+lose.  For sure.
+
+
+'$lcheader <name>' -- Well, hmm, $header didn't do quite what I wanted, so we 
+now have $lcheader.    It is just like $header, except it maps the entire 
+contents of the header to lower case before pushing it onto the stack.
+
+
+'$dupheaders <name>' -- Well, hmm, what if there are two or more headers with 
+the same name?  For example, you often see messages with two or more 
+"Received:" headers.  What if you want all of them?  This command will act 
+just like $header, except that it will get all such headers, putting the 
+contents of each onto the stack in one giant string, separated by commas.  
+
+
+'$lcdupheaders <name>' -- Well, hmm, that wasn't quite it either.  This one is 
+just like $dupheaders, except that it maps the contents to lower case before 
+pushing them onto the stack.
+
+
+'$lcsendingheaders' -- Well, it was a pain to look at all the different 
+headers that might be relevant to a piece of mail's specified destination 
+address.  So this pushes, in one giant string, the combined contents 
+(separated by commas) of the "To", "CC", "Apparently-To", and "Resent-To" 
+headers onto the stack, mapped to lower case.  Note that there is no 
+"$sendingheaders" command, only "$lcsendingheaders".  This is not a bug, I 
+really felt the world would come to an end if I implemented a 
+"$sendingheaders" command.
+
+
+'$extractmaps <prefix>' -- You're gonna love it.  This one takes whatever is 
+on the stack -- presumably the result of one of the many variations on the 
+$header command -- and looks through it for addresses beginning with the 
+specified prefix.  (No, Craig, it does not use the parsing library to 
+correctly separate the addresses.)  It then pushes back onto the stack the 
+portions of the matching addresses which trail the prefix.  Is that clear? 
+ No?  Well, how about an example?  Okay.  If the top of the stack is 
+"bb#foo.bar, yellow.rose.of.texas, bb#mumble.frob", and you execute the 
+command "$extractmaps bb#", then the old top of the stack is popped, and the 
+new string pushed onto the stack is "foo.bar, mumble.frob".  Just what you 
+wanted.
+
+
+'$extractliberally <prefix>' -- Even better.  This is just like extractmaps, 
+except that it treats spaces, right parentheses, newline, and semi-colons the 
+same way it treats commas -- as delimiters between objects which might be the 
+names of bboards to post on.  
+
+
+'$authuser' -- This will push the user id of the authentic sender onto the 
+stack.  This does NOT look at the From or related headers, but only at the 
+Vice authentication values and the delivery system's authentication traces. 
+ If this pushes a user id onto the stack, you can really believe it.  If the 
+user was unauthenticated, the string "<UNAUTHENTICATED>" will be pushed.  If 
+the user was root or a non-local user, the string "root" will be pushed.  If 
+the numeric user id is not in /etc/passwd, then the string "<UNKNOWN USER>" 
+will be pushed.
+
+
+'$nonempty'  -- this command will push a 1 onto the stack if the stack is not 
+empty and the top element is not the null string, otherwise it will push a 
+zero.   It will NOT pop the top of the stack, so that the value you are 
+checking for non-emptiness will remain where it was.
+
+
+'$contains' -- this command will push a 1 onto the stack if the top element of 
+the stack contains the next-to-top element as an exact substring.  Both 
+elements are removed from the stack.
+
+
+'$containsoneof' -- this command will push a 1 onto the stack if the top 
+element of the stack contains any word in the next-to-top element on the stack 
+as an exact substring.  Both elements are removed from the stack.  "Words" for 
+this purpose are separated by spaces.  
+
+
+'$if <label>', '$else <label>', '$endif <label>' -- The "$if" command pops the 
+top of the stack and checks to see if, when viewed as an integer via the C 
+library's atoi function, it is non-zero.  If it is non zero, then execution 
+continues; however, if a matching $else clause is reached, execution skips 
+down to the matching $endif clause.  If the top of the stack was zero, 
+execution skips down to the next matching $else or $endif clause.  Failure to 
+have a matching $endif clause will get you a syntax error and generally 
+horrible behavior; $else clauses are optional.  The language does NOT check 
+that all if/else/endif statements are balanced; however, it DEMANDS exact 
+matching of the labels.  White space is crucial, of course.
+
+
+'$default <full directory path name>' -- This specifies the name of the 
+deafult directory to which all messages should be added.  If your whole spec 
+file runs and doesn't execute any of the $addtodir or $headermap family of 
+commands (see below), it will be added to the default directory.  If you don't 
+specify a default directory, and you don't explicitly assign the message to 
+any directories, and it isn't rejected (see below) it will be left in the 
+mailbox and you'll get a totally cryptic error message.
+
+
+'$addtodir <full directory path name>' -- This adds the named directory to the 
+list of directories to which the message will be added.  The message will not 
+actually be added to the directory until the spec file is done running.  Thus 
+you can undo the effect of your addtodir commands later with the $zerolist 
+command (see below).  Be warned that if you try to add to more than a certain 
+number of directories, the message will automatically be rejected, either to 
+the sender or the $rejectionsto address (see below).  However, if you try to 
+add to a non-existent directory with $addtodir, there will not be a rejection, 
+merely an error.
+
+
+'$headermap <createlevel> <prefix>' -- This one is really great.  This pops 
+the top string on the stack and treats it as a list of directories to add 
+things to, separated by commas.  Believe it or not, this is often what is 
+there, as a result of the extractmaps command or in predefined headers like 
+"Newsgroups" for netnews.  For each item on the list, it adds the directory 
+named by concatenating the item to the prefix onto the list of directories to 
+post the message on.  It maps periods to slashes before doing so.  Thus, for 
+example, if the top of the stack is "foo.bar, hello.goodbye, yes", and prefix 
+is "/cmu/itc/bb/.MESSAGES", then the three directories 
+"/cmu/itc/bb/.MESSAGES/foo/bar", "/cmu/itc/bb/.MESSAGES/hello/goodbye", and 
+"/cmu/itc/bb/.MESSAGES/yes" are added to the directory addition list 
+\italic{if they exist.} If they don't exist, then the existence of its 
+putative parent is checked (e.g. "/cmu/itc/bb/.MESSAGES/foo") is checked.  If 
+that parent does not exist, the message is rejected to the sender or the 
+$rejectionsto address (see below).  If the parent does exist, then the 
+createlevel parameter comes into play.  If createlevel is less than zero, the 
+message is rejected.  If createlevel is greater than or equal to zero, then 
+the program will determine how many levels below the prefix the message 
+directory to be created actually is.  This value is called the 
+\italic{LevelCount.}  If it is a direct subdirectory of the prefix directory, 
+for example, then it has LevelCount == 0.  If it is one level down from that, 
+it has LevelCount == 1, and so on.  If the createlevel specified in the 
+$headermap is greater than the LevelCount, then the message will be rejected; 
+otherwise the new directory will be created.  Got that?
+
+
+'$oneheadermap <createlevel> <prefix>' -- This is the same as the $headermap 
+command, except that only the first word of the string on the stack will be 
+looked at.  This is for use with the CS and CC bboards, which indicate which 
+bboard things go on with an "Attention: foobar bboard".  $oneheadermap 
+specifically ignores the "bboard" in such lines.
+
+
+'$oneheadermapwithextra <createlevel> <prefix>' -- This is another really good 
+one.  It is just like $oneheadermap, except that it performs one extra action. 
+ (But wait, that's not all.)  Should I tell you what that extra action is? 
+ Sure, why not.  What it does is to look on the stack for two more things 
+(beneath the header it is parsing), which will be interpreted as a prefix and 
+a suffix for a new header to be added to the message.  In between the prefix 
+and suffix will go the name being mapped.  Is that clear?  For example, 
+imagine the following hypothetical spec file:
+
+
+\typewriter{\leftindent{@andrew.cmu.edu
+
+Think-On-These-Things: bb#
+
+foobar bboard
+
+$oneheadermapwithextra 0 /cmu/itc/bb/.MESSAGES
+
+}}
+         Then, if the /cmu/itc/bb/.MESSAGES/foobar directory really exists, 
+the message will be posted there, but first it will have a new header spliced 
+onto the front of it.  The new header will be named "Think-On-These-Things", 
+and will have as its contents "bb#foobar@andrew.cmu.edu".  This command is not 
+currently in use for anything that I know of, and therefore if it doesn't work 
+right you can fix it yourself.  Its original purpose is now achieved with the 
+$buildwidemap command (see below).
+
+
+'$resend <address>' -- This causes the message to be remailed to the address 
+given.  If any resends are done, then it doesn't matter if there are 
+rejections or addtodirs or anything else -- the message will be considered to 
+have been successfully processed.  The server will add in ReSent-Date, 
+ReSent-To, and ReSent-From headers appropriately.
+
+
+'$tracelessresend <address>' -- Same as $resend, but omits the "Resent-XXX" 
+headers.
+
+
+'$reject <message>' -- This causes the message to be rejected, either to the 
+sender or the $rejectionsto address (see below).  An automatic rejection 
+message is composed, with the special message specified on the command line as 
+a part of it.  \bold{IMPORTANT NOTE}:  processing continues after the $reject 
+command.  You should follow it with a $stop command if you want to just give 
+up at this point.  Note also that some rejections happen automatically, either 
+via the $headermap family of commands, or if you try to add to too many 
+directories, or probably other times as well.
+
+
+'$zerolist' -- This zeroes the list of directories to add the message to, 
+regardless of any previously executed commands of the $addtodir or $headermap 
+family.  It does not zero the list of rejections -- rejections are sent out 
+the moment the $reject command.
+
+
+'$unformat' -- If the message is in some version of the BE2 datastream, this 
+runs it though the unformatter and turns it into a message readable on any old 
+system anywhere.
+
+
+'$addhead <complete header>' -- This splices a new header onto the message. 
+ For example, "$addhead Foo: bar" adds a "Foo: bar" header to the message.
+
+
+'$delhead <header name>' -- Deletes the *first* occurrence of the named 
+header.
+
+
+'$buildwidemap <prefix> <suffix>' -- This is used to build an 
+X-Andrew-WideReply header (see the section on Magic Headers, below), with the 
+appropriate prefix and suffix.  It uses the current set of directories to add 
+to.  For example, if the current set of directories to add to is 
+"/cmu/itc/bb/.MESSAGES/foo/bar",  "/cmu/itc/bb/.MESSAGES/foo/maybe",  and 
+"/cmu/itc/bb/.MESSAGES/foo/hello",  then if you execute the command 
+"$buildwidemap foo# @andrew.cmu.edu", then the message will have the following 
+new header spliced into it:  "X-Andrew-WideReply: foo#foo.bar@andrew.cmu.edu, 
+foo#foo.maybe@andrew.cmu.edu, foo#foo.hello@andrew.cmu.edu,".A nice, 
+general-purpose command.  It does nothing if the set of directories to add to 
+is empty when it is executed.
+
+
+'$buildnewsgroups <prefix>' -- this is similar to $buildwidemap, except that 
+it builds a newsgroup instead of a wide reply header, and it has no suffix, 
+and instead of adding on the prefix it strips it out.  Thus, with the example 
+in the section on $buildwidemap, then "$buildnewsgroup foo/" will cause the 
+following header to be added to the message:  "Newsgroups: bar, maybe, hello". 
+ Note that you have to use slashes instead of periods.  Nice, huh?  Also, it 
+will add on a "Path" header with the appropriate path for netnews.  
+
+
+'$rejectionsto <address>' -- This simply sets the address to which rejections 
+should be mailed.  By default, they are mailed back to the sender.  In any 
+event -- whether or not you explicitly set a $rejectionsto address -- a copy 
+of each rejected message will be sent to the address "Bboard.Maintainer" at 
+the local site, unless you have used the $rejectcc command.  This address can 
+also be set to the full path of a message folder, in which case the message is 
+simply placed there with an "X-Rejection-Message" header explaining how it got 
+there.
+
+
+'$rejectcc <address>' -- This sets the "cc" address for rejections to be 
+something other than "Bboard Maintainer", which is the default.
+
+
+'$maphashtoplus' -- This tells the spec file interpreter to turn every "#" on 
+the stack or in command arguments into a "+".  
+
+
+'$mapplustohash' -- This tells the spec file interpreter to turn every "+" on 
+the stack or in command arguments into a "#".  
+
+
+'$preservehashandplus' -- This undoes the effect of either of the two previous 
+commands.
+
+
+'$dotstohyphen' -- Takes whatever is on top of the stack, turns all periods 
+('.') into hyphens ('-'), and puts the result back on the stack.
+
+
+'$relax' -- Says that if the result of an extractmaps or whatever includes 
+some good directories and some bad ones, the bad ones should simply be 
+ignored, rather than having the message be rejected.
+
+
+'$namelesscaption' -- Says that on all *ensuing* directory insertions in this 
+spec file execution, the caption will be built without a "From" part and with 
+a much longer "Subject" part.}\description{
+
+\begindata{bp,539690440}
+\enddata{bp,539690440}
+\view{bpv,539690440,1569,0,0}}
+\section{1.5	Debugging Spec Files}
+
+
+Don't make me laugh.
+
+
+Seriously, it is a black art, but there are a few things you can do.  The 
+normal failure mode is for the cui library to report to you that "<n> messages 
+could not be processed.".  Period.  However, you can get some debugging 
+information by running cui or cuin, typing "set level wizard", and then typing 
+"set debug 0 0 0 -1 0 0 1".  (The last 1 should be a zero if you're running 
+cuin.)  See the cui documentation if you want to know what it means.  Then try 
+your "check" command again, and watch the output.  Near the end, you will see 
+a line of the form "Returning error code 147 32 21".  The error codes may be 
+looked up in the file andrew/ams/ms/mserrno.h, with explanatory texts in 
+amserr.c in the same directory.  You may also be able to tell something (who 
+knows what) from the other debugging output.   The relevant code is in 
+choosedirs.c, in the same source directory.  Lotsa luck.
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1571,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,538478712}

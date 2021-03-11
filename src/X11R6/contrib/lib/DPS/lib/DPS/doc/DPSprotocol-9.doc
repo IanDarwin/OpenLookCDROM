@@ -1,0 +1,702 @@
+Display PostScript System Protocol Extension to X
+
+Revision Wed Jun  2 14:43:22 1993
+
+VERSION 9
+
+Copyright 1988-1993 Adobe Systems Incorporated.
+Portions Copyright 1988, 1989 Digital Equipment Corporation.
+
+Permission to use, copy, modify, and distribute this software and
+its documentation for any purpose and without fee is hereby granted,
+provided that the above copyright notices appear in all copies and
+that both those copyright notices and this permission notice appear
+in supporting documentation, and that the names of Adobe Systems
+Incorporated and Digital Equipment Corporation not be used in
+advertising or publicity pertaining to distribution of the software
+without specific, written prior permission.  Adobe Systems Incorporated
+and Digital Equipment Corporation make no representations about the
+suitability of this software for any purpose.  It is provided "as is"
+without express or implied warranty.
+
+ADOBE SYSTEMS INCORPORATED AND DIGITAL EQUIPMENT CORPORATION DISCLAIM
+ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL ADOBE
+SYSTEMS INCORPORATED AND DIGITAL EQUIPMENT CORPORATION BE LIABLE FOR
+ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
+OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+Author: Adobe Systems Incorporated and Digital Equipment Corporation
+
+---------------------------------------------------------------------
+
+This document describes the protocol that the Display PostScript
+system extension to the X Window System uses between the X/DPS client and
+server.
+
+The reader is assumed to have read the Display PostScript system
+documentation, particularly the PostScript Language Reference Manual,
+Second Edition, and is assumed to be familiar with the concepts of spaces
+and contexts and the binary encodings of the PostScript language.  Also,
+refer to the C header files XDPS.h and XDPSproto.h for the opcodes and C
+language data structure definitions.
+
+Kinds of id's for contexts and spaces:
+
+	ContextXID	XID	used between Xlib & server
+	SpaceXID	XID	used between Xlib & server
+	ContextPSID	INT32	defined by PostScript language, identifies
+				a context
+
+Common types:
+
+	PSContextStatus: { error, running, needsInput, zombie, frozen }
+
+	error		0, could not reply to status request
+	running		1, context is runnable
+	needsInput	2, context needs input to continue running
+	zombie		3, context is dead, but its X resources remain
+	frozen		4, context was frozen by PostScript language program
+
+Requests:
+
+    XPSInit
+     libraryversion :	CARD32
+   
+	==>  serverversion: CARD32 (int)
+	     preferredNumberFormat: CARD32
+			{ DPS_HI_IEEE, DPS_LO_IEEE,
+			  DPS_HI_NATIVE, and DPS_LO_NATIVE}
+	     floatingNameLength: CARD32
+	     floatingName: STRING8
+
+        Errors: Match
+
+	DPS_HI_IEEE = 128, DPS_LO_IEEE = 129, DPS_HI_NATIVE = 130,
+	DPS_LO_NATIVE = 131
+
+ 	Get information from the server so that the client can
+ 	initialize itself for DPS usage.  The server replies with
+	information about the number format (integer and floating
+ 	point) that it is capable of handling.  This request should be
+ 	used only once per client per connection (Display) before
+ 	any other DPS requests are made.
+
+	libraryversion is a number identifying the XDPS extension
+	protocol version implemented by the client library.
+
+	serverversion is a number identifying the XDPS extension
+	protocol version implemented by the server.  This document
+	specifies protocol version 9.
+
+	The server must, and client should be free to, "downgrade"
+	itself to match the version of the other.  Example:  client is
+	version 1, server is version 5.  Server sees client's number
+	and returns 1, implying that it won't do anything outside of
+	the original 1 protocol.  Example: client is 5, server is 1.
+	Server rejects the XPSInit request with a (Bad)Match error.  The
+	client can reconnect and say it is downgrading to an earlier
+	version until the server accepts, in this case, when the client
+	sends 1.
+
+	For preferredNumberFormat, the HI/LO refers to high byte first,
+	low byte first. The IEEE/NATIVE is the format of real numbers.
+	The client can use the byte order it prefers and may always
+	send floating point numbers in IEEE mode. If the floatingName
+	reported by the server matches the floating point format of the
+	client, then both may communicate using that format, which may
+	be a native format like "VAX".  Otherwise, they must
+	communicate using IEEE format.  As long as a server
+	supports IEEE, it is compliant, regardless of which (if any)
+	native format it supports.
+	
+	Currently, the defined floatingName strings are (not
+	including the double-quotes):
+	
+	floatingName	floatingNameLength	Description
+	"IEEE"		4			IEEE 754 Standard 1985
+	"VAX"		3			Digital Equipment Corp. VAX
+						single precision
+						floating point format
+	
+	The preferredNumberFormat codes mean:
+	CODE		SERVER'S NUMBERS	SERVER'S FLOATS
+	------------------------------------------------------------------
+	DPS_HI_IEEE	high byte first		IEEE
+	DPS_LO_IEEE	low byte first		IEEE
+	DPS_HI_NATIVE	high byte first		not IEEE, see floatingName
+	DPS_LO_NATIVE	low byte first		not IEEE, see floatingName
+	
+	The server will reply with the string "IEEE" if the
+	preferredNumberFormat is one of DPS_HI_IEEE or DPS_LO_IEEE.
+	floatingNameLength is the length of the floatingName string
+	in characters.
+	
+	By default, the context will output binary data in the number
+	format that server replied with.  The client can change the
+	format by sending PostScript language to the context.
+
+	Byteswapping is the responsibility of the server.
+
+	This request must be made before any other DPS request.
+
+
+
+   XPSCreateContext
+		cxid:	ContextXID
+	     	sxid:	SpaceXID
+	    drawable:	DRAWABLE
+	          gc:	GC
+	         x,y:	Int16
+	   eventmask:	CARD32
+	        cmap:	Colormap (XID)
+      redmax,redmult:	CARD32
+  greenmax,greenmult:	CARD32
+    bluemax,bluemult:	CARD32
+           colorbase:	CARD32
+    graymax,graymult:	CARD32
+            graybase:	CARD32
+              actual:	CARD32
+
+	==>    cpsid:	ContextPSID
+
+	Errors:	Drawable, Context, Space, GC, Value, IDChoice, Match,
+		Alloc, Access
+		
+	Creates an interpreter context, and associates it with the
+	ContextXID cxid.  sxid is the SpaceXID for the space to use
+	with this context.  If sxid is either not in the range assigned
+	to the client, or is already in use as anything but a space,
+	the server reports an IDChoice error.  Otherwise, if sxid does
+	not already represent a space, the server creates a new space
+	and associates it with sxid.
+
+	The request fails if the drawable or GC doesn't exist, or if
+	cxid already exists, or if sxid already exists and is
+	not a space.  If the GC and drawable are not on the same
+	screen, or their depths are not the same, a Match error is
+	generated.
+
+	If redmult is 0, then all of redmult, redmax, greenmult,
+	greenmax, bluemult, bluemax, and colorbase are ignored, and
+	all output to the display will be done in shades of gray.
+	If graymult is 0, then graymax and graybase are ignored.
+ 	Note that only a valid gray ramp need be specified to allow
+ 	imaging to occur.  A color cube is optional.  On the other hand,
+ 	specifying a color cube without a valid gray ramp is a Value error.
+ 	If both a color cube and gray ramp are specified, the client
+ 	may use grays from the gray ramp as entries in the color cube
+ 	to conserve color map entries.
+
+ 	If drawable or GC is None, or graymult is 0, or if
+	the given drawable or GC later gets destroyed, then the context
+	will not generate any output to the display.  It will, however,
+	be able to interpret Postscript code, and will be able to
+	generate output to the display if it later gets assigned a
+ 	valid drawable, GC, and gray ramp (with color cube optional).
+
+	If actual is not None, then cmap cannot be None (else Cmap error).
+	If cmap is specified it must match the gc and drawable (if specified)
+	in depth, and if the drawable is a window, both must have the
+	same visual (else Match error).
+
+	The fields of the GC that will be used by the Postscript
+ 	extension are plane-mask, clip-mask, clip-x-origin,
+	clip-y-origin and subwindow-mode.
+
+	x and y are the offset from the drawable origin to the
+	DPS device space origin, expressed in the X coordinate
+	system. The dimensions of DPS device space want to be as
+	small as possible, generally larger than the physical display
+ 	size but smaller that the largest drawable, i.e. 2K x 2K
+	pixels. This offset lets DPS device space move around in
+	the drawable so that it can still be visible if the drawable's
+	origin relative to its ancestors change.  Standard behavior
+	is to map the DPS device origin to the lower left corner
+	of the drawable.
+
+	eventmask is reserved for future input extensions and should
+	be ignored.
+	
+	If cmap is specified, it will be checked for depth and visual
+	type.  A gray ramp (graymax, graymult, and graybase) and an
+	optional color cube (redmax, redmult, greenmax, greenmult,
+	bluemax, bluemult, and colorbase) define the entries in cmap.
+	If cmap is None, actual must be 0.
+	
+ 	actual is a hint to the extension that defines the number of
+	actual colors that the context is going to need.  This allows
+	applications to use exact, or pure device colors if supported
+	by the device and if free entries are available in the color
+	map.  If possible, the PostScript language extension will
+	allocate up to actual additional color map entries for use by
+	the context.  If the context specifies a color that is not in
+	the color map (either because the device ran out of color map
+	entries or 'actual' entries have already been allocated that
+	are *not* the color specified), then the PostScript language
+	extension will use halftoning based on the color cube and gray
+	ramp, and possibly any actual colors defined.
+	
+	The returned cpsid is the ContextPSID of the created context.
+	This integer is the PostScript language identifier for the
+	context.  It is *not* an XID.
+	
+	The created context has the following characteristics: It has
+	stdin and stdout streams associated with it.  The application
+	may put data on the stdin stream by sending XPSGiveInput
+	requests, below.  Data appearing on the stdout stream will be
+	sent as PSOutput events, merged with X's normal event stream.
+
+	When a context is started, it always executes the following
+	"start"	procedure:
+
+	  /start {
+	    (%stdin)(r) file cvx stopped {handleerror} if
+	    } def
+
+	This will execute PostScript language from stdin and, if an
+	error occurs, it will invoke the error handler and then destroy
+	the context.
+	
+	If a context is destroyed by the interpreter (e.g., by a start
+	routine that handles an error, as described above, NOT by a
+	protocol request to destroy the context), then the X resources
+	associated with the context will remain active until the client
+	disconnects from the server.  Furthermore, the context will be
+	a "zombie" and will report a zombie status event as an error in
+	response to XPSGiveInput, XPSNotifyContext, XPSReset, or
+	XPSGetStatus requests.
+	
+	For protocol version 9 or later, an Access error will occur
+	if the SpaceXID specified was created as a "secure" space.
+	See XPSCreateSecureContext for further details.
+
+
+    XPSCreateSpace
+	     sxid:	SpaceXID
+
+	Errors: Space, IDChoice, Alloc
+
+	Creates a new space, and associates it with the given sxid.
+
+	It is an error if the sxid already exists.
+
+	The created space does not have a context in it until the
+	client creates one.	
+
+
+
+    XPSGiveInput
+		cxid:	ContextXID
+		data:	STRING8
+
+ 	Errors: Context
+
+	Puts data into cxid's stdin queue.  data can be PostScript
+	language in any format (ASCII, binary tokens, binary object
+	sequences), or it can be arbitrary data for consumption by
+	a context.
+
+	Note that sending input to a context doesn't necessarily mean that
+	input will be executed immediately; it merely adds the given
+	text to a queue of pending input for that context.  In particular,
+	further X requests sent to that drawable may be executed before the
+	context finishes executing.  However, the context is guaranteed
+	to execute its Postscript in the order given.
+
+	If it is important that the context finish executing before
+	further X requests are processed, then the XPSGetStatus (below)
+	can be used to sync the input stream.  When XPSGetStatus returns
+	needsInput, then all of the Postscript has been executed.
+
+	The Postscript code can cause data to appear on the context's output
+	stream.  This data will be sent back as PSOutput events.
+
+
+    XPSGetStatus
+		cxid:	ContextXID
+
+	==> status: PSContextStatus
+
+ 	Errors: Context
+
+	Returns the current status of the given context.
+	
+	The information for generating status events is kept on a
+	per-client, per-context basis.
+
+	One use for this request is to allow a separate utility
+	application to find runaway contexts.  This can also help do
+	sync's, so that we won't send further X requests to the context's
+	drawable until we know the context has finished executing its
+	Postscript language.
+
+	An invalid ContextXID will cause a Context error.  Note
+	that if the context is in a state that is not running,
+	needsInput, frozen or zombie, the returned status
+	will be "error", even though the context may be alive
+	and well.  For example, if an XPSGetStatus request
+	is made just after a context is created, but before it is run,
+	the error status is returned.  As soon as the output stream is
+	cleared, the context can go to a "normal" status, such as
+	running.
+
+
+    XPSDestroySpace
+	     sxid:	SpaceXID
+
+ 	Errors:	Space
+
+	Destroys the given space, and all contexts associated with it.
+
+
+    XPSReset
+		cxid:	ContextXID
+
+	Errors: Context
+
+	Puts an end-of-file (EOF) marker on the context's input
+	stream.  This may be used by the context to recover from
+	PostScript language errors, discard buffered input or output,
+	and return the context to a known state.  It may also
+	be used to send an EOF to an operator that depends upon
+	reading an EOF to terminate.
+
+	Incorrect usage of XPSReset will cause the context to die.
+	Do not use XPSReset unless the context is prepared to handle
+	an EOF.  Using XPSReset on a dead context will generate
+	a zombie event (see XPSSetStatusMask).
+	
+
+    XPSNotifyContext
+		cxid:	ContextXID
+      		type:	CARD8  (kill, interrupt, unfreeze)
+
+
+    	Errors:	Context, Value
+    	
+    	kill = 0, interrupt = 1, unfreeze = 2
+
+	Sends an out-of-band signal to the given context, and is useful
+	for handling runaway contexts.
+
+	If type is kill, then the context will be destroyed.  Any pending
+	input for the context will not be interpreted.
+
+	If type is interrupt, then the interrupt error will be generated in
+	that context.  Normal Postscript error-handling will occur.
+	Pending input remains, although the Postscript error-handler may
+	flush it.
+
+	If type is unfreeze, then a frozen context will resume normal
+	execution.  Sending an unfreeze notify to a context that is not
+	frozen is allowed, and has no effect on the context.
+	
+
+
+    XPSCreateContextFromID
+	       cpsid:	ContextPSID
+	       cxid :	ContextXID
+
+	==>  sxid:	SpaceXID
+
+	Errors: Context, Value, IDChoice
+
+	Tells the server that the resource cxid should be associated
+	with the interpreter context identifier cpsid.  Returns the
+	SpaceXID associated with the space to which the context
+	belongs.  cpsid may have come from the PostScript language
+	fork or currentcontext operators.
+
+	The purpose here is to provide a way for Xlib and the server to
+	communicate about a context that was created by another context
+	owned by the client.  It also associates the owning client with
+	the context, which determines where to deliver PSOutput
+	events.
+
+	It is a Value error for cpsid to be an invalid ContextPSID.  It
+	is a Context error for cxid to already exist.  It is an IDChoice
+	error if cxid is invalid, or already being used to identify
+	a different resource.
+
+	The initial drawable and GC for a forked context is the same
+	as the original one.  If drawable or GC is None, or if the
+	given drawable or GC later gets destroyed, then the context
+	will not generate any output to the display.  It will, however,
+	be able to execute code, and will be able to generate output to
+	the display if it later gets assigned a valid drawable and GC.
+
+	Output, including error messages, from a forked context that
+	has NOT been attached by a client via XPSCreateContextFromID
+	will be buffered, and will immediately cause the context to
+	stop running.  The context will not be able to continue running
+	until a client attaches to it.
+
+
+    XPSXIDFromContext
+	       cpsid:	ContextPSID
+
+	==>  cxid:	ContextXID
+	     sxid:	SpaceXID
+
+	Errors: Value
+
+	Returns the cxid and sxid corresponding to the given cpsid.  This is
+	useful if clients are trying to share contexts.
+
+	It is a Value error if the given cpsid is invalid.
+
+
+
+    XPSContextFromXID
+	       cxid :	ContextXID
+
+	==>  cpsid:	ContextPSID
+
+	Errors: Context
+
+	Returns the cpsid corresponding to the given cxid.  This is
+	useful if clients are trying to share contexts.
+
+ 	It is a Context error if the given cxid is invalid.
+
+
+    XPSSetStatusMask
+	       cxid :	ContextXID
+	  enableMask:	CARD32
+	 disableMask:	CARD32
+	    nextMask:	CARD32
+
+	Errors: Context, Value
+	
+		runningMask	0x0001
+		needsInputMask	0x0002
+		zombieMask	0x0004
+		frozenMask	0x0008
+
+	Establishes the status changed event mask for the context on
+	a per-client basis.  Three masks are specified, described
+	separately below.  Each mask is constructed by setting
+	the bits that correspond to the events of interest.  This
+	is most handily done by or'ing together the mask constants
+	defined for each event.  For all three mask values,
+	a bit set to 0 means "don't care".
+	
+	The enableMask describes those status change events
+	that the client is interested in seeing.
+	
+	The disableMask describes the status change events
+	that the client does not want to see.  Note that
+	a 1 bit in this mask means the corresponding event
+	is disabled.  Zeros are "don't care" values.
+	
+	The nextMask describes the status change events that the client
+	wants to see the next occurrence of, and then no more.  For
+	example, if the frozen bit is 1 in the nextMask, then the next
+	frozen event is sent to the client AND that event is
+	automatically disabled so that no further frozen events will be
+	seen by the client until a new XPSSetStatusMask request is sent
+	that enables frozen.  The bit need not be set in the enableMask
+	if it is specified in the nextMask, since the nextMask implies
+	enabling.
+	
+	Although the change to zombie status may be masked out
+	by setting the zombie bit of the disableMask, zombie
+	events that arise from sending a request to a dead
+	context may not be masked out.  See PSStatus below.
+	
+	The initial mask for each context is all events
+	disabled.
+
+ 	It is a Context error if the given cxid is invalid.
+ 	It is a Value error if the same bit is set to 1 in
+ 	more than one mask.
+	
+      ---- The following requests were added for Protocol 9 ----
+
+   XPSCreateSecureContext
+		cxid:	ContextXID
+	     	sxid:	SpaceXID
+	    drawable:	DRAWABLE
+	          gc:	GC
+	         x,y:	Int16
+	   eventmask:	CARD32
+	        cmap:	Colormap (XID)
+      redmax,redmult:	CARD32
+  greenmax,greenmult:	CARD32
+    bluemax,bluemult:	CARD32
+           colorbase:	CARD32
+    graymax,graymult:	CARD32
+            graybase:	CARD32
+              actual:	CARD32
+
+	==>    cpsid:	ContextPSID
+
+	Errors:	Drawable, Context, Space, GC, Value, IDChoice, Match,
+		Alloc, Access.
+
+	This request is identical in format to XPSCreateContext.  The
+	difference is that it creates a secure context, with an independent
+	local and global VM ("Method 1" in the PLRM-2e).  The SpaceXID
+	identifies the local VM.  Additional contexts may be created in
+	the local VM by using the same SpaceXID with
+	XPSCreateSecureContext, but this "secure" SpaceXID cannot be used
+	with XPSCreateContext, or else an Access error will occur.
+	Likewise, if an "unsecure" space is passed to XPSCreateSecureContext,
+	an Access error will occur.
+
+
+    XPSNotifyWhenReady
+	        cxid:	ContextXID
+	        val1:	INT32
+	        val2:	INT32
+	        val3:	INT32
+	        val4:	INT32
+
+	Errors:	Context
+
+	This request provides an out-of-band communication channel for
+	monitoring the progress of a context.  Assume that the data in
+	XPSGiveInput requests are buffered logically in a FIFO queue.
+	When the "ready" notification is received, a flag is appended to
+	the end of the queue.  Any XPSGiveInput requests received AFTER
+	the "ready" notification are appended to the end of the queue,
+	after the flag.  When the flag is consumed, a PSReady event is
+	generated with values set to val1 thru val4 as specified in the
+	request.  The context yields as if it had executed a "clientXready"
+	operator.  Thus it is guaranteed that a PSReady event will be
+	generated BEFORE the context consumes any input received AFTER
+	the notification.  Note that PSStatus events may also be generated
+	-- the order in which PSReady and PSStatus events are generated
+	is undefined.  Any number of ready notification flags may be
+	queued.  May generate a zombie status event if the context is
+	a zombie, and may return a Context error if the context XID
+	is bogus.
+
+	Applications should not use negative values for val1; these
+	are reserved for internal use by the Display PostScript System.
+	
+Events and event masks needed by DPS extension
+
+	PSOutput
+		type:	BYTE
+	      length:	CARD8
+      sequenceNumber:	CARD16
+		cxid:	ContextXID
+		data:   CARD8[24]
+
+	Reports output data from a context.  cxid is the context with
+	output data, length is the number of characters of data
+	(1-24), and data is the data itself.
+
+	This event is delivered only to the client which created the context.
+	It is not maskable.
+
+	Output for a forked context will block and not be delivered
+	anywhere until a ContextXID is associated with that context (using
+ 	XDPSCreateContextFromID).  At that time, the output will be
+	delivered to the client which created the ContextXID.
+
+
+	PSStatus
+		type:	BYTE
+	      status:	BYTE (error, running, needsInput, zombie, frozen)
+      sequenceNumber:	CARD16
+		cxid:	ContextXID
+
+	error = 0, running = 1, needsInput = 2, zombie = 3, frozen = 4
+
+	A status byte is returned in the length field of the event.
+	Notifies that the given context has changed to the given
+	status, or that an error has occurred.  Some of these
+	event types may be masked with XPSSetStatusMask.
+	
+	error is never generated asynchronously.  It is generated
+	only in reply to an XPSGetStatus request if the context
+	is in a state that is not described by the normal
+	set of events, i.e., running, needsInput, zombie or
+	frozen.  This event may not be masked.
+	
+	running indicates that the context is runnable.  This
+	event may be masked.
+	
+	needsInput indicates that the context is waiting for input.
+	This event may be masked.
+	
+	zombie indicates that the context has died (though the server
+	resource data for the context still lingers).  This
+	event may be masked.
+	
+	frozen indicates that the context has been frozen by
+	a PostScript language operator.  This event may be
+	masked.
+	
+	A zombie status event will be generated in response to
+	XPSGiveInput, XPSNotifyContext, XPSReset, or XPSGetStatus
+	requests sent to a context which is in the zombie state.  This
+	event indicates an error and may not be masked.
+
+      ---- The following event was added for Protocol 9 ----
+	
+	PSReady
+		type:	BYTE
+	         pad:	BYTE
+      sequenceNumber:	CARD16
+		cxid:	ContextXID
+		val1:	INT32
+		val2:	INT32
+		val3:	INT32
+		val4:	INT32
+
+	When a context executes a "clientXready" operator, this
+	event is immediately generated and flushed to the client.
+	The clientXready operator takes two forms
+		     int1   clientXready   --
+          [int1 ... intn]   clientXready   --
+	In the first form, val1 = int1, and all other values
+	are set to zero.  In the second form, "n" must be
+	between 1 and 4, inclusive.  For each integer in
+	the array, val1 = int1, val2 = int2, etc., until
+	all the values in the array are assigned.  If the
+	array length is less than 4, the remaining values
+	are set to zero.  The context yields (as if executing
+	a "yield" operator) when clientXready is executed.
+	
+	This event may also be sent in response to an
+	XPSNotifyWhenReady request with values.  It
+	indicates that the context has executed input
+	up to the point where the "ready" notification
+	was received.  The values are specified by the
+	request.  See XPSNotifyWhenReady for further details.
+	
+	Applications should not use negative values for the first
+	value; these are reserved for internal use by the Display
+	PostScript System.
+	
+Extension Errors
+
+	Context
+	
+	A bad context identifier was used in a request.
+	
+	Space
+	
+	A bad space identifier was used in a request.
+	
+      ---- The following error was added for Protocol 9 ----
+
+	Abort
+	
+	The DPS extension has encountered an unrecoverable
+	error and can no longer be used in this session.
+	The X server, however, continues to function.  This
+	error notifies clients that they should save critical
+	information, and then display an error message.  Once
+	DPS has aborted, this error will be generated for any
+	client that makes an extension request.  It will also
+	be generated for any clients waiting for a return
+	value.
+
+

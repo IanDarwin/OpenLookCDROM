@@ -1,0 +1,448 @@
+!!
+!! $RCSfile: Clock.uil,v $
+!!
+!! (c) Copyright 1992-1994 Adobe Systems Incorporated.
+!! All rights reserved.
+!! 
+!! Permission to use, copy, modify, distribute, and sublicense this software
+!! and its documentation for any purpose and without fee is hereby granted,
+!! provided that the above copyright notices appear in all copies and that
+!! both those copyright notices and this permission notice appear in
+!! supporting documentation and that the name of Adobe Systems Incorporated
+!! not be used in advertising or publicity pertaining to distribution of the
+!! software without specific, written prior permission.  No trademark license
+!! to use the Adobe trademarks is hereby granted.  If the Adobe trademark
+!! "Display PostScript"(tm) is used to describe this software, its
+!! functionality or for any other purpose, such use shall be limited to a
+!! statement that this software works in conjunction with the Display
+!! PostScript system.  Proper trademark attribution to reflect Adobe's
+!! ownership of the trademark shall be given whenever any such reference to
+!! the Display PostScript system is made.
+!! 
+!! ADOBE MAKES NO REPRESENTATIONS ABOUT THE SUITABILITY OF THE SOFTWARE FOR
+!! ANY PURPOSE.  IT IS PROVIDED "AS IS" WITHOUT EXPRESS OR IMPLIED WARRANTY.
+!! ADOBE DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL
+!! IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+!! NON- INFRINGEMENT OF THIRD PARTY RIGHTS.  IN NO EVENT SHALL ADOBE BE LIABLE
+!! TO YOU OR ANY OTHER PARTY FOR ANY SPECIAL, INDIRECT, OR CONSEQUENTIAL
+!! DAMAGES OR ANY DAMAGES WHATSOEVER WHETHER IN AN ACTION OF CONTRACT,
+!! NEGLIGENCE, STRICT LIABILITY OR ANY OTHER ACTION ARISING OUT OF OR IN
+!! CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.  ADOBE WILL NOT
+!! PROVIDE ANY TRAINING OR OTHER SUPPORT FOR THE SOFTWARE.
+!! 
+!! Adobe, PostScript, and Display PostScript are trademarks of Adobe Systems
+!! Incorporated which may be registered in certain jurisdictions
+!! 
+!! Author:  Adobe Systems Incorporated
+
+
+
+!!***************************************************************
+!! MODULE DECLARATIONS
+!!***************************************************************
+
+module ClockApp
+        version = 'v1.0'
+        names = case_sensitive
+        objects =
+        {
+                XmCascadeButton = gadget ;
+                XmPushButton    = gadget ;
+                XmSeparator     = gadget ;
+                XmToggleButton  = gadget ;
+        }
+
+
+!!***************************************************************
+!! PROCEDURE DECLARATIONS
+!!***************************************************************
+
+procedure
+        resizeWindow        ();
+	refreshWindow	    ();
+        createProc          (integer);
+        quitApp             ();
+        traceProc           ();
+        timingProc          ();
+        alarmProc           ();
+        optionSel           (integer);
+	dismissTimingBox    ();
+        
+!!***************************************************************
+!! VALUE DECLARATIONS
+!!***************************************************************
+
+value
+        cMainDrawArea       : 1;
+        cTraceToggle        : 2;
+        cTimingBox          : 3;
+        cTimingText         : 4;
+	cTimingButton       : 5;
+	cOptionButton0      : 6;
+	cOptionButton1      : 7;
+	cOptionButton2      : 8;
+        cOptionButton3      : 9;
+
+!!
+!! ADOBE FONTS
+!!
+value
+    hel_bold_font12 :
+      font('-adobe-helvetica-bold-r-normal--12-120-75-75-p-70-iso8859-1');
+    hel_bold_font14 :
+      font('-adobe-helvetica-bold-r-normal--14-140-75-75-p-82-iso8859-1');
+    hel_bold_font18 :
+      font('-adobe-helvetica-bold-r-normal--18-180-75-75-p-103-iso8859-1');
+    newcenturyschlbk_bold24 :
+      font('-adobe-new century schoolbook-bold-r-normal--24-240-75-75-p-149-iso8859-1');
+
+    dialogFont      : hel_bold_font12;
+    textFont        : hel_bold_font12;
+    labelFont       : hel_bold_font14;
+    buttonFont      : hel_bold_font14;
+    bigFont         : hel_bold_font18;
+    jumboFont       : newcenturyschlbk_bold24;
+
+
+!!
+!! general constant values
+!!
+value
+        vLabelOffset    : 7;    ! pixels
+        vFrameShadow    : XmSHADOW_ETCHED_IN;
+
+!!
+!! main window constant values
+!!
+value
+        vMainDrawHeight : 400;  ! pixels
+        vMainDrawWidth  : 400;  ! pixels
+
+        vMainMargin     : 20;   ! pixels
+        vMainSpacing    : 10;   ! pixels
+        vTimingMargin   : 10;   ! pixels
+
+        vLeftCenter     : 47;   ! percent
+        vRightCenter    : 53;   ! percent
+
+!!
+!! timing box constant values
+!!
+        vTimingHeight   : 200;  ! pixels
+        vTimingWidth    : 200;  ! pixels
+
+!!***************************************************************
+!! TOP LEVEL WIDGETS
+!!***************************************************************
+
+!!
+!! The main window widget.  This displays the pattern drawing.
+!!
+object MainWindow : XmMainWindow
+{
+    arguments
+    {
+        !!XmNbackground = color('yellow');
+    };
+    controls
+    {
+        XmMenuBar           mMenuBar;
+        XmForm              mMainForm;
+    };
+};
+
+!!***************************************************************
+!! Main window menu bar
+!!***************************************************************
+
+object mMenuBar : XmMenuBar           
+{
+    controls
+    {
+        XmCascadeButton mCommandButton;
+    };
+};
+
+object mCommandButton : XmCascadeButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+    };
+    controls
+    {
+        XmPulldownMenu mCommandMenu;
+    };
+};
+
+object mCommandMenu : XmPulldownMenu
+{
+    controls
+    {
+        XmToggleButton  mAlarmButton;
+        XmToggleButton  mTimingButton;
+        XmToggleButton  mTraceButton;
+        XmSeparator     {};
+        XmPushButton    mQuitButton;
+    };
+};
+
+object mAlarmButton : XmToggleButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+    };
+    callbacks
+    {
+        XmNvalueChangedCallback = procedure alarmProc ();
+    };
+};
+
+object mTimingButton : XmToggleButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+    };
+    callbacks
+    {
+        XmNvalueChangedCallback = procedure timingProc ();
+	MrmNcreateCallback = procedure createProc (cTimingButton);
+    };
+};
+
+object mTraceButton : XmToggleButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cTraceToggle);
+        XmNvalueChangedCallback = procedure traceProc ();
+    };
+};
+
+object mQuitButton : XmPushButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+    };
+    callbacks
+    {
+        XmNactivateCallback = procedure quitApp ();
+    };
+};
+ 
+!!***************************************************************
+!! Main window form
+!!***************************************************************
+object mBulletin : XmBulletinBoard
+{
+    arguments
+    {
+        !!XmNbackground = color('red');
+
+        XmNmarginWidth  = 0;
+        XmNmarginHeight = 0;
+    };
+    controls
+    {
+        XmForm          mMainForm;
+    };
+};
+
+object mMainForm : XmForm
+{
+    arguments
+    {
+        !!XmNbackground = color('green');
+    };
+    controls
+    {
+        XmDrawingArea   mDrawArea;
+    };
+};
+
+!!***************************************************************
+!! Main window drawing area
+!!***************************************************************
+object mDrawArea : XmDrawingArea
+{
+    arguments
+    {
+        XmNheight       = vMainDrawHeight;
+        XmNwidth        = vMainDrawWidth ;
+
+        XmNleftAttachment   = XmATTACH_FORM ;
+        XmNrightAttachment   = XmATTACH_FORM ;
+
+        XmNtopAttachment    = XmATTACH_FORM ;
+        XmNbottomAttachment = XmATTACH_FORM ;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cMainDrawArea);
+        XmNresizeCallback = procedure resizeWindow ();
+        XmNexposeCallback = procedure refreshWindow ();
+    };
+};
+
+!!***************************************************************
+!! Timing box top form
+!!***************************************************************
+object TimingBox : XmForm
+{
+    arguments
+    {
+        XmNhorizontalSpacing = vTimingMargin;
+        XmNverticalSpacing   = vTimingMargin;
+    };
+    controls
+    {
+        XmFrame     tOptionFrame;
+        XmLabel      tTimingText;
+	XmPushButton tDismissButton;
+    };
+};
+
+object tDismissButton : XmPushButton
+{
+	arguments
+	{
+                XmNfontList = buttonFont;
+		XmNbottomAttachment = XmATTACH_FORM;
+		XmNrightAttachment = XmATTACH_FORM;
+		XmNleftAttachment = XmATTACH_FORM;
+		XmNtopAttachment = XmATTACH_WIDGET;
+		XmNtopWidget = XmLabel tTimingText;
+	};
+	callbacks
+	{
+		XmNactivateCallback = procedure dismissTimingBox();
+	};
+};
+
+object tOptionFrame : XmFrame
+{
+    arguments
+    {
+        XmNshadowType           = vFrameShadow ;
+        XmNleftAttachment       = XmATTACH_FORM ;
+        XmNrightAttachment      = XmATTACH_FORM ;
+
+        XmNtopAttachment        = XmATTACH_FORM ;
+    };
+    controls
+    {
+        XmRowColumn     tOptionRowColumn;
+    };
+};
+
+object tOptionRowColumn : XmRowColumn
+{
+    arguments
+    {
+        XmNorientation      = XmVERTICAL;
+    };
+    controls
+    {
+        XmToggleButton  tOptionButton0;
+        XmToggleButton  tOptionButton1;
+	XmToggleButton  tOptionButton2;
+	XmToggleButton  tOptionButton3;
+    };
+};
+
+object tOptionButton0 : XmToggleButton
+{
+    arguments
+    {
+                XmNfontList = buttonFont;
+    };
+    callbacks
+    {
+        XmNvalueChangedCallback = procedure optionSel (0);
+	MrmNcreateCallback = procedure createProc (cOptionButton0);
+    };
+};
+
+object tOptionButton1 : XmToggleButton
+{
+    arguments
+    {
+                XmNfontList = buttonFont;
+    };
+    callbacks
+    {
+        XmNvalueChangedCallback = procedure optionSel (1);
+	MrmNcreateCallback = procedure createProc (cOptionButton1);
+    };
+};
+
+object tOptionButton2 : XmToggleButton
+{
+    arguments
+    {
+                XmNfontList = buttonFont;
+    };
+    callbacks
+    {
+        XmNvalueChangedCallback = procedure optionSel (2);
+	MrmNcreateCallback = procedure createProc (cOptionButton2);
+    };
+};
+
+object tOptionButton3 : XmToggleButton
+{
+    arguments
+    {
+                XmNfontList = buttonFont;
+    };
+    callbacks
+    {
+        XmNvalueChangedCallback = procedure optionSel (3);
+	MrmNcreateCallback = procedure createProc (cOptionButton3);
+    };
+};
+
+object tTimingLabel : XmLabel
+{
+    arguments
+    {
+        XmNalignment   = XmALIGNMENT_END;
+        XmNfontList    = labelFont ;
+        XmNmarginTop        = vLabelOffset;
+        XmNmarginBottom     = vLabelOffset;
+        XmNmarginLeft       = vLabelOffset;
+
+        XmNleftAttachment   = XmATTACH_FORM ;
+
+        XmNtopAttachment    = XmATTACH_WIDGET ;
+        XmNtopWidget        = tOptionFrame;
+        XmNbottomAttachment = XmATTACH_FORM ;
+    };
+};
+
+object tTimingText : XmLabel
+{
+    arguments
+    {
+        XmNfontList         = labelFont ;
+        XmNleftAttachment   = XmATTACH_FORM;
+        XmNrightAttachment  = XmATTACH_FORM ;
+        XmNtopAttachment    = XmATTACH_WIDGET ;
+        XmNtopWidget        = tOptionFrame;
+    };
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cTimingText);
+    };
+};
+
+!!***************************************************************
+end module;
+

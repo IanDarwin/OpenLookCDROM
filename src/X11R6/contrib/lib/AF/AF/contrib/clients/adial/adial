@@ -1,0 +1,135 @@
+#!/usr/local/bin/wish -f
+
+#-----------------------------------------------------------------------------
+# Make a text object with a scrollbar.  Return name of text object
+#-----------------------------------------------------------------------------
+proc mkText {w {pack {top filly}} {height 25} {width 80}} {
+	frame $w
+        pack append $w \
+                [scrollbar $w.scroll -relief flat -command "$w.text yview"] \
+                        {right filly} \
+                [text $w.text -bd 2 -relief raised -yscrollcommand "$w.s set" \
+                        -width $width -height $height -font "fixed" -wrap none] \
+                                {expand fill}
+
+        pack append [winfo parent $w] $w $pack
+        return $w.text
+}
+
+
+#----------------------------------------------------------------------------
+#  Create a frame and pack into its parent.
+#----------------------------------------------------------------------------
+proc mkFrame {w {pack {top expand fill}}} {
+	frame $w
+	pack append [winfo parent $w] $w $pack
+	return $w
+}
+
+#----------------------------------------------------------------------------
+#  Create a new button
+#----------------------------------------------------------------------------
+proc mkButton {w label command {pack {left padx 10 pady 10}}} {
+	button $w -text $label -command $command
+	pack append [winfo parent $w] $w $pack
+	return $w
+}
+#----------------------------------------------------------------------------
+#  Create a new menubutton
+#----------------------------------------------------------------------------
+proc mkMenubutton {w label menu {pack left}} {
+	menubutton $w -menu $menu -text $label
+	pack append [winfo parent $w] $w $pack
+	return $w
+}
+
+#-----------------------------------------------------------------------------
+#  Show a help box
+#-----------------------------------------------------------------------------
+proc mkHelp {} {
+	set w .helpwindow
+	catch {destroy $w}
+	toplevel $w
+        wm title $w "Help for adial"
+
+	set t [mkText $w.text]
+	$t configure -font -*-courier-*-r-*-*-*-120-*-*-*-*-*-*
+	$t insert insert {\
+adial Help
+----------
+
+adial is a simple telephone control application
+
+The sunken box is editable.  You can enter a number there
+or a name of someone in your .phonelist file.
+
+.phonelist syntax is:
+Name of Person : Number ;
+
+^U will erase the number.  If the entry field is empty,
+the current X selection will be used.
+
+Hit return in the entry box or click dial to dial the phone.
+After the phone is dialled, a talking path to the local
+handset is established.
+
+The Hangup button will disconnect the call.
+
+The pickup button will answer a call without dialling anything.
+
+Larry Stewart
+stewart@crl.dec.com
+}
+	mkButton [mkFrame $w.frame].close " Close " "destroy $w" \
+		{right padx 10 pady 10}
+}
+
+
+proc dial {} {
+	global rewrite
+	set lnum [.num get]
+	if {[string length $lnum] == 0} then {set lnum [selection get]}
+        set err [catch {set dnum [exec aname2num $rewrite $lnum]}]
+	if {$err == 0} then {
+	.num delete 0 end
+	.num insert 0 $dnum
+	exec ahs off
+	exec aphone $dnum
+	exec aset -device 0 +pass 0
+	} else { .num insert end " Failed!" }
+}
+
+proc hangup {} {
+	exec aset -device 0 -pass 0
+	exec ahs on
+}
+
+proc pickup {} {
+	exec ahs off
+	exec aset -device 0 +pass 0
+}
+
+set rewrite "-n"
+entry .num -relief sunken
+
+bind .num <Return> dial
+
+
+mkMenubutton .file File .file.m
+.file configure -relief raised
+menu .file.m
+.file.m add checkbutton -label "Rewrite" -variable rewrite -offvalue "-n" \
+	-onvalue ""
+.file.m add command -label "Help" -command "mkHelp"
+.file.m add separator
+.file.m add command -label "Exit" -command "exit"
+
+
+button .dial -command dial -text dial
+button .hang -command hangup -text hangup
+button .pickup -command pickup -text pickup
+pack append . .file left
+pack append . .num left
+pack append . .dial left
+pack append . .pickup left
+pack append . .hang left

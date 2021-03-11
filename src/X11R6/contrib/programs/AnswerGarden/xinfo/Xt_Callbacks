@@ -1,0 +1,272 @@
+@begin(header)
+author: ackerman@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+node_expert: ackerman=ag@ics.uci.edu
+expiration_date: 06/25/93
+last_modifier: ackerman=ag@ics.uci.edu
+last_mod_date: 09/11/91
+mod_num: 4
+@end(header)
+
+@begin(M)
+Date: Fri, 15 Dec 89 08:00:27 EST
+From: Ralph R. Swick 
+
+> I am having problems with callbacks. I have a commandWidget that has two
+> callback routines. One of these routines enables a popup. Based on an error
+> condition in my program, I want to remove the enabling of the popup from the
+> callback list. I tried using XtRemoveCallback but it seems to "miss" the first
+> time around and still pops up the popup.
+
+You're not, by any chance, calling XtRemoveCallback from a callback
+that's on the list you're trying to change, are you?  There is
+special code to make sure that any changes to a callback list
+do not affect an in-progress evaluation of that list, producing
+exactly the symptoms you describe.
+
+Since there is no explicit ordering of invocation of the callbacks
+on a list, you could never rely upon an "earlier" callback being
+able to disable a "later" one by removing it from the list anyway.
+@end(M)
+
+@begin(Q)
+Date: 15 Jun 89 14:13:16 GMT
+Subject: question: XToolkit - callbacks
+
+I have a problem on callbacks!
+
+Currently I'm creating a "confirm" widget, which looks like this:
+
+	+-------------------------------+
+	|                               |
+	|         (any message)         |
+	|                               |
+	|     +-------+   +-------+     |
+	|     | butt1 |   | butt2 |     |
+	|     +-------+   +-------+     |
+	|                               |
+	+-------------------------------+
+
+(any message) is a labelWidget
+butt1, butt2  are commandWidgets
+
+My widget supports XtNcallback.
+I have a callback routine ButtonPress() which I add to the
+callback list of butt1 and butt2 and which gets in the client_data
+0 or 1, depending on which button was clicked. This value (o or 1)
+I'd like to put in the  client_data field of "my" callback.
+
+My problem is, that when ButtonPress() is called, I only get the
+WidgetId of the commandWidget the button was pressed in, but not
+the WidgetId of "my" widget.
+Currently ButtonPress looks like this:
+
+static void ButtonPress(w, cl_data, ca_data)
+   Widget	w;
+   caddr_t	cl_data, ca_data;
+{
+	XtCallCallbacks(XtParent(w), XtNcallback, cl_data);
+}
+
+Is this correct, or is there a better solution, to call "my" callback
+list. (The above works correctly for me, but I don't know, whether this
+is good behaviour)
+
+Thanks
+@end(Q)
+
+@begin(A)
+Date: Fri, 16 Jun 89 11:05:10 EDT
+From: Ralph R. Swick 
+
+> static void ButtonPress(w, cl_data, ca_data)
+>    Widget	w;
+>    caddr_t	cl_data, ca_data;
+> {
+> 	XtCallCallbacks(XtParent(w), XtNcallback, cl_data);
+> }
+> 
+> Is this correct, or is there a better solution, to call "my" callback
+> list.
+
+I don't think you can do any better than this and still hide the
+implementation of 'mywidget'.
+@end(A)
+
+@begin(M)
+Date: Mon, 05 Jun 89 08:59:26 EDT
+From: Ralph R. Swick 
+
+> Is there anything wrong with having a widget's SetValues() procedure
+> call some callbacks as a result of a state change? 
+
+Nope, not at all.  You will have to be careful, however, to make sure
+the widget hierarchy is in a consistent state when you execute the
+callbacks, or carefully document the environment that the callback
+will see.  For example, if you follow the recommended geometry
+management scheme the widget's geometry fields are not accurate
+until after all the set_values (and the final set_values_almost)
+methods have completed.
+@end(M)
+
+@begin(Q)
+Date: Sun, 25 Jun 89 20:10:53 EDT
+
+This all relates to the Xt Toolkit though might be applicable to other
+toolkits.
+
+The Xt Toolkit supports "Callback" functions: Functions defined in a
+user application which are called by a widget typically (though not
+necessarily) as a result of some XEvent. An example is a callback
+which is invoked when a commandwidget is pressed so the application
+can perform whatever corresponds to that user action.
+
+In implementing Xt widgets I have run across a need for something
+similar which I shall refer to as "Callforward" functions: A function
+called by the widget for the sole purpose of getting information from
+the application that the widget can not (or should not) generate for
+itself.
+
+An Illustrative Example:
+
+Consider a scrollbar widget with at least the functions incrementUnit
+and decrementUnit. In a text application this would correspond to
+moving the scroll region one line of text up or down. Currently there
+would be three ways to specify how much motion is needed to scroll one
+line of text (this is needed to move the slider an appropriate
+amount):
+
+	1. A default value.
+	2. A value set by the application (eg. XtincrementValue)
+	3. By relieving the scrollwidget entirely of this and setting
+	the slider position on every callback.
+
+The first two work fine so long as all lines are the same height (ie.
+a constant value.) The last works for anything but is not the way we
+expect to use scrollbar widgets, more like hand-to-hand combat.
+
+A Callforward is simply an application-supplied function which the
+widget calls (if it exists) and expects a return value from.
+
+In this case the scrollbar widget calls the callforward passing the
+widget, a value indicating how much to scroll, typically one unit in
+this example, (this can be genericized to provide a uniform interface)
+and, possibly, user data (a closure.)
+
+The definition is almost identical to that of a Callback but the
+return type is changed from void to some generic type (eg. caddr_t).
+
+Thus, the logic for scrolling (forward) becomes:
+
+	IF CALL_FORWARD_EXISTS THEN
+		MoveSlider(CallCallforward(w,name,amount,data))
+	ELSE
+		MoveSlider(incrementValue)
+
+The major differences between a callback and a callforward are that
+the latter returns a value and I think the ability to have a list of
+them (as with callbacks) is a bad idea (I don't think this community
+is ready for multiple-value-returns in C.)
+
+Other exemplary uses of callforwards:
+
+	1. Querying the font to use at a particular x/y position
+	2. Boolean requests to check legality of a particular
+	action, such as whether or not to allow a grip to be moved
+	any further.
+	3. Advice on setting dimensions within a resize request
+	(eg. an application might want to round down or up to
+	contain an entire object to avoid, eg, chopping a spread sheet
+	cell.)
+	4. Advice within GeometryRequests.
+
+I am sure there are many other uses.
+@end(Q)
+
+@begin(A)
+Date: 26 Jun 89 15:47:17 GMT
+From:  (Paul Asente)
+
+>In implementing Xt widgets I have run across a need for something
+>similar which I shall refer to as "Callforward" functions: A function
+>called by the widget for the sole purpose of getting information from
+>the application that the widget can not (or should not) generate for
+>itself.
+
+You can do this now, using the call_data parameter.  There's nothing to
+prevent a callback function from filling in some fields in call_data
+before returning and having the widget implementation look at the data
+that was passed back.
+
+@end(A)
+
+@begin(A)
+Subject: Re: A Call for Callforwards... 
+Date: Thu, 29 Jun 89 11:55:56 EDT
+From: Ralph R. Swick 
+
+> A Callforward is simply an application-supplied function which the
+> widget calls (if it exists) and expects a return value from.
+> ...
+> The definition is almost identical to that of a Callback but the
+> return type is changed from void to some generic type (eg. caddr_t).
+
+I certainly agree with you that widgets could be calling into
+application code to retrieve information, not just to provide it,
+and that this would make certain APIs less clumsy.
+
+But we don't need to add a new (procedure) datatype to support this
+in Xt; the call_data argument in XtCallbackProc is defined by the
+widget to be whatever it needs, including a pointer to a return
+value from the callback.
+
+The syntax you propose for callforwards has a syntactic advantage for
+single-valued procedures but doesn't actually extend the bag o' tricks.
+@end(A)
+
+@begin(A)
+Date: 30 Jun 89 04:40:05 GMT
+From:  (Paul Asente)
+
+I would suggest passing in the call_data the address of a data structure
+something like
+
+struct {
+	Boolean data_supplied;
+	<whatever else is needed>
+};
+
+The widget would set data_supplied to FALSE before executing the
+callbacks.  Each callback checks data_supplied before filling in the rest
+of the data and sets data_supplied to TRUE once the data is there.  This
+allows having multiple callbacks, each of which might have the information
+needed to fill in the data at different times during program execution.
+This organization could well lead to more modular programs.
+
+Date: Fri, 30 Jun 89 11:22:15 EDT
+From: Ralph R. Swick
+
+     What about the semantics of multiple callbacks supported by
+     CallCallbacks, does this gibe with passing data back? How is it
+     coordinated so the call_data isn't stomped on multiple times (ok, the
+     programmer should just be careful
+
+Ah, the canonical flexibility vs. potential for error trade-off.
+Paul's example illustrates well why you might not wish to enforce
+single-entry callback lists universally, but I certainly understand
+the desire to have the library (dynamically) verify any constraints
+rather than the application or debugger.
+
+If we were starting over, the most useful improvement over Paul's
+suggestion (of passing a flag around with the data) I can think of
+would be to use the function return value from the callback to
+stop processing the remainder of the list immediately, thereby
+avoiding even the procedure call overhead.  But then we'd have
+programmers making errors the other way :-)
+@end(A)
+
+
+
+
+

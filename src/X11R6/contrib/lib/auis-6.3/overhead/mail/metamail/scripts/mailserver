@@ -1,0 +1,150 @@
+#!/bin/csh -f
+# Mailserver -- a simple MIME mailserver script.
+# Makes all files under a tree available for MIME-based retrieval.
+# By default, it sends them as the MIME type "application/octet-stream"
+# However, for a file named "x/y/foo.bar", you can specify a "right"
+# MIME content-type by putting it in the file "x/y/foo.bar.ct".
+
+# In a distributed sendmail environment, this script can be installed with lines
+#	somewhat like the following two in /usr/lib/aliases:
+# mail-server: local-mail-server@some-single-machine
+# local-mail-server: "|/full/path/to/mailserver"
+
+# By default the program uses "mail-server" as its local return address.
+#   and makes available all files under /usr/spool/ftp.
+# You might need or want to change the following parameters:
+set LOCALADDR=mail-server
+set ROOTDIR=/usr/spool/ftp
+set MAINTAINER=postmaster
+set METAMAILDIR=/usr/local/bin
+set LOGADDR=andrew@thumper.bellcore.com
+# If LOGADDR is the empty string, no logging is done.
+#
+# The real program begins here.
+
+setenv PATH ${METAMAILDIR}:${PATH}
+rehash
+set FromName=""
+set Subject=""
+set TmpFile=/tmp/ms.$$
+set FOORAW=$<
+while ("$FOORAW" != "") 
+set FOO=(` echo "$FOORAW" | tr "[" "x"`)
+set BAR=($FOO)
+set BARLC=(`echo $FOO | tr A-Z a-z`)
+if ($BARLC[1] == "from:") then
+	if ("$FromName" == "") then
+		set FromName = ($BAR[2-])
+	endif
+else if ($BARLC[1] == "reply-to:") then
+	set FromName = ($BAR[2-])
+else if ($BARLC[1] == "subject:") then
+	set Subject = ($BAR[2-])
+endif
+set FOORAW=$<
+end
+# Now, stdin just has the body left, to do with as we please.
+# We choose to interpret the first line as the request, nothing more
+if ("$Subject" == "") then
+    set Subject=$<
+endif
+
+if ("$FromName" == "") then
+	cat > $TmpFile <<!
+From: $LOCALADDR@`hostname`
+To: $MAINTAINER
+Subject: $Subject
+
+The metamail mailserver script, installed locally as $LOCALADDR, has received a request without any reply address.
+
+It is possible that this is the result of a user running the "mailserver" 
+program by hand.  It is intended to be run as an automated recipient of 
+mail requests, rather than an interactive program.
+
+No reply is being generated, but the contents of the request are 
+reproduced below.  If no message appears below, then this program was 
+probably run in some circumstance other than mail delivery.
+--------------------
+!
+	cat $TmpFile - | /usr/lib/sendmail $MAINTAINER
+	# Takes the rest of the message from standard input
+	rm $TmpFile
+	exit 0
+endif
+
+set danger=`echo $Subject | fgrep ..`
+if ($danger != "") then
+	cat > $TmpFile <<!
+From: $LOCALADDR@`hostname`
+To: $FromName
+Subject: Re: $Subject
+
+For security reasons, this mailserver automatically rejects all requests 
+that contain ".." in the path name.
+
+The file you requested, if it exists, will not be sent to you.
+!
+	/usr/lib/sendmail -t < $TmpFile
+	rm $TmpFile
+	exit 0
+endif
+
+cd $ROOTDIR
+if (! -e "$Subject") then
+	cat > $TmpFile <<!
+From: $LOCALADDR@`hostname`
+To: $FromName
+Subject: Re: $Subject
+
+You recently sent mail to this mail-server requestion the file: 
+	$Subject
+
+That file does not exist, so your request could not be met.
+
+Here is a list of the currently available files:
+--------------------------------
+!
+	ls -R >> $TmpFile
+	/usr/lib/sendmail -t < $TmpFile
+	rm $TmpFile
+	exit 0
+endif
+
+if (-e ${Subject}.ct) then
+	set ct=`cat ${Subject}.ct`
+else 
+	set ct="application/octet-stream"
+endif
+
+metasend -b -t "$FromName" -f "$Subject" -m "$ct" -s "Re: $Subject"
+if ($status != 0) then
+	cat > $TmpFile <<!
+From: $LOCALADDR@`hostname`
+To: $FromName
+Subject: Re: $Subject
+
+You recently sent mail to this mail-server requestion the file: 
+	$Subject
+
+An unanticipated error apparently precluded delivery of the file.
+Please accept our apologies.
+
+Command failed: 
+  metasend -b -t "$FromName" -f "$Subject" -m "$ct" -s "Re: $Subject"
+
+!
+	/usr/lib/sendmail -t < $TmpFile
+	rm $TmpFile
+	exit 0
+endif
+
+if ("$LOGADDR" != "") then
+	/usr/lib/sendmail -t <<!
+From: ${LOCALADDR}@`hostname`
+To: $LOGADDR
+Subject: Autosend delivery report
+
+The file: $Subject 
+was sent to: $FromName
+!
+exit 0

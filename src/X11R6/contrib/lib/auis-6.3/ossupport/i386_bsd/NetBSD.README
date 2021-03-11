@@ -1,0 +1,166 @@
+
+	  Notes on AUIS 6.3a2 on free Net2/386 derived UNIX's
+
+		 NetBSD-0.9, NetBSD-current, FreeBSD
+
+
+
+Status:
+
+	FreeBSD-1.1	Not tested, it could work
+			Minor OS fixes needed
+
+
+	NetBSD-0.9	Tested.
+			Minor OS fixes needed
+
+
+	NetBSD-current	Tested.
+			Requires a patch to be applied to AUIS-6.3
+
+
+
+Preparation:
+
+	o	Bug in /bin/csh
+
+		Found in: NetBSD-0.9
+		Fixed in: NetBSD-current(I hope) FreeBSD-1.1
+
+		Free's memory area's when it shouldn't. A patch is
+		below
+
+		bash$ diff -c src/bin/csh/dir.c.dist src/bin/csh/dir.c
+*** src/bin/csh/dir.c.dist      Sun Feb  6 01:44:54 1994
+--- src/bin/csh/dir.c   Sun Feb  6 01:45:34 1994
+***************
+*** 123,129 ****
+                    swd.st_ino == shp.st_ino)
+                    tcp = cwd;
+            }
+!           cp = dcanon(str2short(tcp), STRNULL);
+        }
+      }
+  
+--- 123,129 ----
+                    swd.st_ino == shp.st_ino)
+                    tcp = cwd;
+            }
+!           cp = dcanon(SAVE(tcp), STRNULL);
+        }
+      }
+	 
+
+
+	o	Bug in /usr/bin/make
+
+		Found in: NetBSD-0.9 and FreeBSD-1.1
+		Fixed in: NetBSD-current
+
+		An action with null arguments vis:
+
+			command ""
+
+		Looses the null arguments.  eg:
+
+			/usr/andrew/bin/cregister /usr/andrew "app.do" "app.o" ""
+			usage: cregister ANDREWDIR class.do \"objs\" \"libs\"
+
+		You can either use GNU make or try to apply the patch
+
+
+		To get arround this problem you can either install
+		and use gnu-make or try to apply the patch below.
+		(The patch came from NetBSD-current).
+
+
+*** str.c.orig	Thu Mar 24 05:59:35 1994
+--- str.c	Tue May 17 09:37:11 1994
+***************
+*** 139,146 ****
+  					inquote = '\0';
+  				else
+  					break;
+! 			else
+  				inquote = (char) ch;
+  			continue;
+  		case ' ':
+  		case '\t':
+--- 138,151 ----
+  					inquote = '\0';
+  				else
+  					break;
+! 			else {
+  				inquote = (char) ch;
++ 				/* Don't miss "" or '' */
++ 				if (start == NULL && p[1] == inquote) {
++ 					start = t + 1;
++ 					break;
++ 				}
++ 			}
+  			continue;
+  		case ' ':
+  		case '\t':
+
+
+
+NetBSD-current:
+
+	To build AUIS-6.3 on NetBSD-current additional changes to
+	the AUIS source tree are required.  These changes were
+	found to late for consideration to be integrated into
+	AUIS-6.3 so instead an additional patch file is included:
+
+		ossupport/i386_bsd/NetBSD-current.diffs
+
+	is included.
+
+		$ cd auis-6.3
+		$ patch -p -s < ossupport/i386_bsd/NetBSD-current.diffs
+
+	These patches address problems described below.  AUIS 7.1, as
+	a consequence of being rewritten in C++ expects to address them
+	properly.
+
+
+	o	AUIS assumes:
+			extern char *sys_errlist[].
+		While NetBSD-current declares:
+			extern const char *const sys_errlist[].
+
+		The patch changes this to be:
+			SYS_ERRLIST_TYPE sys_errlist[];
+
+
+	o	AUIS assumes off_t is 32bits.  While NetBSD-current
+		now has it set to 64bits. (see ftruncate(2))
+
+		The patch changes those files so that they include
+		<unistd.h> and hence make a prototype for ftruncate()
+		visable.
+
+
+
+What should be used in #ifdef's?
+
+	Before looking to change conditional code check the table below:
+
+	     Symbol	i386(2) __386BSD__ __NetBSD__ __FreeBSD__ bsdi(1)
+	bsdi    	  y                   		            y
+	386BSD-0.1	  y 	    y
+	NetBSD-0.9	  y 	    y	       y
+	NetBSD-current	  y 	               y
+	FreeBSD-1.1	  y 	    y		           y
+
+	(1) The C/C++ standard police would argue that __bsdi__ should
+	    be used.  Too late..
+
+	(2) Last time I looked NetBSD-current (at least) didn't define
+	    __i386__.  People will be having words with that group :-)
+
+	Given this table was completed after the code was frozen,
+	your going to notice some sillyness in come of the #ifdef's.
+
+				Andrew - aka Noid
+
+

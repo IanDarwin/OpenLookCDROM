@@ -1,0 +1,91 @@
+/* testparse.c	- test the parse object */
+/*
+	Copyright Carnegie Mellon University 1992 - All rights reserved
+	$Disclaimer: 
+# Permission to use, copy, modify, and distribute this software and its 
+# documentation for any purpose is hereby granted without fee, 
+# provided that the above copyright notice appear in all copies and that 
+# both that copyright notice, this permission notice, and the following 
+# disclaimer appear in supporting documentation, and that the names of 
+# IBM, Carnegie Mellon University, and other copyright holders, not be 
+# used in advertising or publicity pertaining to distribution of the software 
+# without specific, written prior permission.
+# 
+# IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+# DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+# SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+# BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+# DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+# WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+# ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+# OF THIS SOFTWARE.
+#  $
+*/
+#ifndef NORCSID
+	char *tlex_testness_rcsid = 
+	"$Header: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/atk/syntax/tlex/RCS/testness.c.nodepend,v 1.2 1992/12/19 21:51:43 wjh R6tape $";
+#endif
+
+#include <environ.ih>
+#include <text.ih>
+#include <toksym.ih>
+
+#include <../parse/parse.ih>
+#include <../parse/lexan.ih>
+#include <tlex.ih>
+
+#include <ness.tab.c>	/* parse tables */
+#include <parsedesc.h>	/* declare parse_description */
+#include <parsepre.h>	/* begin function 'action' */
+#include <ness.act>	/* body of function 'action' */
+#include <parsepost.h>	/* end of function 'action' */
+
+static toksym_scopeType grammarscope;
+static struct toksym *proto;
+
+#include <ness.tlc>
+
+
+	static void
+EnterReservedWord(rock, w, i)
+	void *rock;
+	char *w;
+	int i;
+{
+	struct toksym *s;
+	boolean new;
+	s = toksym_TLocate(w, proto, grammarscope, &new);
+	s->toknum = i;
+}
+
+main()
+{
+	struct parse *p;
+	struct tlex *lexalyzer;
+	struct text *input;	
+
+	class_Init(".");
+
+	environ_StaticEntry;
+/*	lexan_StaticEntry;
+ *	parse_StaticEntry;
+ *	tlex_StaticEntry;
+ */
+
+	proto = toksym_New();
+	grammarscope = toksym_TNewScope(toksym_GLOBAL);
+	parse_SetDebug(TRUE);
+
+	input = text_New();
+	text_Read(input, fopen("test.n", "r"), 0);
+	
+	lexalyzer = tlex_Create(&ness_tlex_tables, NULL, 
+			input, 0, text_GetLength(input));
+	p = parse_Create(&parse_description, lexalyzer, 
+		reduceActions, NULL, NULL);
+	parse_EnumerateReservedWords(p, EnterReservedWord, NULL);
+
+	printf("parse_Run returns %d\n", parse_Run(p));
+
+}

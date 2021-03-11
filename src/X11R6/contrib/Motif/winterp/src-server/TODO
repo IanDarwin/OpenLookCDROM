@@ -1,0 +1,1865 @@
+*
+* Copyright (C) 1994, Enterprise Integration Technologies Corp. and Niels Mayer.
+* WINTERP 1.15-1.99, Copyright (c) 1993, Niels P. Mayer.
+* WINTERP 1.0-1.14, Copyright (c) 1989-1992 Hewlett-Packard Co. and Niels Mayer.
+* 
+* Permission to use, copy, modify, distribute, and sell this software and its
+* documentation for any purpose is hereby granted without fee, provided that
+* the above copyright notice appear in all copies and that both that
+* copyright notice and this permission notice appear in supporting
+* documentation, and that the name of Enterprise Integration Technologies,
+* Hewlett-Packard Company, or Niels Mayer not be used in advertising or
+* publicity pertaining to distribution of the software without specific,
+* written prior permission. Enterprise Integration Technologies, Hewlett-Packard
+* Company, and Niels Mayer makes no representations about the suitability of
+* this software for any purpose.  It is provided "as is" without express or
+* implied warranty.
+* 
+* ENTERPRISE INTEGRATION TECHNOLOGIES, HEWLETT-PACKARD COMPANY AND NIELS MAYER
+* DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL IMPLIED
+* WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL ENTERPRISE
+* INTEGRATION TECHNOLOGIES, HEWLETT-PACKARD COMPANY OR NIELS MAYER BE LIABLE
+* FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER
+* RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF
+* CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+* CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+*
+
+DONE>> BUG: if you call (send x :show) on a WIDGETOBJ that got destroyed, you get a core dump:
+DONE>> | X> Object is #<widget XM_LABEL_WIDGET_CLASS: #100f8b18>, Class is #<class ???: #10100c70>
+DONE>> | Segmentation fault (core dumped)
+DONE>> 
+DONE>> FIX: perhaps add a WIDGETOBJ version of obshow? this will also not print out the 
+DONE>>   | _bogus_ivar_ | = #<Pixmap: #101a5dc0>
+DONE>> field
+DONE>> 
+DONE>> TODO: add same :SHOW method to TANGOIMAGEOBJ
+DONE>> 
+DONE>> 	>  0 xlprintl(fptr = 0x1008d728, vptr = (nil), flag = 1) ["/disk3/npm/src/winterp-sgi-debug/src-server/xlisp/xlprin.c":151, 0x4fe784]
+DONE>> 	   1 xlprint(fptr = 0x1008d728, vptr = (nil), flag = 1) ["/disk3/npm/src/winterp-sgi-debug/src-server/xlisp/xlprin.c":125, 0x4fe734]
+DONE>> 	   2 obshow() ["/disk3/npm/src/winterp-sgi-debug/src-server/xlisp/xlobj.c":369, 0x50cf9c]
+DONE>> 	   3 sendmsg(obj = 0x101061c0, cls = 0x100d61a8, sym = 0x1008c488) ["/disk3/npm/src/winterp-sgi-debug/src-server/xlisp/xlobj.c":501, 0x50de64]
+DONE>> 	   4 xsend() ["/disk3/npm/src/winterp-sgi-debug/src-server/xlisp/xlobj.c":139, 0x50c06c]
+DONE>> 	   5 evform(form = 0x10124788) ["/disk3/npm/src/winterp-sgi-debug/src-server/xlisp/xleval.c":277, 0x501b74]
+DONE>> 	   6 xleval(expr = 0x10124788) ["/disk3/npm/src/winterp-sgi-debug/src-server/xlisp/xleval.c":138, 0x501404]
+DONE>> 	   7 xlload(fname = 0x100dcb00 = "/tmp/wl16344.lsp", vflag = 0, pflag = 1) ["/disk3/npm/src/winterp-sgi-debug/src-server/xlisp/xlread.c":158, 0x506208]
+DONE>> 	   8 xload() ["/disk3/npm/src/winterp-sgi-debug/src-server/xlisp/xlsys.c":125, 0x533078]
+DONE>> 	   9 evform(form = 0x10124908) ["/disk3/npm/src/winterp-sgi-debug/src-server/xlisp/xleval.c":277, 0x501b74]
+DONE>> 	  10 xleval(expr = 0x10124908) ["/disk3/npm/src/winterp-sgi-debug/src-server/xlisp/xleval.c":138, 0x501404]
+DONE>> 	  11 Read_From_Stream_Eval_And_Print(sexp_stream = 0x10124c48) ["/disk3/npm/src/winterp-sgi-debug/src-server/winterp.c":1555, 0x470934]
+DONE>> 	  12 Read_Eval_Print(rdsock = 5) ["/disk3/npm/src/winterp-sgi-debug/src-server/winterp.c":1406, 0x470420]
+DONE>> 	  13 AF_UNIX_Read_Eval_Print(client_data = (nil), source_fildes = 0x10063dec, id = 0x7fffade0) ["/disk3/npm/src/winterp-sgi-debug/src-server/winterp.c":1352, 0x470160]
+DONE>> 	  14 DoOtherSources(0x0, 0x0, 0x0, 0x0, 0x0) ["NextEvent.c":633, 0xf6cc010]
+DONE>> 	  15 XtAppNextEvent(0xf71fbf0, 0x7fffae48, 0x1002e1a4, 0x0, 0x0) ["NextEvent.c":725, 0xf6ca904]
+DONE>> 	  16 XtAppMainLoop(0xf71fbf0, 0x7fffae48, 0x38, 0x0, 0x0) ["Event.c":1200, 0xf7003d0]
+DONE>> 	  17 main(argc = 1, argv = 0x7fffaf2c) ["/disk3/npm/src/winterp-sgi-debug/src-server/winterp.c":1080, 0x46fca4]
+
+--------------------
+For all the following cases, we can replace the constant cvfixnum(...) with 
+a constant; see use of k_fix2 in xlobj.c for example
+
+w_callbacks.c:Wcb_Meta_Callbackproc():
+    pusharg(cvfixnum((FIXTYPE)0)); --> replace this with a constant so cvfixnum isn't called repeatedly.
+    setivar(self, IVARCNT, cvfixnum((FIXTYPE)0)); --> ""
+wc_Text.c:Xm_Text_Widget_Class_Method_GOTO_LINE()
+	return (cvfixnum((FIXTYPE) 0));
+t_classes.c:Tcls_Create_Subclass_Of_TANGOIMAGE_CLASS()
+	  setivar(self, IVARCNT, cvfixnum((FIXTYPE)0));
+
+xldbug.c:Winterp_Call_Error_Hook()
+	pusharg(cvfixnum((FIXTYPE)3));
+	pusharg(cvfixnum((FIXTYPE)4));
+	pusharg(cvfixnum((FIXTYPE)2));
+
+xldmem.c:gc()
+	pusharg(cvfixnum((FIXTYPE)2));
+
+xleval.c:evalhook()
+    pusharg(cvfixnum((FIXTYPE)2));
+
+xleval.c:applyhook()
+    pusharg(cvfixnum((FIXTYPE)2));
+
+xllist.c:xmaphash()
+	    pusharg(cvfixnum((FIXTYPE) 2));
+
+xlmath.c:
+	LVAL xadd()    { return (moreargs()?binary('+'):cvfixnum((FIXTYPE)0)); }
+	LVAL xmul()    { return (moreargs()?binary('*'):cvfixnum((FIXTYPE)1)); }
+	LVAL xlogand() { return (moreargs()?binary('&'):cvfixnum((FIXTYPE)-1)); }
+	LVAL xlogior() { return (moreargs()?binary('|'):cvfixnum((FIXTYPE)0)); }
+	LVAL xlogxor() { return (moreargs()?binary('^'):cvfixnum((FIXTYPE)0)); }
+
+xlmath.c:xgcd()
+	return (cvfixnum((FIXTYPE)0));
+
+xlmath2.c:
+	LVAL xadd()    { return (moreargs()?binary('+'):cvfixnum((FIXTYPE)0)); }
+	LVAL xmul()    { return (moreargs()?binary('*'):cvfixnum((FIXTYPE)1)); }
+
+xlmath2.c:xexpt()
+    if (p == 0) return(cvfixnum((FIXTYPE) 1));
+    if (b == 0 && p > 0) return(cvfixnum((FIXTYPE) 0));
+
+xlmath2.c:xgcd()
+    return (cvfixnum((FIXTYPE)0));
+
+xlmath2.c:xlcm()
+	return(cvfixnum(0));
+
+xlmath2.c:ximagpart()
+	  if (fixp(arg)) return(cvfixnum((FIXTYPE) 0));
+
+xlread.c:callmacro()
+    pusharg(cvfixnum((FIXTYPE)2));
+
+xlseq.c:xcountif()
+    if (null(seq)) return (cvfixnum((FIXTYPE)0));
+
+xlsubr.c:xlapp1()
+    pusharg(cvfixnum((FIXTYPE)1));
+
+xlsubr.c:dotest1()
+    pusharg(cvfixnum((FIXTYPE)1));
+
+xlsubr.c:dotest2()
+    pusharg(cvfixnum((FIXTYPE)2));
+
+xlsubr.c:dotest2s()
+    pusharg(cvfixnum((FIXTYPE)2));
+
+xlsubr.c:dotest1()
+--------------------
+DONE>> Fix bug in callbacks: 
+DONE>> 	* XmList has the following callbacks
+DONE>> 		:XMN_HELP_CALLBACK
+DONE>> 		:XMN_SINGLE_SELECTION_CALLBACK
+DONE>> 		:XMN_MULTIPLE_SELECTION_CALLBACK
+DONE>> 		:XMN_EXTENDED_SELECTION_CALLBACK
+DONE>> 		:XMN_BROWSE_SELECTION_CALLBACK
+DONE>> 		:XMN_DEFAULT_ACTION_CALLBACK
+DONE>> 		:XMN_DESTROY_CALLBACK
+DONE>>            of those, :XMN_HELP_CALLBACK, :XMN_DESTROY_CALLBACK are def'd on supercls
+DONE>> 	   and don't use XmListCallbackStruct. :XMN_DESTROY_CALLBACK doesn't define
+DONE>> 	   any call-data at all, and thus gives errors if any params other than
+DONE>> 	   CALLBACK_WIDGET are requested (this is ok, caused by fact that call-data == NULL).
+DONE>>            :XMN_HELP_CALLBACK however passes non-null call-data, but there is no case
+DONE>> 	   switch on the callback reason passed by this. Should have a default case for
+DONE>> 	   callback reason which does an XmAnyCallbackstruct lexical binding.
+DONE>> 
+DONE>> 	* at first glance, XmText seems to do the above ok.
+DONE>> 
+DONE>> 	* Need to check the following:
+DONE>> X		Lexical_Bindings_For_XmArrowButtonCallbackStruct
+DONE>> X		Lexical_Bindings_For_XmCommandCallbackStruct
+DONE>> X		Lexical_Bindings_For_XmDrawingAreaCallbackStruct
+DONE>> X		Lexical_Bindings_For_XmDrawnButtonCallbackStruct
+DONE>> X		Lexical_Bindings_For_XmFileSelectionBoxCallbackStruct
+DONE>> X		Lexical_Bindings_For_XmListCallbackStruct
+DONE>> X		Lexical_Bindings_For_XmPushButtonCallbackStruct
+DONE>> X		Lexical_Bindings_For_XmRowColumnCallbackStruct
+DONE>> X		Lexical_Bindings_For_XmScaleCallbackStruct
+DONE>> X		Lexical_Bindings_For_XmScrollBarCallbackStruct
+DONE>> X		Lexical_Bindings_For_XmSelectionBoxCallbackStruct
+DONE>> X		Lexical_Bindings_For_XmTextVerifyCallbackStruct
+DONE>> X		Lexical_Bindings_For_XmToggleButtonCallbackStruct
+DONE>> X		Lexical_Bindings_For_XmGraphCallbackStruct
+DONE>> 
+DONE>> TODO: XmArc should use Lexical_Bindings_For_XmGraphCallbackStruct...
+DONE>> TODO: Fix XmGraph so that only certain structures retrievable for certain
+DONE>>       callback reasons.
+
+while I'm at it, add Lexical_Bindings_For_XmTraverseObscuredCallbackStruct()
+(for XmScrolledWindow)
+
+==============================================================================
+WINTERP todos:
+
+Motif 1.1 fns:
+	* XmAddToPostFromList()
+	* XmRemoveFromPostFromList()
+DONE>>	* XmGetPostedFromWidget():
+
+	note Motif 1.2 bug which causes core-dump when destroying 
+	a widget-panel with a shared pop-up added via XmAddToPostFromList().
+	One must first call XmRemoveFromPostFromList() prior to deleting
+	a widget-panel containing a shared pop-up menu pane.
+
+Motif 1.2 Tear-off Menus:
+	* XmGetTearOffControl()
+DONE>>>	* XmNtearOffModel
+DONE>>>	* XmNtearOffMenuActivateCallback
+DONE>>>	* XmNtearOffMenuDeactivateCallback
+
+------------------------------------------------------------------------------
+
+DONE>>> Checked all resources on XmRowColumn against Motif 1.2
+DONE>>> Checked all resources on latest XmGraph 
+
+	XmGraph-TODO: add support for cursor resources in XmGraph
+	XmGraph-TODO: go through all methods and implement the ones with empty "bodies"
+
+
+==============================================================================
+
+Motif 1.2 changes TODO (from Motif 1.2.2 README):
+
+|         Most dramatic have been the changes to the Text and the
+|         TextField widgets, including interfaces that support
+|         both fixed-width wide characters (wchar_t) and
+|         variable-width multibyte characters (char *).  The
+|         Compound String routines have been modified to handle
+|         locale-encoded strings and to integrate the X11 R5
+|         fontset capability.
+| ....
+|      Display and Screen Specific Data
+| 
+|         An XmDisplay object has been added to support per-
+|         display data and resources.  An XmScreen object has
+|         been added to support per-screen data and resources.
+
+NOTE>	XmGetXmScreen() -- retrieves XmScreen widget
+NOTE>	XmGetXmDisplay() -- retrieves XmDisplay widget
+NOTE>	XmDisplay(3X) widget class -- need to be able to set/get resources from this
+NOTE>				      (on the other hand, if these settings need not
+NOTE>                                       be dynamic, it may be ok to set these in Xresource
+NOTE>				       files...)
+NOTE>					** XmNdefaultVirtualBindings
+NOTE>					** XmNdragInitiatorProtocolStyle
+NOTE>					** XmNdragReceiverProtocolStyle
+NOTE>	XmScreen(3X) widget class --  need to be able to set/get resources from this
+NOTE>				      (on the other hand, if these settings need not
+NOTE>                                       be dynamic, it may be ok to set these in Xresource
+NOTE>				       files...)
+NOTE>					** XmNdarkThreshold
+NOTE>					** XmNdefaultCopyCursorIcon
+NOTE>					** XmNdefaultInvalidCursorIcon
+NOTE>					** XmNdefaultLinkCursorIcon
+NOTE>					** XmNdefaultMoveCursorIcon
+NOTE>					** XmNdefaultNoneCursorIcon
+NOTE>					** XmNdefaultSourceCursorIcon
+NOTE>					** XmNdefaultValidCursorIcon
+NOTE>					** XmNfont
+NOTE>					** XmNforegroundThreshold
+NOTE>					** XmNhorizontalFontUnit
+NOTE>					** XmNlightThreshold
+NOTE>					** XmNmenuCursor
+NOTE>					** XmNmoveOpaque
+NOTE>					** XmNunpostBehavior
+NOTE>					** XmNverticalFontUnit
+
+| 
+|      Drag and Drop
+| 
+|         In compliance with the OSF/Motif Style Guide, Revision
+|         1.2 supports the drag and drop metaphor for data
+|         interchange. The Drag and Drop specification has been
+|         fully implemented.  Refer to the OSF/Motif Programmer's
+|         Guide and the man pages for information on the drag and
+|         drop interface.
+| 
+|         Note:  If you desire to have PopupMenus pop up
+|                using Btn2, Drag and Drop will not
+|                function properly.  You will need to
+|                disable Drag and Drop.
+| 
+|      Tear-off Menus
+| 
+|         With TearOff Menus, the user can retain menus on the
+|         display for subsequent selections. Each tearable
+|         menupane has a tearoff button.  When the mouse drag
+|         button is pressed on the tearoff button, the pane tears
+|         off and can be dragged and then placed by releasing the
+|         mouse drag button.  The window manager surrounds the
+|         tearoff menupane with a menu button and a title.
+|         Shifting focus to a torn-off menu's windowpane follows
+|         standard window manager policy.
+| 
+DONE>>> |         Tear-off behavior is enabled by setting the
+DONE>>> |         XmNtearOffModel resource to XmTEAR_OFF_ENABLED (the
+DONE>>> |         default is XmTEAR_OFF_DISABLED).
+DONE>>> | 
+DONE>>> |         Note:  There is no resource converter pre-
+DONE>>> |                registered for XmNtearOffModel. To allow
+DONE>>> |                tear-off functionality to be enabled
+DONE>>> |                through the resource database, an
+DONE>>> |                application must register its own
+DONE>>> |                resource converter for the
+DONE>>> |                XmNtearOffModel resource using the
+DONE>>> |                XmRepTypeInstallTearOffModelConverter
+DONE>>> |                function.
+DONE>>> | 
+DONE>>> |                The reason the converter is not
+DONE>>> |                automatically installed is that many
+DONE>>> |                applications use map or cascading
+DONE>>> |                callbacks to dynamically set the
+DONE>>> |                sensitivity of items within their menus.
+DONE>>> |                However, if a TearOff Menu is mapped, the
+DONE>>> |                sensitivity of its menu itmes must be
+DONE>>> |                changed immediately to reflect changes in
+DONE>>> |                other application state.  Existing
+DONE>>> |                applications are unlikely to change menu
+DONE>>> |                item sensitivity in this manner, so
+DONE>>> |                allowing their menus to be torn off could
+DONE>>> |                allow operations to be enabled at
+DONE>>> |                unexpected times.  If a user activated
+DONE>>> |                one of these menu items, it could crash
+DONE>>> |                the application or cause corruption of
+DONE>>> |                persistent data.
+| 
+|      Insensitive Visuals
+| 
+|         Visual indications are provided to indicate whether a
+|         component can respond to input from users.  Labels and
+|         buttons have had this behavior in previous releases.
+|         In Release 1.2, the behavior is extended to the XmList,
+|         XmText, XmTextField, XmScrollBar, and XmArrowButton
+|         widgets.
+| 
+|      Other Visual Changes
+| 
+|         Several pixels have changed in the 3-D beveled look.
+| 
+|         Revision 1.2 color generation routines include minor
+|         changes.  In particular, the new XmScreen object
+|         contains resources that allow for tailoring the
+|         generation of default colors and some of the default
+|         values for thresholds have been adjusted to produce
+|         more contrast on color monitors.
+| 
+|         A location cursor surrounding all items in a List is
+|         added whenever a List widget has the focus and the
+|         current keyboard item is not visible.
+| 
+|         There are minor layout differences due to bug fixes in
+|         geometry management.
+| 
+DONE>>> |      Titles for Frames
+DONE>>> | 
+DONE>>> |         In Revision 1.2, a title widget can be specified in a
+DONE>>> |         Frame widget.  New constraint resources XmNchildType,
+DONE>>> |         XmNchildHorizontalAlignment, XmNchildHorizontalSpacing,
+DONE>>> |         and XmNchildVerticalAlignmenthave been added for
+DONE>>> |         specifying the position and alignment of the title in
+DONE>>> |         the Frame.
+| 
+|      Audible Warning
+| 
+|         A new resource, XmNaudibleWarning, has been added to
+|         the VendorShell widget to specify whether an audible
+|         cue should accompany a warning message.  Text widgets
+|         will determine the value for this resource from the
+|         value of XmNaudibleWarning.
+| 
+|      Color Enhancements
+| 
+|         Users can specify default background color and
+|         thresholds for shadow calculation on a per screen basis
+|         with these 3 new resources on the XmScreen widget:
+| 
+|            * XmNlightThreshold
+| 
+|            * XmNdarkThreshold
+| 
+|            * XmNforegroundThreshold
+| 
+DONE>>> |         A new function, XmChangeColor, changes the background
+DONE>>> |         and other colors for a specified widget.
+| 
+|      Baseline Alignment
+| 
+|         A new function, XmWidgetGetBaselines, determines the
+|         position of the widget's text baseline.  Another
+|         function, XmWidgetGetDisplayRect, determines the size
+|         and position of the bounding box for the widget's
+|         character string.
+| 
+|      Expanded Traversal Set
+| 
+|         In Motif 1.2 it is possible to traverse via the
+|         keyboard to some widgets that did not support traversal
+|         in previous releases.  For example, inside a tab group,
+|         it is now possible to use the arrow keys to traverse to
+|         all control descendants that are not contained within a
+|         nested tab group and are eligible to receive focus,
+|         even if the controls are not direct children of the tab
+|         group.
+| 
+|      2-D Menu Traversal
+| 
+|         The left, right, up, and down traversal arrows navigate
+|         within a menupane.  The up and down arrows wrap between
+|         columns, and the right and left arrows post the
+|         previous or next menupane, when in the rightmost and
+|         leftmost column of the menupane, respectively.
+| 
+|      Input Focus
+| 
+|         A new resource, XmNinitialFocus, has been added to the
+|         Manager class to specify the first widget to receive
+|         input focus.  This resource specifies a widget and is
+|         ignored for all popup menus, menubars, option menus,
+|         and pulldown menus.
+| 
+|      Traversal Access Functions
+| 
+|         To support better interaction with keyboard traversal,
+|         Revision 1.2 includes these new functions:
+| 
+|            * XmGetFocusWidget
+| 
+|            * XmGetTabGroup
+| 
+|            * XmIsTraversable
+| 
+|            * XmIsVisible
+| 
+|            * XmGetVisibility
+| 
+|         The XmTrackingLocate function includes the following
+|         modifications:
+| 
+|            * The function fields all events, not just the
+|              button press.
+| 
+|            * The function returns on any keystroke or a button
+|              press.
+| 
+|            * The function can be called for non-sensitive
+|              widgets.
+| 
+|         A new function, XmTrackingEvent, has been added, which
+|         is just like XmTrackingLocate, except that it returns a
+|         pointer to the X event.
+| 
+|      Virtual Keys
+| 
+PUNT>>>> |         A new function, XmTranslateKey, is provided to allow
+PUNT>>>> |         applications overriding the default XtKeyProc to handle
+PUNT>>>> |         Motif virtual keys.
+| 
+|         Two new virtual keysyms are defined: osfPageLeft and
+|         osfPageRight.  Ensure that you have the X11R5 XKeysymDB
+|         installed in /usr/lib/X11, or you will get warnings
+|         about these keysyms on application startup.  XKeysymDB
+|         should specify:
+| 
+|         osfPageLeft                     :1004FF40
+|         osfPageUp                       :1004FF41
+|         osfPageDown                     :1004FF42
+|         osfPageRight                    :1004FF43
+| 
+|         To comply with the Style Guide, the default binding for
+|         osfMenu has changed from <Key>F4 to Shift<Key>F10.
+| 
+|         In X11R5 the HP keysyms in the XKeysymDB file have the
+|         prefix 'hp'.  This is not reflected in the hp bindings
+|         file in the /bindings directory. If you are using an R5
+|         XKeysymDB, you may see warnings on application startup.
+|         To remove these warnings, make the following changes to
+|         bindings/hp:
+| 
+|         from:
+| 
+|         osfDelete       :               <Key>DeleteChar
+|         osfInsert       :               <Key>InsertChar
+|         osfPrimaryPaste :               <Key>InsertLine
+|         osfQuickPaste   :               <Key>DeleteLine
+| 
+|         to:
+| 
+|         osfDelete       :               <Key>hpDeleteChar
+|         osfInsert       :               <Key>hpInsertChar
+|         osfPrimaryPaste :               <Key>hpInsertLine
+|         osfQuickPaste   :               <Key>hpDeleteLine
+| 
+|         There is a new client, xmbind. It sets up the virtual
+|         bindings for use by Motif applications.  This is
+|         already done at Mwm startup, so xmbind is only required
+|         if Mwm is not used, or to change the virtual bindings
+|         without restarting Mwm.
+| 
+|         The virtual bindings can now be specified per-vendor.
+|         If no .motifbind file is present in the home directory,
+|         the file xmbind.alias is used to provide a mapping from
+|         server vendor name to bindings file. It is possible to
+|         set up user vendor bindings, and system-wide vendor
+|         bindings.
+| 
+|      Resource Management
+| 
+PUNT>>>> |         Several new functions have been added for managing
+PUNT>>>> |         representation types, including:
+PUNT>>>> | 
+PUNT>>>> |            * XmRepTypeRegister
+PUNT>>>> | 
+PUNT>>>> |            * XmRepTypeAddReverse
+PUNT>>>> | 
+PUNT>>>> |            * XmRepTypeValidValue
+PUNT>>>> | 
+PUNT>>>> |            * XmRepTypeGetRegistered
+PUNT>>>> | 
+PUNT>>>> |            * XmRepTypeGetId
+PUNT>>>> | 
+PUNT>>>> |            * XmRepTypeGetNameList
+PUNT>>>> | 
+PUNT>>>> |            * XmRepTypeGetRecord
+| 
+|         These functions would be useful for people who want to
+|         define new resource converters that use an enumerated
+|         set of values.
+| 
+|      Changes for CUA and Windows Compliance
+| 
+|         In Motif 1.2, typing <Return> or osfActivate (usually
+|         bound to the keypad <Enter> key) no longer activates a
+|         button that is outside a menu.  For example,it no
+|         longer pops up an OptionMenu or activates a
+|         ToggleButton in a dialog box.
+| 
+|         If there is a default button associated with an
+|         XmBulletinBoard, typing <Return> (except in a multi-
+|         line XmText), <Ctrl> + <Return> or osfActivate while
+|         focus is in the XmBulletinBoard activates the default
+|         button.
+| 
+|    Specific Widget Changes and Enhancements
+| 
+|         This section lists changes made to particular widgets.
+| 
+PUNT>>>> |      XmClipboard
+PUNT>>>> | 
+PUNT>>>> |         Several corrections have been made to XmClipboard
+PUNT>>>> |         function parameters.  These are binary compatible, but
+PUNT>>>> |         may cause warnings when recompiling a Motif
+PUNT>>>> |         applications. Changes were (char *) to XtPointer, int
+PUNT>>>> |         to long, (int *) to (long *). Functions affected are:
+PUNT>>>> | 
+PUNT>>>> |            * XmClipboardCopy
+PUNT>>>> | 
+PUNT>>>> |            * XmClipboardCopyByName
+PUNT>>>> | 
+PUNT>>>> |            * XmClipboardInquireCount
+PUNT>>>> | 
+PUNT>>>> |            * XmClipboardInquireFormat
+PUNT>>>> | 
+PUNT>>>> |            * XmClipboardRegisterFormat
+PUNT>>>> | 
+PUNT>>>> |            * XmClipboardRetrieve
+PUNT>>>> | 
+PUNT>>>> |            * XmClipboardStartCopy
+PUNT>>>> | 
+PUNT>>>> |            * XmClipboardWithdrawFormat
+| 
+DONE>>> |      XmCommand
+DONE>>> | 
+DONE>>> |         XmCommandGetChild is corrected to accept
+DONE>>> |         XmDIALOG_WORK_AREA as a value for the child argument.
+| 
+|      XmList
+| 
+|         For managing list items, XmList includes the following
+|         new functions:
+| 
+|            * XmListAddItemsUnselected
+| 
+|            * XmListDeletePositions
+| 
+|            * XmListGetKbdItemPos
+| 
+|            * XmListIsPosSelected
+| 
+|            * XmListPosToBounds
+| 
+|            * XmListReplaceItemsUnselected
+| 
+|            * XmListReplaceItemsPosUnselected
+| 
+|            * XmListReplacePositions
+| 
+|            * XmListSetKbdItemPos
+| 
+|            * XmListUpdateSelectedList
+| 
+|            * XmListYToPos
+| 
+|         XmList includes a new translation:
+| 
+|            * <Copy> - Copies selection to clipboard.
+| 
+|         XmList also includes a new action:
+| 
+|            * ListScrollCursorVertically() - scrolls the cursor
+|              vertically based on an input percentage or a y
+|              position.
+| 
+|         Note:  It is a known bug that this action is
+|                named ListScrollCursorVisible in 1.2.
+|                This will be corrected in 1.2.1.
+| 
+|         The XmNvisibleItemCount resource has been changed so
+|         that the default value is dynamic, based on the item
+|         count and the height.
+| 
+|         In Revision 1.2, if the selectedItems and
+|         selectedItemCount resources for a List are set in a
+|         resource file, the location cursor appears over the
+|         last item in the selectedItems list, not the first
+|         selected item.
+| 
+|      XmMessageBox
+| 
+|         MessageBox now supports the addition of one MenuBar,
+|         one work area, and multiple PushButton children.
+| 
+DONE>>> |         A new dialog type, XmDIALOG_TEMPLATE, creates a
+DONE>>> |         MessageBox containing only a Separator. Additional
+DONE>>> |         children are provided by the application.
+DONE>>> | 
+DONE>>> |         XmCreateTemplateDialog creates a XmDIALOG_TEMPLATE
+DONE>>> |         XmMessageBox inside a DialogShell.
+| 
+|      XmRowColumn and Menus
+| 
+DONE>>> |         A new resource, XmNentryVerticalAlignment, specifies
+DONE>>> |         the vertical alignment style.
+| 
+|         A new resource, XmNunpostBehavior, has been added to
+|         the XmScreen object.  This resource can be set to
+|         enable external button events to be replayed after a
+|         menu is unposted.
+| 
+|      XmScrollBar
+| 
+|         XmScrollBar includes a new translation:
+| 
+|            * <Cancel> - Cancels the current slider drag.
+| 
+|      XmScrolledWindow
+| 
+DONE>>> |         A new function, XmScrollVisible, scrolls an automatic
+DONE>>> |         scrolled window to make a partially or completely
+DONE>>> |         obscured widget visible.
+| 
+DONE>>> |         A new resource, XmNtraverseObscuredCallback, specifies
+DONE>>> |         a list of callbacks that are called when a traversal
+DONE>>> |         event is requested to a non-visible widget.
+|
+|         A new
+|         callback structure, XmTraverseObscuredCallbackStruct,
+|         has been added to support this callback.
+| 
+|      XmSelectionBox, XmFileSelectionBox
+| 
+|         In addition to a work area child, these widgets now
+|         support the addition of MenuBar and PushButton
+|         children.
+| 
+|         A new resource, XmNchildPlacement, controls the
+|         location of the work area child.
+| 
+|         The value XmDIALOG_TEMPLATE has been added to the
+|         resource XmNdialogType.
+| 
+|         By default, XmSelectionBoxDialog and subclasses use
+|         XmTextField instead of XmText.  You can revert to the
+|         former behavior by defining USE_TEXT_IN_DIALOGS when
+|         building XmSelectionBox or any of its subclasses.
+| 
+|      XmText
+|
+DONE>>> |         Two functions have been added to XmText for updating
+DONE>>> |         changes to the widget: XmTextDisableRedisplay and
+DONE>>> |         XmTextEnableRedisplay.
+| 
+|         The functions XmTextFindString and XmTextGetSubstring
+|         have been added to facilitate string manipulation.
+| 
+|         The destination cursor now follows the insert cursor
+|         and is no longer independently drawn.
+| 
+|         XmText includes these new translation:
+| 
+|            * <Backspace> - Deletes any non-null primary
+|              selection.
+| 
+|            * <Delete> - Deletes any non-null primary selection.
+| 
+|            * <LeaveWindow> - Continues a selection action by
+|              scrolling after a time delay.
+| 
+|         XmText includes these new actions:
+| 
+|            * scroll-cursor-vertically() - Scrolls the cursor
+|              vertically based on a y position.
+| 
+|            * toggle-overstrike() - Switches between insert and
+|              overstrike modes.
+| 
+|         Note:  There is a potential problem in both
+|                XmText and XmTextField with the rendering
+|                of strings in fonts or fontsets that
+|                contain characters where ascenders can
+|                rise above font ascent.  If the text
+|                containing these characters is
+|                highlighted, the overlapping descenders
+|                of previous lines may be overwritten by
+|                succeeding lines.
+| 
+|      XmTextField
+| 
+DONE>>> |         A new resource, XmNfocusCallback, specifies the
+DONE>>> |         callbacks that are called when the widget accepts input
+DONE>>> |         focus.
+| 
+|         A new function, XmTextFieldGetSubstring, gets a
+|         substring by length from a widget.
+| 
+|         The destination cursor now follows the insert cursor
+|         and is no longer independently drawn.
+| 
+|         XmTextField includes these new translations:
+| 
+|            * <Backspace> - Deletes any non-null primary
+|              selection.
+| 
+|            * <Delete> - Deletes any non-null primary selection.
+| 
+|      XmToggleButton, XmToggleButtonGadget
+| 
+|         Setting XmNfillOnSelect true, when XmNindicatorOn is
+|         false will now cause the background of a set
+|         XmToggleButton to be filled with XmNselectColor.
+| 
+|         The default value for XmNfillOnSelect is dynamic so
+|         that it matches the state of XmNindicatorOn.
+
+
+==============================================================================
+
+Thu Feb 25 19:28:00 PST 1993
+
+In porting to Motif 1.2, I got errors in
+winterp.c:Winterp_XPrintDefaultError(). Fixed them by #ifdefing in portions
+from /d4/X11r5/mit/lib/X/XlibInt.c. However still got errors from until
+I added 
+	#ifdef WINTERP_MOTIF_12
+	#include <X11/Xlibint.h>
+	#endif /* WINTERP_MOTIF_12 */
+This is probably all a bad thing. Check to see what can be done w/r/t
+portability incase some systems don't have <X11/Xlibint.h> etc.
+
+Allow alternative of including more std. "int _XDefaultError(dpy, event)"
+from XlibInt.c -- this isn't declared as static...
+
+==============================================================================
+
+Thu Feb 25 19:00:40 PST 1993
+
+/d4/X11r5/mit/RELNOTES.TXT says 
+	(1) replace the following headers w/ #include <X11/Xos.h>:
+	     <string.h>
+	     <strings.h>
+	     <sys/types.h>
+	     <sys/file.h>
+	     <fcntl.h>
+	     <sys/time.h>
+	     <unistd.h>
+	(2) Add the following to winterp.h
+
+     #ifndef X_NOT_STDC_ENV
+     #include <stdlib.h>
+     #else
+     extern char *getenv();
+     char *malloc(), *realloc(), *calloc();
+     #endif
+     #if defined(macII) && !defined(__STDC__)  /* stdlib.h fails to define these */
+     char *malloc(), *realloc(), *calloc();
+     #endif /* macII */
+
+==============================================================================
+
+FIXED>>>||Mon Sep 28:
+FIXED>>>||
+FIXED>>>||Turns out this one is a compiler dependency resulting from a no-brainer
+FIXED>>>||coding error that resulted in a compiler dependency between HPUX-8.0/s300 and
+FIXED>>>||HPUX-8.07-s700... The problem was in w_inputCB.c:Wicb_Read_Sexp_Proc():
+FIXED>>>||	old:  *paren_count = (*paren_count == -1) ? 1 : (*paren_count)++;
+FIXED>>>||	fix: *paren_count = (*paren_count == -1) ? 1 : *paren_count + 1;
+FIXED>>>||
+FIXED>>>||these should mean the same thing, no?
+FIXED>>>
+FIXED>>> On an s700/s800, when I load the file bar.lsp into winterp using stdin
+FIXED>>> input mode, the beginning of the first long s-exp gets "lost"
+FIXED>>> 
+FIXED>>> This problem happens even for short inputs such as 
+FIXED>>> 	"(setq foo (system "ll"))"
+FIXED>>> but note that 
+FIXED>>> 	"(system "ll")"
+FIXED>>> is not a problem...
+FIXED>>> 
+FIXED>>> is it a problem w/ nested parens?
+FIXED>>> 
+FIXED>>> shell> winterp < bar.lsp
+FIXED>>> X> NIL
+FIXED>>> X> NIL
+FIXED>>> X> NIL
+FIXED>>> X>
+FIXED>>> error: unexpected EOF
+FIXED>>> X> "xxxxxxxxxxxxx2"
+FIXED>>> "xxxxxxxxxxxxx2"
+FIXED>>> X> "xxxxxxxxxxxxx3"
+FIXED>>> "xxxxxxxxxxxxx3"
+FIXED>>> .
+FIXED>>> .
+FIXED>>> .
+FIXED>>> X> "xxxxxxxxxxxxx214"
+FIXED>>> "xxxxxxxxxxxxx214"
+FIXED>>> X> "xxxxxxxxxxxxx215"
+FIXED>>> "xxxxxxxxxxxxx215"
+FIXED>>> X> "xxxxxxxxxxxxx216"
+FIXED>>> "xxxxxxxxxxxxx216"
+FIXED>>> X> Winterp:Wicb_Read_Sexp_Proc(): Warning -- ignoring unmatched ')'.
+FIXED>>> 
+FIXED>>> where bar.lsp is:
+FIXED>>> (setq *breakenable* nil)
+FIXED>>> (setq *tracenable* nil)
+FIXED>>> (setq *gc-msgs* nil)
+FIXED>>> 
+FIXED>>> (let nil
+FIXED>>>   (print "xxxxxxxxxxxxx1")
+FIXED>>>   (print "xxxxxxxxxxxxx2")
+FIXED>>>   (print "xxxxxxxxxxxxx3")
+FIXED>>>   .
+FIXED>>>   .
+FIXED>>>   .
+FIXED>>>   (print "xxxxxxxxxxxxx214")
+FIXED>>>   (print "xxxxxxxxxxxxx215")
+FIXED>>>   (print "xxxxxxxxxxxxx216")
+FIXED>>>   )
+FIXED>>> 
+FIXED>>> Note that problem occurs on s800 when retrieving data using
+FIXED>>> XT_ADD_INPUT/:READ_SEXP_TO_USTREAM:
+FIXED>>> 
+FIXED>>> (load "baz.lsp")
+FIXED>>> ; loading "baz.lsp"
+FIXED>>> T
+FIXED>>> X> Winterp:Wicb_Read_Sexp_Proc(): Warning -- ignoring unmatched ')'.
+FIXED>>> XXX2
+FIXED>>> (PRINT XXXXXXXXXXXXX3)
+FIXED>>> (PRINT XXXXXXXXXXXXX4)
+FIXED>>> (PRINT XXXXXXXXXXXXX5)
+FIXED>>> (PRINT XXXXXXXXXXXXX6)
+FIXED>>> (PRINT XXXXXXXXXXXXX7)
+FIXED>>> (PRINT XXXXXXXXXXXXX8)
+FIXED>>> (PRINT XXXXXXXXXXXXX9)
+FIXED>>> (PRINT XXXXXXXXXXXXX10)
+FIXED>>> (PRINT XXXXXXXXXXXXX11)
+FIXED>>> (PRINT XXXXXXXXXXXXX12)
+FIXED>>> (PRINT XXXXXXXXXXXXX13)
+FIXED>>> (PRINT XXXXXXXXXXXXX14)
+FIXED>>> (PRINT XXXXXXXXXXXXX15)
+FIXED>>> (PRINT XXXXXXXXXXXXX16)
+FIXED>>> (PRINT XXXXXXXXXXXXX17)
+FIXED>>> (PRINT XXXXXXXXXXXXX18)
+FIXED>>> (PRINT XXXXXXXXXXXXX19)
+FIXED>>> (PRINT XXXXXXXXXXXXX20)
+FIXED>>> (PRINT XXXXXXXXXXXXX21)
+FIXED>>> (PRINT XXXXXXXXXXXXX22)
+
+==============================================================================
+Thu Sep 17 03:16:18 PDT 1992:
+
+FIXED-??>> There seems to be a problem in calling send-super on widget creation with *breakenable*==NIL;
+FIXED-??>> ===> you get a core dump after the error message is printed
+FIXED-??>> ===> (i believe i wrote a mail msg to myself detailing a similar problem w/ widget resource arglists)
+FIXED-??>> 
+FIXED-??>> ** is this caused by my hack to print the method causing an error (interfere's w/ send-super)??
+FIXED-??>> ** is this caused by using a gadget rather than a widget (screws up Wres_Get_LispArglist() not break in _XmIsSlowSubclass()...)
+FIXED-??>> ** note that core dump doesn't occur right away with *breakenable*==T, but it does occur
+FIXED-??>>    once the breakloop is exited!
+FIXED-??>> 
+FIXED-??>> 	--------------------
+FIXED-??>> 	
+FIXED-??>> 	X> (load "modem-dialer")
+FIXED-??>> 	; loading "modem-dialer.lsp"
+FIXED-??>> 	; loading "people.lsp"
+FIXED-??>> 	error: In Widget Arglist: expected resource value of type XmRXmString. - (SEND #<widget XM_LABEL_GADGET_CLASS: #1dceba> :GET-TIME-STRING)
+FIXED-??>> 	NIL
+FIXED-??>> 	X> Segmentation fault (core dumped)
+FIXED-??>> 	hplmmws-199-.../1.1.4-winterp/src-server> adb ~/bin/winterp core
+FIXED-??>> 	$executable file        = /usr/local/mayer/bin/winterp
+FIXED-??>> 	core file = core
+FIXED-??>> 	ready
+FIXED-??>> 	c
+FIXED-??>> 	_Wres_Get_LispArglist+0x30:     __XmIsSlowSubclass      (0x154B24, 0x8)
+FIXED-??>> 	_Widget_Class_Method_SET_VALUES+0x2C:   _Wres_Get_LispArglist   (0x1DCEBA, 0x14655C, 0x0, 0x0, 0xFFEFF8F0)
+FIXED-??>> 	_clanswer+0x396:???     ()
+FIXED-??>> 	_xsendsuper+0x96:       _clanswer+0x2CA (0x1DCEBA, 0x1ADF88, 0x1AF82E)
+FIXED-??>> 	_xlapply+0x330: ???     ()
+FIXED-??>> 	_xleval+0x48:   _xlapply+0x18E  (0x1DFE3A)
+FIXED-??>> 	_Wicb_Read_Sexp_Proc+0xA3C:     _Wcb_Meta_Callbackproc  (0x1DCE1A, 0x1DCE24, 0x1DCD8E, 0x57FC, 0x0, 0x569C)
+FIXED-??>> 	_Wicb_Read_Sexp_Proc+0xB50:     _Wicb_Read_Sexp_Proc    (0x1DCE24, 0x1E9F08, 0x11, 0xFFEFFC14, 0xFFEFFC10, 0xFFEFFC0C, 0xFFEFFC1C, 0xFFEFFC18, 0x0, 0x0)
+FIXED-??>> 	__XtRemoveAllInputs+0xE2:       ???     (0x1DCE24, 0x1EA32C, 0xFFEFFC48)
+FIXED-??>> 	_XtAppNextEvent+0x54:   __XtRemoveAllInputs+0x44(0x158510)
+FIXED-??>> 	_XtAppMainLoop+0x10:    _XtAppNextEvent (0x158510, 0xFFEFFC84)
+FIXED-??>> 	_main+0xCBA:    _XtAppMainLoop  (0x158510)
+FIXED-??>> 	no subroutine on stack
+FIXED-??>> 	
+FIXED-??>> 	--------------------
+FIXED-??>> 	
+FIXED-??>> 	X> (setq *breakenable* t)
+FIXED-??>> 	T
+FIXED-??>> 	X> (load "modem-dialer")
+FIXED-??>> 	; loading "modem-dialer.lsp"
+FIXED-??>> 	; loading "people.lsp"
+FIXED-??>> 	error: In Widget Arglist: expected resource value of type XmRXmString. - (SEND #<widget XM_LABEL_GADGET_CLASS: #1dcd48> :GET-TIME-STRING)
+FIXED-??>> 	1> (baktrace)
+FIXED-??>> 	Function: #<Subr-BAKTRACE: #192b6a>
+FIXED-??>> 	Function: #<Subr-SEND-SUPER: #191c38>
+FIXED-??>> 	Arguments:
+FIXED-??>> 	         #<widget XM_LABEL_GADGET_CLASS: #1dcd48>
+FIXED-??>> 	         :MANAGED
+FIXED-??>> 	         "clock_w"
+FIXED-??>> 	         #<widget XM_ROW_COLUMN_WIDGET_CLASS: #1dcd5c>
+FIXED-??>> 	Function: #<Subr-APPLY: #193b78>
+FIXED-??>> 	Arguments:
+FIXED-??>> 	         SEND-SUPER
+FIXED-??>> 	         (:ISNEW :MANAGED "clock_w" #<widget XM_ROW_COLUMN_WIDGET_CLASS: #1dcd5c> :XMN_LABEL_STRING (SEND #<widget XM_LABEL_GADGET_CLASS: #1dcd48> :GET-TIME-STRING) :XMN_LABEL_TYPE :PIXMAP)
+FIXED-??>> 	Function: #<Subr-SEND: #191c60>
+FIXED-??>> 	Arguments:
+FIXED-??>> 	         :ISNEW
+FIXED-??>> 	         #<widget XM_LABEL_GADGET_CLASS: #1dcd48>
+FIXED-??>> 	         :MANAGED
+FIXED-??>> 	         "clock_w"
+FIXED-??>> 	         #<widget XM_ROW_COLUMN_WIDGET_CLASS: #1dcd5c>
+FIXED-??>> 	Function: #<FSubr-SETQ: #193ad8>
+FIXED-??>> 	Arguments:
+FIXED-??>> 	         CLOCK_W
+FIXED-??>> 	         (SEND CLOCK_DISPLAY_WIDGET_CLASS :NEW :MANAGED "clock_w" COMMAND_WINDOW_W)
+FIXED-??>> 	...
+FIXED-??>> 	Function: #<Subr-LOAD: #19243a>
+FIXED-??>> 	Arguments:
+FIXED-??>> 	         "modem-dialer"
+FIXED-??>> 	NIL
+FIXED-??>> 	1> 
+FIXED-??>> 	X> (exit)
+FIXED-??>> 	
+FIXED-??>> 	Segmentation fault (core dumped)
+FIXED-??>> 	hplmmws-201-.../1.1.4-winterp/src-server> (exit)
+FIXED-??>> 	
+FIXED-??>> 	hplmmws-202-.../1.1.4-winterp/src-server> adb ~/bin/winterp core
+FIXED-??>> 	executable file = /usr/local/mayer/bin/winterp
+FIXED-??>> 	core file = core
+FIXED-??>> 	ready
+FIXED-??>> 	$c
+FIXED-??>> 	_Wres_Get_LispArglist+0x30:     __XmIsSlowSubclass      (0x154B24, 0x8)
+FIXED-??>> 	_Widget_Class_Method_SET_VALUES+0x2C:   _Wres_Get_LispArglist   (0x1DCD48, 0x14655C, 0x0, 0x0, 0xFFEFF8F0)
+FIXED-??>> 	_clanswer+0x396:???     ()
+FIXED-??>> 	_xsendsuper+0x96:       _clanswer+0x2CA (0x1DCD48, 0x1ADF88, 0x1AF82E)
+FIXED-??>> 	_xlapply+0x330: ???     ()
+FIXED-??>> 	_xleval+0x48:   _xlapply+0x18E  (0x1DFCC8)
+FIXED-??>> 	_Wicb_Read_Sexp_Proc+0xA3C:     _Wcb_Meta_Callbackproc  (0x1DCCA8, 0x1DCCB2, 0x1DCC08, 0x57FC, 0x0, 0x569C)
+FIXED-??>> 	_Wicb_Read_Sexp_Proc+0xB50:     _Wicb_Read_Sexp_Proc    (0x1DCCB2, 0x1E9EE0, 0xF5, 0xFFEFFC14, 0xFFEFFC10, 0xFFEFFC0C, 0xFFEFFC1C, 0xFFEFFC18, 0x0, 0x0)
+FIXED-??>> 	__XtRemoveAllInputs+0xAA:       ???     (0x1DCCB2, 0x1EA304, 0xFFEFFC48)
+FIXED-??>> 	_XtAppNextEvent+0x54:   __XtRemoveAllInputs+0x44(0x158510)
+FIXED-??>> 	_XtAppMainLoop+0x10:    _XtAppNextEvent (0x158510, 0xFFEFFC84)
+FIXED-??>> 	_main+0xCBA:    _XtAppMainLoop  (0x158510)
+FIXED-??>> 	no subroutine on stack
+
+==============================================================================
+
+FIXED-??>> ANother one, caused by the following:
+FIXED-??>> 	(apply 'send-super `(:isnew
+FIXED-??>> 			     ,managed_k 
+FIXED-??>> 			     ,name ,parent_w
+FIXED-??>> 			     ,@args
+FIXED-??>> 			     :XMN_LABEL_TYPE	:label
+FIXED-??>> 			     :XMN_LABEL_STRING	,(send self :get-time-string)
+FIXED-??>> 			     ))
+FIXED-??>> 
+FIXED-??>> 	Note: Resources of type XmRLabelType may only be set to the following enumerated values:
+FIXED-??>> 		[:PIXMAP :STRING ]
+FIXED-??>> 	[ gc: total 14640, 1793 free ]
+FIXED-??>> 	[ gc: total 16640, 0 free ]
+FIXED-??>> 	[ gc: total 18640, 0 free ]
+FIXED-??>> 	[ gc: total 20640, 0 free ]
+FIXED-??>> 	[ gc: total 22640, 0 free ]
+FIXED-??>> 	[ gc: total 24640, 0 free ]
+FIXED-??>> 	[ gc: total 26640, 0 free ]
+FIXED-??>> 	[ gc: total 28640, 0 free ]
+FIXED-??>> 	[ gc: total 30640, 780 free ]
+FIXED-??>> 	error: 214cce - :LABEL
+FIXED-??>> 	NIL
+FIXED-??>> 	X> 
+FIXED-??>> 	Process winterp segmentation violation (core dumped)
+FIXED-??>> 	--------------------
+FIXED-??>> 	adb ~/bin/winterp core 
+FIXED-??>> 	executable file = /usr/local/mayer/bin/winterp
+FIXED-??>> 	core file = core
+FIXED-??>> 	ready
+FIXED-??>> 	$c
+FIXED-??>> 	_Wres_Get_LispArglist+0x30:     __XmIsSlowSubclass      (0x18A964, 0x8)
+FIXED-??>> 	_Widget_Class_Method_SET_VALUES+0x2C:   _Wres_Get_LispArglist   (0x214CBA, 0x14655C, 0x0, 0x0, 0xFFEFF918)
+FIXED-??>> 	_clanswer+0x396:???     ()
+FIXED-??>> 	_xsend+0xBE:    _clanswer+0x2CA (0x214CBA, 0x213018, 0x1AF696)
+FIXED-??>> 	_xlapply+0x330: ???     ()
+FIXED-??>> 	_xleval+0x48:   _xlapply+0x18E  (0x214BAC)
+FIXED-??>> 	_Wicb_Read_Sexp_Proc+0xA3C:     _Wcb_Meta_Callbackproc  (0x214B52, 0x214B5C, 0x2652C6, 0x57FC, 0x0, 0x569C)
+FIXED-??>> 	_Wicb_Read_Sexp_Proc+0xB50:     _Wicb_Read_Sexp_Proc    (0x214B5C, 0x233B14, 0x39, 0xFFEFFC34, 0xFFEFFC30, 0xFFEFFC2C, 0xFFEFFC3C, 0xFFEFFC38, 0x0, 0x0)
+FIXED-??>> 	__XtRemoveAllInputs+0xAA:       ???     (0x214B5C, 0x239948, 0xFFEFFC68)
+FIXED-??>> 	_XtAppNextEvent+0x54:   __XtRemoveAllInputs+0x44(0x158508)
+FIXED-??>> 	_XtAppMainLoop+0x10:    _XtAppNextEvent (0x158508, 0xFFEFFCA4)
+FIXED-??>> 	_main+0xCBA:    _XtAppMainLoop  (0x158508)
+FIXED-??>> 	no subroutine on stack
+
+==============================================================================
+
+DONE>> Makefile.hpux8 in all directories is most up-to-date. Should update other
+DONE>> makefiles to be similar to that one. In particular, should add the targets
+DONE>> 'win-lib' and 'libWinterp.a'
+
+==============================================================================
+2/5/92: 
+
+Remember to fix the following:
+
+> To: maggie@hpkslx.hp.com, george@hprclgg.mayfield.hp.com,
+>     mike@hprclgg.mayfield.hp.com
+> Subject: WINTERP/Motif/Teck Bugs (was "Re: *saved-objs*")
+|
+| > Another is from Winterp's Wpm_Decr_Refcount_Or_Free_Pixmap in w_pixmap.c
+| > 
+| >  	Internal error in garbage collecting a pixmap --
+| > 	XmDestroyPixmap()  couldn't find pixmap in pixmap cache.
+| > 
+| 
+| I was recently poking around in the Pixmap stuff because Darryl Okahata was
+| asking me questions on how to add XPM2 support to WINTERP. While trying to
+| figure out how to make non-Motif-cached pixmaps coexist with Motif pixmaps,
+| I noticed a bug that could produce the error you mention, for cases where
+| you are retrieving a pixmap resource from a widget.
+| 
+| Currently, if you retrieve a Pixmap resource from a widget, it will create
+| a Pixmap object, and when that object is no longer referenced by Lisp, it
+| will be garbage collected with Wpm_Decr_Refcount_Or_Free_Pixmap() being
+| called during the sweep() phase. Such treatment of pixmaps makes sense for
+| any pixmap created by WINTERP either when a resource is set and an
+| automatic string-->pixmap conversion takes place, or when XM_GET_PIXMAP is
+| called.
+| 
+| In the case of retrieving a pixmap resource, the pixmap may still be
+| referenced inside the Motif widget from where it came, and therefore
+| WINTERP should not call
+| Wpm_Decr_Refcount_Or_Free_Pixmap()-->XmDestroyPixmap() on it.
+| 
+| A possible bug-scenario follows: A pixmap resource is set on a widget.
+| Later, that resource is retrieved from the widget, and possibly set onto
+| another widget. If the first widget is destroyed and it is the only widget
+| which uses the pixmap, the pixmap will be XmDestroyPixmap()'d. Later, when
+| the pixmap-obj retrieved from the widget is destroyed, XmDestroyPixmap() is
+| called on an already destroyed pixmap.
+| 
+| The solution (sans C-level fixes) is to not retrieve pixmaps from widgets.
+| If you need to set a pixmap in multiple places, then call XM_GET_PIXMAP,
+| save the resulting pixmap in a variable, and pass that value onto the
+| widgets that need to get a pixmap setting.
+| 
+| To fix this at the C-level will require more work. What I suggested to
+| Darryl Okahata is that he add add a field xp_pixmap_kind to the pixmap node
+| struct which is used by Wpm_Decr_Refcount_Or_Free_Pixmap() to determine
+| whether it is ok to call XmDestroyPixmap(). Change cv_pixmap() and all
+| references to cv_pixmap() to include an extra argument which sets field
+| xp_pixmap_kind.
+| 
+| For the call to cv_pixmap() in w_resources.c:Cvt_Pixmap_to_LVAL(), 
+| change it to cv_pixmap(p,PIXMAP_NO_DEALLOC). For all other current
+| refs of cv_pixmap(), use cv_pixmap(p,PIXMAP_REFCOUNT_DEALLOC). For XPM
+| references, call cv_pixmap(p,PIXMAP_XPM_DEALLOC)...
+| 
+| To impl this, in xldmem.h add
+| 
+| #define PIXMAP_NO_DEALLOC 0
+| #define PIXMAP_REFCOUNT_DEALLOC 1
+|  
+| change
+|     struct xpixmap {		/* XLTYPE_Pixmap node */
+|       Pixmap xp_pixmap;
+|     } n_xpixmap;
+| to
+|     struct xpixmap {		/* XLTYPE_Pixmap node */
+|       int    xp_pixmap_kind;
+|       Pixmap xp_pixmap;
+|     } n_xpixmap;
+| 
+| change
+| 	/* XLTYPE_Pixmap node */
+| 	#define n_pixmap               n_info.n_xpixmap.xp_pixmap
+| to
+| 	/* XLTYPE_Pixmap node */
+| 	#define n_pixmap               n_info.n_xpixmap.xp_pixmap
+| 	#define n_pixmap_kind          n_info.n_xpixmap.xp_pixmap_kind
+| 
+| and change
+| 	/* XLTYPE_Pixmap access macros */
+| 	#define get_pixmap(x)              ((x)->n_pixmap)
+| to
+| 	/* XLTYPE_Pixmap access macros */
+| 	#define get_pixmap(x)              ((x)->n_pixmap)
+| 	#define get_pixmap_kind(x)         ((x)->n_pixmap_kind)
+| 
+| 
+| In xldmem.c, change cv_pixmap() to use the second argument setting node
+| fiels x->n_pixmap_kind...
+| 
+| And in w_pixmap.c, change Wpm_Decr_Refcount_Or_Free_Pixmap() so that it
+| only calls XmDestroyPixmap() in the correct case:
+| 
+| void Wpm_Decr_Refcount_Or_Free_Pixmap(p)
+|      LVAL p;			/* XLTYPE_Pixmap */
+| {
+|   extern Screen*  screen;	/* global in winterp.c */
+| 
+|   switch (get_pixmap_kind(p)) {
+|   case PIXMAP_NO_DEALLOC: /* don't XmDestroyPixmap() on PIXMAPOBJ retrieved from widget resource */ 
+|     break;
+|   case PIXMAP_REFCOUNT_DEALLOC:
+|     if (!XmDestroyPixmap(screen, get_pixmap(p)))
+|       xlerror("Internal error in garbage collecting a pixmap -- XmDestroyPixmap() couldn't find pixmap in pixmap cache.",
+| 	      p);
+|     break;
+|   case PIXMAP_XPM_DEALLOC:
+|     XPMDestroyPixmap(get_pixmap(p));
+|     break;
+|   }
+| }
+| 
+| Note that I haven't implemented or tested the above changes. I plan to add
+| them to my source tree as soon as other stuff is completed. If you get
+| around to adding them before I do, please send me the context diffs and let
+| me know how it works (i.e. does it solve the problem).
+
+
+
+==============================================================================
+2/4/92:
+
+DONE>> Investigate why running winterp under emacs causes the subprocess stuff
+DONE>> to go awry. If run under a normal terminal, then it works fine.
+DONE>> 
+DONE>> Running subcalc.lsp, the symptoms are that it seems to lose the first
+DONE>> character of a number entered into the text widget, e.g.
+DONE>> 2 --> NIL
+DONE>> 22 --> 2
+DONE>> 
+DONE>> In addition to that, the behavior is different. When you run it under a
+DONE>> terminal you see the text you typed in printed in the XmList, followed by
+DONE>> the result of 'bc' evaluationg the text. Under emacs, you only see the
+DONE>> result.
+
+NOTE>> the problem was due to emacs setting stty(1) echo mode to off, therefore
+NOTE>> no characters were echoed. Losing the first character seems to be due to
+NOTE>> the lack of the following stty(1) flag -- 'onlcr'
+NOTE>> the following setting forces echo and other stuff when running under emacs
+NOTE>> (exp_stty_init "echo echoe echok icrnl -ixany onlcr ixon")
+
+==============================================================================
+
+FIXED>> 2/3/92:
+FIXED>> 
+FIXED>> winterp.c: added ability to take input from stdin, rather than a socket.
+FIXED>> Note that currently, the "extent" of a s-expression is strictly determined
+FIXED>> by a "stupid" paren matcher. The count will go awrly if:
+FIXED>> 	(1) unbalanced paren occurs in a string
+FIXED>> 	(2) unbalanced paren occurs in a comment (either ";...\n" ,
+FIXED>>                                                   or "#|...|#") 
+
+==============================================================================
+
+FIXED>> Investigate problems with linker warning that occurs if "-lc" isn't put
+FIXED>> in LIBS: e.g.
+FIXED>> 
+FIXED>> LIBS = /mnt0/src/OSFMotif1.1.3/lib/Xm/libXm.a \
+FIXED>> 	/mnt0/src/X11r4/mit/lib/Xt/libXt.a \
+FIXED>> 	/mnt0/src/X11r4/mit/lib/X/libX11.a \
+FIXED>> 	-lc -lPW -lm -lmalloc
+FIXED>>         ^^^
+FIXED>> 
+FIXED>> Note -- this seems to happen on 8.0 w/ UEDK motif, as well as on 7.0 w/
+FIXED>> Motif 1.0....
+FIXED>> 
+FIXED>> 	* Make sure to add this to Imakefiles too.
+
+==============================================================================
+
+Do the note from w_callbacks.c:
+
+ TODO: if ntype(client_data) is XLTYPE_CALLBACKOBJ or XLTYPE_EVHANDLEROBJ
+ then call "xlenv = cons(cons(obj,msgcls),getenvi(lval_closure)); xlenv = xlframe(xlenv);"
+ in place of "xlenv = xlframe(getenvi(lval_closure));"
+ with obj=get_callback_widget() or get_evhandler_widget() and msgcls=class(obj).
+ This should allow callbacks on subclassed widgets to access instance variables of subclasses directly... */
+
+
+==============================================================================
+
+test callback, inputcb, timeout, evhandler, action proc code.
+test also
+DONE>> (trace :xmn_activate_callback)
+DONE>> (trace XT_TIMEOUT)
+DONE>> (trace FDINPUTCB)
+DONE>> (trace EVHANDLER)
+DONE>> (trace 'LISP_ACTION_PROC) -- make sure new code to print out call works
+
+==============================================================================
+
+DONE>> Callbacks need fixin' in order to fix following problems
+DONE>> 	(1) can't trace them
+DONE>> 	(2) on error in c.b. no backtrace printed.
+DONE>> 
+DONE>>   need to make this look more like xleval()-->evform()-->evfun()...
+DONE>>   problem is that evform() does some extra stuff before and after calling
+DONE>>   evfun(). Currently, most winterp callbacks only do evfun().
+DONE>>   
+DONE>>   (1) fun = symbol-name of callback-list. Can other data be passed, e.g.
+DONE>>       data structures allowing us to better print out the "callback" and
+DONE>>       who created it. (not really, but if we pass the closure, we end
+DONE>>       up passing all the other data we need.)
+DONE>>   
+DONE>>   (2) need to set up tracing
+DONE>>     LVAL tracing=NIL;
+DONE>>   /* get the functional value of symbols */
+DONE>>     if (symbolp(fun)) {
+DONE>>       if (!null(getvalue(s_tracelist)) && member(fun,getvalue(s_tracelist)))
+DONE>> 	tracing = fun;
+DONE>>       fun = xlgetfunction(fun);
+DONE>>     }
+DONE>> 
+DONE>>   (3) For case CLOSURE, do exactly what evform() does. Since callbacks don't 
+DONE>>       have any "arguments" in the way that a form would, we replace evpushargs()
+DONE>>       with a simpler proc. Note that evpushargs() important in that the
+DONE>>       stack frame seems to be used by trenter()/trexit(). as well as 
+DONE>>       xlbaktrace(). This could solve "(2) on error in c.b. no backtrace printed."
+DONE>> 
+DONE>> #ifdef APPLYHOOK
+DONE>> 	    /* check for *applyhook* */
+DONE>> 	    if (!null(getvalue(s_applyhook))) {
+DONE>> 		val = (applyhook(fun,NIL));
+DONE>> 		break;
+DONE>> 	    }
+DONE>> #endif
+DONE>>             /* old: argc = evpushargs(fun,NIL); */
+DONE>> 	{ /* NPM: txform of evpusharg() for args=NIL */
+DONE>> 	    FRAMEP newfp;
+DONE>> 	    /* build a new argument stack frame */
+DONE>> 	    newfp = xlsp;
+DONE>> 	    pusharg(cvfixnum((FIXTYPE)(newfp - xlfp)));
+DONE>> 	    pusharg(fun);
+DONE>> 	    pusharg(NIL); /* will be argc */
+DONE>> 	    newfp[2] = cvfixnum((FIXTYPE)0);
+DONE>> 	    xlfp = newfp;
+DONE>> 	}            
+DONE>> 	    /* argc = 0 */
+DONE>> 	    argv = xlfp + 3; /* NPM: this is NIL, isn't it? -- doesn't matter, since argv isn't ref'd if argc=0.
+DONE>> 	    trenter(tracing,0,argv);
+DONE>> 	    val = evfun(fun,0,argv);/NPM: replace this by current callback proc, note that argv is NIL */
+DONE>> 	    trexit(tracing,val);
+DONE>> 	    /* remove the call frame */
+DONE>> 	    xlsp = xlfp;
+DONE>> 	    xlfp = xlfp - (int)getfixnum(*xlfp);
+DONE>> 
+DONE>>   Note *APPLYHOOK*.
+
+DONE>>  For tracing -- we'd like to be able to do
+DONE>>  (trace ':xmn_activate_callback) -- trace all callbacks on activate callback
+DONE>>  (trace 'XT_TIMEOUT)            -- trace all timeouts
+DONE>>  (trace FDINPUTCB)     -- trace all input cbs
+DONE>>  (trace 'EVHANDLER)          -- trace all event handlers
+DONE>>  (trace 'LISP_ACTION_PROC)        -- trace all action procs
+
+ We may want more specific tracing, e.g.
+DO_LATER>> (trace <callbackobj>)       -- trace specific callbackobj
+DO_LATER>> (trace <timeoutobj))        -- trace specific timeoutobj
+DO_LATER>> (trace <inpubcbobj>)        -- trace specific inputcbobj
+DO_LATER>> (trace <evhandlerobj>)      -- trace specific evhandlerobj
+DO_LATER>> (trace <widgetobj>		-- trace all callb/evhandler/action-procs
+
+    In order to make these print out meaningful info, need to 
+DONE>> (i)   for callbacks, print out widget name and callback-list-sym
+DONE>> (ii)  for timeouts, print out timeoutobj
+DONE>> (iii) for inpubcbs, print out inputcbobj
+DONE>> (iv)  for evhandlers, print out widget name and event-make
+DONE>> (v)   for action procs, print out string of action proc.
+
+DONE>>     To get the special printout, need to have special version of
+DONE>>     trenter()-->doenter()
+DONE>>     trexit() -->doexit() for each kind of c.b.
+
+DONE>> set up txport new_w_callbacks.c code into
+DONE>> 	timeout
+DONE>> 	evhandler
+DONE>> 	inputcb
+DONE>> 	action-proc (?? -- is it really needed since actionprocs get read/eval'd)
+
+TODO!!!!>>
+TODO!!!!>> make callbacks and eventhandlers able to access ivars of WIDGETOBJ
+TODO!!!!>>
+
+TODO!!!!>>
+TODO!!!!>> txport callback stuff into XmAddProtocolCallback(), XmRemoveProtocolCallback()
+TODO!!!!>> XmAddWMProtocolCallback(), XmRemoveWMProtocolCallback()
+TODO!!!!>> -- should be easier due to callback consolidation, modulo the need
+TODO!!!!>> -- for adding an X-ATOM type.
+
+		--------------------	--------------------
+
+DONE>> need to change param on bind_call_data_values_proc (Lexical_Bindings_For_*
+DONE>> from: LVAL bindings_list; LVAL lexical_env; XtPointer call_data; LVAL o_widget;
+DONE>> to:   LVAL bindings_list; LVAL lexical_env; XtPointer call_data; LVAL client_data;
+DONE>> 
+DONE>> for callbacks, inside the proc, pull out o_widget from client_data
+DONE>> using get_callback_widget((LVAL) client_data))
+
+DONE>> for evhandler, use get_evhandler_widget((LVAL) client_data)...
+
+DONE>> for inputcb, fdinputcb_obj==client_data:
+DONE>>     use xlpbind(s_FDINPUTCB_OBJ, fdinputcb_obj, xlenv);
+DONE>>     use xlpbind(s_FDINPUTCB_FILE, get_fdinputcb_file(fdinputcb_obj), xlenv);
+
+DONE>> for timeouts, fdinputcb_obj==client_data:
+DONE>>     use xlpbind(s_FDINPUTCB_FILE, get_fdinputcb_file(fdinputcb_obj), xlenv);
+
+DONE>> --> note for each widget class's bind_call_data_values_proc change to pass
+DONE>> client_data rather than o_widget and let the proc itself pull out the
+DONE>> desired fields from the XXXobj. This generalizes the
+DONE>> bind_call_data_values_proc so that it can be used for other things.
+
+DONE>> --> rather than making yet another meta wrapper for callbacks, we should
+DONE>> just replace Wcb_Meta_Callbackproc with a new version that takes more
+DONE>> parameters, and alter all uses of Wcb_Meta_Callbackproc s.t.
+DONE>> get_callback_closure((LVAL) client_data) is passed, and that a ref. to
+DONE>> Wcb_Callback_Trace_Proc is passed in.
+
+==============================================================================
+
+DONE>> need to change all "callbacks" such that they use format of new
+DONE>> evfun(), e.g.
+DONE>> 
+DONE>> #ifdef SPECIALS
+DONE>>     LVAL olddenv=xldenv;
+DONE>> #endif
+DONE>> #ifdef SPECIALS
+DONE>>     xlunbind(olddenv);
+DONE>> #endif
+DONE>> 
+DONE>> Note that one diff about the new xlisp is that they "inline"
+DONE>> "val = xleval(car(cptr));". In order to not export more symbols
+DONE>> out of xleval.c, don't inline this proc in WINTERP.
+
+==============================================================================
+
+DONE>> In WINTERP, make sure to recode all setting of constants with
+DONE>> setvalue(sym,val) ==> defconstant(sym,val);
+DONE>> 
+DONE>> this is already done for XM_*_WIDGET_CLASS objects via xlclass(). This eliminates
+DONE>> a potential bug which is a msg in the +winterp-bug folder.
+
+==============================================================================
+
+X.DONE>> for\W\(
+X.DONE>> while\W\(
+X.DONE>> * if\W\(
+X.DONE>> * do\W\{
+x.DONE>> * ?
+x.DONE>> TODO '||' and '&&'
+DONE>> 
+DONE>> 
+DONE>> * Ensure that all C code avoids
+DONE>> 	if (lval) ...
+DONE>>   use
+DONE>> 	if (lval != NIL)
+DONE>>   since NULL/NIL are not necessarily == to 0.
+DONE>> 
+DONE>> 	lval ? NIL : T ==> (lval != NIL) ? NIL : T
+DONE>> 
+DONE>> from xlisp.h -- NILSYMBOL:
+DONE>> 	    /* This feature requires that all code that checks for
+DONE>> 		NIL explicitly compare with NIL, something that lazy
+DONE>> 		programmers haven't done. There is a good chance that
+DONE>> 		an improper comparison is lurking in the code some-
+DONE>> 		where. On the other hand, the code is lots cleaner,
+DONE>> 		except for init/save/restore/gc kludges
+DONE>> 		(saves 3040 bytes!)*/
+DONE>> 
+DONE>> NOTE ALSO THAT macros like consp() objectp() etc do not check for a NIL
+DONE>> argument when NILSYMBOL defined. Must make sure that all *p() procs in 
+DONE>> WINTERP are compliant...
+
+==============================================================================
+
+DONE>>	* changed : int xlinit(char *resfile);
+DONE>>  * changed : int xlread(LVAL fptr, LVAL *pval);
+
+==============================================================================
+
+DONE>> Remove externs from WINTERP source that are already defined in xlisp.h will
+DONE>> prevent conflicts with unANSIzed declarations if using -DANSI...
+
+==============================================================================
+
+DONE>> Be sure to remove w_utils.c:Wut_Prim_LOAD(). Use the default load command, but
+DONE>> substitute a special ospopen() for WINTERP.
+DONE>> Best thing to do would be define ospopen in w_utils.c to handle
+DONE>> both a path and a default directory (for back compat). Would need to
+DONE>> #ifndef WINTERP the one in unixstuff.c.
+DONE>> 
+DONE>> The behavior would be to use the value of getenv(WINTERP_LISP_LOAD_PATH);
+DONE>> if it exists. If it doesn't exist, then use resource value... document!
+
+==============================================================================
+
+DONE>> strings: length is now == to strlen(str).
+DONE>> XX already changed this for xldmem.c:cv_string()
+DONE>> 
+DONE>> XX newstring(len + STRMAX + 1)" becomes "newstring(len + STRMAX)"
+DONE>> -- only needed for wc_Text.c:Lexical_Bindings_For_XmTextVerifyCallbackStruct()
+DONE>> 
+DONE>> "unsigned char *" becomes "char *"
+DONE>> 
+DONE>> "len = getslength(src) - 1" becomes "len = getslength(src)"
+DONE>> 
+DONE>> note int-->unsigned change: decl "newstring(int size)" becomes
+DONE>> 				 "newstring(unsigned size)"
+DONE>> 				 newvector(int..)-->newvector(unsigned...)
+
+DONE>> (1) check all instances of getstring().
+DONE>> (2) check all instances of getslength().
+
+
+Note:
+| * from xlisp.h -- need to check on this
+| /************ Notice to anyone attempting modifications ****************/
+| /* Compared to standard versions, length of strings in an LVAL exclude the
+|    terminating null. When appropriate, characters are consistantly treated
+|    as unsigned, and the null, \0, character is allowed. Don't write any new
+|    code that assumes NULL and/or NIL are zero */
+
+==============================================================================
+
+DONE>> |NO: in w_classes.c, should set PNAME ivar on widget classes in
+DONE>> |NO: 	Wcls_Create_Subclass_Of_WIDGET_CLASS(class_name, widgetclass_id)
+DONE>> |NO: just do setivar(self, PNAME, xlenter(class_name));
+DONE>> |
+DONE>> Actually, Wcls_Create_Subclass_Of_WIDGET_CLASS() calls xlclass() and
+DONE>> xlclass() does setivar(cls,PNAME,cvstring(name)), where <name> is the
+DONE>> string name, e.g. "XM_LIST_WIDGET_CLASS"... therefore this is already
+DONE>> done for us.
+DONE>> 
+DONE>> But, we Should also remove the WIDGET_CLASS_SYM cvar and the place where it
+DONE>> is referenced in Wcls_Print_WIDGETOBJ(). 
+DONE>> 
+DONE>> Modify Wcls_Print_WIDGETOBJ() such that it prints out both the classname
+DONE>> (if subclassed) and the parent widget class (XM_*_CLASS).
+DONE>> 	WINTERP Currently prints:
+DONE>> 		#<Object(XM_TEXT_WIDGET_CLASS): #23beb0>
+DONE>> 	XLISP 2.1c prints:
+DONE>> 		#<class <CLASS>:  #xxxxx>  -- for classes
+DONE>> 		#<a <PNAME> object: #xxxxx> -- for insts w/ PNAME
+DONE>> 		#<a <PNAME> object: #xxxxx> -- for insts.
+DONE>> 	Todo print:
+DONE>> 		#<%s %s: #xxxx>
+DONE>> 	where first %s is widgetclass, second %s is classname in PNAME or
+DONE>> 	'???' where '???' is used for unnamed subclases...))
+DONE>> 
+DONE>> However... we don't quite want to do that:
+DONE>> 
+DONE>> One problem with continuing to use the Wcls_Print_WIDGETOBJ() fn is that it
+DONE>> cannot be overriden by a user-defined :PRIN1 method. That technique is used
+DONE>> to make objects read/print consistent, but won't be available to widgets.
+DONE>> The soln is to not to call Wcls_Print_WIDGETOBJ() out of xlprint().  In
+DONE>> xlprintl(), add a case WIDGETOBJ and have it call putobj() just like for
+DONE>> OBJECT.
+DONE>> 
+DONE>> Then, in wc_WIDGET, define a default print method for all widgets. The
+DONE>> method could look like xlobj.c:obprin1() and xlobj.c:xputobj(). The guts
+DONE>> would get the class by calling xlclass(self), then pass the class on to a
+DONE>> proc similar to w_classes.c:Wcls_WIDGETCLASSOBJ_To_WidgetClassID. The
+DONE>> result would print out the object's class name, as well as the widget class
+DONE>> to which it belonged.
+
+FORGET-IT>> If we wanted to add our own :PRIN1 method in Lisp, would we lose access to
+FORGET-IT>> the original definition? Perhaps add a copy of :PRIN1 and call it
+FORGET-IT>> :DEFAULT_PRIN1. Why do we want this? Consider adding a way of printing
+FORGET-IT>> widgets such that they display their fully qualified resource name AND the
+FORGET-IT>> class/widgetclass info. To do the former, we could steal the code from
+FORGET-IT>> identify_pb_w in identifier.lsp, but we'd eventually have to call
+FORGET-IT>> :DEFAULT_PRIN1 to find out the instance info.... or perhaps blow it off and
+FORGET-IT>> force people to subclass if they want to do this sort of thing.
+
+==============================================================================
+
+DONE>> Fix EXP_SPAWN so that the pipe returned has the read/write mode set.
+DONE>> Fix EXP_POPEN...
+
+==============================================================================
+
+DONE>> Need to update w_funtab.c w_funtab.h with new entries, e.g.
+DONE>> DONE>> #ifdef OBJPRNT
+DONE>> DONE>> {   NULL,		S, obprin1	},
+DONE>> DONE>> #endif
+DONE>> #ifdef COMMONLISPF
+DONE>> {   "LIST*",		S, xliststar	},
+DONE>> #endif
+DONE>> #ifdef COMMONLISPF
+DONE>> {   "CONCATENATE",	S, xconcatenate },
+DONE>> #else
+DONE>> {   "STRCAT",		S, xstrcat	},
+DONE>> #endif
+DONE>> 
+DONE>> #ifdef ADDEDTAA
+DONE>> {   "GENERIC",		S, xgeneric	},
+DONE>> #endif
+DONE>> #ifdef TIMES
+DONE>> {   "TIME",		F, xtime	},
+DONE>> {   "GET-INTERNAL-RUN-TIME",	S, xruntime  },
+DONE>> {   "GET-INTERNAL-REAL-TIME",	S, xrealtime },
+DONE>> #endif
+DONE>> /* extra table entries */
+DONE>> #ifdef COMMONLISPF
+DONE>> #ifdef POSFCNS
+DONE>> {   "COUNT-IF",		S, xcountif	},
+DONE>> {   "FIND-IF",		S, xfindif	},
+DONE>> {   "POSITION-IF",	S, xpositionif	},
+DONE>> #endif
+DONE>> {   "COERCE",		S, xcoerce	},
+DONE>> {   "ELT",		S, xelt		},
+DONE>> #ifdef SRCHFCN
+DONE>> {   "SEARCH",		S, xsearch	},
+DONE>> #endif
+DONE>> #ifdef MAPFCNS
+DONE>> {   "MAP",		S, xmap		},
+DONE>> {   "SOME",		S, xsome	},
+DONE>> {   "EVERY",		S, xevery	},
+DONE>> {   "NOTANY",		S, xnotany	},
+DONE>> {   "NOTEVERY",		S, xnotevery	},
+DONE>> #endif
+DONE>> #endif
+DONE>> #ifdef BETTERIO
+DONE>> {   "FILE-POSITION",	S, xfileposition},
+DONE>> {   "FILE-LENGTH",	S, xfilelength	},
+DONE>> {   "FRESH-LINE",	S, xfreshline	},
+DONE>> {   "OPEN-STREAM-P",	S, xopenstreamp },
+DONE>> {   "INPUT-STREAM-P",	S, xinputstreamp},
+DONE>> {   "OUTPUT-STREAM-P",	S, xoutputstreamp},
+DONE>> #endif
+DONE>> #ifdef STRUCTS
+DONE>> {   "DEFSTRUCT",	F, xdefstruct	},
+DONE>> {   "%STRUCT-TYPE-P",	S, xstrtypep	},
+DONE>> {   "%MAKE-STRUCT",	S, xmkstruct	},
+DONE>> {   "%COPY-STRUCT",	S, xcpystruct	},
+DONE>> {   "%STRUCT-REF",	S, xstrref	},
+DONE>> {   "%STRUCT-SET",	S, xstrset	},
+DONE>> #endif
+DONE>> #if defined(STRUCTS) | defined(COMPLX)
+DONE>> {   "ASIN",		S, xasin	},
+DONE>> {   "ACOS",		S, xacos	},
+DONE>> {   "ATAN",		S, xatan	},
+DONE>> #endif
+DONE>> #ifdef APPLYHOOK
+DONE>> {   "APPLYHOOK",	S, xapplyhook	},
+DONE>> #endif
+DONE>> 
+DONE>> #ifdef COMMONLISPF
+DONE>> {   "NREVERSE",		S, xnreverse	},
+DONE>> {   "BUTLAST",		S, xbutlast	},
+DONE>> {   "TYPEP",		S, xtypep	},
+DONE>> #ifdef TIERNEY
+DONE>> {   "REDUCE",		S, xreduce	},
+DONE>> #endif
+DONE>> #ifdef REMDUPS
+DONE>> {   "REMOVE-DUPLICATES",S, xremove_duplicates },
+DONE>> #endif
+DONE>> #endif
+DONE>> 
+DONE>> #ifdef SETS
+DONE>> {   "ADJOIN",		S, xadjoin	    },
+DONE>> {   "UNION",		S, xunion	    },
+DONE>> {   "INTERSECTION",	S, xintersection    },
+DONE>> {   "SET-DIFFERENCE",	S, xset_difference  },
+DONE>> {   "SUBSETP",		S, xsubsetp	    },
+DONE>> #endif
+DONE>> 
+DONE>> #ifdef HASHFCNS
+DONE>> {   "GETHASH",		S, xgethash	    },
+DONE>> {   "REMHASH",		S, xremhash	    },
+DONE>> {   "MAKE-HASH-TABLE",	S, xmakehash	    },
+DONE>> {   "CLRHASH",		S, xclrhash	    },
+DONE>> {   "MAPHASH",		S, xmaphash	    },
+DONE>> {   "HASH-TABLE-COUNT", S, xhashcount	    },
+DONE>> #endif
+DONE>> 
+DONE>> #ifdef COMPLX
+DONE>> {   "COMPLEXP",		S, xcomplexp	    },
+DONE>> {   "COMPLEX",		S, xcomplex	    },
+DONE>> {   "CONJUGATE",	S, xconjugate	    },
+DONE>> {   "REALPART",		S, xrealpart	    },
+DONE>> {   "IMAGPART",		S, ximagpart	    },
+DONE>> {   "LOG",		S, xlog		    },
+DONE>> {   "FLOOR",		S, xfloor	    },
+DONE>> {   "CEILING",		S, xceil	    },
+DONE>> {   "ROUND",		S, xround	    },
+DONE>> {   "PHASE",		S, xphase	    },
+DONE>> {   "LCM",		S, xlcm		    },
+DONE>> #endif
+DONE>> 
+DONE>> #ifdef SPECIALS
+DONE>> {   "DEFCONSTANT",	F, xdefconstant	    },
+DONE>> {   "CONSTANTP",	S, xconstantp	    },
+DONE>> {   "DEFPARAMETER",	F, xdefparameter    },
+DONE>> {   "DEFVAR",		F, xdefvar	    },
+DONE>> {   "MAKUNBOUND",	S, xmakunbound	    },
+DONE>> #endif
+DONE>> 
+DONE>> #ifdef RANDOM
+DONE>> {   "MAKE-RANDOM-STATE",S, xmakerandom	    },
+DONE>> #endif
+DONE>> 
+
+==============================================================================
+
+DONE>> remove all casts between "unsigned char*" and "char*"
+DONE>> 
+DONE>>    char FAR *xs_string;	    /* string pointer */
+DONE>> #define n_string	n_info.n_xstring.xs_string
+DONE>> #define getstring(x)	((x)->n_string)
+
+==============================================================================
+
+DONE>>  LVAL *newfp; ==> FRAMEP newfp;
+
+==============================================================================
+
+DONE>> Note that we use explicit check for CLOSED below....
+DONE>> 
+DONE>>     return ((fp = osaopen(name,mode)) ? cvfile(fp) : NIL);
+DONE>> 	====>
+DONE>>     return (((fp = OSAOPEN(name,mode)) != CLOSED) ? cvfile(fp) : NIL);
+
+==============================================================================
+
+DONE>> Txlate all "setfile(fptr,NULL)" to "setfile(fptr,CLOSED)"
+
+==============================================================================
+
+update winterp.c so that within #ifdef SAVERESTORE error "usage" message
+* indicates file name for restore.
+* add resource for file name
+* document the addition
+* add to CHANGES
+
+==============================================================================
+==============================================================================
+
+BUGS:
+
+DONE>>  (1) Dies when bringing up FSB_W.  The following code causes death:
+DONE>>  death of child (no ignore) at 0x1139a8
+DONE>>  (file unknown): __sigprocmask +0x8: (line unknown)
+DONE>>  No biggie, this seems to be because of use of shell to read files in fsb
+DONE>>  widget. Soln is to do "c" after this is done.
+
+			--------------------
+
+FIXED>> (2) Loading Form3.lsp gives following error:
+FIXED>> | Xlisp-Eval-Result:
+FIXED>> | [ gc: total 8640, 1061 free ]
+FIXED>> | error: In Widget Arglist: Invalid resource name in widget resource list. - (butt
+FIXED>> | on_press_mask :xmn_list_item_count :xmn_file_list_item_count :xmn_dir_list_item_
+FIXED>> | count nstring-upcase logxor)
+FIXED>> | nil
+FIXED>> 
+FIXED>> 
+FIXED>> This was caused by inlining
+FIXED>> defconstant(xlenter(...), cv_resource(...))
+FIXED>> that would work if defconstant==setvalue, but since defconstant()
+FIXED>> is a proc, not a macro, it don't work... (does this happen elsewhere??)
+
+			--------------------
+
+FIXED>> (3) Loading bitmap-br2.lsp, I get the following error:
+FIXED>> | error: bad argument type - #<Free: #223e34>
+FIXED>> | Function: #<Subr-FORMAT: #1ad5dc>
+FIXED>> | Arguments:
+FIXED>> |          #<Free: #223e34>
+FIXED>> |          "xsetroot -bitmap ~A -fg Black -bg DimGrey"
+FIXED>> |          "/usr/include/X11/bitmaps/wierd_size"
+FIXED>> | Function: #<Subr-SEND: #1acd12>
+FIXED>> | Arguments:
+FIXED>> |          #<widget XM_PUSH_BUTTON_GADGET_CLASS: #1d5d34>
+FIXED>> |          #<widget XM_PUSH_BUTTON_GADGET_CLASS: #1d5d34>
+FIXED>> | Function: #<Closure-:XMN_ENTRY_CALLBACK: #1cb8ea>
+FIXED>> 
+FIXED>> Clearly, the first arg to format (NIL !!!) is getting hit by the garbage
+FIXED>> collector.
+
+			--------------------
+
+FIXED>> Grep-br -- can be brought up, but core-dumps when items are attempted to
+FIXED>> be displayed in browser.
+
+			--------------------
+
+DONE>> (4) -- doing LOAD of a filename w/o a path separator '/' '.' causes
+DONE>> infinite loop, e.g. 
+DONE>> (load "w_ctrlpnl")
+
+			--------------------
+
+DONE-ADD-TO-NEW-DIST>> (5) -- colorsetr1.lsp -- setting *INTEGER-FORMAT* reqs use of 'progv'
+DONE-ADD-TO-NEW-DIST>> see examples.new/colorsetr1.lsp.
+
+			--------------------
+
+FIXED>> When loading the "simple radio box test" in examples/RowColumn.lsp,
+FIXED>> clicking on a radio-button gives error:
+FIXED>> 
+FIXED>> | error: :get_values expected a <place> form, either NIL, a symbol, or a place-for
+FIXED>> | m. - #<Free: #251420>
+FIXED>> | Function: #<Subr-SEND: #1acd32>
+FIXED>> | Arguments:
+FIXED>> |          #<widget XM_TOGGLE_BUTTON_GADGET_CLASS: #1c9950>
+FIXED>> |          #<widget XM_TOGGLE_BUTTON_GADGET_CLASS: #1c9950>
+FIXED>> |          :XMN_LABEL_STRING
+FIXED>> |          #<Free: #251420>
+FIXED>> | Function: #<Subr-SEND: #1acd32>
+FIXED>> | Arguments:
+FIXED>> |          #<widget XM_TOGGLE_BUTTON_GADGET_CLASS: #1c9950>
+FIXED>> |          #<widget XM_TOGGLE_BUTTON_GADGET_CLASS: #1c9950>
+FIXED>> |          :XMN_LABEL_STRING
+FIXED>> | Function: #<FSubr-IF: #1adf84>
+FIXED>> | Arguments:
+FIXED>> |          CALLBACK_ENTRY_SET
+FIXED>> |          (FORMAT T "Radio-Box Select: name==~A label==~A\n" (SEND CALLBACK_ENTRY
+FIXED>> | _WIDGET :NAME) (XM_STRING_GET_L_TO_R (SEND CALLBACK_ENTRY_WIDGET :GET :XMN_LABEL
+FIXED>> | _STRING)))
+FIXED>> | Function: #<Closure-:XMN_ENTRY_CALLBACK: #1c9c70>
+FIXED>> 
+FIXED>> This is another case of NIL getting trashed, since the wack value got inserted here:
+FIXED>> 
+FIXED>> | (send WIDGET_CLASS :answer :get '(resource-name)
+FIXED>> |       '(
+FIXED>> | 	(car (send self :GET_VALUES resource-name NIL))
+FIXED>>                                                   ^^^
+FIXED>> | 	))
+
+			--------------------
+
+FIXED>> (6) while playing w/ colorsetr1.lsp, I moved the slider around and got the
+FIXED>> following error due to gc of something:
+FIXED>> | [ gc: total 10640, 2111 free ]
+FIXED>> | error: XParseColor() couldn't parse color specification. - "#7111 free ]\n6f88"
+FIXED>> 
+FIXED>> It seems this is a bug in FORMAT itself, as the following code causes
+FIXED>> bug to occur in xlisp 2.1c (unix version, with all option #defines
+FIXED>> as-is in xlisp2.1c:sources/xlisp.h).
+FIXED>> | (defun foobar (a b)
+FIXED>> |   b)
+FIXED>> | (do ((i 0 (1+ i)))
+FIXED>> |     ((= i 1000) ())
+FIXED>> |     (setq color_array
+FIXED>> | 	  (print
+FIXED>> | 	   (foobar nil
+FIXED>> | 		   (format nil "#~A~A~A" ;RGB in hexadecimal
+FIXED>> | 			   (random 100)	;R
+FIXED>> | 			   (random 100)	;G
+FIXED>> | 			   (random 100))) ;B
+FIXED>> | 	   ))
+FIXED>> |     )
+FIXED>> On evaluating the above, I see results that indicate that nodes are
+FIXED>> getting trashed during garbage collection.
+FIXED>> | ...
+FIXED>> | "#201680"
+FIXED>> | "#675239"
+FIXED>> | "#98111"
+FIXED>> | [ gc: total 4640, 2139 free ]
+FIXED>> | "#16917139 free ]\n"
+FIXED>> | "#287161"
+FIXED>> | "#452040"
+FIXED>> | ...
+FIXED>> As well as:
+FIXED>> | "#206050"
+FIXED>> | "#684147"
+FIXED>> | "#96871"
+FIXED>> | [ gc: total 4640, 2146 free ]
+FIXED>> | "\000\003\177<\00071"
+FIXED>> | 
+FIXED>> | Process xlisp segmentation violation (core dumped)
+FIXED>> and...
+FIXED>> | "#54880"
+FIXED>> | "#313095"
+FIXED>> | "#141236"
+FIXED>> | [ gc: total 6640, 3886 free ]
+FIXED>> | "#3786 free ]\n985"
+FIXED>> | "#198110"
+FIXED>> | "#8939"
+FIXED>> | "#671966"
+FIXED>> 
+FIXED>> (6) contd... just to check that this isn't a result of setting *gc-flag* T,
+FIXED>> I tried (setq *gc-flag* nil).... after a few evaluations of the DO 
+FIXED>> loop 
+FIXED>> | (defun foobar (a b)
+FIXED>> |   b)
+FIXED>> | (do ((i 0 (1+ i)))
+FIXED>> |     ((= i 1000) ())
+FIXED>> |     (setq color_array
+FIXED>> | 	  (print
+FIXED>> | 	   (foobar nil
+FIXED>> | 		   (format nil "#~A~A~A" ;RGB in hexadecimal
+FIXED>> | 			   t
+FIXED>> | 			   nil
+FIXED>> | 			   t))
+FIXED>> | 	   ))
+FIXED>> |     )
+FIXED>> I got a core dump:
+FIXED>> | "#TNILT"
+FIXED>> | "#TNILT"
+FIXED>> | "#TNILT"
+FIXED>> | "#TNILT"
+FIXED>> | "\000\003\177<\000T"
+FIXED>> | 
+FIXED>> | Process xlisp segmentation violation (core dumped)
+FIXED>> 
+FIXED>> with the following backtrace:
+FIXED>> 
+FIXED>> | hplnpm-139-.../xlisp-2.1c/lsp> adb /usr/local/bin/xlisp core
+FIXED>> | executable file = /usr/local/bin/xlisp
+FIXED>> | core file = core
+FIXED>> | ready
+FIXED>> | $c
+FIXED>> | _xlgetvalue+0x18:       _xlxgetvalue    (0x37F3C)
+FIXED>> | _xleval+0x64:   _xlgetvalue     (0x37F3C)
+FIXED>> | _xlapply+0x448: _macroexpand+0x548      (0x54BB2, 0x54392)
+FIXED>> | _xleval+0x3C:   _xlapply+0x182  (0x5439C)
+FIXED>> | _xlapply+0x2BE: _macroexpand+0x548      (0x47D14, 0x5431A)
+FIXED>> | _xleval+0x3C:   _xlapply+0x182  (0x543A6)
+FIXED>> | _xleval+0x3C:   _xlapply+0x182  (0x543BA)
+FIXED>> | _xloop+0x28C:   _xuntrace+0x3C4 ()
+FIXED>> | _xdo+0x4:       _xloop+0xCE     (0x1)
+FIXED>> | _xleval+0x3C:   _xlapply+0x182  (0x5448C)
+FIXED>> | _xload+0xE6:    _xlload (0x5CFA8, 0x0, 0x1)
+FIXED>> | _xlapply+0x31C: ???     ()
+FIXED>> | _xleval+0x3C:   _xlapply+0x182  (0x544F0)
+FIXED>> | no subroutine on stack
+FIXED>>  
+FIXED>> ...
+FIXED>> 
+FIXED>> after recompiling XLISP 2.1c without ENHFORMAT defined, I noticed that the 
+FIXED>> problem was still there, e.g.
+FIXED>> 
+FIXED>> | "#712445"
+FIXED>> | [ gc: total 6640, 3885 free ]
+FIXED>> | "#807885 free ]\n58"
+FIXED>> 
+FIXED>> Therefore ????
+
+

@@ -1,0 +1,1540 @@
+!!
+!! $RCSfile: Scrolling.uil,v $
+!!
+!! (c) Copyright 1992-1994 Adobe Systems Incorporated.
+!! All rights reserved.
+!! 
+!! Permission to use, copy, modify, distribute, and sublicense this software
+!! and its documentation for any purpose and without fee is hereby granted,
+!! provided that the above copyright notices appear in all copies and that
+!! both those copyright notices and this permission notice appear in
+!! supporting documentation and that the name of Adobe Systems Incorporated
+!! not be used in advertising or publicity pertaining to distribution of the
+!! software without specific, written prior permission.  No trademark license
+!! to use the Adobe trademarks is hereby granted.  If the Adobe trademark
+!! "Display PostScript"(tm) is used to describe this software, its
+!! functionality or for any other purpose, such use shall be limited to a
+!! statement that this software works in conjunction with the Display
+!! PostScript system.  Proper trademark attribution to reflect Adobe's
+!! ownership of the trademark shall be given whenever any such reference to
+!! the Display PostScript system is made.
+!! 
+!! ADOBE MAKES NO REPRESENTATIONS ABOUT THE SUITABILITY OF THE SOFTWARE FOR
+!! ANY PURPOSE.  IT IS PROVIDED "AS IS" WITHOUT EXPRESS OR IMPLIED WARRANTY.
+!! ADOBE DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL
+!! IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+!! NON- INFRINGEMENT OF THIRD PARTY RIGHTS.  IN NO EVENT SHALL ADOBE BE LIABLE
+!! TO YOU OR ANY OTHER PARTY FOR ANY SPECIAL, INDIRECT, OR CONSEQUENTIAL
+!! DAMAGES OR ANY DAMAGES WHATSOEVER WHETHER IN AN ACTION OF CONTRACT,
+!! NEGLIGENCE, STRICT LIABILITY OR ANY OTHER ACTION ARISING OUT OF OR IN
+!! CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.  ADOBE WILL NOT
+!! PROVIDE ANY TRAINING OR OTHER SUPPORT FOR THE SOFTWARE.
+!! 
+!! Adobe, PostScript, and Display PostScript are trademarks of Adobe Systems
+!! Incorporated which may be registered in certain jurisdictions
+!! 
+!! Author:  Adobe Systems Incorporated
+
+!!***************************************************************
+!! MODULE DECLARATIONS
+!!***************************************************************
+
+!!
+!! module Scrolling
+!!
+module Scrolling
+        version = 'v1.0'
+        names = case_sensitive
+        objects =
+		{
+                XmCascadeButton	= gadget ;
+                XmPushButton	= gadget ;
+                XmSeparator	= gadget ;
+                XmToggleButton	= gadget ;
+		}
+
+
+!!***************************************************************
+!! PROCEDURE DECLARATIONS
+!!***************************************************************
+
+procedure
+!!
+!! Dialogs and widget creation
+!!
+        createProc (integer);
+!!
+!! Drawing window menu bar items
+!!
+        traceProc ();
+!!
+!! Drawing window callback procs
+!!
+	scrollProc (integer);
+	exposeProc ();
+	resizeProc ();
+	redrawProc ();
+	selectProc (integer);
+	quitProc ();
+!!
+!! Control panel selections
+!!
+	!! Left-brain (analytical) activities -- window control
+		scrollStrategyProc (integer);	!! scrolling strategy choices
+		bufferProc(integer);	!! buffer strategy choices
+		zoomProc (integer);	!! image magnification levels
+	!! Right-brain (aesthetic) activities -- drawing tricks 
+		drawStrategyProc (integer);	!! emulation, upath or ucache 
+		clippingProc (integer);	!! whether client is clipping
+		gstateProc (integer);	!! update gstate per object? 
+		strokeProc (integer);	!! wire frame or fill objects 
+		appendProc (integer);	!! draw upath or append upath
+!!
+!!***************************************************************
+!! VALUE DECLARATIONS
+!!***************************************************************
+
+!!
+!!	Widget ID tags for createProc ()
+!!
+value
+	cAutoDrawArea 		: 0;
+	cSelfDrawArea 		: 1;
+	cTraceToggle 		: 2;
+	cSelfHsb		: 3;
+	cSelfVsb		: 4;
+	cAutoScrollWin		: 5;
+	cTimingText 		: 6;
+	cAutoRedrawToggle	: 7;
+	cSelfRedrawToggle	: 8;
+	cBackgroundToggle	: 9;
+	cWatchFrame		: 10;
+!!
+!! ADOBE fonts for the various widget text
+!!
+value
+    hel_bold_font12 :
+      font('-adobe-helvetica-bold-r-normal--12-120-75-75-p-70-iso8859-1');
+    hel_bold_font14 :
+      font('-adobe-helvetica-bold-r-normal--14-140-75-75-p-82-iso8859-1');
+    hel_bold_font18 :
+      font('-adobe-helvetica-bold-r-normal--18-180-75-75-p-103-iso8859-1');
+    newcenturyschlbk_bold24 :
+      font('-adobe-new century schoolbook-bold-r-normal--24-240-75-75-p-149-iso8859-1');
+
+    dialogFont      : hel_bold_font12;
+	textFont        : hel_bold_font12;
+	labelFont       : hel_bold_font14;
+	buttonFont      : hel_bold_font14;
+	bigFont         : hel_bold_font18;
+	jumboFont       : newcenturyschlbk_bold24;
+
+!!
+!! Interface string declarations
+!!
+value
+!!
+!! System error message strings 
+!!
+		S_ERR_NOT_READY	: exported 'This function is out of order.';
+		S_ERR_NO_MEMORY	: exported 'Fatal memory allocation error.';	
+		S_ERR_BAD_FOPEN	: exported 'Cannot open the selected file.';
+		S_ERR_BAD_FREAD	: exported 'Cannot read the selected file.';
+		S_ERR_BAD_FNAME	: exported 'Cannot convert name to ASCIIZ.';
+		S_ERR_BAD_BBOX	: exported 'Invalid bounding box. No open.';
+		S_ERR_NOT_DIST	: exported 'Cannot parse undistilled file.';
+		S_ERR_NOT_PS	: exported 'Cannot parse this non-PS file.';
+		S_ERR_NO_DATA	: exported 'Cannot parse zero length file.';
+		S_ERR_NO_INPUT	: exported 'Cannot handle unparsed inputs.';
+		S_ERR_NO_FNAME	: exported 'Cannot proceed, NULL filename.';
+		S_ERR_FILE_PTR	: exported 'Cannot read NULL file pointer.';
+		S_ERR_CHAR_PTR	: exported 'Cannot read NULL data pointer.';
+		S_ERR_NEG_SIZE	: exported 'Data buffer length is <= zero.';
+		S_ERR_DRAWABLE	: exported 'Cannot image to NULL Drawable.';
+		S_ERR_BAD_EXTN	: exported 'Selection has a bad extension.';
+		S_ERR_NO_STILL	: exported 'Requires distilllery still.ps.';
+		S_ERR_TOKENBUG	: exported 'Method not useful with tokens.';
+		S_ERR_BAD_SIZE	: exported 'Invalid bounding box. No draw.';
+		S_ERR_NO_DEPTH	: exported 'Invalid window depth. No draw.';
+		S_ERR_BAD_PMAP	: exported 'Cannot create buffered pixmap.';
+		S_ERR_BAD_CTXT	: exported 'Internal error: DPSContext id.';
+		S_ERR_NO_SCALE	: exported 'Internal error: Scale by zero.';
+!!
+!! DPS error message strings 
+!!
+   		S_DPSERR_CREATE	: exported 'Cannot create/get a DPS context.';
+   		S_DPSERR_SETWIN	: exported 'Cannot hook context to drawable.';
+   		S_DPSERR_STILL	: exported 'Cannot distill specified PSfile.';
+!!
+!! Constant declarations
+!!
+value
+
+		K_LABEL_OFFSET	: 7;
+		K_FRAME_SHADOW	: XmSHADOW_ETCHED_IN;
+
+		K_HORZ_MOTION	: 0;
+		K_VERT_MOTION	: 1;
+
+		K_SCROLL_INCR	: 50;
+		K_SCROLL_PINCR	: 300;
+
+		K_PORTHOLE_W	: 400;	! pixels
+		K_PORTHOLE_H	: 400;	! pixels
+
+		K_CTRL_X		: 100;
+		K_CTRL_Y		: 100;
+		K_CTRL_MARGIN	: 20;	! pixels
+		K_CTRL_SPACING	: 20;	! pixels
+
+
+!!***************************************************************
+!! TOP LEVEL WIDGETS
+!!***************************************************************
+
+!!***************************************************************
+!! The control panel is used to specify application options
+!!***************************************************************
+object ControlDialog : XmMainWindow
+{
+    arguments
+    {
+    } ;
+	controls
+	{
+	        XmMenuBar	mMenuBar;
+		XmForm		cControlPanel;	
+	} ;
+    callbacks
+    {
+    } ;
+} ;
+
+!!***************************************************************
+!! The auto-scrolling draw window widget.  
+!!***************************************************************
+object AutoScroller : XmFormDialog
+{
+    arguments
+    {
+		XmNwidth		= K_PORTHOLE_W;	
+		XmNheight		= K_PORTHOLE_H;	
+		XmNdialogStyle	= XmDIALOG_MODELESS;
+    } ;
+    controls
+    {
+        XmScrolledWindow   	mAutoScrolled;
+    } ;
+    callbacks
+    {
+    } ;
+} ;
+
+!!***************************************************************
+!! The self-scrolling draw window widget.  
+!!***************************************************************
+object SelfScroller : XmFormDialog
+{
+    arguments
+    {
+		XmNwidth		= K_PORTHOLE_W;	
+		XmNheight		= K_PORTHOLE_H;	
+		XmNdialogStyle	= XmDIALOG_MODELESS;
+    } ;
+    controls
+    {
+        XmScrolledWindow   	mSelfScrolled;
+    } ;
+    callbacks
+    {
+    } ;
+} ;
+
+!!***************************************************************
+!! The error box is used to display error messages to the user
+!!***************************************************************
+object ErrorDialog : XmErrorDialog
+{
+	arguments
+	{
+		XmNx			= K_CTRL_X;	
+		XmNy			= K_CTRL_Y;	
+		XmNdialogStyle  = XmDIALOG_FULL_APPLICATION_MODAL;
+	} ;
+	callbacks
+	{
+!!		XmNokCallback		= procedure errAckProc ();
+	} ;
+} ;
+
+!!***************************************************************
+!! The file selection box is used to get filenames from the user
+!!***************************************************************
+object FileDialog : XmFileSelectionDialog
+{
+	arguments
+	{
+		XmNx			= K_CTRL_X;	
+		XmNy			= K_CTRL_Y;	
+		XmNdialogStyle 	= XmDIALOG_FULL_APPLICATION_MODAL;
+	} ;
+	callbacks
+	{
+!!		XmNokCallback 		= procedure answerProc ();
+!!		XmNcancelCallback 	= procedure answerProc ();
+	} ;
+} ;
+
+!!***************************************************************
+!! The caution dialog is used to warn the user about stupid ideas
+!!***************************************************************
+object WarningDialog : XmQuestionDialog
+{
+	arguments
+	{
+		XmNx			= K_CTRL_X;	
+		XmNy			= K_CTRL_Y;	
+		XmNdialogStyle 	= XmDIALOG_FULL_APPLICATION_MODAL;
+		XmNautoUnmanage	= false;
+	} ;
+	callbacks
+	{
+!!		XmNokCallback 		= procedure answerProc ();
+!!		XmNcancelCallback 	= procedure answerProc ();
+	} ;
+} ;
+
+!!***************************************************************
+!! CHILD WIDGETS
+!!***************************************************************
+
+!!***************************************************************
+!! Menu bar widgets
+!!***************************************************************
+
+object mMenuBar : XmMenuBar           
+{
+	arguments
+	{
+	} ;
+	controls
+	{
+		XmCascadeButton mCommandButton;
+	} ;
+} ;
+
+object mCommandButton : XmCascadeButton
+{
+	arguments
+    {
+        XmNfontList    = buttonFont;
+    } ;
+    controls
+    {
+        XmPulldownMenu mCommandMenu;
+    } ;
+} ;
+
+object mCommandMenu	: XmPulldownMenu
+{
+    controls
+    {
+        XmToggleButton	mTraceButton;
+        XmSeparator		{} ;
+        XmPushButton	mQuitButton;
+    } ;
+} ;
+
+object mTraceButton : XmToggleButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+    } ;
+    callbacks
+    {
+	MrmNcreateCallback		= procedure createProc (cTraceToggle);
+        XmNvalueChangedCallback	= procedure traceProc ();
+    } ;
+} ;
+
+
+object mQuitButton : XmPushButton
+{
+    arguments
+    {
+        XmNfontList    = buttonFont;
+    } ;
+    callbacks
+    {
+        XmNactivateCallback = procedure quitProc ();
+    } ;
+} ;
+ 
+!!***************************************************************
+!! Auto-scroller drawing window
+!!***************************************************************
+
+object mAutoScrolled : XmScrolledWindow    
+{
+	arguments
+	{
+		XmNwidth			= K_PORTHOLE_W;
+		XmNheight			= K_PORTHOLE_H;
+		XmNvisualPolicy			= XmCONSTANT;
+		XmNscrollingPolicy		= XmAUTOMATIC;
+		XmNscrollBarDisplayPolicy	= XmSTATIC;
+		XmNworkWindow			= XmDrawingArea mAutoDrawArea;
+		XmNtopAttachment		= XmATTACH_FORM ;
+		XmNbottomAttachment		= XmATTACH_FORM ;
+		XmNrightAttachment		= XmATTACH_FORM ;
+		XmNleftAttachment		= XmATTACH_FORM ;
+	} ;
+	controls
+	{
+		XmDrawingArea   mAutoDrawArea;
+	} ;
+	callbacks
+	{
+		MrmNcreateCallback = procedure createProc (cAutoScrollWin);
+	} ; 
+} ;
+
+object mAutoDrawArea : XmDrawingArea
+{
+	arguments
+	{
+		XmNwidth	= K_PORTHOLE_W;
+		XmNheight	= K_PORTHOLE_H;
+	} ;
+	callbacks
+	{
+		MrmNcreateCallback	= procedure createProc (cAutoDrawArea);
+		XmNexposeCallback	= procedure exposeProc ();
+	};
+} ;
+
+!!***************************************************************
+!! Self-scroller drawing window
+!!***************************************************************
+
+object mSelfScrolled : XmScrolledWindow    
+{
+	arguments
+	{
+		XmNwidth				= K_PORTHOLE_W;	
+		XmNheight				= K_PORTHOLE_H;	
+		XmNscrollingPolicy		= XmAPPLICATION_DEFINED;
+		XmNscrollBarDisplayPolicy	= XmSTATIC;
+		XmNworkWindow			= XmDrawingArea mSelfDrawArea;
+		XmNtopAttachment		= XmATTACH_FORM ;
+		XmNbottomAttachment		= XmATTACH_FORM ;
+		XmNrightAttachment		= XmATTACH_FORM ;
+		XmNleftAttachment		= XmATTACH_FORM ;
+	} ;
+	controls
+	{
+		XmScrollBar 	mHorzScrollBar;
+		XmScrollBar 	mVertScrollBar;
+		XmDrawingArea   mSelfDrawArea;
+	} ;
+	callbacks
+	{
+	} ; 
+} ;
+
+object mHorzScrollBar : XmScrollBar
+{
+	arguments
+	{
+		XmNorientation			= XmHORIZONTAL;
+		XmNincrement			= K_SCROLL_INCR;
+		XmNpageIncrement		= K_SCROLL_PINCR;
+	} ;
+	callbacks
+	{
+		MrmNcreateCallback	= procedure createProc (cSelfHsb);
+		XmNvalueChangedCallback	= procedure scrollProc (K_HORZ_MOTION);
+		XmNdragCallback		= procedure scrollProc (K_HORZ_MOTION);
+	} ;
+} ;
+
+object mVertScrollBar : XmScrollBar
+{
+	arguments
+	{
+		XmNorientation			= XmVERTICAL;
+		XmNincrement			= K_SCROLL_INCR;
+		XmNpageIncrement		= K_SCROLL_PINCR;
+	} ;
+	callbacks
+	{
+		MrmNcreateCallback	= procedure createProc (cSelfVsb);
+		XmNvalueChangedCallback	= procedure scrollProc (K_VERT_MOTION);
+		XmNdragCallback		= procedure scrollProc (K_VERT_MOTION);
+	} ;
+} ;
+     
+object mSelfDrawArea : XmDrawingArea
+{
+	arguments
+	{
+		XmNwidth	= K_PORTHOLE_W;
+		XmNheight	= K_PORTHOLE_H;
+	} ;
+	callbacks
+	{
+		MrmNcreateCallback	= procedure createProc (cSelfDrawArea);
+		XmNexposeCallback	= procedure exposeProc ();
+		XmNresizeCallback	= procedure resizeProc ();
+	} ;
+} ;
+
+!!***************************************************************
+!! Control panel bulletin board and side panels 
+!!***************************************************************
+
+object cControlPanel : XmForm
+{
+    arguments
+	{
+	} ;
+
+    controls
+    {
+		XmLabel		cLSideLabel ;
+		XmFrame		cLSideFrame ;
+		XmLabel		cRSideLabel ;
+		XmFrame		cRSideFrame ;
+    } ;
+} ;
+
+!!***************************************************************
+!! Left side of control panel
+!!***************************************************************
+
+object cLSideLabel : XmLabel
+{
+	arguments
+	{
+		XmNalignment		= XmALIGNMENT_CENTER ;
+		XmNfontList			= labelFont ;
+		XmNmarginTop		= K_LABEL_OFFSET ;
+
+		XmNtopAttachment	= XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+		XmNrightAttachment	= XmATTACH_POSITION ;
+		XmNrightPosition	= 48 ;
+	} ;
+} ; 
+
+object cLSideFrame : XmFrame
+{
+	arguments
+	{
+		XmNshadowType		= K_FRAME_SHADOW ;
+
+		XmNtopAttachment	= XmATTACH_WIDGET ;
+		XmNtopWidget		= cLSideLabel ;
+		XmNbottomAttachment	= XmATTACH_FORM ;
+		XmNbottomOffset		= 10;
+
+		XmNleftAttachment	= XmATTACH_FORM ;
+		XmNleftOffset		= 10;
+		XmNrightAttachment	= XmATTACH_POSITION ;
+		XmNrightPosition	= 48 ;
+	} ;
+	controls
+	{
+		XmForm		cLSideForm ;
+	} ;
+} ; 
+
+!!***************************************************************
+!! Form containing left side of control panel 
+!!***************************************************************
+
+object cLSideForm : XmForm
+{
+	arguments
+	{
+		XmNhorizontalSpacing	= K_LABEL_OFFSET;
+		XmNverticalSpacing		= K_LABEL_OFFSET;
+	} ;
+	controls
+	{
+		XmLabel		cTargetLabel ;
+		XmFrame		cTargetFrame ;
+
+		XmLabel		cBufferLabel ;
+		XmFrame		cBufferFrame ;
+
+		XmLabel		cZoomerLabel ;
+		XmFrame		cZoomerFrame ;
+
+		XmLabel		cActionLabel ;
+
+		XmPushButtonGadget	cLoadButton;
+		XmPushButtonGadget	cBoilButton;
+		XmPushButtonGadget	cDrawButton;
+
+	} ;
+} ;
+
+!!***************************************************************
+!!  Scrolling strategy selection unit
+!!***************************************************************
+
+object cTargetLabel : XmLabel
+{
+	arguments
+	{
+		XmNalignment		= XmALIGNMENT_CENTER ;
+		XmNfontList			= labelFont ;
+		XmNmarginTop		= K_LABEL_OFFSET ;
+
+		XmNtopAttachment	= XmATTACH_FORM ;
+		XmNrightAttachment  = XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+	} ;
+} ; 
+
+object cTargetFrame : XmFrame
+{
+    arguments
+    {
+		XmNshadowType		= K_FRAME_SHADOW ;
+
+		XmNtopAttachment	= XmATTACH_WIDGET ;
+		XmNtopWidget		= XmLabel cTargetLabel ;
+
+		XmNrightAttachment	= XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+    } ;
+    controls
+    {
+		XmRadioBox			cTargetPanel ;
+    } ;
+} ;
+
+object cTargetPanel : XmRadioBox
+{
+	arguments
+	{
+		XmNorientation		= XmVERTICAL ;
+		XmNisHomogeneous	= true ;
+		XmNpacking			= XmPACK_COLUMN ;
+	} ;
+    controls
+    {
+		XmToggleButton		cTargetButton0 ;
+		XmToggleButton		cTargetButton1 ;
+		XmToggleButton		cTargetButton2 ;
+		XmToggleButton		cTargetButton3 ;
+		XmToggleButton		cTargetButton4 ;
+    } ;
+} ;
+
+object cTargetButton0 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure scrollStrategyProc (5) ;
+		MrmNcreateCallback = procedure createProc (cBackgroundToggle);
+	} ;
+} ; 
+
+object cTargetButton1 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure scrollStrategyProc (1) ;
+	} ;
+} ; 
+
+object cTargetButton2 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure scrollStrategyProc (3) ;
+		MrmNcreateCallback = procedure createProc (cAutoRedrawToggle);
+	} ;
+} ; 
+
+object cTargetButton3 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure scrollStrategyProc (0) ;
+	} ;
+} ; 
+
+object cTargetButton4 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure scrollStrategyProc (2) ;
+		MrmNcreateCallback = procedure createProc (cSelfRedrawToggle);
+	} ;
+} ; 
+
+!!***************************************************************
+!! Buffer strategy selection unit 
+!!***************************************************************
+
+object cBufferLabel : XmLabel
+{
+	arguments
+	{
+		XmNalignment		= XmALIGNMENT_CENTER ;
+		XmNfontList			= labelFont ;
+		XmNmarginTop		= K_LABEL_OFFSET ;
+
+		XmNtopAttachment	= XmATTACH_WIDGET ;
+		XmNtopWidget		= XmFrame cTargetFrame ;
+
+		XmNrightAttachment  = XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+	} ;
+} ; 
+
+object cBufferFrame : XmFrame
+{
+    arguments
+    {
+		XmNshadowType		= K_FRAME_SHADOW ;
+
+		XmNtopAttachment	= XmATTACH_WIDGET ;
+		XmNtopWidget		= XmLabel cBufferLabel ;
+
+		XmNrightAttachment	= XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+    } ;
+    controls
+    {
+		XmRadioBox			cBufferPanel ;
+    } ;
+    callbacks
+    {
+	MrmNcreateCallback = procedure createProc(cWatchFrame);
+    };
+} ;
+
+object cBufferPanel : XmRadioBox
+{
+	arguments
+	{
+		XmNorientation		= XmVERTICAL ;
+		XmNisHomogeneous	= true ;
+		XmNpacking			= XmPACK_COLUMN ;
+	} ;
+    controls
+    {
+		XmToggleButton		cBufferButton0 ;
+		XmToggleButton		cBufferButton1 ;
+    } ;
+} ;
+
+object cBufferButton0 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure bufferProc (0) ;
+	} ;
+} ; 
+
+object cBufferButton1 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure bufferProc (1) ;
+	} ;
+} ; 
+
+
+!!***************************************************************
+!!  Zoom level selection unit
+!!***************************************************************
+
+object cZoomerLabel : XmLabel
+{
+	arguments
+	{
+		XmNalignment		= XmALIGNMENT_CENTER ;
+		XmNfontList		= labelFont ;
+		XmNmarginTop		= K_LABEL_OFFSET ;
+
+		XmNtopAttachment	= XmATTACH_WIDGET ;
+		XmNtopWidget		= XmFrame cBufferFrame ;
+
+		XmNrightAttachment  = XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+	} ;
+} ; 
+
+object cZoomerFrame : XmFrame
+{
+    arguments
+    {
+		XmNshadowType		= K_FRAME_SHADOW ;
+
+		XmNtopAttachment	= XmATTACH_WIDGET ;
+		XmNtopWidget		= XmLabel cZoomerLabel ;
+
+		XmNrightAttachment	= XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+    } ;
+    controls
+    {
+		XmRadioBox			cZoomerPanel ;
+    } ;
+} ;
+
+object cZoomerPanel : XmRadioBox
+{
+	arguments
+	{
+		XmNorientation		= XmVERTICAL ;
+		XmNisHomogeneous	= true ;
+		XmNpacking			= XmPACK_COLUMN ;
+		XmNnumColumns		= 2 ;
+	} ;
+    controls
+    {
+		XmToggleButton		cZoomerButton0 ;
+		XmToggleButton		cZoomerButton1 ;
+		XmToggleButton		cZoomerButton2 ;
+		XmToggleButton		cZoomerButton3 ;
+		XmToggleButton		cZoomerButton4 ;
+		XmToggleButton		cZoomerButton5 ;
+		XmToggleButton		cZoomerButton6 ;
+		XmToggleButton		cZoomerButton7 ;
+    } ;
+} ;
+
+object cZoomerButton0 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure zoomProc (25) ;
+	} ;
+} ; 
+
+object cZoomerButton1 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure zoomProc (50) ;
+	} ;
+} ; 
+
+object cZoomerButton2 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure zoomProc (100) ;
+	} ;
+} ; 
+
+object cZoomerButton3 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure zoomProc (200) ;
+	} ;
+} ; 
+
+object cZoomerButton4 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure zoomProc (400) ;
+	} ;
+} ; 
+
+object cZoomerButton5 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure zoomProc (600) ;
+	} ;
+} ; 
+
+object cZoomerButton6 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure zoomProc (1000) ;
+	} ;
+} ; 
+
+object cZoomerButton7 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure zoomProc (1600) ;
+	} ;
+} ; 
+
+
+!!***************************************************************
+!! Activator button and timer field unit
+!!***************************************************************
+
+object cActionLabel : XmLabel
+{
+	arguments
+	{
+		XmNalignment	= XmALIGNMENT_CENTER ;
+		XmNfontList		= labelFont ;
+		XmNmarginTop	= K_LABEL_OFFSET ;
+
+		XmNtopAttachment    = XmATTACH_WIDGET ;
+		XmNtopWidget       	= XmFrame cZoomerFrame;
+
+		XmNleftAttachment   = XmATTACH_FORM ;
+		XmNrightAttachment  = XmATTACH_FORM ;
+	};
+}; 
+
+object cLoadButton : XmPushButtonGadget
+{
+	arguments
+	{	
+		XmNfontList			= buttonFont;
+		
+		XmNtopAttachment	= XmATTACH_WIDGET;
+		XmNtopWidget		= cActionLabel;
+
+		XmNleftAttachment	= XmATTACH_FORM;
+		XmNrightAttachment	= XmATTACH_FORM;
+	} ;
+	callbacks
+	{
+		XmNactivateCallback	= procedure selectProc (0);
+	} ;
+} ;
+
+object cBoilButton : XmPushButtonGadget
+{
+	arguments
+	{	
+		XmNfontList			= buttonFont;
+		
+		XmNtopAttachment	= XmATTACH_WIDGET;
+		XmNtopWidget		= cLoadButton;
+
+		XmNrightAttachment	= XmATTACH_FORM;
+		XmNleftAttachment	= XmATTACH_FORM;
+	} ;
+	callbacks
+	{
+		XmNactivateCallback	= procedure selectProc (1);
+	} ;
+} ;
+
+object cDrawButton : XmPushButtonGadget
+{
+	arguments
+	{	
+		XmNfontList			= buttonFont;
+		
+		XmNtopAttachment	= XmATTACH_WIDGET;
+		XmNtopWidget		= cBoilButton;
+
+		XmNrightAttachment	= XmATTACH_FORM;
+		XmNleftAttachment	= XmATTACH_FORM;
+	} ;
+	callbacks
+	{
+		XmNactivateCallback	= procedure redrawProc ();
+	} ;
+} ; 
+
+!!***************************************************************
+!! Right side of control panel
+!!***************************************************************
+
+object cRSideLabel : XmLabel
+{
+	arguments
+	{
+		XmNalignment		= XmALIGNMENT_CENTER ;
+		XmNfontList			= labelFont ;
+		XmNmarginTop		= K_LABEL_OFFSET ;
+
+		XmNtopAttachment	= XmATTACH_FORM ;
+		XmNrightAttachment	= XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_POSITION ;
+		XmNleftPosition		= 52 ;
+	} ;
+} ; 
+
+object cRSideFrame : XmFrame
+{
+	arguments
+	{
+		XmNshadowType		= K_FRAME_SHADOW ;
+
+		XmNtopAttachment	= XmATTACH_WIDGET ;
+		XmNtopWidget		= cRSideLabel ;
+		XmNbottomAttachment	= XmATTACH_FORM ;
+		XmNbottomOffset		= 10;
+
+		XmNrightAttachment	= XmATTACH_FORM ;
+		XmNrightOffset		= 10;
+		XmNleftAttachment	= XmATTACH_POSITION ;
+		XmNleftPosition		= 52 ;
+	} ;
+	controls
+	{
+		XmForm		cRSideForm ;
+	} ;
+} ; 
+
+!!***************************************************************
+!! Form containing left side of control panel 
+!!***************************************************************
+
+object cRSideForm : XmForm
+{
+	arguments
+	{
+		XmNhorizontalSpacing	= K_LABEL_OFFSET;
+		XmNverticalSpacing		= K_LABEL_OFFSET;
+	} ;
+	controls
+	{
+		XmLabel		cMethodLabel ;
+		XmFrame		cMethodFrame ;
+
+		XmLabel		cBoundsLabel ;
+		XmFrame		cBoundsFrame ;
+
+		XmLabel		cUpdateLabel ;
+		XmFrame		cUpdateFrame ;
+
+		XmLabel		cStrokeLabel ;
+		XmFrame		cStrokeFrame ;
+
+		XmLabel		cAppendLabel ;
+		XmFrame		cAppendFrame ;
+
+		XmForm		cTimerForm;
+	} ;
+} ;
+
+!!***************************************************************
+!!  Drawing mode selection unit
+!!***************************************************************
+
+
+object cMethodLabel : XmLabel
+{
+	arguments
+	{
+		XmNalignment		= XmALIGNMENT_CENTER ;
+		XmNfontList			= labelFont ;
+		XmNmarginTop		= K_LABEL_OFFSET ;
+
+		XmNtopAttachment	= XmATTACH_FORM ;
+		XmNrightAttachment  = XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+	} ;
+} ; 
+
+object cMethodFrame : XmFrame
+{
+    arguments
+    {
+		XmNshadowType		= K_FRAME_SHADOW ;
+
+		XmNtopAttachment	= XmATTACH_WIDGET ;
+		XmNtopWidget		= XmLabel cMethodLabel ;
+
+		XmNrightAttachment	= XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+    } ;
+    controls
+    {
+		XmRadioBox			cMethodPanel ;
+    } ;
+} ;
+
+object cMethodPanel : XmRadioBox
+{
+	arguments
+	{
+		XmNorientation		= XmVERTICAL ;
+		XmNisHomogeneous	= true ;
+		XmNpacking			= XmPACK_COLUMN ;
+	} ;
+    controls
+    {
+		XmToggleButton		cMethodButton0 ;
+		XmToggleButton		cMethodButton1 ;
+		XmToggleButton		cMethodButton2 ;
+    } ;
+} ;
+
+object cMethodButton0 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure drawStrategyProc (0) ;
+	} ;
+} ; 
+
+object cMethodButton1 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure drawStrategyProc (1) ;
+	} ;
+} ; 
+
+object cMethodButton2 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure drawStrategyProc (2) ;
+	} ;
+} ; 
+
+!!***************************************************************
+!! View clipping selection unit 
+!!***************************************************************
+
+object cBoundsLabel : XmLabel
+{
+	arguments
+	{
+		XmNalignment		= XmALIGNMENT_CENTER ;
+		XmNfontList			= labelFont ;
+		XmNmarginTop		= K_LABEL_OFFSET ;
+
+		XmNtopAttachment	= XmATTACH_WIDGET ;
+		XmNtopWidget		= XmFrame cMethodFrame ;
+
+		XmNrightAttachment  = XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+	} ;
+} ; 
+
+object cBoundsFrame : XmFrame
+{
+    arguments
+    {
+		XmNshadowType		= K_FRAME_SHADOW ;
+
+		XmNtopAttachment	= XmATTACH_WIDGET ;
+		XmNtopWidget		= XmLabel cBoundsLabel ;
+
+		XmNrightAttachment	= XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+    } ;
+    controls
+    {
+		XmRadioBox			cBoundsPanel ;
+    } ;
+} ;
+
+object cBoundsPanel : XmRadioBox
+{
+	arguments
+	{
+		XmNorientation		= XmVERTICAL ;
+		XmNisHomogeneous	= true ;
+		XmNpacking			= XmPACK_COLUMN ;
+	} ;
+    controls
+    {
+		XmToggleButton		cBoundsButton0 ;
+		XmToggleButton		cBoundsButton1 ;
+    } ;
+} ;
+
+object cBoundsButton0 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure clippingProc (0) ;
+	} ;
+} ; 
+
+object cBoundsButton1 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure clippingProc (1) ;
+	} ;
+} ; 
+
+
+!!***************************************************************
+!!  Update clipping selection unit
+!!***************************************************************
+
+object cUpdateLabel : XmLabel
+{
+	arguments
+	{
+		XmNalignment		= XmALIGNMENT_CENTER ;
+		XmNfontList			= labelFont ;
+		XmNmarginTop		= K_LABEL_OFFSET ;
+
+		XmNtopAttachment    = XmATTACH_WIDGET ;
+		XmNtopWidget		= cBoundsFrame ;
+
+		XmNrightAttachment  = XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+	} ;
+} ; 
+
+object cUpdateFrame : XmFrame
+{
+    arguments
+    {
+		XmNshadowType		= K_FRAME_SHADOW ;
+
+		XmNtopAttachment	= XmATTACH_WIDGET ;
+		XmNtopWidget		= XmLabel cUpdateLabel ;
+
+		XmNrightAttachment	= XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+    } ;
+    controls
+    {
+		XmRadioBox			cUpdatePanel ;
+    } ;
+} ;
+
+object cUpdatePanel : XmRadioBox
+{
+	arguments
+	{
+		XmNorientation		= XmVERTICAL ;
+		XmNpacking			= XmPACK_COLUMN ;
+		XmNisHomogeneous	= true ;
+	} ;
+    controls
+    {
+		XmToggleButton		cUpdateButton0 ;
+		XmToggleButton		cUpdateButton1 ;
+    } ;
+} ;
+
+object cUpdateButton0 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure gstateProc (0) ;
+	} ;
+} ; 
+
+object cUpdateButton1 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure gstateProc (1) ;
+	} ;
+} ; 
+
+!!***************************************************************
+!! Wire frame imaging selection unit
+!!***************************************************************
+
+object cStrokeLabel : XmLabel
+{
+	arguments
+	{
+		XmNalignment		= XmALIGNMENT_CENTER ;
+		XmNfontList			= labelFont ;
+		XmNmarginTop		= K_LABEL_OFFSET ;
+
+		XmNtopAttachment	= XmATTACH_WIDGET ;
+		XmNtopWidget		= XmFrame cUpdateFrame ;
+
+		XmNrightAttachment  = XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+	} ;
+} ; 
+
+object cStrokeFrame : XmFrame
+{
+    arguments
+    {
+		XmNshadowType		= K_FRAME_SHADOW ;
+
+		XmNtopAttachment	= XmATTACH_WIDGET ;
+		XmNtopWidget		= XmLabel cStrokeLabel ;
+
+		XmNrightAttachment	= XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+    } ;
+    controls
+    {
+		XmRadioBox			cStrokePanel ;
+    } ;
+} ;
+
+object cStrokePanel : XmRadioBox
+{
+	arguments
+	{
+		XmNorientation		= XmVERTICAL ;
+		XmNisHomogeneous	= true ;
+		XmNpacking			= XmPACK_COLUMN ;
+	} ;
+    controls
+    {
+		XmToggleButton		cStrokeButton0 ;
+		XmToggleButton		cStrokeButton1 ;
+    } ;
+} ;
+
+object cStrokeButton0 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure strokeProc (0) ;
+	} ;
+} ; 
+
+object cStrokeButton1 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure strokeProc (1) ;
+	} ;
+} ; 
+
+!!***************************************************************
+!! User path combination selection unit
+!!***************************************************************
+
+object cAppendLabel : XmLabel
+{
+	arguments
+	{
+		XmNalignment		= XmALIGNMENT_CENTER ;
+		XmNfontList			= labelFont ;
+		XmNmarginTop		= K_LABEL_OFFSET ;
+
+		XmNtopAttachment	= XmATTACH_WIDGET ;
+		XmNtopWidget		= XmFrame cStrokeFrame ;
+
+		XmNrightAttachment  = XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+	} ;
+} ; 
+
+object cAppendFrame : XmFrame
+{
+    arguments
+    {
+		XmNshadowType		= K_FRAME_SHADOW ;
+
+		XmNtopAttachment	= XmATTACH_WIDGET ;
+		XmNtopWidget		= XmLabel cAppendLabel ;
+
+		XmNrightAttachment	= XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+    } ;
+    controls
+    {
+		XmRadioBox			cAppendPanel ;
+    } ;
+} ;
+
+object cAppendPanel : XmRadioBox
+{
+	arguments
+	{
+		XmNorientation		= XmVERTICAL ;
+		XmNisHomogeneous	= true ;
+		XmNpacking			= XmPACK_COLUMN ;
+	} ;
+    controls
+    {
+		XmToggleButton		cAppendButton0 ;
+		XmToggleButton		cAppendButton1 ;
+    } ;
+} ;
+
+object cAppendButton0 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure appendProc (0) ;
+	} ;
+} ; 
+
+object cAppendButton1 : XmToggleButton
+{
+	arguments
+	{
+	    XmNfontList    = buttonFont;
+	} ;
+	callbacks
+	{
+		XmNvalueChangedCallback = procedure appendProc (1) ;
+	} ;
+} ; 
+
+!!***************************************************************
+!! Form containing timer elements of control panel 
+!!***************************************************************
+
+object cTimerForm : XmForm
+{
+	arguments
+	{
+		XmNtopAttachment	= XmATTACH_WIDGET;
+		XmNtopWidget		= cAppendFrame;
+
+		XmNbottomAttachment	= XmATTACH_FORM ;
+		XmNrightAttachment	= XmATTACH_FORM ;
+		XmNleftAttachment	= XmATTACH_FORM ;
+	} ;
+	controls
+	{
+		XmLabel			cTimerLabel ;
+		XmLabel			cTimerField ;
+	} ;
+} ;
+
+object cTimerLabel : XmLabel
+{
+    arguments
+	{
+		XmNalignment   		= XmALIGNMENT_END;
+		XmNfontList    		= labelFont ;
+
+		XmNleftAttachment	= XmATTACH_FORM ;
+
+		XmNrightAttachment	= XmATTACH_POSITION ;
+		XmNrightPosition	= 48 ;
+    } ;
+} ;
+
+object cTimerField : XmLabel
+{
+    arguments
+    {
+        XmNwidth		= 50 ;
+	XmNlabelString		= " ";
+	XmNfontList		= labelFont ;
+
+	XmNleftAttachment	= XmATTACH_POSITION ;
+	XmNleftPosition		= 52 ;
+    } ;
+    callbacks
+    {
+        MrmNcreateCallback = procedure createProc (cTimingText);
+    } ;
+} ;
+
+
+!!***************************************************************
+end module;

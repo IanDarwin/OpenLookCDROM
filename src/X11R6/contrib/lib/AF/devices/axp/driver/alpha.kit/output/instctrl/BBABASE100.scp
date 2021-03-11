@@ -1,0 +1,239 @@
+#!/bin/sh
+#
+# @DEC_COPYRIGHT@
+#
+#
+# HISTORY
+# Create bba setld scp based on ISDN scp.
+#
+
+PROGNAME=$0
+ROOTPATH=
+
+CONFIGPATH=$ROOTPATH/sys/conf
+
+STRCONFIGPATH=$ROOTPATH/sys/streams
+STRCONFIGFILE=$STRCONFIGPATH/str_config.c
+
+SUBSET=BBABASE100
+SUBSETPATH=$ROOTPATH/usr/sys/kits/Digital/bba
+
+CONFIGFRAGPATH=$SUBSETPATH
+CONFIGFRAGFILE=$CONFIGFRAGPATH/config.file
+		
+case X_$ACT in
+	X_M)
+		cat << EOF
+
+***********************************************************
+*                                                         *
+*              bba Installation Procedure                 *
+*                                                         *
+***********************************************************
+
+EOF
+		OSVERSION=`uname -r`
+		if [ $OSVERSION != "1.2" ] ; then
+			echo "This bba setld kit for OSF/1 Alpha is"
+			echo "for Version 1.2 only!!!"
+			echo ""
+			echo "Your are running version $OSVERSION"
+			exit
+		fi
+	
+	break;;
+
+	X_PRE_L)
+		if [ ! -d /usr/sys/kits ]
+		then
+			mkdir /usr/sys/kits
+			mkdir /usr/sys/kits/Digital
+			mkdir /usr/sys/kits/Digital/bba
+		elif [ ! -d /usr/sys/kits/Digital ]
+		then
+			mkdir /usr/sys/kits/Digital
+			mkdir /usr/sys/kits/Digital/bba
+		elif [ ! -d /usr/sys/kits/Digital/bba ]
+		then
+			mkdir /usr/sys/kits/Digital/bba
+		fi
+		if [ ! -d /dev/streams ]
+		then
+			mkdir /dev/streams
+		fi
+	break;;
+	X_POST_L)
+		HW=ALPHA
+		ISDNDEVICE=bba
+		ISDNDEVICEUPPER=`echo $ISDNDEVICE | tr '[a-z]' '[A-Z]'`
+		
+		############################################
+		#
+		# Modify /sys/streams/str_config.c
+		#
+		############################################
+		if [ ! -f $STRCONFIGFILE ]
+		then
+			mv $STRCONFIGFILE $STRCONFIGFILE.orig
+		fi
+		mv $STRCONFIGFILE $STRCONFIGFILE.sav
+		cp $STRCONFIGFILE.sav $STRCONFIGFILE
+		
+		#
+		# pass str_config.c through awk to add bba options
+		# 
+		TempFile1=$PROGNAME.$$
+		awk '							\
+		/\/\*/ { 						\
+			prev1 = $0; 					\
+			getline; 					\
+			prev2 = $0; 					\
+			if ($0~/\*.*add.*new.*configuration/)		\
+			{ 						\
+				printf "%s\n\n", "/* Begin BBA Part */"; \
+		###########
+				printf "%s\t%s\n", "#if", "defined(BBA)"; \
+				printf "\t%s\n", "retval = bba_configure(SYSCONFIG_CONFIGURE, &sb, sc_size, &sc, sc_size);"; \
+				printf "\t%s\n", "strdev_print(&sc, \"bba\", retval);"; \
+				printf "%s\n", "#endif"; 		\
+				printf "\n%s\n", "/* End BBA Part */";	\
+			}						\
+			print prev1; 					\
+			print prev2; 					\
+			next;
+		       } 						\
+			{ print };					\
+		' $STRCONFIGFILE > $TempFile1
+
+		rm -f $STRCONFIGFILE
+		cp $TempFile1 $STRCONFIGFILE
+		chmod 444 $STRCONFIGFILE
+		chown bin $STRCONFIGFILE
+		chgrp bin $STRCONFIGFILE
+		rm -f $TempFile1
+		############################################
+		#
+		# Done with /sys/streams/str_config.c
+		#
+		############################################
+		
+		
+		############################################
+		#
+		# Do the kreg
+		#
+		############################################
+
+		PWD=`pwd`
+		cd $ROOTPATH/
+		$ROOTPATH/sbin/kreg -l Digital $SUBSET $SUBSETPATH
+		cd $PWD
+		############################################
+		#
+		# Done with the kreg
+		#
+		############################################
+		
+		
+		############################################
+		#
+		# Do a config of the system kernel
+		#
+		############################################
+		EDITOR=vi
+		export EDITOR
+		$ROOTPATH/usr/sbin/doconfig
+		if [ X_$? != "X_0" ] ; then
+			echo "Kernel was not created by doconfig -- exit"
+			exit
+		fi
+		KERNELDIR=`ls -t $ROOTPATH/sys | awk '/conf/ { next } { print ; exit }'`
+		if [ -d $ROOTPATH/sys/$KERNELDIR ] ; then
+			if [ ! -f $ROOTPATH/sys/$KERNELDIR/vmunix ] ; then
+				echo "No new kernel was found in $ROOTPATH/sys/$KERNELDIR -- exit"
+				exit
+			fi
+		else
+			echo "No $ROOTPATH/sys/$KERNELDIR directory -- exit"
+			exit
+		fi
+
+		############################################
+		#
+		# Done with config of the system kernel
+		#
+		############################################
+		
+		
+		############################################
+		#
+		# Instruct the user
+		#
+		############################################
+echo
+echo
+		############################################
+		#
+		# Installation completed
+		#
+		############################################
+	break;;
+	X_POST_D)
+		############################################
+		#
+		# Do the kreg
+		#
+		############################################
+		PWD=`pwd`
+		cd $ROOTPATH/
+		$ROOTPATH/sbin/kreg -d $SUBSET
+		cd $PWD
+		############################################
+		#
+		# Done with the kreg
+		#
+		############################################
+
+
+		############################################
+		#
+		# Modify back /sys/streams/str_config.c
+		#
+		############################################
+	if [ -f $STRCONFIGFILE ] ; then
+		#
+		# pass str_config.c through awk to remove existing ISDN
+		# options
+		#
+		TempFile1=$PROGNAME.$$
+		awk '\
+		/\/\*.*Begin.*BBA.*Part/,/\/\*.*End.*BBA.*Part/	{ next }; \
+									{ print };\
+		' $STRCONFIGFILE > $TempFile1
+		rm -f $STRCONFIGFILE
+		cp $TempFile1 $STRCONFIGFILE
+		chmod 444 $STRCONFIGFILE
+		chown bin $STRCONFIGFILE
+		chgrp bin $STRCONFIGFILE
+		rm -f $TempFile1
+	fi
+		############################################
+		#
+		# Done with /sys/streams/str_config.c
+		#
+		############################################
+
+echo
+echo "Please rebuild the kernel since some kernel subsets were deleted."
+echo
+	break;;
+
+	X_V)
+		###########################################
+		#
+		# Verification
+		#
+		###########################################
+
+	break;;
+esac

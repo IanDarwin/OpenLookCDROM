@@ -1,0 +1,479 @@
+\begindata{text,538470152}
+\textdsversion{12}
+\template{help}
+\define{global
+}
+\chapter{WPI Policy: How to Set Policy for White Pages Interactive
+
+}
+\section{What WPI Policy is
+
+}\leftindent{
+Policy in WPI refers to the processing of each field change request.  There 
+are two places where an administrator may set the policy:  the first is a 
+coarse classification of a field as "user modifiable", "administrative only", 
+or "programmatic only".  This classification is used only by the user 
+interfaces of the user agent programs (which make the request on behalf of the 
+user).  That is:  any field flagged as \typewriter{ALLOW_MODIFY} will be 
+available for any user to change; any field flagged as 
+\typewriter{PRIVILEDGED_MODIFY} will be available only to administrators; 
+finally, fields flagged \typewriter{GENERATED_FIELD} will never be available 
+to any user.  Note that because any user may send mail directly to the WP 
+update mailbox, a request may come to the \typewriter{\italic{wpiupdat}} 
+program for any field!
+
+
+The second mechanism is the validation process.  The validation function is 
+handed a fieldname, the new (requested) value, and (effectively) the old 
+value.  The validation process makes a decision about the acceptability of the 
+the requested value based on this information and then accepts, defers, or 
+rejects the (possibly modified) requested change.  This is the authoritative 
+decision on the change which is never overridden by 
+\typewriter{\italic{wpiupdat}}.  There is a table, in 
+\typewriter{\bold{WPI_Validate}} (in 
+\typewriter{\italic{ANDREWSRCDIR}/overhead/wpi/wpilib.c)} which maps 
+fieldnames to a validation function.  There are three "convenience" functions 
+which parallel the flags above:  the \typewriter{\bold{constant_cool}} 
+function always unconditionally approves the requested change (parallels 
+\typewriter{ALLOW_MODIFY}); the \typewriter{\bold{constant_drag}} function 
+always signals that administrative approval is required (similar to 
+\typewriter{PRIVILEDGED_MODIFY}); finally the 
+\typewriter{\bold{constant_uncool}} function always unconditionally denies the 
+change (for \typewriter{GENERATED_FIELD}).  A field which is set to
+
+\typewriter{\bold{constant_uncool}} (or left unnamed) will never, ever, be 
+changed by \typewriter{\italic{wpiupdat}}.
+
+
+
+}\section{WPI Policy Concepts}\leftindent{
+
+
+The semantics of the \typewriter{validate_t} types are as follows:  a validate 
+result of "\typewriter{cool}" for a field will cause wpiupdat to record the 
+change (which will take effect at the end of the next WP rebuild); a validate 
+result of "\typewriter{drag}"--in the case of an administrator's 
+request--would also cause the change to be recorded, in the case of a 
+non-administrator's request--the request would be forwarded to the WP 
+administrators for approval;  finally, a validate result of 
+"\typewriter{uncool}" would not be recorded, and in fact will indicate an 
+error in the request (since that request should not have been made in the 
+first place).
+
+
+}\section{Programming WPI Policy}\leftindent{
+
+
+\smaller{(Please refer to the format section below while reading this 
+example.)}
+
+
+So, for instance, to change the processing of the \italic{OP} (Office Phone) 
+field, so that no one may change it, you would change the "\typewriter{OP}" 
+line in the \typewriter{xlate_table} from:
+
+
+\programexample{\{ "OP", "Office phone", "(412) 268-2000", ALLOW_MODIFY, 
+"Global telephone number."\},
+
+
+}to:
+
+
+\programexample{\{ "OP", "Office phone", "(412) 268-2000", GENERATED_FIELD, 
+"Global telephone number."\},
+
+
+}and also change the "\typewriter{OP}" line in the \typewriter{vfuncs} table 
+from:
+
+
+\programexample{\{"OP", constant_cool\},
+
+
+}to:
+
+
+\programexample{\{"OP", constant_uncool\},
+
+
+}(or just delete it entirely).
+
+
+}\section{Format}\leftindent{
+
+Relevant parts of \typewriter{wpi.h} and \typewriter{wpilib.c} (in 
+\typewriter{\italic{ANDREWSRCDIR}/overhead/wpi}):
+
+
+The\typewriter{ change_t} type (from \typewriter{wpi.h}):
+
+\programexample{\smaller{typedef enum WPI_can_i_change \{	/* the modifiable 
+type */
+
+  ALLOW_MODIFY,                 /* allow user changes */
+
+  PRIVILEDGED_MODIFY,           /* only for admin types */
+
+  GENERATED_FIELD,              /* never change */
+
+  UNKNOWN_FIELD
+
+\} change_t;
+
+}}}\programexample{\smaller{
+}}\leftindent{The translation table (from \typewriter{wpilib.c}):
+
+\programexample{\smaller{\smaller{static struct wpxlate \{		/* POLICY */
+
+  char *abbrev, *full, *example;
+
+  change_t mod;
+
+  char *description;
+
+\} xlate_table[] = \{		/* Used to translate from abbreviated 
+
+				   fieldname to human readable format,
+
+				   and whether or not the field may 
+
+				   be user modified */
+
+  \{ "N", "Full name", "Jello Q. Biafra", PRIVILEDGED_MODIFY,
+
+    "User's full name, the way it should be displayed (pw_gecos)."\},
+
+  \{ "Tk", "Tokens", "", GENERATED_FIELD,
+
+    "Space-separated sequence of tokens in the full name or alternate name 
+fields."\},
+
+  \{ "WN", "Alternate names", "JQ Biafra;Jake Biafra", PRIVILEDGED_MODIFY,
+
+    "Semicolon-separated sequence of alternate full names."\},
+
+  \{ "ID", "Login name", "jbRo", PRIVILEDGED_MODIFY,
+
+    "The username used for logging in, mail, etc. (pw_name).  Must be unique 
+(builds prime key)."\},
+
+  \{ "EK", "Source Mask", "", GENERATED_FIELD,
+
+    "Mask giving sources.  Each bit is 1<<(pass-1), for each white-pages-build 
+pass."\},
+
+  \{ "NI", "User ID", "4224", PRIVILEDGED_MODIFY,
+
+    "Numeric ID (pw_uid)."\},
+
+  \{ "GI", "Group ID", "42", PRIVILEDGED_MODIFY,
+
+    "Numeric group ID (pw_gid)."\},
+
+  \{ "PW", "Password", "X", PRIVILEDGED_MODIFY,
+
+    "Encrypted password field (pw_passwd).  Use passwd(1) to change your 
+password."\},
+
+  \{ "HD", "Home directory", "/usr/jbRo", PRIVILEDGED_MODIFY,
+
+    "Home (initial login) directory (pw_dir)."\},
+
+  \{ "Sh", "Shell", "/bin/csh", PRIVILEDGED_MODIFY,
+
+    "Login Shell (pw_shell)."\},
+
+  \{ "Af", "Affiliation", "Jello Department", PRIVILEDGED_MODIFY,
+
+    "Affiliation (i.e. department)."\},
+
+  \{ "Fwd", "Mail forwarded to", "jbRo@some.do.main", ALLOW_MODIFY,
+
+    "Mail forwarding address, if other than default mailbox."\},
+
+  \{ "DK", "Delivery kind", "", PRIVILEDGED_MODIFY,
+
+    "Alternate method for local mail delivery."\},
+
+  \{ "DP", "Delivery parameter", "", PRIVILEDGED_MODIFY,
+
+    "Additional information, if necessary, for the delivery kind."\},
+
+  \{ "D", "Surnames phonetically", "", GENERATED_FIELD,
+
+    "Phonetically-canonicalized versions of all the surnames in the name and 
+alternate name field."\},
+
+  \{ "X", "Tokens phonetically", "", GENERATED_FIELD,
+
+    "Phonetically-canonicalized versions of all the name parts (the tokens 
+field)."\},
+
+  \{ "SI", "Sequence number", "123", PRIVILEDGED_MODIFY,
+
+    "For entries that have no User ID field, there must be a unique sequence 
+number (builds prime key)."\},
+
+  \{ "NPA", "Network preferred address", "1", PRIVILEDGED_MODIFY,
+
+    "Preference value for mail delivery."\},
+
+  \{ "Dt", "Last Update", "615651846", PRIVILEDGED_MODIFY,
+
+    "Time of last update (time(0))."\},
+
+  \{ "A2", "Affiliation abbreviation", "jd", PRIVILEDGED_MODIFY,
+
+    "Short form of affiliation."\},
+
+  \{ "HA", "Home address", "123 Main St;Anytown, PA 12345", ALLOW_MODIFY,
+
+    "USPS address; semicolon means newline."\},
+
+  \{ "HP", "Home phone", "+1 (412) 321-4567", ALLOW_MODIFY,
+
+    "Global telephone number"\},
+
+  \{ "CA", "Campus address", "UCC 100", ALLOW_MODIFY,
+
+    "Campus mail address; semicolon means newline."\},
+
+  \{ "CX", "Campus extension", "x2000", ALLOW_MODIFY,
+
+    "Campus telephone extension"\},
+
+  \{ "OA", "Office address", "Jello Dept.;Carnegie Mellon;Pittsburgh, PA 
+15213", ALLOW_MODIFY,
+
+    "USPS address; semicolon means newline."\},
+
+  \{ "OP", "Office phone", "(412) 268-2000", ALLOW_MODIFY,
+
+    "Global telephone number."\},
+
+  \{ NULL, NULL, NULL, UNKNOWN_FIELD, NULL\}
+
+\};
+
+}}}
+
+The \typewriter{validate_t} type (from \typewriter{wpi.h}):
+
+\programexample{\smaller{typedef enum WP_validate_p \{	/* result of validation 
+*/
+
+  cool,      /* allow change */
+
+  drag,      /* admin types only, forward a request otherwise */
+
+  uncool     /* not allowed -- flag as an error */
+
+\} validate_t;
+
+}}
+
+An example of a validation function (from \typewriter{wpilib.c}):
+
+\programexample{\smaller{static validate_t
+
+chk_fwd(field,addr,entry)	/* POLICY -- canonicalizes forwarding addresses */
+
+char *field;
+
+char *addr;
+
+WPI_entry_t entry;
+
+\{
+
+  char *out, buf[MAXPATHLEN*2];
+
+
+  /* check the validity of the forwarding address */
+
+  fwdvalid_SetTildeUser(WPI_Value("ID", entry));
+
+  strcpy(fwdvalid_msgbuf, "no diagnostic");
+
+  if (ValidateFwdAddr(addr, &out)) \{
+
+    sprintf(buf, "Validation error: %s", fwdvalid_msgbuf);
+
+    error(buf, WPI_ERR_BADVALID);
+
+    return(uncool);
+
+  \} else \{
+
+    if (strcmp(addr,out)) \{
+
+      sprintf(buf, "Canonicalized address to `%s' from `%s'.", out, addr);
+
+      error(buf, WPI_WARN);
+
+    \}
+
+    WPI_Update(field, out, entry);
+
+    return(cool);
+
+  \}
+
+\}
+
+}}
+The \typewriter{\bold{WPI_Validate}} routine and its mapping from field names 
+to
+
+validation functions (from \typewriter{wpilib.c}):
+
+\programexample{\smaller{validate_t 
+
+WPI_Validate(field, value, entry) /* POLICY */
+
+char *field; 
+
+char *value;
+
+WPI_entry_t entry;
+
+\{
+
+  static struct validate_function \{
+
+    char *field;
+
+    validate_t (*func)();
+
+  \} vfuncs[] = \{
+
+    \{"Fwd", chk_fwd\},
+
+    \{"HA", constant_cool\},
+
+    \{"HP", constant_cool\},
+
+    \{"CA", constant_cool\},
+
+    \{"CX", constant_cool\},
+
+    \{"OA", constant_cool\},
+
+    \{"OP", constant_cool\},
+
+    \{NULL, constant_uncool\}
+
+  \};
+
+  int i;
+
+
+  for(i=0;vfuncs[i].field!=NULL;++i)
+
+    if(!strcmp(vfuncs[i].field,field))
+
+      return(vfuncs[i].func(field,value,entry));
+
+  return(uncool);		/* Unknown field, no changes allowed */
+
+\}}}
+
+
+
+}\section{Notes}\leftindent{\programexample{\smaller{
+
+}}}
+\leftindent{Of course, for any of these changes to take effect, 
+\typewriter{libwpi.a} would need to be recompiled, and 
+\typewriter{\italic{wpiupdat}} (and any other user agents such as 
+\typewriter{\italic{\helptopic{wpi}}}, 
+\typewriter{\italic{\helptopic{wpedit}}}, and 
+\typewriter{\italic{\helptopic{wpq}}}) would need to be relinked with the new 
+\typewriter{libwpi.a}, and reinstalled.
+
+
+If a more conservative policy is being implemented, it's ok for the user 
+agents to be a little out-of-date, since they would only submit changes that 
+would be rejected by wpiupdat (but it might aggravate the users).
+
+}
+\section{Files
+
+
+}\programexample{\italic{ANDREWSRCDIR}/overhead/wpi/wpi.h
+
+\italic{ANDREWSRCDIR}/overhead/wpi/wpilib.c
+
+/usr/andrew/bin/wpi
+
+/usr/andrew/bin/wpedit
+
+/usr/andrew/bin/wpq
+
+/usr/andrew/etc/wpiupdat
+
+}\section{
+
+Related tools}  
+
+
+Select (highlight) one of the italicized names and choose "Show Help on 
+Selected Word" from the pop-up menu to see the help file for:
+
+
+\leftindent{\italic{\helptopic{wpi}
+
+\helptopic{wpq}
+
+\helptopic{wpedit}
+
+\helptopic{white-pages}}}
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1646,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,538470152}

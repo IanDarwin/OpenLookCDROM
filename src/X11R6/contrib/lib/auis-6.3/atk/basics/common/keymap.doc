@@ -1,0 +1,664 @@
+\begindata{text,539047252}
+\textdsversion{12}
+\template{be2guide}
+\define{global
+}
+\define{underline
+menu:[Font~1,Underline~41]
+attr:[Flags Underline Int Set]}
+\define{index
+menu:[Title,Index~91]
+attr:[FontFace Italic Int Set]}
+\define{indexi
+menu:[Title,InvisibleIndex~92]
+attr:[Script PreviousScriptMovement Point -2]
+attr:[Flags Hidden Int Set]
+attr:[FontFace Italic Int Set]}
+\define{fixedtext
+menu:[Region~4,Fixedtext]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{fixedindent
+menu:[Region~4,Fixedindent]
+attr:[LeftMargin LeftMargin Cm 83230]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{paramname
+menu:[Font~1,Paramname]
+attr:[FontFace Italic Int Set]}
+\formatnote{\chapter{Keymap}}
+
+ 
+
+The \italic{keymap} package, along with \italic{bind}, \italic{keystate} and 
+\italic{proctable}, provide a set of facilities that allow you to bind 
+sequences of keyboard characters to keyboard command procedures.  If you want 
+to build a subclass of \italic{view} that responds to keyboard input, you will 
+normally need to know about \italic{bind}, \italic{keymap}, \italic{keystate} 
+and \italic{proctable.}  When you bind a sequence of characters to a 
+procedure, then when the user types that sequence, the \italic{interaction 
+manager}, \italic{im}, \italic{ }will invoke the corresponding procedure.  For 
+example, if you bind \italic{ctrl-x ctrl-s} to a procedure called 
+\italic{Write_Buffer_to_File}, then when the user types \italic{ctrl-x 
+ctrl-s}, the \italic{im} will invoke  \italic{Write_Buffer_to_File}. 
+ Likewise, if you bind the key \italic{a} to \italic{Insert_Character}, then 
+when the user types an \italic{a}, the \italic{im }will invoke the procedure 
+\italic{Insert_Character}.\italic{
+
+}
+\section{About this section}
+
+
+This section assumes you are familiar with
+
+\leftindent{-- \italic{class}
+
+-- \italic{im}
+
+-- \italic{view}}
+
+
+This class is related to the classes \italic{bind}, \italic{keystate, im} and 
+\italic{proctable}.  illustrates how to build a view that responds to keyboard 
+input using \italic{bind}, \italic{keymap}, \italic{keystate}, and 
+\italic{proctable}.
+
+
+\section{Quick reference list for Keymap}
+
+
+
+\fixedtext{boolean \bold{keymap_}BindToKey }\fixedindent{(struct keymap 
+*\paramname{keymap}, char *\paramname{keys}, struct proctable_Entry 
+*\paramname{pe}, long \paramname{rock});} 
+
+\fixedtext{void \bold{keymap_}InsertObject }\fixedindent{(struct keymap 
+*\paramname{keymap}, long \paramname{slot}, struct basicobject 
+*\paramname{object}, long \paramname{rock}, enum keymap_Types 
+\paramname{type});} 
+
+\fixedtext{enum keymap_Types \bold{keymap_}Lookup }\fixedindent{(struct keymap 
+*\paramname{keymap}, char \paramname{key}, struct basicobject 
+**\paramname{object}, long *\paramname{rockP});} 
+
+\fixedtext{void \bold{keymap_}RemoveBinding }\fixedindent{(struct keymap 
+*\paramname{keymap}, char *\paramname{keys});} 
+
+
+
+\section{About \italic{keymaps}}
+
+
+Formally, a \italic{keymap} is a function that maps a sequence of keyboard 
+characters to a procedure.  To understand how key maps work, it is useful to 
+think of a \italic{keymap} as an array with 128 entries, one for each 
+\smaller{ASCII} character.  Each entry in the \italic{keymap} array may have 
+one of three values:  a procedure, another \italic{keymap}, or a special value 
+used to indicate that the character has no binding. 
+
+
+Whenever the user types a character, the character is used as an index into 
+the \italic{keymap} array.  If the array value for the character is a 
+procedure, then the mapping is done and the procedure is executed.  For 
+example, suppose the \italic{keymap} \italic{Edit_BasicCommands} maps 
+\italic{ctrl-s} to the procedure \italic{Edit_SearchForward}.  Then when the 
+user types a \italic{ctrl-s}, the character is mapped to the procedure 
+\italic{SearchForward}, which is then executed. 
+
+
+If the array value for the character that a user types is another 
+\italic{keymap}, then the specified \italic{keymap} will be used to map the 
+next character that the user types.  For example, suppose that the 
+\italic{keymap} \italic{Edit_BasicCommands} maps \italic{ctrl-x} to another 
+\italic{keymap}, \italic{Edit_eXtendedCommands,} and that \italic{ctrl-s} in 
+the \italic{keymap} \italic{eXtendedCommands} maps to the procedure 
+\italic{WriteBuffertoFile}.  Then when the user types \italic{ctrl-x}, the 
+\italic{keymap} \italic{eXtendedCommands} will be used to interpret the next 
+character that the user types.  If the user types \italic{ctrl-s}, then that 
+will map to the procedure \italic{WriteBufferToFile}, which will be executed. 
+  A \italic{keymap} that itself has sub-\italic{keymaps} defines an implicit 
+tree, where the first key map is the \italic{root keymap}, and the other 
+\italic{sub-}\italic{keymaps} are branches.
+
+
+Finally, if the character that the user types maps to a value that indicates 
+there is no binding, then the \italic{keymap} returns a status code indicating 
+that there was no procedure bound to that sequence of keys.
+
+
+\section{About related classes}
+
+
+In order to use \italic{keymap}, you will need to know about the classes 
+\italic{bind}, \italic{keystate} and \italic{proctable}.  In addition, if you 
+want to manage numeric arguments or keep track of the last command, you will 
+need to know about the relevant sections of \italic{im}.
+
+
+\subsection{Bind}
+
+
+The class \italic{bind} provides the data structures and methods needed to 
+describe the key bindings for the \italic{keymap}.
+
+
+\subsection{Keystates}
+
+
+The class \italic{keystate} provides the data structures and methods needed to 
+keep track of state information needed for \italic{keymaps.}  It also 
+maintains the association between an instance of a \italic{view} with the 
+\italic{keymap} for its class.  Normally, there is only one \italic{keymap} 
+per class since the \italic{keymap} can usually be shared among all instances 
+of a \italic{view}.
+
+
+If \italic{keymaps} only mapped single keys to procedures, then there would be 
+no need to keep track of the state of the mapping.  To map \italic{sequences} 
+of keys to procedures,  however, requires keeping state information.  For 
+instance, the mapping process must know which \italic{keymap} is being used to 
+evaluate the next incoming character.
+
+
+\subsection{Procedure table}
+
+
+The class \italic{proctable} (procedure table) provides a global table 
+containing all of the commands bound to either keys or menu items in the 
+system.
+
+
+\paragraph{Interaction Manager}
+
+
+The class \italic{im} allows you to handle numeric arguments as part of a 
+character sequence (see \italic{im_GetArgState, im_ProvideArg}).  Numeric 
+arguments are typically used in order to allow the user to repeat a command 
+easily or to allow the user to specify an alternative value for a command's 
+parameter.  For example, the class \italic{textview} defines \italic{ctrl-u} 
+as an argument procedure.  If the user types the character sequence 
+\italic{ctrl-u 10 ctrl-f}, the procedure \italic{Forward} executes 10 times, 
+resulting in the text cursor moving forward 10 characters. 
+
+
+The class \italic{im} also provides facilities that allow you to keep track of 
+ the last command that the user has entered (see \italic{im_GetLastCmd, 
+SetLastCommand}).  This information is useful if the behavior of the command 
+procedures you are writing needs to depend upon previous command procedures 
+that the user has invoked.  For example, the \italic{textview} class makes the 
+behavior of \italic{ctrl-n} and \italic{ctrl-p} depend upon whether the 
+previous character was a \italic{ctrl-n} or \italic{ctrl-p}.
+
+
+\section{Using \italic{keymap}}
+
+
+\subsection{Creating the \italic{keymap}}
+
+
+Since a \italic{keymap} can be normally be shared by all instances of a class, 
+you normally create the \italic{keymap} in \italic{InitializeClass}, using 
+\italic{keymap_New}, a class procedure which creates a \italic{keymap}, 
+initializes it and returns a handle to it.  Save the handle.
+
+
+\subsection{Associating key bindings with the \italic{keymap}}
+
+
+Once you have created the \italic{keymap} and have a handle to it, you can 
+associate key bindings with it.  The class \italic{bind} provides the data 
+structures and methods for describing key bindings and for associating key 
+bindings with the \italic{keymap}.  Normally, the association is done in 
+\italic{InitializeClass}.  Usually you will use \italic{keymap_BindtoKey} to 
+bind each key.  You may, however, want to use \italic{keymap_InsertObjec}t to 
+copy they entire \italic{keymap} or \italic{proctable} from another class.  If 
+you are writing an application that needs to dynamically bind keys, you may 
+need to remove key bindings as well, using \italic{keymap_RemoveBinding}.
+
+
+\subsection{Associating the \italic{keymap} with the \italic{view}}
+
+
+The \italic{keystate} provides the mechanism for associating a \italic{keymap} 
+with each instance of a \italic{view}.
+
+
+\section{Sub-classing \italic{keymap}}
+
+
+Normally, you will not want to sublass \italic{keymap}.
+
+\begindata{bp,538929032}
+\enddata{bp,538929032}
+\view{bpv,538929032,1238,0,0}
+\section{\italic{Keymap} routines}
+
+____________________________
+
+
+\bold{keymap_BindToKey}
+
+
+\italic{Binds a character to a key}
+
+
+______________________________
+
+\indexi{\italic{keymap_BindToKey }}\indexi{Keymap++Adding key bindings}
+
+
+boolean \bold{keymap_BindToKey} (
+
+	struct keymap *\italic{kmap},
+
+	char *\italic{key},
+
+	struct proctable_Entry *\italic{pe},
+
+	long \italic{rock})
+
+
+\bold{Category}
+
+	Method
+
+
+\bold{Description}
+
+\leftindent{Binds the character \italic{key} to the \italic{proctable} entry 
+\italic{pe} for the keymap \italic{kmap}.  The parameter \italic{rock} is the 
+\smaller{ASCII} value of the corresponding \italic{key}.}
+
+
+\bold{Return Value}
+
+\leftindent{??}\leftindent{
+
+
+}\bold{Error Conditions}
+
+\leftindent{Null kmap?  A mismatch between key and rock?}
+
+
+\bold{Usage}
+
+\leftindent{Most useful for dynamically binding keys.  Otherwise use 
+\italic{bind_Description}.}
+
+
+\bold{Example}
+
+\leftindent{The following example dynamically binds keys that will be 
+"self-inserting" (e.g., A, a, B, b, etc.) and digits (e.g., 0, 1, 2, etc.) in 
+\italic{textview}:
+
+
+\begindata{ctext,539485448}
+\textdsversion{12}
+\template{ctext}
+\define{programexample
+}
+si=\function{proctable_DefineProc}("textview-self-insert", 
+	textview_SelfInsertCmd, classInfo, NULL, "Insert a character.");
+
+dig=\function{proctable_DefineProc}("textview-digit", textview_DigitCmd, 
+	classInfo, NULL, "Insert a character.");
+
+
+    str[0] = ' ';
+
+    str[1] = '\\0';
+
+    \function{for} (i = 32; i < 127; i++)  \{
+
+	if (i < '0' || i > '9')
+
+	    keymap_BindToKey(newKeymap, str, si, i);
+
+	else
+
+	    keymap_BindToKey(newKeymap, str, dig, i);
+
+	str[0]++;
+
+    \}
+
+\enddata{ctext,539485448}
+\view{ctextview,539485448,1239,0,0}
+
+}\programexample{si=proctable_DefineProc("textview-self-insert", 
+	textview_SelfInsertCmd, classInfo, NULL, "Insert a character.");
+
+dig=proctable_DefineProc("textview-digit", textview_DigitCmd, 	classInfo, 
+NULL, "Insert a character.");
+
+
+    str[0] = ' ';
+
+    str[1] = '\\0';
+
+    for (i = 32; i < 127; i++)  \{
+
+	if (i < '0' || i > '9')
+
+	    keymap_BindToKey(newKeymap, str, si, i);
+
+	else
+
+	    keymap_BindToKey(newKeymap, str, dig, i);
+
+	str[0]++;
+
+    \}}
+
+\begindata{bp,538929224}
+\enddata{bp,538929224}
+\view{bpv,538929224,1240,0,0} ______________________________
+
+
+\bold{keymap_InsertObject}
+
+
+\italic{Insert an object into a keymap}
+
+______________________________
+
+\indexi{\italic{keymap_InsertObject }}\indexi{Keymap++Adding an object's key 
+bindings}
+
+
+void \bold{keymap_InsertObject }( 
+
+	struct keymap *\italic{kmap,}
+
+	long \italic{slot},
+
+	struct basicobject *\italic{object},
+
+	long \italic{rock},
+
+	enum keymap_Types \italic{type})
+
+
+\bold{Category}
+
+\leftindent{Method}
+
+
+\bold{Description}
+
+\leftindent{Inserts an object of type \italic{type} into a \italic{keymap} at 
+the designated \italic{slot.} The allowable types are:
+
+
+\smaller{keymap_Empty  --  }empty
+
+\smaller{keymap_Proc  --  }proctable structure
+
+\smaller{keymap_Keymap  --  }a keymap
+
+
+The type should match the basic object. (? Description Unclear.  What value 
+should slot have?  What is a slot?  What is rock? What value should it have? 
+ Does it make sense to have an "empty" object?)}
+
+
+\bold{Usage
+
+}\leftindent{If you are creating an object and want all the key bindings for 
+\italic{textview}, for example, instead of transferring the key bindings 
+individually with \italic{keymap_BindToKey}, you can use 
+\italic{keymap_InsertObject}.  Before calling InsertObject, use 
+\italic{keymap_Lookup} to look up the type of the object that you are 
+inserting. (I couldn't find a single place this was used, except in keymap.c 
+ Is it useful for application programmers?).}
+
+
+\bold{Error conditions}
+
+\leftindent{Mismatch between type and object?  Others?}
+
+
+\bold{See also}
+
+\leftindent{keymap_Lookup}
+
+\bold{Example}
+
+\begindata{bp,538271624}
+\enddata{bp,538271624}
+\view{bpv,538271624,1241,0,0} ______________________________
+
+
+\bold{keymap_Lookup}
+
+
+\italic{Look up the binding for a key}
+
+______________________________
+
+\indexi{\italic{keymap_Lookup }}\indexi{Keymap++Looking up key bindings}
+
+
+enum keymap_Types \bold{keymap_Lookup} (
+
+\leftindent{struct keymap *\italic{keymap},
+
+char \italic{key},
+
+struct basicobject **\italic{object},
+
+long *\italic{rockP})}
+
+
+\bold{Category}
+
+\leftindent{Method}
+
+
+\bold{Description}
+
+\leftindent{Looks up \italic{key} in \italic{object} for \italic{keymap}. 
+ \italic{object} is an OUT parameter (what is an OUT parameter?  What is 
+rockP?  What value should it have?)}
+
+
+\bold{Return value}
+
+\leftindent{The type of object that the key is bound to:
+
+
+\smaller{keymap_Empty	}	empty
+
+\smaller{keymap_Proc}		proctable structure
+
+\smaller{keymap_Keymap}	a keymap
+
+
+}\bold{Usage
+
+}\leftindent{Use \italic{keymap_Lookup}  if you need information on the type 
+of a certain key before calling \italic{keymap_InsertObject}.}
+
+
+\bold{Error conditions}
+
+\leftindent{?}
+
+
+\bold{See also}
+
+\leftindent{keymap_InsertObject}
+
+
+\bold{Example}\bold{
+
+}\
+\begindata{bp,538928456}
+\enddata{bp,538928456}
+\view{bpv,538928456,1242,0,0} ______________________________
+
+
+\bold{keymap_New}
+
+
+\italic{Create a new keymap}
+
+______________________________
+
+\indexi{\italic{keymap_New}} \indexi{Keymap++Creating
+
+}
+struct keymap *\bold{keymap_New} ()
+
+
+\bold{Category}
+
+\leftindent{Class procedure}
+
+
+\bold{Description}
+
+\leftindent{Creates a new \italic{keymap} by dynamically allocating memory for 
+a \italic{keymap} structure.  In addition, it initializes the newly allocated 
+\italic{keymap} structure so that all the \italic{keymap} entries have the 
+status \smaller{keymap_Empty, }that is, no procedures and sub-\italic{keymaps} 
+are bound to characters.}
+
+
+\bold{Return value}
+
+\leftindent{A pointer to the newly created \italic{keymap}.} 
+
+
+\bold{Usage
+
+}\leftindent{Since a \italic{keymap} can normally be shared among all 
+instances of a \italic{view}, it should usually be created in 
+\italic{InitializeClass,} a class procedure that is called only once when the 
+class is loaded.}
+
+
+\bold{See also}
+
+\leftindent{bind_Bindlist; keystate_Create.}
+
+
+\bold{Example
+
+}\leftindent{The following creates a \italic{keymap} for an example view, 
+\italic{exv}:
+
+}\example{
+#include <keymap.ih>
+
+
+static struct keymap *exvkeymap;
+
+
+exv__IntializeClass(classID)
+
+    struct classheader *classID;
+
+\{
+
+exvkeymap=keymap_New();
+
+\}}
+
+\begindata{bp,538928520}
+\enddata{bp,538928520}
+\view{bpv,538928520,1243,0,0}
+______________________________
+
+
+\bold{keymap_RemoveBinding}
+
+
+\italic{Remove a key binding}
+
+______________________________
+
+\indexi{\italic{keymap_RemoveBinding }}\indexi{Keymap++Deleting key bindings}
+
+
+void \bold{keymap_RemoveBinding} (
+
+	struct keymap *\italic{kmap},
+
+	char *\italic{key})
+
+
+\bold{Category}
+
+\leftindent{Method}
+
+
+\bold{Description}
+
+\leftindent{Removes the binding of \italic{key} in keymap \italic{kmap}. }
+
+
+\bold{Usage
+
+}\leftindent{??}
+
+
+\bold{Error conditions}
+
+
+\bold{Example}\leftindent{ 
+
+}
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1245,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,539047252}

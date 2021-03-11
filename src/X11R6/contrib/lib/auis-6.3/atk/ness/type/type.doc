@@ -1,0 +1,2202 @@
+\begindata{text,538609076}
+\textdsversion{12}
+\template{default}
+\define{fixedtext
+menu:[Region~4,Fixedtext]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{fixedindent
+menu:[Region~4,Fixedindent]
+attr:[LeftMargin LeftMargin Cm 83230]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{fieldheading
+menu:[Region~4,Fieldheading]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace Bold Int Set]
+attr:[FontFamily AndySans Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{fieldtext
+menu:[Region~4,Fieldtext]
+attr:[LeftMargin LeftMargin Cm 83230]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFamily AndySans Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{paramname
+menu:[Font~1,Paramname]
+attr:[FontFace Italic Int Set]}
+\formatnote{\chapter{type}}
+
+
+type is a programmer's interface to the type system of C/Class.  An instance 
+of type contains information that is associated with the compile time symbol 
+table and is not normally available at run time.  Type can be used to 
+determine a function's parameters and return type, the field names and offsets 
+of a structure, and other information not normally available.
+
+
+
+\section{Sym}
+
+
+Several important operations, type_GetName in particular, are inherited from 
+type's superclass.  For this reason, the documentation for sym should be 
+consulted along with this document.
+
+
+
+\section{Supertypes and operations}
+
+
+Due to the wide range of characteristics that the various types exhibit, a 
+flexible architecture has been used for this class.  Instances of type can be 
+considered nodes in a tree-like structure.  The parent of a type called the 
+\italic{supertype} is the type from which the type was derived.  Similarly, 
+the children of a type are the types that were derived from it.  Associated 
+with each type is a list of \italic{operations} that describe the relationship 
+it holds with its supertype.  These operations are defined in type.ch and 
+described in the documentation for the relevant methods (type_Create and 
+type_AddOp). Reproduced below is the relevant section of type.ch:
+
+
+\fixedindent{typedef long operation;
+
+
+#define type_prim		-1
+
+#define type_typedef	-2
+
+#define type_struct	-3
+
+#define type_union		-4
+
+#define type_enum		-5
+
+#define type_field		-6
+
+#define type_const		-7
+
+
+#define type_ptr		-12
+
+#define type_array		-13
+
+#define type_funcReturning	-14
+
+
+#define type_class		-19
+
+#define type_package	-20
+
+
+#define type_macro		-15
+
+#define type_classmacro	-16
+
+#define type_method	-17
+
+#define type_classmethod	-18
+
+
+#define type_param		-9
+
+
+#define type_lastAdded	-21
+
+
+}
+\section{The property list}
+
+
+In addition to a supertype and operations list, each instance of type also has 
+a \italic{property list}.  This is used for describing the fields in a 
+structure or union, the parameters associated with a method, and the constants 
+associated with an enumerated type.  The macromethod type_GetLast can be used 
+to determine the last property in a list.  If a type is a member of another 
+type's property list, it will not have properties itself, and the type_GetPrev 
+method can be used to get the previous property in the list.
+
+
+\section{The classInfo structure}
+
+
+Of all the various things a type can represent, classes and packages are by 
+far the most complex.  For this reason, if a type object represents a class or 
+a package, an additional structure is created to describe this additional 
+complexity.  This structure is of type struct classInfo, which is defined in 
+type.ch as follows:
+
+
+\fixedindent{struct classInfo \{
+
+	sym_ScopeType scope;			}\fixedindent{
+
+	long noMethods, noClassMethods;
+
+	long noMacros, noClassMacros;
+
+	struct type **methods, **classMethods;
+
+	struct type **macros, **classMacros;
+
+	struct type *data;
+
+\};
+
+}
+The meaning of the various fields is summarized in the following table:
+
+
+	scope		The scope where the methods are defined
+
+	noMethods	the size of the methods table
+
+	noClassMethods	the size of the classMethods table
+
+	noMacros	the size of the macros table
+
+	noClassMacros	the size of the classMacros table
+
+	methods		a table containing one type for each of the class's methods
+
+	classMethods	a table containing one type for each of the class's 
+classprocedures
+
+	macros		a table containing one type for each of the class's macromethods
+
+	classMacros	a table containing one type for each of the class's macros
+
+	data		a type object representing the structure associated with the class's 
+data
+
+
+
+\section{The ctypes structure}
+
+
+There are certain basic types that are defined as primitives in the C/Class 
+type system.  These can be used to construct and lookup more complex types and 
+can be found using the classprocedure type_GetCtypes.  This will return a 
+pointer to a structure of type struct type_ctypes which will contain a field 
+for each of the primitive type objects.  This structure is defined in type.ch 
+as follows:
+
+
+\fixedindent{struct type_ctypes \{
+
+	struct type *charType, *shortType, *intType, *longType;
+
+	struct type *ucharType, *ushortType, *uintType, *ulongType;
+
+	struct type *floatType, *doubleType;
+
+	struct type *voidType;
+
+
+	struct type *structType,  *unionType,  *enumType;
+
+	struct type *macroType;
+
+	struct type *basicobject;
+
+\};
+
+
+}
+\section{C/Class in terms of type}
+
+
+The following section describes how each of the different kind of types 
+definable in C/Class fit into the type object framwork.  For each type, the 
+significance of the supertype, operations, and property list is described, as 
+well as any other useful information.
+
+
+\italic{primitive types}.  The basic types of C (i.e. char, int, float, void, 
+etc.)  are considered to be subtypes of the primitive voidType, which can be 
+found in the ctypes structure.  They are related to it by the single operation 
+type_prim.  The concept of a property list is meaningless for primitive types.
+
+
+\italic{typedefs}.  Typedefs are subtypes of whatever type it is they alias 
+and are related by the operation type_typedef.  Additional operations may be 
+applied to describe a more complex relationship involving pointers.  These 
+operations are listed from the inside out, so the declaration "typedef int 
+(*foo)[]" would have the following operation list associated with it: 
+(type_typedef type_ptr type_array).  The concept of a property list is 
+meaningless for typedefs.
+
+
+\italic{structs and unions}.  All structs and unions are subtypes of 
+structType or unionType, both of which can be found in the ctypes structure. 
+ They are related to it by the operation type_struct or type_union, as the 
+case may be.  The types in the property list are the fields of the 
+structure/union.  If the struct or union is labeless, it is created with the 
+name "" and given a unique name beginning with '$'.  See the documentation for 
+type_Create for more details on this.
+
+
+\italic{enums}.  Enumerated types are treated similarly to structs and unions. 
+ They are subtypes of enumType and are related with the operation type_enum. 
+ The property list contains the enumeration constants defined by the type.
+
+
+\italic{fields}.  These are identical to typedefs, with two exceptions:  The 
+operation relating them to their superclass is type_field, not type_typedef; a 
+field is a property of a structure or union, so the property list is 
+meaningful.
+
+
+\italic{constants}.  Enumeration constants are quite similar to fields.  They 
+are related to their superclass, longType by the operation type_const.
+
+
+\italic{methods}.  The two types of methods (methods, classmethods, 
+macromethods, and macros) are all related to their supertype, the return value 
+of the function, by the operation (methods, classMethods, macros, 
+classMacros), respectively.  The property list for a method is the parameters 
+that it takes.  
+
+
+\italic{parameters}.  A parameter is identical to a field, with the exception 
+that the operation type_param replaces type_field.
+
+
+\italic{classes and packages}.  Classes and packages are related to their 
+superclass by the operation type_class or type_package.  Although there is no 
+property list, there is a classInfo structure associated with the class or 
+package.  The fields of this can be accessed with the macromethods 
+GetClassInfo and SetClassInfo.  See also the section above about the classInfo 
+structure.
+
+
+
+\section{Examples}
+
+
+Examples almost every aspect type can be found in the file typetest.c.
+
+
+\begindata{bp,538927368}
+\enddata{bp,538927368}
+\view{bpv,538927368,609,0,0}
+______________________________________________________				
+
+
+\paragraph{type_Create}
+
+				
+
+\majorheading{Create a new type}
+
+______________________________________________________
+
+
+\fixedtext{struct type *\bold{type_Create }(}\fixedindent{
+
+struct type *\paramname{type},
+
+char *\paramname{name},
+
+struct type *\paramname{owner},
+
+operation \paramname{op});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Creates a new type with supertype \italic{type} and name 
+\italic{name}.  If no name is given (i.e. \italic{name} = ""), a unique name 
+with a '$' as the first character will be assigned.  Unless \italic{owner} is 
+NULL, the new type will be linked into \italic{owner}'s property list as the 
+last property.  The parameter op designates the basic relationship between the 
+newly created type, and its supertype, \italic{type}.  The method type_AddOp 
+can be called to further describe this relationship.
+
+
+\italic{op} can have one of the following values:
+
+
+type_prim		a primitive type such as int
+
+type_typedef		a typedef such as boolean
+
+type_struct		a structure
+
+type_union		a union
+
+type_enum		an enumerated type
+
+type_field		a field in a structure or union
+
+type_const		an enumeration constant
+
+type_class		a class
+
+type_package	a package
+
+type_macro		a macromethod
+
+type_classmacro	a macro
+
+type_method		a method
+
+type_classmethod	a classprocedure
+
+type_param		a parameter
+
+
+}
+\fieldheading{Return Value}
+
+\fieldtext{The newly created type, or NULL if failure.}
+
+
+
+\fieldheading{Usage}\fieldtext{
+
+Use this to manually construct a new type.  As this is a tedious process, it 
+is often desirable to have types automatically constructed using one of the 
+Declare classprocedures.  It should never be necessary to call type_New to 
+create an instance of type.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{type_GetCtypes, type_Applyop, type_Declare, type_DeclareFromString, 
+type_DeclareFromFile, type_DeclareClass.}
+
+
+
+
+
+
+\view{bpv,538927368,610,0,0}
+______________________________________________________				
+
+
+\paragraph{type_Lookup}
+
+				
+
+\majorheading{Find a type that has been declared.}
+
+______________________________________________________
+
+
+\fixedtext{struct type *\bold{type_Lookup }(}\fixedindent{
+
+struct type *\paramname{type},
+
+char *\paramname{name});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Looks for a subtype of \italic{type} with name \italic{name}.
+
+		 
+
+}
+\fieldheading{Return Value}
+
+\fieldtext{The match if one exists, NULL otherwise.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{Use to locate a type if you know its name.  This is often necessary 
+to locate types that were declared automatically by type_Declare or a related 
+class procedure.
+
+}
+
+
+
+
+\view{bpv,538927368,611,0,0}
+______________________________________________________				
+
+
+\paragraph{type_ApplyOp}
+
+				
+
+\majorheading{Add an operation after creating a type.}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{type_ApplyOp }(}\fixedindent{
+
+struct type *\paramname{type},
+
+operation \paramname{op});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Apply the operation \italic{op} to \italic{type, }thus further 
+describing the relationship it has with its supertype.  \italic{op} can have 
+one of the following values:
+
+
+type_ptr		a ptr
+
+type_array		an array
+
+type_funcReturning	a function returning
+
+(operation) \italic{n}		an array of size \italic{n}, where n is a positive 
+integer.
+
+type_LastAdded	apply this to a structure or union after all its fields have 
+been created.
+
+		 
+
+}
+\fieldheading{Usage}\fieldtext{
+
+If the relationship between a newly created type and its supertype is not 
+adequatly described by the single operation supplied to type_Create, use 
+type_ApplyOp to further describe it.  When you are done creating the fields of 
+a structure or union, apply type_LastAdded to that structure or union.}
+
+
+
+\fieldheading{Side Effects}
+
+\fieldtext{Appends \italic{op} to the ops array associated with \italic{type}. 
+ Exception: if \italic{op} = type_LastAdded, it will not be added to the ops 
+array.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{type_Create.}
+
+
+
+
+
+
+\view{bpv,538927368,612,0,0}
+______________________________________________________				
+
+
+\paragraph{type_GetDeclaration}
+
+				
+
+\majorheading{Generate a textual representation of a type.}
+
+______________________________________________________
+
+
+\fixedtext{char *\bold{type_GetDeclaration }(}\fixedindent{
+
+struct type *\paramname{type});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   \fieldtext{
+
+Generates a textual represenation of type.
+
+		 
+
+}
+\fieldheading{Return Value}
+
+\fieldtext{A static string containing the text.  This string should not be 
+freed, and is only good until the next time type_GetDeclaration or type_Print 
+is called.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{To generate a textual representation of a type for display to the 
+user.
+
+}
+
+\fieldheading{Side Effects}
+
+\fieldtext{ The last string generated by type_GetDeclaration is overwritten by 
+the new one.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{type_Print.}
+
+
+
+
+
+\view{bpv,538927368,613,0,0}
+______________________________________________________				
+
+
+\paragraph{type_IsValidAddress}
+
+				
+
+\majorheading{Check an area of memory for validity.}
+
+______________________________________________________
+
+
+\fixedtext{boolean \bold{type_IsValidAddress }(}\fixedindent{
+
+struct type *\paramname{type},
+
+void *\paramname{addr});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Test the area of memory starting at \italic{addr} to determine 
+whether or not it is a valid location for an instance of the type described by 
+\italic{type} to exist.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{TRUE if valid, FALSE otherwise.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{Use this before trying to access an area of memory or manipulating 
+it with type_SetValue.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{type_SetValue}
+
+
+
+
+
+
+\view{bpv,538927368,614,0,0}
+______________________________________________________				
+
+
+\paragraph{type_SetValue}
+
+				
+
+\majorheading{Copy one area of memory to another}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{type_SetValue }(}\fixedindent{
+
+struct type *\paramname{type},
+
+void *\paramname{obj},
+
+void *\paramname{newVal});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{ Copies sizeof(\italic{type}) bytes from \italic{newVal} to 
+\italic{obj}.
+
+		 
+
+}
+\fieldheading{Usage}
+
+\fieldtext{Use to mnipulate the memory associated with an instance of a type.
+
+}
+\fieldheading{Side Effects}
+
+\fieldtext{The memory at the location of obj is permanantly altared.}
+
+
+\fieldheading{See Also}
+
+\fieldtext{type_IsValidAddress.}
+
+
+
+
+
+
+\view{bpv,538927368,615,0,0}
+______________________________________________________				
+
+
+\paragraph{type_Print}
+
+				
+
+\majorheading{Print a type to stdout}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{type_Print }(}\fixedindent{
+
+struct type *\paramname{type});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Print a textual representation of type to stdout.  This done using 
+a call to type_GetDeclaration.
+
+
+		 
+
+}\fieldheading{Usage}
+
+\fieldtext{For printing a textual representation of a type.
+
+}
+
+
+
+
+\view{bpv,538927368,616,0,0}
+______________________________________________________				
+
+
+\paragraph{type_GetSuper}
+
+				
+
+\majorheading{Get the supertype of a type}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_GetSuper }(}\fixedindent{
+
+struct type *\paramname{type});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Gets the supertype associated with \italic{type}.}
+
+
+
+
+
+
+\view{bpv,538927368,617,0,0}
+______________________________________________________				
+
+
+\paragraph{type_GetOps}
+
+				
+
+\majorheading{Get the operation array of a type}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_GetOps }(}\fixedindent{
+
+struct type *\paramname{type});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Get the array of operations associated with \italic{type}.}
+
+
+
+
+
+
+\view{bpv,538927368,618,0,0}
+______________________________________________________				
+
+
+\paragraph{type_SetSuper}
+
+				
+
+\majorheading{Set the supertype}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_SetSuper }(}\fixedindent{
+
+struct type *\paramname{type},
+
+struct type *\paramname{val});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Set the supertype associated with \italic{type} to \italic{val}.}
+
+
+
+
+
+
+\view{bpv,538927368,619,0,0}
+______________________________________________________				
+
+
+\paragraph{type_GetLast}
+
+				
+
+\majorheading{Get the last item of type's property list}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_GetLast }(}\fixedindent{
+
+struct type *\paramname{type});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{The section titled \italic{the property list}.}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Get the last type in \italic{type}'s property list.  If 
+\italic{type}'s property list is empty, return \italic{type}.}
+
+
+
+
+
+
+\view{bpv,538927368,620,0,0}
+______________________________________________________				
+
+
+\paragraph{type_GetPrev}
+
+				
+
+\majorheading{Get the previous item in type's property list}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_GetPrev }(}\fixedindent{
+
+struct type *\paramname{type});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{The section titled \italic{the property list}.}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Get the previous type in the property list that \italic{type} 
+belongs to.  If \italic{type} is the last property in the list, it will return 
+the owner.  If \italic{type} is not in a property list at all, it will return 
+NULL.}
+
+
+
+
+
+
+\view{bpv,538927368,621,0,0}
+______________________________________________________				
+
+
+\paragraph{type_SetLast}
+
+				
+
+\majorheading{Set the last item in a propety list}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_SetLast }(}\fixedindent{
+
+struct type *\paramname{type},
+
+struct type *\paramname{val});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Set the last type in \italic{type}'s property list to \italic{val}. 
+ Note: other links in the list will NOT be updated.
+
+}
+
+\fieldheading{Usage}
+
+\fieldtext{It should never be necessary to use this to manipulate the linked 
+list directly.  The property list should be constructed by creating the 
+properties as described under type_Create and applying the type_lastAdded 
+operation after the last property has been created.
+
+
+}
+\fieldheading{See Also}
+
+\fieldtext{The section titled \italic{the property list}.}
+
+
+
+
+
+
+\view{bpv,538927368,622,0,0}
+______________________________________________________				
+
+
+\paragraph{type_SetPrev}
+
+				
+
+\majorheading{Set the previous item in a property list}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_SetPrev }(}\fixedindent{
+
+struct type *\paramname{type},
+
+struct type *\paramname{val});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Set the previous type in type's property list to type.  Note: other 
+links in the list will NOT be updated.
+
+}
+
+\fieldheading{Usage}
+
+\fieldtext{It should never be necessary to use this to manipulate the linked 
+list directly.  The property list should be constructed by creating the 
+properties as described under type_Create and applying the type_lastAdded 
+operation after the last property has been created.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{The section titled \italic{the property list}.}
+
+
+
+
+
+
+\view{bpv,538927368,623,0,0}
+______________________________________________________				
+
+
+\paragraph{type_GetSize}
+
+				
+
+\majorheading{Get the size in bytes
+
+}______________________________________________________
+
+
+\fixedtext{\bold{type_GetSize }(}\fixedindent{
+
+struct type *\paramname{type});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Get the size (in bytes) that an instance of \italic{type} occupies 
+in memory.}
+
+
+
+
+
+
+\view{bpv,538927368,624,0,0}
+______________________________________________________				
+
+
+\paragraph{type_SetSize}
+
+				
+
+\majorheading{Set the size}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_SetSize }(}\fixedindent{
+
+struct type *\paramname{type},
+
+short \paramname{val});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Set the size of \italic{type} to \italic{val} bytes.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{It should never be necessary to set the size of a type manual.  If 
+type_Create and type_AddOp are both used properly, the size will be 
+automatically generated.
+
+}
+
+
+
+
+\view{bpv,538927368,625,0,0}
+______________________________________________________				
+
+
+\paragraph{type_GetAlign}
+
+				
+
+\majorheading{Get the alignment}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_GetAlign }(}\fixedindent{
+
+struct type *\paramname{type});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Get the alignment of \italic{type}, i.e. the smallest number that 
+the address of an instance of \italic{type} will always be divisible by.}
+
+
+
+
+
+
+\view{bpv,538927368,626,0,0}
+______________________________________________________				
+
+
+\paragraph{type_SetAlign}
+
+				
+
+\majorheading{Set the alignment of type}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_SetAlign }(}\fixedindent{
+
+struct type *\paramname{type},
+
+short \paramname{val});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Set the alignment of \italic{type} to \italic{val}.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{It should never be necessary to set the size of a type manual.  If 
+type_Create and type_AddOp are both used properly, the size will be 
+automatically generated.
+
+}
+
+
+
+
+\view{bpv,538927368,627,0,0}
+______________________________________________________				
+
+
+\paragraph{type_GetReadLevel}
+
+				
+
+\majorheading{Get the read level}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_GetReadLevel }(}\fixedindent{
+
+struct type *\paramname{type});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Get the read level of \italic{type}.  The read level is a short 
+integer and is not currently used for anything.}
+
+
+
+
+
+
+\view{bpv,538927368,628,0,0}
+______________________________________________________				
+
+
+\paragraph{type_GetWriteLevel}
+
+				
+
+\majorheading{Get the write level}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_GetWriteLevel }(}\fixedindent{
+
+struct type *\paramname{type});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Get the write level of \italic{type}.  The write level is a short 
+integer and is not currently used for anything.}
+
+
+
+
+
+
+\view{bpv,538927368,629,0,0}
+______________________________________________________				
+
+
+\paragraph{type_SetReadLevel}
+
+				
+
+\majorheading{Set the read level}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_SetReadLevel }(}\fixedindent{
+
+struct type *\paramname{type},
+
+short \paramname{val});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Set the read level of \italic{type} to \italic{val}.  The read 
+level is a short integer and is not currently used for anything.}
+
+
+
+
+
+
+\view{bpv,538927368,630,0,0}
+______________________________________________________				
+
+
+\paragraph{type_SetWriteLevel}
+
+				
+
+\majorheading{Set write level}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_SetWriteLevel }(}\fixedindent{
+
+struct type *\paramname{type},
+
+short \paramname{val});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Set the write level of \italic{type} to \italic{val}.  The write 
+level is a short integer and is not currently used for anything.}
+
+
+
+
+
+
+\view{bpv,538927368,631,0,0}
+______________________________________________________				
+
+
+\paragraph{type_GetOffset}
+
+				
+
+\majorheading{Get the offset of a field}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_GetOffset }(}\fixedindent{
+
+struct type *\paramname{type});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Get the offset of \italic{type}.  This is only meaningful if 
+\italic{type} is a field (i.e. created with the operation type_field).  Under 
+these conditions, type_GetOffset will expand to the number of bytes that must 
+be added to the base address of the struct or union to obtain the address of 
+\italic{type}.}
+
+
+
+\fieldheading{Error Conditions}
+
+\fieldtext{If type is not a field, the value will be meaningless.}
+
+
+
+
+
+
+\view{bpv,538927368,632,0,0}
+______________________________________________________				
+
+
+\paragraph{type_GetVal}
+
+				
+
+\majorheading{Get the value of an enumeration constant}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_GetVal }(}\fixedindent{
+
+struct type *\paramname{type});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Get the numeric value associated with \italic{type}.
+
+}
+
+\fieldheading{Error Conditions}
+
+\fieldtext{If type is not an enumeration constant, created with the operation 
+type_const, the value will be meaningless.}
+
+
+
+
+
+
+\view{bpv,538927368,633,0,0}
+______________________________________________________				
+
+
+\paragraph{type_GetMacro}
+
+				
+
+\majorheading{Get the textual definition of a macro}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_GetMacro }(}\fixedindent{
+
+struct type *\paramname{type});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Get the textual definition of \italic{type}.}
+
+
+
+\fieldheading{Error Conditions}
+
+\fieldtext{If type is not a macromethod or a macro created with the operation 
+type_macro or type_classmacro, the return value will be meaningless.}
+
+
+
+
+
+
+\view{bpv,538927368,634,0,0}
+______________________________________________________				
+
+
+\paragraph{type_GetClassInfo}
+
+				
+
+\majorheading{Function description}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_GetClassInfo }(}\fixedindent{
+
+struct type *\paramname{type},
+
+void \paramname{prop});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Get the \italic{prop} field of the classInfo structure associated 
+with \italic{type}.  Any one of the following field names can be validly used 
+as \italic{prop}:
+
+ 
+
+	scope		The scope where the methods are defined
+
+	noMethods	the size of the methods table
+
+	noClassMethods	the size of the classMethods table
+
+	noMacros	the size of the macros table
+
+	noClassMacros	the size of the classMacros table
+
+	methods		a table containing one type for each of the class's methods
+
+	classMethods	a table containing one type for each of the class's 
+classprocedures
+
+	macros		a table containing one type for each of the class's macromethods
+
+	classMacros	a table containing one type for each of the class's macros
+
+	data		a type object representing the structure associated with the class's 
+data
+
+}
+
+
+\fieldheading{Error Conditions}
+
+\fieldtext{If \italic{type} is not a class or package created with the 
+operation type_class or type_package, and if \italic{prop} is not a ligitimate 
+field in the classInfo structure, this will not work.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{The section titled \italic{the classInfo structure}.}
+
+
+
+
+
+
+\view{bpv,538927368,635,0,0}
+______________________________________________________				
+
+
+\paragraph{type_GetIndex}
+
+				
+
+\majorheading{Get the index of a method.}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_GetIndex }(}\fixedindent{
+
+struct type *\paramname{type});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Get the index of \italic{type} in the appropriate table, either 
+methods or classmethods.  The indexing in these tables is the same as the 
+indexing in the corresponding Class runtime tables, 
+self.header.methods->routines[] and classheader.classprocedures->routines[].}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{Dynamic calling of methods and class procedures.
+
+}
+
+
+
+
+\view{bpv,538927368,636,0,0}
+______________________________________________________				
+
+
+\paragraph{type_SetOffset}
+
+				
+
+\majorheading{Set the offset of a field.}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_SetOffset }(}\fixedindent{
+
+struct type *\paramname{type},
+
+long \paramname{newval});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Set the offset of \italic{type} to \italic{newval}.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{The offset of a field is calculated automatically during the 
+creation of the type.  It should never be necessary to use this to set the 
+offset manually.
+
+}
+
+\fieldheading{Error Conditions}
+
+\fieldtext{This operation will have unpredictable results if \italic{type} is 
+not a field.}
+
+
+
+
+
+
+\view{bpv,538927368,637,0,0}
+______________________________________________________				
+
+
+\paragraph{type_SetVal}
+
+				
+
+\majorheading{Set the value of an enumeration constant}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_SetVal }(}\fixedindent{
+
+struct type *\paramname{type},
+
+long \paramname{newval});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Set the value of \italic{type} to \italic{newval}.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{The value of an enumeration constant is calculated automatically 
+during its creations.  It should never be necessary to use this to set the 
+value manually.
+
+}
+
+\fieldheading{Error Conditions}
+
+\fieldtext{This operation will have unpredictable results if \italic{type} is 
+not an enumeration constant.}
+
+
+
+
+
+
+\view{bpv,538927368,638,0,0}
+______________________________________________________				
+
+
+\paragraph{type_SetMacro}
+
+				
+
+\majorheading{Set the textual definition of a macro}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_SetMacro }(}\fixedindent{
+
+struct type *\paramname{type},
+
+char *\paramname{newval});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Set the macro defininition of \italic{type} to \italic{newval}.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{The macro definition of a macro or classmacro is calculated 
+automatically during its creation.  It should never be necessary to use this 
+to set the definition manually.
+
+}
+
+\fieldheading{Error Conditions}
+
+\fieldtext{This operation will have unpredictable results if \italic{type} is 
+not a macro or a classmacro.}
+
+
+
+
+
+
+\view{bpv,538927368,639,0,0}
+______________________________________________________				
+
+
+\paragraph{type_SetClassInfo}
+
+				
+
+\majorheading{Set a property of a class or package}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_SetClassInfo }(}\fixedindent{
+
+struct type *\paramname{type},
+
+void \paramname{prop},
+
+void \paramname{newval});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Set the \italic{prop} property of \italic{type} to \italic{newval}. 
+ Any of the fieldnames of the classInfo structure are valid values for 
+\italic{prop}.  These are fully described in the section titled \italic{The 
+ClassInfo Structure} and are summarized below:
+
+ 
+
+	scope		The scope where the methods are defined
+
+	noMethods	the size of the methods table
+
+	noClassMethods	the size of the classMethods table
+
+	noMacros	the size of the macros table
+
+	noClassMacros	the size of the classMacros table
+
+	methods		a table containing one type for each of the class's methods
+
+	classMethods	a table containing one type for each of the class's 
+classprocedures
+
+	macros		a table containing one type for each of the class's macromethods
+
+	classMacros	a table containing one type for each of the class's macros
+
+	data		a type object representing the structure associated with the class's 
+data
+
+}
+
+\fieldheading{Usage}
+
+\fieldtext{The properties of a class are all calculated automatically during 
+its creation.  It should never be necessary to use this to set the definition 
+manually.
+
+}
+
+\fieldheading{Error Conditions}
+
+\fieldtext{This operation will have unpredictable results if \italic{type} is 
+not a class or a package.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{The section titled \italic{The ClassInfo Structure}.}
+
+
+
+
+
+
+\view{bpv,538927368,640,0,0}
+______________________________________________________				
+
+
+\paragraph{type_SetIndex}
+
+				
+
+\majorheading{Set the index of method or classmethod.}
+
+______________________________________________________
+
+
+\fixedtext{\bold{type_SetIndex }(}\fixedindent{
+
+struct type *\paramname{type},
+
+long \paramname{newval});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Macromethod}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Set the index of \italic{type} to \italic{newval}.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{The index of a method or classmethod is calculated automatically 
+during its creation.  It should never be necessary to use this to set the 
+index manually.
+
+}
+
+\fieldheading{Error Conditions}
+
+\fieldtext{This operation will have unpredictable results if \italic{type} is 
+not a method or classmethod.}
+
+
+
+
+
+
+\view{bpv,538927368,641,0,0}
+______________________________________________________				
+
+
+\paragraph{type_GetCtypes}
+
+				
+
+\majorheading{Function description}
+
+______________________________________________________
+
+
+\fixedtext{struct type_ctypes *\bold{type_GetCtypes }(}\fixedindent{);}
+
+
+\fieldheading{Category}
+
+\fieldtext{Classprocedure}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Returns a ctypes structure containing all the primitive types. }
+
+\fieldtext{		 
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{The ctypes structure.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{Call this at initialization time and store the return value in a 
+global variable so that the primitive types can be used if they were 
+constants.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{The section titled \italic{The Ctypes Structure}.}
+
+
+
+
+
+
+\view{bpv,538927368,642,0,0}
+______________________________________________________				
+
+
+\paragraph{type_Reset}
+
+				
+
+\majorheading{Function description}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{type_Reset }(}\fixedindent{);}
+
+
+\fieldheading{Category}
+
+\fieldtext{Classprocedure}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Resets the environment to its original state.  This is done by 
+destroying all type objects that have been defined and then redefining the 
+primitive types.}
+
+
+
+
+
+
+\view{bpv,538927368,643,0,0}
+______________________________________________________				
+
+
+\paragraph{type_Declare}
+
+				
+
+\majorheading{Compile the C/Class declarations in a substring of text.}
+
+______________________________________________________
+
+
+\fixedtext{char *\bold{type_Declare }(}\fixedindent{struct text 
+*\paramname{text},
+
+long \paramname{loc},
+
+long \paramname{len});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Classprocedure}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Compile the types defined in the C/Class code found in the 
+substring of \italic{text} defined by \italic{loc} and \italic{len}.  If the 
+declaration was successful, type_Lookup can be used to access the newly 
+declared types.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{An Error message, or the empty string if no errors were detected.}
+
+
+
+\fieldheading{Error Conditions}
+
+\fieldtext{If there is an error in the C/Class code, the declaration will fail 
+and an error message will be printed to stderr.}
+
+
+
+\fieldheading{Side Effects}
+
+\fieldtext{The types defined in the substring will be declared.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{type_Lookup, type_DeclareFromString, type_DeclareFromFile, 
+type_DeclareClass.}
+
+
+
+
+
+
+\view{bpv,538927368,644,0,0}
+______________________________________________________				
+
+
+\paragraph{type_DeclareFromString}
+
+				
+
+\majorheading{Compile the C/Class code in a string.}
+
+______________________________________________________
+
+
+\fixedtext{char *\bold{type_DeclareFromString }(}\fixedindent{char 
+*\paramname{declaration});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Classprocedure}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Compile the types defined in the C/Class code found in the '\\0' 
+termined C style string \italic{declaration}.  If the declaration was 
+successful, type_Lookup can be used to access the newly declared types.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{An Error message, or the empty string if no errors were detected.}
+
+
+
+\fieldheading{Error Conditions}
+
+\fieldtext{If there is an error in the C/Class code, the declaration will fail 
+and an error message will be printed to stderr.}
+
+
+
+\fieldheading{Side Effects}
+
+\fieldtext{The types defined in the string will be declared.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{type_Lookup, type_Declare, type_DeclareFromFile, type_DeclareClass.}
+
+
+
+
+
+
+\view{bpv,538927368,645,0,0}
+______________________________________________________				
+
+
+\paragraph{type_DeclareFromFile}
+
+				
+
+\majorheading{Compile the C/Class definitions in a file.}
+
+______________________________________________________
+
+
+\fixedtext{char *\bold{type_DeclareFromFile }(}\fixedindent{char 
+*\paramname{filename});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Classprocedure}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Compile the types defined in the C/Class code found in the file 
+associated with \italic{filename}.  If the declaration was successful, 
+type_Lookup can be used to access the newly declared types.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{An error message, or the empty string if no errors were detected.}
+
+
+
+\fieldheading{Error Conditions}
+
+\fieldtext{If there is an error in the C/Class code, the declaration will fail 
+and an error message will be printed to stderr.}
+
+
+
+\fieldheading{Side Effects}
+
+\fieldtext{The types defined in the file will be declared.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{type_Lookup, type_Declare, type_DeclareFromString, 
+type_DeclareClass.}
+
+
+
+
+
+
+\view{bpv,538927368,646,0,0}
+______________________________________________________				
+
+
+\paragraph{type_DeclareClass}
+
+				
+
+\majorheading{Compile the C/Class definitions in a .ch file.}
+
+______________________________________________________
+
+
+\fixedtext{char *\bold{type_DeclareClass }(}\fixedindent{char 
+*\paramname{classname});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Classprocedure}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{Compile the types defined in the .ch file associated with the class 
+or package named \italic{classname}.  If the declaration was successful, 
+type_Lookup can be used to access the newly declared types.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{An Error message, or the empty string if no errors were detected.}
+
+
+
+\fieldheading{Error Conditions}
+
+\fieldtext{If there is an error in the C/Class code, the declaration will fail 
+and an error message will be printed to stderr.}
+
+
+
+\fieldheading{Side Effects}
+
+\fieldtext{The types defined in the .ch file will be declared.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{type_Lookup, type_Declare, type_DeclareFromString, 
+type_DeclareFromFile.}
+
+
+
+
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,648,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,538609076}

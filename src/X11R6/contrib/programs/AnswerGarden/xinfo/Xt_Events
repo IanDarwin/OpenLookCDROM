@@ -1,0 +1,211 @@
+@begin(header)
+author: ackerman@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+node_expert: ackerman=ag@ics.uci.edu
+expiration_date: 06/25/93
+last_modifier: ackerman@ics.uci.edu
+last_mod_date: 06/25/91
+mod_num: 1
+@end(header)
+@begin(M)
+Date: Wed, 11 Oct 89 11:40:53 EDT
+From: Ralph R. Swick
+
+> According to the X Toolkit intrinsics, page 66, XtAppAddTimeOut allows
+> a timeout procedure to be specified.
+...
+> can I really get millisecond response time
+> granularity?
+
+Probably not.  It's a function of the underlying OS; the value is
+passed directly to select().
+
+> Is that a gurantee of the maximum time to the timeout, or the 
+> minimum time to the timeout, or in some range?
+
+Minimum, if anything; the timer may expire during dispatching of
+some other event (timer, alternate input callback, or XEvent)
+which can take arbitrarily long.
+
+> Does this work even if
+> you are in a callback procedure, or only if you are in the XtMainLoop
+> sitting idle?
+
+The most recent timer event to expire is processed by XtAppProcessEvent
+or XtAppNextEvent; there is no preemption.
+
+> What I would like
+> to do is have a window underneath another window and have both of them
+> visible in the opaque regions and yet be able to change the pattern on either
+> one, sort of like having two overhead transparancies stacked one on top of
+> the other.
+
+Not supported by the core X11 protocol.
+
+> Failing that, I would like to be able to construct a widget 
+> such that a predefined pattern would be displayed permanently in the 
+> background, such as a grid or a crosshairs with tick marks on it.
+
+Pretty simple; create a Pixmap (be careful about depth), draw your
+static graphics into it, then make it be the window background.  You'll
+use up a lot of server resources if you make lots of these, but then
+you'd probably expect that to be the case.
+
+@end(M)
+@begin(M)
+Date: Wed, 22 Feb 89 08:34:07 EST
+From: Ralph R Swick
+
+     and as a child of that widget I have another composite widget that uses
+     XtAddEventHandler to catch Button1Motion events.
+
+     The parent widget receives its events properly, but the child widget never
+     gets its events.  If I then kill the window manager (I am using uwm),
+     the child widget will start getting its events correctly.
+
+If you are using the default button bindings in uwm, the button press
+event is propagating up the window tree to the root window where it
+is then going to uwm, causing the motion events to also go to uwm.
+
+The child needs to select for ButtonPress (translation <Button1Press>
+if you are using translation tables) if it wants to be sure to get
+the MotionNotify events.  The event can be discarded if you're not
+actually interested in it.
+
+This is a common trap; I've fallen into it many times myself.
+@end(M)
+@begin(M)
+Date: Wed, 22 Feb 89 13:47:53 EST
+From: Ralph R Swick
+
+>  So, I want the
+> application to stop processing while that window is up. But alternate
+> input is processed by XtAppNextEvent(), which in the case of my program
+> led to an avalanche of message windows.
+
+So why can't you use XtAppProcessEvent(ctx, XtIMXEvent) to block,
+ignoring everything, until the next XEvent comes along?
+Or, if you're _really_ trying to get your hands on that event
+before Xt dispatches it then just call XNextEvent directly.
+
+@end(M)
+@begin(M)
+Date: Thu, 16 Feb 89 09:38:52 EST
+From: Ralph R Swick
+
+> Suppose I wanted to write an application that sat in an infinite
+> loop and only every so often checked for input from X.
+
+The basic technique is to use XtAppPending() to poll the various
+sources of input known to Xt.  You could look at the implementation
+of XtAppMainLoop() to see how to write your own, but it should be
+pretty clear from the documentation.
+
+An alternative method is to have Xt call your infinite loop as a
+"work procedure".  You merely need to return from your loop every
+so often to have Xt do it's thing.  The more often you return,
+the better X response you'll get.
+
+Which you choose may be more a matter of style than anything else,
+but there's a subtle difference in the implicit priority of your
+compute loop and the X events in the two cases.
+@end(M)
+@begin(M)
+Date: 17 Feb 89 23:23:58 GMT
+
+>>Suppose I wanted to write an application that sat in an infinite
+>>loop and only every so often checked for input from X. It is
+>>simple to do this with Xlib, but seems a lot hairier with Xt.
+
+
+	This is a somewhat related question and possible solution. I
+have a couple of programs that give visual update status on the
+screen. Most of the time they are snoozing away, waking up every five
+seconds or so.  Currently I am doing a sleep() call, then a call to
+XPending() to check for recent events. This works, but sometimes there
+is a lag of up to five seconds when I just miss Expose or other
+events.
+
+	After playing in the X server code, it appears to me that the
+application should be able to do a select() call with the desired
+timeout value set and the appropriate bit set for the display->fd
+socket connection. Then the select() call would sleep until either the
+timeout occurred or there was activity from the X server connection.
+
+	This is speculation, as I haven't had a chance to try this
+myself. (It also only works on select() oriented systems..) Does this
+sound like it would work correctly? Seems like you could also use a
+SIGIO handler and a global flag to indicate the presence of XEvents to
+be processed.
+@end(M)
+@begin(Q)
+     Using XtAppNextEvent() it is possible to fetch an X event, examine it,
+     and decide what to do with it.
+     ...
+     Unless I am "missing something", there does not seem to be a way of
+     doing the same thing with alternate input and timer events.
+@end(Q)
+@begin(A)
+Date: Tue, 21 Feb 89 11:42:36 EST
+From: Ralph R Swick
+
+
+There is; since alternate inputs and timers are not "events", the
+machinery is slightly different, but you can accomplish the same
+effect.  XtAppPending() will tell you whether or not an alternate
+input is ready or a timer is about to fire. XtAppProcessEvent()
+will allow you to tell Xt which of the three queues to process
+(inputs, events, and/or timers).  If you have multiple alternate
+input sources, you'll have to determine your own mechanism to
+assign priority between them, though; Xt will only treat them
+as a group.
+@end(A)
+@begin(M)
+>>Using XtAppNextEvent() it is possible to fetch an X event, examine it,
+>>and decide what to do with it.
+>>...
+>>Unless I am "missing something", there does not seem to be a way of
+>>doing the same thing with alternate input and timer events.
+>
+>...XtAppPending() will tell you whether or not an alternate
+>input is ready or a timer is about to fire. XtAppProcessEvent()
+>will allow you to tell Xt which of the three queues to process
+>(inputs, events, and/or timers)...
+
+Yes, but XtAppPending() does not block, so it probably should not be
+used in a loop in the way that XtAppNextEvent() and XtDispatchEvent()
+are.
+
+(Paul Asente) writes:
+>You're certainly free to do whatever processing you want in your input and
+>timer callback procedures, including doing nothing or queuing up a task
+>for later processing.
+>
+>I'm not sure I understand what it is you're trying to accomplish here.
+
+I bumped into this problem while developing a program that expects X
+events and alternate input. Instead of using printf(), I wrote a routine
+that prints out the message in a window. There is also an OK button,
+which the user presses when the message has been read. So, I want the
+application to stop processing while that window is up. But alternate
+input is processed by XtAppNextEvent(), which in the case of my program
+led to an avalanche of message windows. Right now I have solved this
+problem (perhaps somewhat unsatisfactorily) by programming at the lower
+(X-library) level.
+
+Of course, I could have ignored the alternate input in the callback by
+checking a global boolean set by the message routine, but that's not
+very clean.
+
+In the Xt interface, the 3 types of event sources are not always treated
+uniformly. XtAppPending() and XtAppProcessEvent() provide uniform power,
+but XtAppNextEvent() is biased towards X events (which is to be expected
+:-). Why not have XtAppNextEvent() return an XtInputMask? (And have it
+return the fd or XtIntervalId.)
+
+@end(M)
+
+
+
+

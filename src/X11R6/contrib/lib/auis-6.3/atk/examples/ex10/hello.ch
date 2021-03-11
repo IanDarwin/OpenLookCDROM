@@ -1,0 +1,14 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+ *        For full copyright information see:'andrew/config/COPYRITE'     *
+\* ********************************************************************** */
+/* $Header: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/atk/examples/ex10/RCS/hello.ch,v 2.7 1991/09/12 19:34:12 bobg R6tape $ */
+/* Mouse drag, key bindings, menus, scrollbar, data object */
+
+#define POSUNDEF -1
+
+class helloworld[hello]: dataobject[dataobj] {
+data:
+    long x,y;
+    boolean blackOnWhite;
+};

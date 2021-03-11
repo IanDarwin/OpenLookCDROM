@@ -1,0 +1,110 @@
+@begin(header)
+author: ackerman=ag@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+node_expert: ackerman=ag@ics.uci.edu 
+expiration_date: 10/11/93
+last_modifier: ackerman=ag@ics.uci.edu
+last_mod_date: 10/11/91
+mod_num: 3
+@end(header)
+-------------
+Events in C
+-------------
+
+There are a few things to keep in mind when handling events.  
+
+@begin(1.)
+First, there are many event structs.  For example, the XButtonEvent comes back as:
+@end(1.)
+
+typedef struct {
+	int type;		/* of event */
+	unsigned long serial;	/* # of last request processed by server */
+	Bool send_event;	/* true if this came from a SendEvent request */
+	Display *display;	/* Display the event was read from */
+	Window window;	        /* "event" window it is reported relative to */
+	Window root;	        /* root window that the event occured on */
+	Window subwindow;	/* child window */
+	Time time;		/* milliseconds */
+	int x, y;		/* pointer x, y coordinates in event window */
+	int x_root, y_root;	/* coordinates relative to root */
+	unsigned int state;	/* key or button mask */
+	unsigned int button;	/* detail */
+	Bool same_screen;	/* same screen flag */
+} XButtonEvent;
+typedef XButtonEvent XButtonPressedEvent;
+typedef XButtonEvent XButtonReleasedEvent;
+
+(This, and all event structs, is defined in Xlib.h.)  Note that this is *not*
+the same struct as an expose event:
+
+typedef struct {
+	int type;
+	unsigned long serial;	/* # of last request processed by server */
+	Bool send_event;	/* true if this came from a SendEvent request */
+	Display *display;	/* Display the event was read from */
+	Window window;
+	int x, y;
+	int width, height;
+	int count;		/* if non-zero, at least this many more */
+} XExposeEvent;
+
+That is, the two events have very different structs.  For example, the
+XButtonEvent struct has fields for timestamp and button number.   The expose
+event has a count field.  All of the events have different structs (or rather
+*may* have different structs).
+
+@begin(2.)
+So how do you handle this?  The second point to remember is that the type field
+is the first field in each struct.  So, your event loop (in Xlib) could include:
+@end(2.)
+
+	XEvent xevent;
+
+	XNextEvent(&xevent);
+	switch (xevent.type)
+	  {
+	     case ButtonPress:
+                x = ((XButtonEvent) xevent).x;
+                break;
+	     case Expose:
+		if ( ((XExposeEvent)xevent).count == 0)
+		   Redraw();
+		break;
+
+In other words, you must cast to the right struct definition in order to
+retrieve the individuals fields.
+
+Additionally, all of the events are union'd together.  Below is part of
+the actual definition of XEvent from Xlib.h:
+
+typedef union _XEvent {
+        int type;		/* must not be changed; first element */
+	XButtonEvent xbutton;
+	XMotionEvent xmotion;
+	XCrossingEvent xcrossing;
+
+	XExposeEvent xexpose;
+
+} XEvent;
+
+@begin(3.)
+If you know about C unions, you can use this to your advantage.  The above
+code segment could be rewritten:
+
+	XEvent xevent;
+
+	XNextEvent(&xevent);
+	switch (xevent.type)
+	  {
+	     case ButtonPress:
+                x = xevent.xbutton.x;
+                break;
+	     case Expose:
+		if (xevent.xexpose.count == 0)
+		   Redraw();
+		break;
+	
+@end(3.)
+

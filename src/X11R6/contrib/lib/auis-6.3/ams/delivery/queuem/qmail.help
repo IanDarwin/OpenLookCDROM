@@ -1,0 +1,524 @@
+\begindata{text,539483276}
+\textdsversion{12}
+\template{help}
+\define{global
+}
+\define{index
+menu:[Title,Index~91]
+attr:[FontFace Italic Int Set]}
+\define{indexi
+menu:[Title,InvisibleIndex~92]
+attr:[Script PreviousScriptMovement Point -2]
+attr:[FontFace Italic Int Set]}
+\define{fixed
+}
+\chapter{Queuemail: Mail Delivery Program}
+
+
+Queuemail is a program interface for delivering a piece of mail on the Andrew 
+system:  it is a mail dropoff point for application programs.  However, in 
+general, a person will not want to use queuemail directly to send mail. 
+ Queuemail is a program interface, not a user interface, and may be used by 
+mail-sending programs.   This document is primarily of interest to those who 
+would like to know more about how the mail system works or who are preparing 
+to write programs that do automatic sending of mail.
+
+
+\bold{NOTE:  }There is a newer scheme for use in sending mail from application 
+programs and we recommend that this method be used.  Help on using this 
+subroutine, \italic{\helptopic{dropoff}}, may be found by typing ``help 
+dropoff''.  \italic{(The dropoff documentation is currently unavailable.)}
+
+
+The first section of the document describes the use of queuemail as a mail 
+delivery program.  Queuemail is also used as a mail delivery daemon in various 
+configurations.  Most users will never be concerned with this use of 
+queuemail, so a description of these features is relegated to a later section.
+
+
+\majorheading{Queuemail for Delivering Mail}
+
+
+\section{Running Queuemail -- Standard Options}
+
+\leftindent{This section describes the standard method of using queuemail to 
+deliver mail.  The options described in this section will always be supported 
+so a user may count on them for use in reliable mail delivery.
+
+
+\fixed{/usr/andrew/etc/queuemail \bold{\{}-i \bold{|} -f \italic{file}\bold{\}} 
+\bold{[}-r <\italic{address}>\bold{]} \italic{\bold{[}-a\bold{]} address} ...}
+
+
+where any number (greater than 1) of \italic{address}es may be provided and 
+either \italic{-i} or \italic{-f <file>} must be present.  See "Introduction 
+to the Andrew Message System" (available by typing \typewriter{help mail}) for 
+information on the legal forms of \italic{address}es.
+
+
+If -i is specified, then a message will be read from standard input.
+
+
+if -f \italic{ file} is specified, then queuemail will attempt to read a 
+message from \italic{file}.
+
+
+If -r <\italic{address}> is specified, then \italic{address} will be used as 
+the return-path for this message.  Currently, the return-path is only used for 
+adding tracing information to the headers of the message.  Eventually, 
+however, queuemail will use the specified return-path as the address for 
+mailing back error messages.  If -r is not specified, then queuemail will 
+construct an address by looking up the user name belonging to the owner of the 
+process running queuemail.  Note that the argument must be surrounded by "<>". 
+ -r <> is legal and indicates that the user wishes to specify a null 
+return-path.  This may be useful in preventing looping during error reporting.
+
+
+If -a is specified, all subsequent arguments are interpreted as addresses. 
+ Use of this option keeps queuemail from trying to interpret as options any 
+addresses that begin with hyphens.
+
+
+Queuemail always yields an exit status (exit(3)) that indicates the results of 
+its attempt to deliver mail.  The values of the various status values may be 
+found in /usr/include/sysexits.h.     The value 0 (represented by EX_OK) will 
+always indicate that queuemail has deposited the mail in a secure place and 
+that final delivery will eventually take place.}
+
+
+\section{The Mail Library}
+
+\leftindent{The programmer may include the library /usr/andrew/lib/libmail.a 
+during linking to obtain several useful entry points:
+
+
+\typewriter{char *EX_Messages[]}
+
+\leftindent{An array of strings providing English descriptions of the exit 
+statuses.  The lowest status has value EX_BASE and index 0 in the array. 
+ (Thus, you must subtract EX_BASE from the exit status before using it as an 
+index.)}
+
+
+\typewriter{int EX_Nerr}
+
+\leftindent{The number of error values represented in array EX_Messages.}
+
+
+\typewriter{char *arpadate();}
+
+\leftindent{This routine will yield a string representing the current date and 
+time in RFC822 format.  This string may be used directly in the Date header. 
+ (The string is terminated by a '\\n'.)  Be warned that the Unix utilities do 
+not yield acceptable representations of the date and time for use in mail 
+headers.}}
+
+
+\section{Queuemail's Actions}
+
+\leftindent{When using queuemail to deliver mail with only the standard 
+options (see below), queuemail does the following:
+
+
+- Checks the consistency of its arguments:  exactly one of -i or -f must be 
+specified, the argument to -r must be surrounded by "<>", etc.  If there is an 
+error, queuemail will write a message to stderr, send mail to the postmaster 
+about the problem and exit with status EX_USAGE.
+
+
+- If -i is specified, stdin is read until an end-of-file and the message is 
+placed in a temporary file on /tmp.  If -f is specified, queuemail attempts to 
+open the specified file for reading.  If any of these actions fails, queuemail 
+will write a message to stderr, inform the postmaster and exit with status 
+EX_DATAERR.
+
+
+- Attempts to have the mail delivered directly by invoking the program 
+/usr/andrew/etc/trymail.  If delivery succeeds to all recipients, queuemail 
+removes any temporary file created and exits with status EX_OK (0).
+
+
+- If delivery fails to any recipient for any reason, queuemail will attempt to 
+queue the mail for later delivery to the undelivered recipients.  (Local 
+delivery can fail for a number of reasons: the machine did not have enough 
+swap VM disk space to load trymail, the server for a recipient's mailbox was 
+down, the recipient has a forwarding address to another site, ...)
+
+
+- Queuemail will attempt delivery to a number (currently eight) of directories 
+on the File System that act as mail queues.  (Currently these directories are 
+/afs/andrew/common/mailqs/q000, /afs/andrew/common/mailqs/q001, . . ., 
+ /afs/andrew/common/mailqs/q007.  However, the number and names of these 
+directories are subject to change and should not be depended upon.)
+
+
+- Delivery to a queue consists of writing three files.  The files have names 
+QF.<machine-name>.xxx, SF.<machine-name>.xxx and GF.<machine-name>.xxx and are 
+written in the specified order.  Queueing is complete when the last, GF, file 
+has been written.
+
+
+- If delivery to all File System queues is impossible (all file servers are 
+down down, for example), queuemail will atempt to queue the mail in the 
+directory /usr/spool/ViceMsgQueue, which exists on the local disk.  The same 
+protocol is used in writing the files to the local queue.
+
+
+- If the queue files cannot be written to the local queue (a rare occurrence), 
+then queuemail will write a message to stderr, send mail to the postmaster and 
+exit with status EX_CANTCREAT.
+
+
+- If the mail is queued, then queuemail will cleanup after itself (deleting 
+any temporary files, etc.) and exit with status EX_OK (0).}
+
+
+\subsection{Message Format}
+
+\leftindent{Every message submitted to queuemail must begin with a set of 
+headers.  The headers must be followed by a blank line, which is followed by 
+the text of the message.  The text of the message may be empty, but the 
+following headers must be present: \bold{from}, \bold{to}, \bold{subject} and 
+\bold{date}.  (RFC822, a copy of which is available in /usr/andrew/doc/rfc822, 
+contains a complete description of legal header formats.)  Delivery of mail is 
+not guaranteed if any of the required headers are missing or incorrectly 
+formatted.}
+
+
+\section{An Example}
+
+\leftindent{Following is an example of the use of queuemail by a program.  The 
+example is taken from the program guardian.c, which is a daemon used in the 
+new Andrew Message System.  A modified version of the routine 
+\typewriter{MailError} is shown.  \typewriter{MailError} is called when the 
+guardian wishes to report an error to its maintainer.
+
+
+\fixed{static void MailError(msg)
+
+    char *msg;
+
+\{
+
+    int pid;
+
+    register FILE *f;
+
+    extern char *arpadate();
+
+    char *argv[5];
+
+
+    /* Fork and have child do work */
+
+    pid = fork();
+
+    if (pid >= 0) \{
+
+	int status;
+
+	/* I am the parent; wait for child to finish */
+
+	wait(&status);
+
+	/* Check status and report if failure */
+
+	. . .
+
+	return;
+
+    \}
+
+
+    /* I am the child */
+
+    f = fopen(somename, "w");
+
+
+    /* Write the headers */
+
+    fputs("From: SNAP Guardian <guardian>\\n", f);
+
+    fputs("To: Guardian Maintainer <guardian>\\n", f);
+
+    fprintf(f, "Date: %s", arpadate());
+
+    fprintf(f, "Subject: %s\\n\\n", msg)
+
+
+    /* Write the body */
+
+    . . .
+
+    fclose(f);
+
+
+    /* Now, send the mail */
+
+    argv[0] = "queuemail";
+
+    argv[1] = "-f";
+
+    argv[2] = somename;
+
+    argv[3] = "guardian";
+
+    argv[4] = 0;
+
+    execv("/usr/andrew/etc/queuemail", argv);
+
+\}}}
+
+
+\section{Other Options}
+
+\leftindent{There are several other options that may be passed to queuemail 
+used as a mail delivery agent.  Most of these options are intended for 
+debugging or for specialized use by other mail programs.  The mail group 
+advises against casual use of these options -- their use may cause mail  not 
+to be delivered without warning.  They are listed here for completeness.
+
+
+\description{-z	This option tells queuemail to bypass its normal action of 
+attempting immediate local delivery.
+
+
+-D \italic{number}	Set debugging flags to \italic{number}.  Various actions of 
+queuemail may be traced by this option.  Using -D -1 will turn on all 
+debugging.  See the source code for specific settings.
+
+
+-v \italic{path1}
+
+-b \italic{path2}	These options cause queuemail to use \italic{path}1 and 
+\italic{path2} as directories for queueing mail that is not delivered 
+directly.  Both of these directories should be on Vice.  If -b is specified, 
+then -v must also be provided.  Use of these options overrides queuemail's 
+default actions in searching for a queue in which to deposit mail.  These 
+options are only intended for debugging -- they should not be used to attempt 
+to deliver mail.
+
+
+-p	If mail cannot be written to the queues specified in -v and -b, use of this 
+option permits queuemail to attempt to write mail to the ordinary File System 
+queues.
+
+
+-l \italic{path}	Use the directory \italic{path} (which should be on the local 
+disk) as the final queue for mail that could not be deposited into Vice.  This 
+option is intended only for debugging and should not be used for attempting 
+mail delivery.
+
+
+-4 \italic{string}	This option specifies a string to be used as the \bold{for} 
+subfield of a \bold{Received:} header.
+
+
+-o \italic{string}	This option tells queuemail who it should believe is 
+sending this message.  This option will be rejected by queuemail unless the 
+user is one of a number of authorized users.}}
+
+
+\section{Related Programs}
+
+\leftindent{/usr/ucb/mail (mail.1), /usr/lib/sendmail (oldsendmail.8), trymail 
+(help entry being prepared), vicemail}. 
+
+
+\section{Author}
+
+\leftindent{Queuemail was originally written by Nathaniel Borenstein; it was 
+modified extensively by Jonathan Rosenberg and Craig Everhart.}
+
+
+---------------------------------
+
+
+\bigger{\bigger{\bigger{The remainder of this document is intended for 
+operations staff system maintainers and curious programmers.  Use of most of 
+the features mentioned is restricted to certain authorized users.  For most 
+users, queuemail will complain, send a note to the postmaster and refuse to 
+continue.
+
+
+Any attempt to use these features in mail delivery may cause unpredictable 
+results.}}}
+
+
+----------------------------------
+
+
+
+\majorheading{Queuemail  as a Delivery Daemon}
+
+
+Queuemail is also used as a delivery daemon in two manners.  On each 
+workstation, a queuemail daemon is used to check the local queue for mail. 
+ This daemon wakes up at specified intervals (currently every hour) and 
+attempts to deliver any mail found in the local queue.  On the postoffice 
+machines, one queuemail daemon is used for each File System mail queue.  When 
+each daemon wakes up, it attempts to deliver mail found in its corresponding 
+queue.
+
+
+The queuemail daemon that runs local to each workstation must be run as setuid 
+root.  This is so it can have access to the local directory 
+/usr/spool/ViceMsgQueue, which is protected against casual access.
+
+
+\section{Delivery Daemon Options}
+
+\leftindent{All of the options mentioned earlier are also available -- 
+however, many combinations will not make sense and will be rejected by 
+queuemail
+
+
+\description{-d	Run as a daemon.  Use of this option tells queuemail to run as 
+a daemon.  Its actions are then tailored by using additional options.
+
+
+-w \italic{number}	Wake up every \italic{number} seconds.  (Default is 
+currently 10 minutes.)
+
+
+-t \italic{number}	Send mail to postmaster warning about queued mail that is 
+older than \italic{number} days.  (Default is currently 1 day.)
+
+
+-q \italic{path}	Look for queued mail in directory \italic{path}.  (Default is 
+/usr/spool/ViceMsgQueue.)
+
+
+-s	Run /etc/oldsendmail to try final mail delivery.  (Default is not to run 
+it.)
+
+
+-X\italic{number}	This option (which can only be used if the -d option is 
+present) tells the daemon to also act as a \italic{\helptopic{dropoff}} 
+daemon.  If \italic{number} is present it is used as the threshold load 
+average.  (See the section below on the Dropoff Daemon for details.)
+
+
+-O\italic{number}	This option (which can only be used if the -d option is 
+present) tells queuemail to run as an Outgoing daemon and not as a mail 
+delivery daemon.  If \italic{number} is present it is used as the number of 
+seconds to sleep between sweeps of the .Outgoing directories.  (See the 
+section below on the Outgoing Daemon for details.)}}
+
+
+\section{Queuemail's Actions as a Delivery Daemon}
+
+\leftindent{When using queuemail as a delivery daemon (the -d option is 
+provided), queuemail does the following:
+
+
+- After processing its arguments, the first thing queuemail does is to fork: 
+the parent process exits with status EX_OK (0).  The child process changes its 
+process group to be its process id and continues.  (Changing the process group 
+is a standard Unix technique for running as a daemon process.) 
+ \italic{Setting bit 0 in the debugging value (-D 1) disables this forking. 
+ This is useful for debugging queuemail.}
+
+
+- Reads the directory specified by the -q option (or default value). Queuemail 
+then executes the following actions for each GF file found in the directory. 
+ Afetr each file has been processed, queuemail will sleep for the specified 
+interval (-w or default), and repeat this step.
+
+
+- Obtains the complete message corresponding to the GF file.  Recall that a 
+complete message requires the presence of 3 files: the GF file, the QF file 
+and the SF file.  A locking protocol (using flock(2)) is used to insure that 
+multiple queuemail daemons will not process the same queued message.
+
+
+- Attempts to have the mail delivered directly by invoking the program 
+/usr/andrew/etc/trymail.  If delivery succeeds to all recipients, queuemail 
+removes the 3  files and proceeds with the next file.  If delivery fails to 
+any recipient for any reason, queuemail will proceed to the next step with the 
+list of recipients for whom delivery failed.
+
+
+- If -s has been specified, queuemail will invoke /etc/oldsendmail to have the 
+mail delivered.  If oldsendmail executes successfully and exits with status 
+EX_OK, queuemail will delete the 3 files and proceeds with the next file.  If 
+oldsendmail exits with status EX_TEMPFAIL or if delivery should fail for any 
+reason, queuemail will leave the 3 files untouched and will proceed (after 
+unlocking the GF file).
+
+
+- If -s was not specified, then queuemail will try to queue the message in the 
+queues specified by -v and -b (and/or use the default queues).}
+
+
+\section{Examples}
+
+\leftindent{Queuemail running as a postoffice delivery daemon:
+
+
+\fixed{/usr/andrew/etc/queuemail -d -s -w 120 -q 
+/afs/andrew/common/mailqs/q000}
+
+
+Queuemail used as a local delivery daemon:
+
+
+\fixed{/usr/andrew/etc/queuemail -d -w 3600 -q /usr/spool/ViceMsgQueue}}
+
+
+\section{Queuemail as a Dropoff Daemon}
+
+This section to be written.
+
+
+\section{Queuemail as an Outgoing Daemon}
+
+This section to be written.
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1511,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,539483276}

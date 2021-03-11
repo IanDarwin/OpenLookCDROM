@@ -1,0 +1,317 @@
+\begindata{text,538270272}
+\textdsversion{12}
+\template{default}
+-- tokens.n
+
+
+--	Parse tokens from a program file
+
+
+--	tokens_getC(text)   	-  get next C token after finish(text)
+
+--	tokens_getNess(text)  	-  get next Ness token after finish(text)
+
+--	tokens_PreSpace()		-  the whitespace and comments preceding
+
+--					the most recent token returned
+
+--
+
+--	the two getxxx functions are identical except for different comment 
+conventions
+
+
+marker idchars := "etaoinshrdlumypbfgcvwkzxjq"
+
+		~ "QWERTYUIOPLKJHGFDSAZXCVBNM"
+
+		~ "_1234567890"
+
+marker whitespace := " \\t\\v\\r\\n\\f\\b"
+
+marker preSpace := ""
+
+
+
+function spanstring(startquote)
+
+	marker q
+
+	q := finish(startquote)
+
+	while q /= startquote do
+
+		q := anyof(finish(q), "\\"\\'\\\\\\n")
+
+		if q = "" then 	 	return toend(startquote)    
+
+		elif q = "\\n" then	return extent(startquote, start(q)) 
+
+		elif q = "\\\\" then	q := finish(next(q))  
+
+		end if
+
+	end while
+
+	return extent(startquote, q)
+
+end function
+
+
+
+function spannumber(text)
+
+	text := span(toend(text), "0123456789x.abcdef")
+
+	if last(text) = "e" and second(text) /= "x" then
+
+		text := extent(text, span(finish(text), "+-0123456789"))
+
+	end if
+
+	return text
+
+end function
+
+
+
+function spanthong(text, thongs)
+
+	text := front(text)
+
+	-- before the while predicate, 'text' is a valid thong.  
+
+	-- the predicate sees if it is the start of a longer thong, 
+
+	--	and if so the body extends it
+
+	while next(text) /= " " and
+
+			search(thongs, " " ~ extent(text, next(text))) /= "" do
+
+		text := extent(text, next(text))
+
+	end while
+
+	return text
+
+end function
+
+
+
+
+-- gettoken(text, comstart, comend, thongs)
+
+--	finds next word or special character after finish(text)
+
+function gettoken(text, comstart, comend, thongs)
+
+	marker orig
+
+	orig := text
+
+	while True do
+
+		text := next(span(finish(text), whitespace))
+
+		preSpace := extent(finish(orig), start(text))
+
+
+		if text = "" then
+
+			return text
+
+		elif extent(text, next(text)) = comstart then
+
+			-- skip comment
+
+			text := search(start(text), comend)
+
+			if text = "" then
+
+				preSpace := extent(orig, base(text))
+
+				return finish(base(text)) 
+
+			end if
+
+
+		elif text = "\\"" or text = "\\'" then 
+
+			return spanstring(text)
+
+
+		elif search(".0123456789", text) /= "" then
+
+			return spannumber(text)
+
+
+		else
+
+			-- word or special character
+
+			text := span(start(text), idchars)
+
+			if text = "" then 
+
+				if search(thongs, extent(text, next(next(text)))) /= "" then
+
+					return spanthong(text, thongs)
+
+				end if
+
+				return next(text)
+
+			else return text
+
+			end if
+
+		end if
+
+	end while
+
+end function
+
+
+
+
+function tokens_getC(text)
+
+--	finds next word or special character in C after finish(text)
+
+	return gettoken(text,   "/*",   "*/", 
+
+		" <= == >= && || != << >> ++ -- -> += -= *= /= %= <<= >>= |= &= ^= ")
+
+end function
+
+
+-- tokens_getNess(text)
+
+--	finds next word or special character in Ness after finish(text)
+
+function tokens_getNess(text)
+
+	return gettoken(text,   "--",   "\\n",    " := <= >= /= ~:= ")
+
+end function
+
+
+
+function tokens_PreSpace()
+
+	return preSpace
+
+end function
+
+
+
+-- main
+
+--	Entry point when using this package via nessrun
+
+--	The argument should be the name of a file.
+
+--	Its tokens will be printed.
+
+--
+
+function main (args)
+
+	marker filename, text
+
+
+	filename := token(args, "qwertyuiopasdfghjklzxcvbnm"
+
+			~ "QWERTYUIOPASDFGHJKLZXCVBNM"
+
+			~ "./0123456789")
+
+
+	print("Processing file \\"" ~ filename ~ "\\"\\n")
+
+	text := start(readfile(filename))
+
+	
+
+	if last(filename) = "c" then
+
+		while True do
+
+			text := tokens_getC(text)
+
+			if text = "" then return void
+
+			else printline(text)
+
+			end if
+
+		end while
+
+	else
+
+		while True do
+
+			text := tokens_getNess(text)
+
+			if text = "" then return void
+
+			else printline(text)
+
+			end if
+
+		end while
+
+	end if
+
+end function
+
+
+-- 
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,33,0,0}
+
+-- Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{-- $Disclaimer: 
+
+-- Permission to use, copy, modify, and distribute this software and its 
+
+-- documentation for any purpose is hereby granted without fee, 
+
+-- provided that the above copyright notice appear in all copies and that 
+
+-- both that copyright notice, this permission notice, and the following 
+
+-- disclaimer appear in supporting documentation, and that the names of 
+
+-- IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+-- used in advertising or publicity pertaining to distribution of the software 
+
+-- without specific, written prior permission.
+
+-- 
+
+-- IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+-- DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+-- ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+-- SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+-- BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+-- DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+-- WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+-- ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+-- OF THIS SOFTWARE.
+
+--  $
+
+}}\enddata{text,538270272}

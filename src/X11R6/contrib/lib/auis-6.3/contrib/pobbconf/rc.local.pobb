@@ -1,0 +1,81 @@
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+# Local boot file for postoffice machines
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+
+%include pobbconfig.defs
+
+%ifdef pobb_RunMachines
+
+/bin/echo -n "Starting postoffice daemons:" > /dev/console
+
+rm -f ?[BigLocalDir]/config/* > /dev/console
+
+%ifdef pobb_RunAMSDelivery
+# Make sure protection on ?[LocalErrorDir] is correct
+/bin/chmod 777 ?[LocalErrorDir]
+
+# Freeze old sendmail configuration file -- do this as root.
+# Don't do it on machines that are solely bboard machines.
+if [ -f ?[SendmailConfigDir]/sendmail.cf ]; then
+	cd ?[SendmailQueueDir]
+# Allow for possibly very long command lines
+	rm -f lf*
+	rm -f nf*
+	rm -f xf*
+	rm -f tf*
+	rm -f [lnxt]f*
+# remove the zero-length qf files (cfe, 30 Oct 87)
+	for qffile in qf* ; do
+	    if [ -r $$qffile ] ; then
+		if [ ! -s $$qffile ] ; then /bin/echo -n " <zero: $$qffile>" > /dev/console; rm -f $$qffile; fi
+	    fi
+	done
+# Remove all df files for which there's no qf file (cfe 22 March 1988)
+	if [ -r /usr/ucb/tail ] ; then
+	  for anyf in df* ; do
+	    if [ -r $$anyf ] ; then
+		echo $$anyf > /tmp/TMP
+		Subs=`/usr/ucb/tail +2c /tmp/TMP`
+		if [ -r d$$Subs ] ; then
+		    if [ ! -f q$$Subs ] ; then /bin/echo -n " <incomplete: d$$Subs>" > /dev/console; rm -f d$$Subs; fi
+		fi
+	    fi
+	  done
+	fi
+	rm -f /tmp/TMP
+	/bin/sync
+	/bin/echo -n " " > /dev/console
+	rm -f ?[SendmailConfigDir]/sendmail.fc
+	?[oldsendmail] -bz
+	/bin/echo -n "(sendmail -bz)" > /dev/console
+fi
+%endif pobb_RunAMSDelivery
+
+# Now, fork new sh authenticated as ?[PostmasterName] executing ?[SmallLocalDir]/startup
+/bin/su ?[PostmasterName] `cat ?[PMPasswordFile]` -c "?[SmallLocalDir]/startup `hostname` `cat ?[PMPasswordFile]`" > /dev/console
+
+/bin/echo '.' > /dev/console
+
+%endif pobb_RunMachines

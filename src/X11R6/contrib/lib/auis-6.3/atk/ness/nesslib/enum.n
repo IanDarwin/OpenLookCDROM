@@ -1,0 +1,374 @@
+\begindata{text,538268692}
+\textdsversion{12}
+\template{default}
+-- enum.n
+
+--	Update enumerations in current selection
+
+
+--	An enumeration is at the beginning of a line and consists of 
+
+--	one or more enumeration units, each of which is
+
+--	a dash followed by a period or a digit string followed by a period.
+
+--	The last enumeration unit must be followed by space, tab, or newline.
+
+
+--	The numbers will be updated by a simple scheme:
+
+--		if the enumeration has the same number of enumeration units as the
+
+--			previous one, the last unit is incremented
+
+--		if the enumeration has fewer units than the previous one,
+
+--			the last unit is incremented from its prior value
+
+--		all enumeration units beyond the length of the previous enumeration
+
+--			are set to one
+
+
+--	because there are no arrays, the set of enumeration units is kept
+
+--	as a string in 'CurrSeq', which always has the most recently used value
+
+
+marker CurrSeq
+
+
+
+function incr(seq)
+
+	marker dig
+
+	marker before
+
+	marker after
+
+	dig := last(seq)
+
+	before := previous(seq)
+
+	after := next(seq)
+
+	while TRUE do
+
+		if "0" <= dig  and dig < "9" then
+
+			replace(dig, next(search("0123456789", dig)))
+
+			return extent(next(before), start(after))
+
+		elif dig = "." then
+
+			replace(finish(dig), "1")
+
+			return extent(next(before), start(after))
+
+			return extent(replace(dig, "1"), start(after))
+
+		elif dig = "9" then	-- replace with "0" and continue to the left
+
+			dig := previous(replace(dig, "0"))
+
+		else	-- reached front of seq
+
+			return extent(replace(finish(dig), "1"), start(after))
+
+		end if
+
+	end while
+
+end function
+
+-- end incr
+
+
+-- spanseq(t)
+
+-- 	t is the first character of a potential sequence number
+
+--	return the entire sequence number
+
+--	if invalid, return the empty string at start(t)
+
+--
+
+function spanseq(t)
+
+	marker orig
+
+	orig := t
+
+	while True do
+
+		-- t is the first character of what may be an enumeration unit
+
+		-- stay in loop if we find an enum unit;  otherwise return
+
+		if t /= "-" then t := span(start(t), "0123456789") end if
+
+		if t /= "" and next(t) = "." then 
+
+			-- found an enumeration unit
+
+			t := next(next(t))  
+
+		else
+
+			-- reached the end of the enumeration
+
+			return extent(orig, start(t))
+
+		end if		
+
+	end while
+
+end function
+
+
+
+-- upseq(seq)
+
+--	increment the sequence to succeed the value in CurrSeq;
+
+--	Process units from left to right.  Copy the value from CurrSeq
+
+--	If we exceed CurrSeq, use "1." for the new value.
+
+--	Otherwise increment the last enumeration unit.
+
+--	(In fact, if the enumeration has more than one more unit than CurrSeq,
+
+--	the new units before the last will be "0.")
+
+--	Save a marker to the new value in CurrSeq.
+
+--
+
+function upseq(seq)
+
+	marker sequnit	-- front unit from seq
+
+	marker CurrUnit	-- front unit from CurrSeq
+
+	marker lastunit	-- previous unit in seq 
+
+	marker before	-- character before seq
+
+	before := previous(seq)
+
+	while True do
+
+		-- get first units from seq and CurrSeq
+
+		if first(seq) = "-" then sequnit := first(seq)
+
+		else sequnit := span(start(seq), "0123456789")
+
+		end if
+
+		if sequnit = "" then
+
+			-- reached the end of the enumeration value
+
+			-- increment last unit in seq and reset CurrSeq
+
+			sequnit := incr(lastunit)
+
+			CurrSeq := extent(second(before), sequnit)
+
+			exit function
+
+		end if
+
+		CurrUnit := span(start(CurrSeq), "0123456789")
+
+
+		if CurrUnit = "" then
+
+			-- use "0." for sequence  if last, it will be incr'ed above
+
+			sequnit := replace(sequnit, "0")
+
+		else
+
+			-- both exist, update seq
+
+			sequnit := replace(sequnit, CurrUnit)
+
+		end if
+
+
+		-- advance to next units
+
+		lastunit := sequnit
+
+		seq := extent(next(next(sequnit)), seq)
+
+		CurrSeq := extent(next(next(CurrUnit)), CurrSeq)
+
+	end while
+
+end function
+
+
+-- enumdigits(text)
+
+--	scan the text and replace all enumerations with corrected values
+
+--
+
+function enumdigits(text)
+
+	marker original
+
+	marker seq		-- enumeration value
+
+	original := text
+
+	text := first(text)		-- begin check with first selected char
+
+	while TRUE do
+
+		-- at this point, text is the first character to check for an enumeration
+
+		seq := spanseq(text)
+
+		if  seq /= ""  and  (next(seq) = " " or next(seq) = "\\t" or next(seq) = 
+"\\n")  then
+
+			-- we have an enumeration:  update it
+
+--			printline(seq)
+
+			upseq(seq)
+
+		end if
+
+
+		-- move to next potential enumeration
+
+		text := search(start(text), "\\n")
+
+		if  text = ""  or  extent(text, original) = ""  then
+
+			-- off the original end
+
+			return original
+
+		end if
+
+		text := next(text)
+
+	end while
+
+end function
+
+
+
+-- enum_Digits()
+
+--	Entry point from command line call
+
+--
+
+function enum_Digits()
+
+	CurrSeq := ""
+
+	enumdigits(currentselection())
+
+end function
+
+
+-- main
+
+--	Entry point when using this package via nessrun
+
+--	The argument should be the name of a file.
+
+--	It will be replaced, and the old version will be in filename.BAK
+
+--
+
+function main (args)
+
+	marker filename
+
+	marker text
+
+
+	CurrSeq := ""
+
+
+	filename := token(args, "qwertyuiopasdfghjklzxcvbnm"
+
+			~ "QWERTYUIOPASDFGHJKLZXCVBNM"
+
+			~ "./0123456789")
+
+
+	print("Processing file \\"" ~ filename ~ "\\"\\n")
+
+	text := readfile(filename)
+
+	system("mv " ~ filename ~ " " ~ filename ~ ".BAK")
+
+	writefile(filename, enumdigits(text))
+
+
+end function
+
+
+
+-- 
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,9,0,0}
+
+-- Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{-- $Disclaimer: 
+
+-- Permission to use, copy, modify, and distribute this software and its 
+
+-- documentation for any purpose is hereby granted without fee, 
+
+-- provided that the above copyright notice appear in all copies and that 
+
+-- both that copyright notice, this permission notice, and the following 
+
+-- disclaimer appear in supporting documentation, and that the names of 
+
+-- IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+-- used in advertising or publicity pertaining to distribution of the software 
+
+-- without specific, written prior permission.
+
+-- 
+
+-- IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+-- DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+-- ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+-- SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+-- BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+-- DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+-- WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+-- ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+-- OF THIS SOFTWARE.
+
+--  $
+
+}}\enddata{text,538268692}

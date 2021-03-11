@@ -1,0 +1,1455 @@
+\documentstyle[canna]{jarticle}
+
+% $Id: canlisp.tex,v 1.16 1993/10/22 13:31:24 kon Exp $
+
+\hyphenation{Uti-lisp}
+
+\title{canlisp マニュアル}
+\author{今~~~~~~~~~~~昭\\kon@d1.bs2.mt.nec.co.jp}
+\date{--- 第 1 版 ---\\『かんな』Version 2.2\\1993年4月16日}
+
+\begin{document}
+
+\maketitle
+
+\thispagestyle{empty}
+
+\renewcommand{\thepage}{\roman{page}}
+
+\newpage
+~
+\vfill
+\begin{flushleft}
+Copyright 1993 NEC Corporation, Tokyo, Japan.
+
+Permission to use, copy, modify, distribute and sell this software
+and its documentation for any purpose is hereby granted without
+fee, provided that the above copyright notice appear in all copies
+and that both that copyright notice and this permission notice
+appear in supporting documentation, and that the name of NEC
+Corporation not be used in advertising or publicity pertaining to
+distribution of the software without specific, written prior
+permission.  NEC Corporation makes no representations about the
+suitability of this software for any purpose.  It is provided "as
+is" without express or implied warranty.
+
+NEC CORPORATION DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN 
+NO EVENT SHALL NEC CORPORATION BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF 
+USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR 
+OTHER TORTUOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR 
+PERFORMANCE OF THIS SOFTWARE. 
+\end{flushleft}
+\newpage
+\section*{はじめに}
+本文書は、『かんな』のカスタマイズファイルのパーサである canlisp の言
+語定義を与えるものである。
+
+この文書では、.canna ファイルに記述できる言語仕様を lisp 言語の立場か
+ら述べる。.canna ファイルのパーサである canlisp インタプリタは独立した
+コマンドとしても準備されている(canlisp と言う名前のコマンドである)。本
+言語仕様の確認をしたい場合は canlisp コマンドで確認するとよい。
+
+なお、canlisp で使われる『かんな』制御の各パラメタの詳細な説明は行わな
+い。各パラメタの詳細については、『かんな』マニュアルを参照されたい。
+
+本文書を読むにあたっては一通りの lisp 言語の知識が必要となる。
+本文書の他に以下の lisp マニュアルを参照されたい。
+
+\begin{itemize}
+ \item GNU Emacs Lisp Manual
+ \item Common Lisp the Language
+\end{itemize}
+
+なお、本マニュアル作成に当たって菱田修氏には lisp 言語の視点より念入り
+な査読と、貴重なご意見をいただきました。ここに謹んで感謝の意を表します。
+
+\newpage
+
+\tableofcontents
+
+\newpage
+\setcounter{page}{1}
+\renewcommand{\thepage}{\arabic{page}}
+
+\section{canlisp の系統}
+
+canlisp は MacLisp 系の lisp 言語である。いやまて、MacLisp 系と言うのは
+canlisp のような超小型の lisp が称するのはちょっと大胆である。が、とりあ
+えず defun 構文や defmacro に関しては MacLisp および Franz Lisp に見
+られる方式を用いている。
+
+canlisp の言語処理を lisp 言語の視点から言うと、深い束縛を持ち、レキシ
+カルスコープを持った言語と言うことになる。レキシカルスコープは Zeta
+Lispや Common Lisp で見られるスコーピングルールで、コンパイラに主眼を
+置いたものであるが、canlisp はインタプリタであるにもかかわらず採用した。
+
+とは言っても、たかだか日本語入力システムのカスタマイズファイルパーサで
+あるので、それほどたいしたことはしていない。canlisp の変数は大域で定義
+されるか、ローカルバインディングがなされるかで、いわゆるスペシャル
+変数({\tt (declare (special x))} の x のような変数)は用意しない。
+
+データの内部表現に関しては Utilisp の影響を受けている。データ表現はデー
+タを指すポインタにデータの種別を判別するためのタグを備えるポインタタグ
+方式を採用した。またガーベジコレクションも Utilisp と同じコピー方式を
+用いている。Utilisp では高速化のためにこれらの手法が取られているが、
+canlisp では単に処理が楽だからと言う理由で採用した。
+
+ところで、canlisp では文字型データの記述法や
+global-set-key などのキーワードが 
+GNU Emacs Lisp の影響を受けている。ただし、細部に違いがあるので注意された
+い。例えば、GNU Emacs Lisp ではコントロールバックスラッシュ
+(\verb+^+$\backslash$)を表すのに、
+
+\begin{verbatim}
+  ?\C-\\
+\end{verbatim}
+
+と記述するが、canlisp では、
+
+\begin{verbatim}
+  ?\C-\
+\end{verbatim}
+
+と記述する。また、ローカルキーマップにおいてキーに機能を割り付けるのに
+GNU Emacs Lisp では define-key を用いるが canlisp では set-key を用いる。
+
+canlisp を設計するにあたって、できるだけ処理系が小さくなるように心掛け
+た。と言うのは、canlisp はそもそも『かんな』のパーサにすぎず、それ以上
+の何者でもないからである。この方針にしたがってデータ型も最少のものを準
+備するにとどめた。また、組み込み関数も非常に基本的なものに押さえ、主に
+カスタマイズ処理にかかわるものに主眼を置いた。
+
+そのため、例えば FUNARG 問題は全く解決していない。だいたいにして、 
+eval、apply、 funcall を準備していない。著者は upward/downward の両方
+を解決する closure やそれをベースとした、手続きをも組み込んだオブジェ
+クトなどに興味があるが、canlisp ではそこまで踏み込まない。
+
+canlisp は lisp reader を含めて 4000 行 程度の プログラム である。 canlisp
+の処理系は ファイル lib/canna/lisp.[hc] にて定義されている。
+
+\section{使用する型}
+
+\subsection{型の種類}
+
+canlisp が使用するデータの型は以下に分類される。
+
+\begin{verbatim}
+  整数型          -1, 0, 1, 2, ... 100, 101, ...
+  文字型          ?A, ?B, ... ?\C-a, ?\C-b, ...
+  文字列型        "defalut.kp", "\Up", ...
+  NIL 型          nil
+  シンボル型      auto, foo, bar, ...
+  CONS 型         (a . b), ("a" "b"), ...
+\end{verbatim}
+
+文字型の内部表現は整数型と全く同じであり、文字型が存在するのはユーザの
+便宜のためである。文字型のデータ記述は lisp reader により
+整数型データに置き換え
+られる。
+
+整数は 24 ビットで表される符号付き整数である。
+
+Common Lisp では nil はシンボル型データであるが、canlisp では nil はシ
+ンボルではないので注意。
+
+\subsection{型の分類}
+
+上記型を直接分類する述語 (predicate) として Common Lisp などには、null、
+numberp、symbolp、stringp、consp が存在する。
+
+また、複合的な分類述語として、atom、listp がある。atom はこれ以上分割
+できないアトミック(原子的)データを示しており、canlisp では、CONS 型以
+外のすべてのデータ型があてはまる。
+
+listp は種々のデータの列記を(リスト)しているデータであり、canlisp では
+NIL 型と CONS 型があてはまる。
+
+canlisp では上記述語のうち実装されているのは null と atom のみである。
+
+\section{canlisp reader (シンタックス)}
+
+lisp はシンタックスがない言語といわれているが、reader の規則と言う最低
+限のシンタックスはある。canlisp reader の仕様を以下に示す。
+
+なお、canlisp は大文字小文字を区別する。
+
+\subsection{スペース}
+
+スペース(空白文字)として、space文字(' ')、タブ('$\backslash$t')、改行
+('$\backslash$n')、復帰 ('$\backslash$r')が用いられる。
+
+\subsection{かっこ}
+
+lisp の基本的な型である CONS 型は開きかっこと閉じかっこで囲まれて表現
+される。CONS 型を表すかっことしては、丸かっこが用いられる。
+
+\subsection{コメント}
+
+セミコロン(;)から行末まではコメントとして読み飛ばされる。
+
+\subsection{区切り文字とトークン}
+
+スペース(' '、'$\backslash$t'、'$\backslash$n'、'$\backslash$r')、かっ
+こ('('、')')、コメント開始文字 (';')はトークンを切り出す区切り文字として
+振る舞う。
+
+トークンは区切り文字で囲まれた文字列である。canlisp の reader はトーク
+ンを切り出し、そのトークンをデータの最少単位として処理する。
+
+\begin{verbatim}
+   abcd(     →  abcd がトークンとして切り出される。
+   bar)      →  bar         〃
+   foo;bar   →  foo         〃
+\end{verbatim}
+
+ただし、文字型、文字列型の場合は、区切り文字およびトークンの処理はこの
+限りではない。文字型、文字列型の場合の処理については、
+\ref{文字型}文字型、\ref{文字列型}文字列型
+の項を参照されたい。
+
+\subsection{エスケープ文字}
+
+バックスペース($\backslash$)はエスケープ文字として種々の目的に用いられ
+る。具体的には文字、文字列およびシンボルの項を参照のこと。
+
+\subsection{数値型}
+
+数値は数字の続きとして表現される。canlisp では数値型は整数しか取り扱わ
+れないので小数点は末尾にしか許されない。
+
+\begin{verbatim}
+   123     →  数値
+   123.    →  数値
+   123.5   →  シンボル
+\end{verbatim}
+
+また、マイナスの数値を表すハイフン($-$)が符号なし数値の先頭に付く場合に
+も数値として取り扱われる。ハイフンだけのトークンは数値ではない。
+
+\begin{verbatim}
+   -123    →  数値
+   -123.   →  数値
+   -       →  シンボル
+   --123   →  シンボル
+\end{verbatim}
+
+\subsection{文字型}
+\label{文字型}
+
+\subsubsection{単純な文字表現}
+
+文字はクエスチョンマーク(?)に続くデータとして用いられる。クエスチョン
+マークに続く文字がエスケープ文字($\backslash$)以外の文字であれば、その
+データは文字データとして用いられる。
+
+\begin{verbatim}
+   ?A      →  'A'
+   ?(      →  '('
+   ?;      →  ';'
+\end{verbatim}
+
+クエスチョンマークがトークンの先頭でないときは文字データではなく、シン
+ボルとして扱われることに注意されたい。
+
+\begin{verbatim}
+   Why?    →  Why? というシンボル。
+\end{verbatim}
+
+\subsubsection{エスケープ文字を伴うキーワード表現}
+
+クエスチョンマークの後ろにエスケープ文字が続く場合には、エスケープ文字
+から後ろを以下のように解釈する。
+
+エスケープ文字の後ろが以下のキーワードの場合、表内に表されるとおり解釈
+される。表内のキーワードにおいて、大文字と小文字の違いは区別されるので
+注意されたい。
+
+\begin{verbatim}
+ \Space   空白文字(' ')
+ \Escape  エスケープキーを表す文字('\033')
+ \Tab     タブ文字('\t')
+ \Nfer    canlisp の中で、無変換キーを表す文字(CANNA_KEY_Nfer)
+ \Xfer    canlisp の中で、変換キーを表す文字(CANNA_KEY_Xfer)
+ \Backspace バックスペースキーを表す文字('\b')
+ \Delete  デリートキーを表す文字('\177')
+ \Insert  canlisp の中で、インサートキーを表す文字(CANNA_KEY_Insert)
+ \Rollup  canlisp の中で、ロールアップキーを表す文字(CANNA_KEY_Rollup)
+ \Rolldown canlisp の中で、ロールダウンキーを表す文字(CANNA_KEY_Rolldown)
+ \Up      canlisp の中で、上矢印キーを表す文字(CANNA_KEY_Up)
+ \Left    canlisp の中で、左矢印キーを表す文字(CANNA_KEY_Left)
+ \Right   canlisp の中で、右矢印キーを表す文字(CANNA_KEY_Right)
+ \Down    canlisp の中で、下矢印キーを表す文字(CANNA_KEY_Down)
+ \Home    canlisp の中で、ホームキーを表す文字(CANNA_KEY_Home)
+ \Clear   クリアキーを表す文字('\013')
+ \Help    canlisp の中で、ヘルプキーを表す文字(CANNA_KEY_Help)
+ \Enter   改行文字('\n')
+ \Return  復帰文字('\r')
+ \F1      canlisp の中で、F1 キーを表す文字(CANNA_KEY_F1)
+ \F2      canlisp の中で、F2 キーを表す文字(CANNA_KEY_F2)
+ \F3      canlisp の中で、F3 キーを表す文字(CANNA_KEY_F3)
+  :
+ \F10     canlisp の中で、F10 キーを表す文字(CANNA_KEY_F10)
+ \Pf1     canlisp の中で、PF1 キーを表す文字(CANNA_KEY_PF1)
+ \Pf2     canlisp の中で、PF2 キーを表す文字(CANNA_KEY_PF2)
+ \Pf3     canlisp の中で、PF3 キーを表す文字(CANNA_KEY_PF3)
+  :
+ \Pf10    canlisp の中で、PF10 キーを表す文字(CANNA_KEY_PF10)
+ \S-Nfer  canlisp の中で、シフト無変換キーを表す文字(CANNA_KEY_Shift_Nfer)
+ \S-Xfer  canlisp の中で、シフト変換キーを表す文字(CANNA_KEY_Shift_Xfer)
+ \S-Up    canlisp の中で、シフト上矢印キーを表す文字(CANNA_KEY_Shift_Up)
+ \S-Down  canlisp の中で、シフト下矢印キーを表す文字(CANNA_KEY_Shift_Down)
+ \S-Left  canlisp の中で、シフト左矢印キーを表す文字(CANNA_KEY_Shift_Left)
+ \S-Right canlisp の中で、シフト右矢印キーを表す文字(CANNA_KEY_Shift_Right)
+ \C-Nfer  canlisp の中で、コントロール無変換キーを表す文字(CANNA_KEY_Cntrl_Nfer)
+ \C-Xfer  canlisp の中で、コントロール変換キーを表す文字(CANNA_KEY_Cntrl_Xfer)
+ \C-Up    canlisp の中で、コントロール上矢印キーを表す文字(CANNA_KEY_Cntrl_Up)
+ \C-Down  canlisp の中で、コントロール下矢印キーを表す文字(CANNA_KEY_Cntrl_Down)
+ \C-Left  canlisp の中で、コントロール左矢印キーを表す文字(CANNA_KEY_Cntrl_Left)
+ \C-Right canlisp の中で、コントロール右矢印キーを表す文字(CANNA_KEY_Cntrl_Right)
+\end{verbatim}
+
+\subsubsection{エスケープ文字を伴ったコントロール文字の表現}
+
+エスケープ文字の後ろが上記キーワードになっていない場合でも、C-
+で始まる場合にはコントロール文字として解釈される。
+
+\begin{verbatim}
+ \C-a     ^A を表す文字(ASCII で 0x01)
+ \C-b     ^B を表す文字(ASCII で 0x02)
+ \C-\     ^\ を表す文字
+\end{verbatim}
+
+\subsubsection{その他注意点}
+
+アスキー以外の文字は文字型データとして用いることができない。また、
+?$\backslash$C- の後ろにもアスキー以外の文字を置いてはいけない。
+
+\begin{verbatim}
+  ?あ     →  エラー
+  ?\C-あ  →  エラー
+\end{verbatim}
+
+?$\backslash$C-a のような記述は GNU Emacs Lisp の記述と似ている。ただ
+し、?$\backslash$C-Up のような記述は GNU Emacs Lisp には存在しないの
+で注意されたい。
+
+また、\verb/^/$\backslash$ を表す表現は、GNU Emacs Lisp では、
+
+\begin{verbatim}
+  ?\C-\\
+\end{verbatim}
+
+であるのに対して、canlisp では、
+
+\begin{verbatim}
+  ?\C-\
+\end{verbatim}
+
+であることに注意されたい。
+
+ところで、? で始まる文字型の読み込みにおいては、文字として読み込めると
+ころまでしか読み込まない。後ろの部分は新たに reader によって解釈される
+ので注意が必要である。
+
+\begin{verbatim}
+  ?abc    →  ?a bc として読み込まれる
+  ?\C-\\  →  ?\C-\ \ として読み込まれる
+  ?\F35   →  ?\F3 5 として読み込まれる
+\end{verbatim}
+
+\subsection{文字列型}
+\label{文字列型}
+
+ダブルクオートで囲まれた部分が文字列として取り扱われる。文字列の途中で
+エスケープ文字に続いてダブルクオートが現れた場合には、そのダブルクオー
+ト文字は文字列の一部として解釈され、文字列の終端とはみなされない。
+
+ASCII 以外の文字も文字列に含めて良い。
+
+\begin{verbatim}
+  "abc"                  → 文字列
+  "これも文字列"         → 文字列
+  "This is a \"string\"" → This is a "string" と言う文字列
+  "foo"bar               → "foo" bar として読み込まれる
+\end{verbatim}
+
+エスケープ文字をともなって文字として表現できるものは文字列の中でも表現
+できる。
+
+\begin{verbatim}
+  "\C-a"
+  "\EscapeOA"
+  "ABC\S-Right\C-Up12345"
+\end{verbatim}
+
+ダブルクオートがトークンの途中で現れた場合にはトークンの一部としてみな
+される。
+
+\begin{verbatim}
+  STRING"abc"  → STRING"abc" と言うシンボル。
+\end{verbatim}
+
+\subsection{シングルクオート}
+
+シングルクオートがトークンの最初に現れた場合にはは一般の lisp reader
+と同様の処理が行われる。
+
+すなわち、シングルクオートに続く S 式を読み込み、(quote S) を生成する。
+
+ただし、シングルクオートがトークンの途中で現れた場合にはトークンの一部
+としてみなされる。
+
+\begin{verbatim}
+  'abc    →  (quote abc)
+  Tom's   →  Tom's と言うシンボル
+\end{verbatim}
+
+\subsection{ドット}
+
+ドットは二進木データを表す時に用いられる。
+
+\begin{verbatim}
+  (a . b)
+\end{verbatim}
+
+ドットを二進木表現のために用いるにはドットの左右に区切り文字を置かなけ
+ればならない。
+
+リストの途中にドットを用いることも可能である。
+
+\begin{verbatim}
+  (a b c d . e)
+\end{verbatim}
+
+ドットの後ろには一つの S 式が続き、その後に閉じかっこがあることが期待さ
+れる。
+
+\begin{verbatim}
+  (a b . c)      →  問題なし
+  (a b . (a b))  →  問題なし (a b a b) と同じ。
+  (a b .(a b))   →  問題なし(ドットと開きかっこをくっつけても良い)
+  (a b . a b)    →  read error
+\end{verbatim}
+
+ドットの左右に区切り文字を置かない場合はシンボルとして読み込まれる。
+
+\begin{verbatim}
+  co.jp   →  シンボル
+  Done.   →  シンボル
+  .canna  →  シンボル
+\end{verbatim}
+
+\subsection{nil}
+
+() および nil は NIL 型データの nil として読み込まれる。
+
+以下のように入力すると nil としては見なされず、シンボルとして読み込ま
+れる。
+
+\begin{verbatim}
+  \nil
+\end{verbatim}
+
+\subsection{シンボル}
+
+以上 canlisp のシンタックスルールの説明をしたが、上記ルールにしたがわ
+ないすべてのトークンはシンボルとして読み込まれる。
+
+ASCII 以外の文字を使った場合もシンボルとして読み込まれる。
+
+\begin{verbatim}
+   symbol    →   シンボル
+   記号      →   シンボル
+   /usr/ucb  →   シンボル
+\end{verbatim}
+
+区切り文字をシンボルの一部として用いたい場合はエスケープ文字を用いる。
+
+\begin{verbatim}
+   Symbol\ with\ spaces → Symbol with spaces と言うシンボル。
+   Left\(               → Left( と言うシンボル
+\end{verbatim}
+
+数値だけからなるトークンをシンボルとして用いたい場合はトークンの先頭に
+エスケープ文字を置く。
+
+\begin{verbatim}
+   123   →  数値
+   \123  →  シンボル
+\end{verbatim}
+
+シンボルの最大長は lib/canna/lisp.h で定義される BUFSIZE で制約される。
+具体的には文字列表現として 256 Byte 以上になるシンボルは read error を引
+き起こす。
+
+\section{各データ型の評価後の値}
+
+各データ型のデータが lisp の evaluator によって評価されたときの値を以
+下に示す。
+
+\subsection{nil 型}
+
+NIL 型の唯一のデータ nil は評価されると nil となる。
+
+\subsection{整数型、文字型、文字列型}
+
+整数型、文字型、文字列型のデータは評価されると自分自身を値として持つ。
+
+\subsection{シンボル型}
+
+シンボル型のデータは通常は変数として用いられる。しかし、中には例外もあ
+る。
+
+変数としては、関数の引数として用いられたり、lambda 式、let 式で束縛さ
+れる局所変数と、それらの場所に現れず setq などで値が設定される大域変数
+とがある。(もちろん局所変数に setq を行うことも可能である)。
+
+\subsubsection{lisp 言語で定義される特殊なシンボル}
+\label{specialsymbol}
+
+まず、例外のシンボルから説明する。
+
+lisp 言語で定義される特殊なシンボルとしては、nil に対応する t と、
+ZetaLisp や Common Lisp でキーワードパッケージと言うパッケージで管理さ
+れているシンボルとがある。
+
+t は大域値の初期値として t 自身を持っている。したがって t を評価すると
+t が局所的に束縛されていない限り t 自身が得られる。
+
+\begin{verbatim}
+  t     評価→   t 
+\end{verbatim}
+
+canlisp ではシンボルの管理にはパッケージは用いないが、コロン(:)で始ま
+るシンボルはキーワードパッケージに属するシンボルとして、canlisp reader
+により自分自身を大域値として持つ。したがってキーワードパッケージ
+シンボルを評価するとそのシンボル自身になる。
+
+\begin{verbatim}
+  :user 評価→   :user
+  :abcd 評価→   :abcd
+\end{verbatim}
+
+\subsubsection{『かんな』のカスタマイズに用いられるシンボル}
+\label{canlispsymbol}
+
+『かんな』のカスタマイズに用いられるシンボルの評価は、そのシンボルにリ
+ンクされている『かんな』関数を呼び出した結果になる。
+
+例えば、server-version と言う変数を評価すると、cannaserver に接続し
+cannaserver のバージョンを取り出す処理を行う関数が呼び出され、
+その関数呼出しの結果が server-version の値として返される。
+
+\subsubsection{通常のシンボル}
+
+シンボルが局所変数として現在の環境に定義されている場合は、その環境にお
+いて、そのシンボルと束縛されている値が、そのシンボルを評価した結果の値
+となる。
+
+これは、\ref{specialsymbol}や\ref{canlispsymbol}で説明されているシンボ
+ルにおいても同様である。例えば、以下に示す関数定義、
+
+\begin{verbatim}
+ (defun square (x) (* x x))
+\end{verbatim}
+
+の x を t に変えても関数 square の意味は変わらない。
+
+\begin{verbatim}
+ (defun square (t) (* t t))
+\end{verbatim}
+
+シンボルが局所変数として束縛されていない場合は、大域値が参照される。
+さらに大
+域値として値を持たない場合にはそのシンボルの評価は、Unbound variable
+エラーを引き起こす。
+
+\subsection{CONS 型(関数呼出し)}
+
+CONS 型の式の評価は CONS 型の式の car 部分に記述される関数の
+型に依存する。CONS 型の式の評
+価結果については関数の型についての項を参照のこと。
+
+\section{関数の型と評価}
+
+canlisp が取り扱う関数の型には以下がある。
+
+\begin{verbatim}
+  SUBR 型
+  SPECIAL 型
+  EXPR 型
+  CMACRO 型
+  MACRO 型
+  LAMBDA 型
+\end{verbatim}
+
+SUBR 型、EXPR 型、LAMBDA 型の関数はいわゆる関数であり、引数がすべて評
+価され関数に渡される。
+
+SPECIAL 型、CMACRO 型、MACRO 型は特殊形式であり、引数は評価されず関数
+に渡される
+\footnote{SPECIAL 型、CMACRO 型、MACRO 型については関数と言わないのが
+普通である。}。
+
+\subsection{SUBR 型、EXPR 型、LAMBDA 型}
+
+SUBR 型は、最初から準備されている関数である。例えば、car、cdr などは
+SUBR 型の関数である。
+
+EXPR は defun で定義した関数である。
+
+一度しか使わないような関数は LAMBDA 式を用いて記述することができる。
+LAMBDA 式で表される関数を LAMBDA 型の関数と呼ぶ。例えば以下の式の評価
+では LAMBDA 型の関数の適用が行われる。
+
+\begin{verbatim}
+  ((lambda (x) (cons x x)) 'a)
+\end{verbatim}
+
+SUBR 型、EXPR 型、LAMBDA 型の関数が実行される場合、引数がすべて評価さ
+れ関数に渡される。引数は左から順番に評価される。
+
+\subsection{SPECIAL 型}
+
+SPECIAL 型の場合は、引数は評価されず SPECIAL 型の関数に渡される。その
+後各引数が評価されるかどうかは SPECIAL 型の各関数に依存する。
+
+SPECIAL 型の関数の例としては setq や、cond などがある。こうしてみると
+SPECIAL 型を関数とは呼ばない lisp もあるのもうなずける。
+
+SPECIAL 型の関数はすべて C で記述されており、ユーザが定義することはで
+きない。SPECIAL 型の動作をする関数を定義したい場合は以下で説明する
+MACRO 型の関数を defmacro で定義して使う。
+
+\subsection{CMACRO 型、MACRO 型}
+
+MACRO は SPECIAL と似ており、引数リストが評価されないまま関数に渡され
+る。MACRO 型関数により一度処理された式はもう一度 evaluator により評価
+される。
+
+CMACRO と MACRO の違いは、その関数が C で記述されているか、ユーザ定義
+かの違いである。
+
+CMACRO 型の関数としては if、let がある。if や let も確かに関数と言うよ
+りは制御構造である。if、let は一度 cond 式、lambda 式に変換され、変換
+後の cond 式、lambda 式が評価される。
+
+MACRO 型の関数の定義は defmacro を使って行う。defmacro に関しては
+「\ref{関数定義}関数定義」を参照されたい。
+
+\section{エラー処理}
+
+canlisp でエラーが発生すると式の評価が中断し、トップレベルに処理が戻る。
+『かんな』のカスタマイズファイルパーサとして canlisp が実行されている
+場合は lisp 言語レベルのエラーは静かに処理される。すなわち、何の表示も
+なされない。
+
+canlisp コマンドおよび cannacheck $-$v の
+場合はエラーが表示される。
+
+load 時のエラーはそのレベルの load の中断を引き起こす。
+
+※注意~~エラー処理は将来変更する可能性もある。すなわち、式の評価でエラー
+が返った時点でその式の値を単に nil にし、上位の式の評価を続けるように
+する。なぜなら、progn での処理時には、通常の lisp 言語では progn 全体
+を終了してもらって差し支えないが、『かんな』のカスタマイズパーサとして
+は、エラーが出ていない部分に関しても実行して欲しいからである。
+
+\section{個々の関数の説明}
+
+以下の説明で引数の記述をする場合、引数として
+求められる型にしたがって、以下のよう
+に記述する。
+
+\begin{verbatim}
+  数値が来るべき部分      n で始まる記述
+  文字列が来るべき部分    s で始まる記述
+  シンボルが来るべき部分  v で始まる記述
+  リストが来るべき部分    l で始まる記述
+  何が来てもよい部分      g で始まる記述
+\end{verbatim}
+
+また、関数呼出しにしたがって評価される引数はシングルクオートを付けて示
+した。
+
+\subsection{数値演算}
+
+各数値演算においてオーバフロー時の処理はＣ言語におけるオーバフロー時の
+処理に準じる。
+
+また、0 による除算を行った場合はエラーとなる。
+
+\subsubsection{({\bf $+$} 'n{\it 1} 'n{\it 2} 'n{\it 3} \ldots 'n{\it n})  SUBR}
+
+n{\it 1}〜n{\it n} を加算し、その結果を返す。n{\it 1}〜n{\it n}のいずれ
+かに非数値があるとエラーを引き起こす。引数が全く与えられない場合は 0 
+を返す。
+
+\subsubsection{({\bf $-$} 'n{\it 1} 'n{\it 2} 'n{\it 3} \ldots 'n{\it n})  SUBR}
+
+n{\it 1} から n{\it 2}〜n{\it n} を引いた結果を返す。n{\it 1}〜n{\it
+n} のいずれかに非数値があるとエラーを引き起こす。引数が全く与えられな
+い場合は 0 を返す。引数が 1 つだけ与えられると $-$ は単項演算子として働
+き、$-$n{\it 1} を値として返す。
+
+\subsubsection{({\bf $*$} 'n{\it 1} 'n{\it 2} 'n{\it 3} \ldots 'n{\it n})  SUBR}
+
+n{\it 1}〜n{\it n} を乗算し、その結果を返す。n{\it 1}〜n{\it n} のいず
+れかに非数値があるとエラーを引き起こす。引数が全く与えられない場合は 1 
+を返す。
+
+\subsubsection{({\bf $/$} 'n{\it 1} 'n{\it 2} 'n{\it 3} \ldots 'n{\it n})  SUBR}
+
+n{\it 1} から n{\it 2}〜n{\it n} を順番に除算し、その結果を返す。n{\it
+1}〜 n{\it n} のいずれかに非数値があるとエラーを引き起こす。引数が全く
+与えられない場合は 1 を返す。引数が 1 つだけ与えられた場合は n{\it 1} が値と
+して返される。
+
+\subsubsection{({\bf $\%$} 'n{\it 1} 'n{\it 2} 'n{\it 3} \ldots 'n{\it n})  SUBR}
+
+n{\it 1} から n{\it 2}〜n{\it n} を順番に割ってはあまりを求める。引数
+が全く与えられない場合は 0 を返す。引数が 1 つだけ与えられた場合は 
+n{\it 1}
+が値として返される。
+
+\subsection{文字列処理}
+
+\newcommand{\cannaconcat}
+{({\bf concat} 's{\it 1} 's{\it 2} \ldots 's{\it n}) SUBR}
+
+\subsubsection[\cannaconcat]{\cannaconcat\footnotemark}
+\footnotetext{『かんな』Version 2.2 からの機能}\addtocounter{footnote}{1}
+
+文字列 s{\it 1} \ldots 's{\it n} をつなげた文字列を返す。
+
+引数が 0 個の場合はヌル文字列 "" を返す。
+
+\subsection{リスト処理}
+
+\subsubsection{({\bf cons} 'g{\it 1} 'g{\it 2})  SUBR}
+
+g{\it 1} を car 部、g{\it 2} を cdr 部に持つ CONS 型データを作成し、そ
+れを返す。
+
+\subsubsection{({\bf list} 'g{\it 1} 'g{\it 2} \ldots 'g{\it n})  SUBR}
+\subsubsection{({\bf sequence} 'g{\it 1} 'g{\it 2} \ldots 'g{\it n})  SUBR}
+
+g{\it 1} g{\it 2} \ldots g{\it n} を要素として持つ線形リストを返す。全く
+引数を与えなかった場合は nil を返す。
+
+sequence は list と全く同じ動作をする。sequence は『かんな』で機能シー 
+ケンスを与える部分で使われる。
+
+\subsubsection{({\bf car} 'l)  SUBR}
+
+l の car 部を返す。l として nil を与えた場合は nil が返る。
+
+\subsubsection{({\bf cdr} 'l)  SUBR}
+
+l の cdr 部を返す。l として nil を与えた場合は nil が返る。
+
+\subsection{述語}
+
+以下は canlisp の述語である。一般に述語では、偽を表すときに nil を返し、
+真を表すときは非 nil の値を返す。多くの述語では真を表す値として t を返
+す。
+
+\subsubsection{({\bf eq} 'g{\it 1} 'g{\it 2}) SUBR}
+\subsubsection{({\bf =} 'g{\it 1} 'g{\it 2})  SUBR}
+
+g{\it 1} と g{\it 2} が全く同じ lisp オブジェクトを指しているときに t 
+を返す。それ以外の場合は nil を返す。
+
+シンボルどうし、nil どうしは eq で同値性をチェックできる。  
+
+canlisp の整数はポインタ表現の即値形式であるため、数値どうしの同値性
+も eq でチェックできる。
+
+\subsubsection{({\bf equal} 'g{\it 1} 'g{\it 2}) SUBR}
+
+g{\it 1} と g{\it 2} が同じとみなされる場合に t が返される。2 つの文字
+列の比較や、 2 つの CONS 型データの比較には eq ではなく、equal を用い
+るべきである。
+
+\subsubsection{({\bf null} 'g{\it 1})  SUBR}
+\subsubsection{({\bf not} 'g{\it 1})  SUBR}
+
+g{\it 1} が nil の場合 t を返し、それ以外の場合は nil を返す。
+
+\subsubsection{({\bf atom} 'g{\it 1}) SUBR}
+
+g{\it 1} がアトミックである場合、すなわち、CONS 型ではない場合に t を
+返す。 g{\it 1} が CONS 型の場合は nil を返す。
+
+(atom nil) は t である。
+
+\subsubsection{({\bf $>$} 'n{\it 1} 'n{\it 2} \ldots 'n{\it n})  SUBR}
+
+n{\it 1} n{\it 2} \ldots n{\it n} が大きい順に並んでいるときにのみ t を返
+す。それ以外の場合は nil を返す。n{\it i} は n{\it i-1} よりも真に小さくな
+ければ t にはならない。
+すなわち、 n{\it 1}〜n{\it n} のいずれか 2 つが同じ値
+だった場合は nil を返す。
+
+  引数が 1 個以下しか与えられなかった場合は t を返す。
+
+n{\it 1}〜n{\it n}のいずれかが非数値の場合はエラーとなる。
+
+\subsubsection{({\bf $<$} 'n{\it 1} 'n{\it 2} \ldots 'n{\it n})  SUBR}
+
+$<$ は $>$ の反対である。$>$ と同じく n{\it 1}〜n{\it n} のいずれか 2 
+つが同じ値だった場合は nilを返す。
+
+\subsubsection{({\bf boundp} 'v)  SUBR}
+
+シンボル v が変数として値を持っていれば t を返す。そうでなければ nil
+を返す。
+
+\subsubsection{({\bf fboundp} 'v)  SUBR}
+
+シンボル v になんらかの関数定義がおこなわれていれば t を返す。そうで
+なければ nil を返す。
+
+\subsection{制御構造}
+
+\subsubsection{({\bf progn} 'g{\it 1} 'g{\it 2} \ldots 'g{\it n})  SPECIAL}
+
+式 g{\it 1} 〜 g{\it n} を順番に評価し、g{\it n} の評価結果を返す。引
+数をあたえなかった場合は nil を返す。
+
+\subsubsection{({\bf cond} (g{\it 11} g{\it 12} \ldots g{\it 1n}) (g{\it
+21} g{\it 22} \ldots g{\it 2n}) \ldots (g{\it m1} g{\it m2} \ldots g{\it mn}))  SPECIAL}
+
+cond 式は
+if 〜 then 〜 else if 〜 then 〜 else if 〜 then \ldots else 〜 
+の構造を与える
+式である。上記の cond 式は C の if-then-else で記述すると
+だいたい以下のようにな
+る。
+
+\begin{verbatim}
+   if (g11) {
+     g12; ... g1n;
+   }
+   else if (g21) {
+     g22; ... g2n;
+   }
+   else if (gm1) {
+     gm2; ... gmn;
+   }
+\end{verbatim}
+
+すなわち、g{\it 11}、g{\it 21}、\ldots g{\it m1} が、いずれかが非 nil を
+返すまで順番に評価される。g{\it i1} が非 nil を返した場合、g{\it i+11} 
+〜 g{\it m1} までの式は評価されない。
+
+条件式 g{\it 11}、g{\it 21}、\ldots g{\it m1} を順番に評価していき、g{\it
+i1} が非 nil を返した場合、g{\it i1} の右に記述されている g{\it i2}、
+\ldots  
+g{\it in} が順に評価され、g{\it in} の評価結果が cond 式の値として返さ
+れる。g{\it i1} の右側に全く式が存在しない場合には g{\it i1} の評価結
+果そのものが cond 式の値として返される。
+
+条件式 g{\it 11}、g{\it 21}、\ldots g{\it m1} がいずれも nil を返した場合は 
+cond 式の結果は nil となる。
+
+ところで、cond 式の条件式として t が与えられた場合には t の右側が else 
+条件として評価される。
+これはたとえ t に nil が束縛されていたとしてもそうである。
+以下の関数 double は引数として nil を与えた場合、
+(nil nil) を返し、
+(foo nil) は nil を
+返すのに対して、(bar nil) は nil ではなく、文字列 "nil である" を
+返すことを注意されたい。
+
+\begin{verbatim}
+   (defun double (t) (list t t))
+
+   (defun foo (x) (cond ((not (null x)) "nil ではない")
+                        (x              "nil である") ))
+
+   (defun bar (t) (cond ((not (null t)) "nil ではない")
+                        (t              "nil である") ))
+\end{verbatim}
+
+\subsubsection{({\bf and} g{\it 1} g{\it 2} \ldots g{\it n})  SPECIAL}
+
+
+and は論理積を返す関数であるが、引数 g{\it 1}、g{\it 2}、\ldots g{\it n} 
+は順番に評価され、評価結果として nil が戻ったところで評価が打ち切られ、
+and 式の値として nil を返す。
+したがって and は制御構造として用いることができる。例えば、以下の
+式、
+
+\begin{verbatim}
+   (and (> a 0) (do_proc a))
+\end{verbatim}
+
+は C 言語での、
+
+\begin{verbatim}
+   if (a > 0) do_proc(a);
+\end{verbatim}
+
+のような意味を持つ。
+
+g{\it 1}〜g{\it n} すべてが非 nil だった場合は g{\it n} の値が and 式
+の値として返される。
+
+\subsubsection{({\bf or} g{\it 1} g{\it 2} \ldots g{\it n})  SPECIAL}
+
+or は論理和を返す関数であるが、and と同様制御構造である。すなわち、 
+g{\it 1}、g{\it 2}、\ldots g{\it n} はいずれかの式の評価結果として
+非 nil が返っ
+た時点で打ち切られ、その値が or の値として返される。
+
+\subsubsection{({\bf if} g{\it 1} g{\it 2} g{\it 3})  CMACRO}
+
+(if a b c) は、以下のようにマクロ展開され評価される。
+
+\begin{verbatim}
+   (cond (a b) (c))
+\end{verbatim}
+
+(if a b) は、以下のようにマクロ展開され評価される。
+
+\begin{verbatim}
+   (cond (a b))
+\end{verbatim}
+
+if の条件が真だったときの処理をたくさん書きたいときに、
+
+\begin{verbatim}
+   (if predicate
+     proc1
+     proc2
+     ...
+     procn)
+\end{verbatim}
+
+のように書きたくなるが、これは正しくない。以下のように progn を使わな
+ければならない。
+
+\begin{verbatim}
+   (if predicate
+     (progn
+        proc1
+        proc2
+        ...
+        procn))
+\end{verbatim}
+
+
+\subsection{変数束縛}
+
+\subsubsection{({\bf set} 'v 'g)  SUBR}
+
+シンボル v に対して値 g を代入する。シンボル v が局所的に束縛されてい
+れば v の局所値が変更される。シンボル v が局所的に束縛されていなければ 
+v の大域値として g が代入される。g の値が set の値となる。
+
+set は以下に示す setq とは違い SUBR であり、各引数が評価される。
+
+\subsubsection{({\bf setq} v{\it 1} 'g{\it 1} v{\it 2} 'g{\it 2} \ldots
+v{\it n} 'g{\it n})  SPECIAL}
+
+シンボル v{\it 1} に対し式 g{\it 1} を評価した結果を代入する。v{\it 1} 
+への代入の後 g{\it 2} を評価しその結果を v{\it 2} に代入する。以下 
+g{\it n} まで評価を繰り返し、g{\it n}の評価結果を setq 式の値として返
+す。
+
+代入の意味については set の部分を参照のこと。
+
+引数が全く与えられなかった場合は setq の値は nil となる。
+
+\subsubsection{({\bf let} ((v{\it 1} 'g{\it 1}) (v{\it 2} 'g{\it 2})
+\ldots (v{\it n} 'g{\it n})) gg{\it 1} gg{\it 2} \ldots gg{\it n})  CMACRO}
+
+let 式はローカル変数 v{\it 1}、v{\it 2}、\ldots v{\it n} を準備し、それ
+ぞれの変数に g{\it 1}、 g{\it 2}、\ldots g{\it n} の評価結果をそれぞれ代
+入し、その環境において式 gg{\it 1}、gg{\it 2}、\ldots  gg{\it n} を順番に
+評価する。gg{\it n} の評価結果が let 式の値となる。
+
+let 式はマクロであり、
+
+\begin{verbatim}
+   (let ((var1 val1) (var2 val2) ... (varn valn)) e1 e2 ... en)
+\end{verbatim}
+
+は以下のようにマクロ展開され評価される。
+
+\begin{verbatim}
+   ((lambda (var1 var2 ... varn) e1 e2 ... en) val1 val2 ... valn)
+\end{verbatim}
+
+\subsection{関数定義}
+\label{関数定義}
+
+\subsubsection{({\bf defun} vfname (v{\it 1} v{\it 2} \ldots v{\it n})
+g{\it 1} g{\it 2} \ldots g{\it n})  SPECIAL}
+
+defun は関数を定義する。全ての引数は評価されない。
+
+第一引数 vfname は定義される関数の名前をしめす。次に現れるのは引数リス
+トである。最後はその関数の本体が現れる。
+
+例えば与えられた数の二乗の数を返す関数 square は以下のように定義する。
+
+\begin{verbatim}
+(defun square (x) (* x x))
+\end{verbatim}
+
+ここで、{\tt square} が定義される関数の名前、{\tt (x)}が引数リストを表
+す。この場合、関数{\tt square}は唯一の引数{\tt x}を持つ。
+
+{\tt (* x x)} はこの関数の本体であり、引数{\tt x}自身を掛け合わせた値
+を戻り値とする。
+
+この定義を行った後、canlisp インタプリタでこの関数の呼出を行うと以下の
+ようになる。
+
+\begin{verbatim}
+-> (square 2)
+4
+-> (square 5)
+25
+\end{verbatim}
+
+\subsubsection{({\bf defmacro} vmname gvars g{\it 1} g{\it 2}
+\ldots g{\it n})  SPECIAL}
+
+defmacro はマクロを定義する。全ての引数は評価されない。
+
+defmacro で定義された関数では、その関数への全ての引数はリストとしてま
+とめられ、gvars に束縛される。例えば以下の定義を見てみよう。
+
+\begin{verbatim}
+(defmacro spread-value x
+  (if (not (null (cdr x)))
+     (cons 'let
+            (cons (list (list 'spread-tmp-val (car x)))
+                  (make-setq-form (cdr x)) ))) )
+
+(defun make-setq-form (l)
+  (if (null l) nil
+    (cons (list 'setq (car l) 'spread-tmp-val) (make-setq-form (cdr l))) ))
+\end{verbatim}
+
+マクロ関数 spread-value への引数はリストにまとめられ x に束縛される。
+例えば、
+
+\begin{verbatim}
+(spread-value 5680 iroha canna)
+\end{verbatim}
+
+と言う呼び出しの場合は (5680 iroha canna) が x に束縛される。
+
+さて上記の定義で、make-setq-form は引数に与えられた物に対して 
+spread-tmp-val を setq する式を作成する。
+
+\begin{verbatim}
+-> (make-setq-form '(a b))
+((setq a spread-tmp-val) (setq b spread-tmp-val))
+\end{verbatim}
+
+マクロ spread-value の本体は変数リストの各変数に対して x の car 部にあ
+る引数を let 式を組み合わせて代入する lisp 式を生成する。
+
+例えば、x が (0 a b) であるならば、defmacro で与えた本体は以下の式を生
+成する(ここでは見やすさのためプリティプリントしている)。
+
+\begin{verbatim}
+(let ((spread-tmp-val 0))
+  (setq a spread-tmp-val)
+  (setq b spread-tmp-val) )
+\end{verbatim}
+
+マクロ式では、 defmacro で与えられた本体により得られる式をもう一度評価
+する。上の例で spread-value を以下のように呼び出した場合、
+
+\begin{verbatim}
+-> (spread-value 5680 iroha canna)
+\end{verbatim}
+
+は、あたかも、
+
+\begin{verbatim}
+-> (let ((spread-tmp-val 5680))
+     (setq iroha spread-tmp-val)
+     (setq canna spread-tmp-val) )
+\end{verbatim}
+
+を実行したかのように評価が行われ、変数 iroha および canna には 5680 が
+束縛される。
+
+ここで、spread-value の第一引数だけは評価が行われ、その他の引数は全く
+評価されないことに注意されたい。
+
+このようにマクロはスペシャル型の関数のように、一部引数が評価されない関
+数を作成するのに用いられる。
+
+なお、Common Lisp などには defmacro を助ける記法としてバッククオート
+マクロ(lisp reader により処理されるマクロ記述)を用いることができるが、
+canlisp ではバッククオートマクロはサポートしていない。
+
+\subsection{UNIX 関連}
+
+\subsubsection{({\bf getenv} 's)  SUBR}
+
+s で示される環境変数の値を返す。返される値は文字列型のデータである。環
+境変数が定義されていない場合は getenv は nil を返す。
+
+文字列以外のデータを getenv に与えるとエラーになる。
+
+\subsection{その他}
+
+\subsubsection{({\bf quote} g{\it 1} g{\it 2} \ldots g{\it n})  SPECIAL}
+
+quote 式は g{\it 1} 自身を値として返す。g{\it 1}〜g{\it n} は評価され
+ない。引数がまったく与えられない場合は nil が値となる。
+
+\subsubsection{({\bf load} 's)  SUBR}
+
+load は s で示されるファイルを canlisp ファイルとして読み込み、その中
+に記述されている lisp 式を評価する。
+
+load 中に load を行うことも可能であり、入れこの深さは最大 20 までであ
+る。load 中 EOF になった時点で読み込みが終了し、元のファイルの処理に戻
+る。
+
+\subsubsection{({\bf gc})  SUBR}
+
+ガーベジコレクションが行われる。
+
+\subsubsection{({\bf copy-symbol} 'v{\it 1} 'v{\it 2})  SUBR}
+
+シンボル v{\it 2} のすべての属性をシンボル v{\it 1} にコピーする。
+
+これは『かんな』の各シンボル名を変更したい場合に用いる。例えば『かんな』
+でモードや機能を表すシンボルに、yomi-mode や、kigou-mode、kakutei があ
+る。これらのシンボル名はローマ字表記されているが、copy-symbol を用いて、
+これらの名前に別の名前を振ることができる。
+
+\begin{verbatim}
+  (copy-symbol '読みモード 'yomi-mode)
+  (copy-symbol '記号モード 'kigou-mode)
+  (copy-symbol '確定 'kakutei)
+\end{verbatim}
+
+このようにすることにより、キーバインディングのカスタマイズをするときに
+次のような書きかたができる。
+
+\begin{verbatim}
+  (set-key '読みモード "\C-l" '確定)
+\end{verbatim}
+
+例えば copy-symbol を行って適当な名前を付けるファイルを別に用意して、
+それを load することにより、種々のモード名や、機能名に日本語の名称を付
+けることができる。例えば copy-symbol をしているファイルを
+/usr/local/canna/lib/jpn.canna とすると、以下のような記述が可能である。
+
+\begin{verbatim}
+  (load "/usr/local/canna/lib/jpn.canna")
+
+  (設定 ローマ字かな変換テーブル "default.kp")
+  (辞書利用 "iroha" "fuzokugo" :部首 "bushu" :ユーザ "user")
+
+  (設定 逐次自動変換 する)
+\end{verbatim}
+
+この場合 jpn.canna には最低限以下の記述があったことになる。
+
+\begin{verbatim}
+  (copy-symbol '設定                     'setq)
+  (copy-symbol 'ローマ字かな変換テーブル 'romkana-table)
+  (copy-symbol '辞書利用                 'use-dictionary)
+  (copy-symbol '逐次自動変換             'auto)
+  (setq :部首   :bushu
+        :ユーザ :user
+        する    t)
+\end{verbatim}
+
+『かんな』の各種シンボルにはローマ字をベースにした名前が多いが(例:
+henkan、kakutei)将来『かんな』が韓国語や中国語に対応する場合、ローマ字
+ベースの各種シンボルを copy-symbol 機能を用いて別の名前に変更すること
+が可能である。
+
+\subsection{『かんな』関連}
+
+\subsubsection{({\bf defmode} vname ['sdpy ['srt ['gfn ['gus]]]]) SPECIAL}
+
+あたらしい入力モードを定義する。このモードでは、独立のローマ字かな変換テー
+ブルを持ち、キーバインディングもこのモードでだけ独立で行うことができる。
+
+vname は新しいモードを表すシンボルとして用いることができるようになる。
+また、vname は、そのモードへ移行する機能を表すシンボルとしても用いること
+ができるようになる。
+
+sdpy はこのモードになったときにモード表示部分に表示される文字列である。
+
+sdpy の指定がなければ nil が指定された場合と同じ振る舞いをする。
+
+srt はこのモードで用いられるローマ字かな変換テーブルである。通常の
+のローマ字かな変換テーブルと同じローマ字かな変換テーブルを用いたい場合
+は、
+
+\begin{verbatim}
+  (setq romkana-table 'srt)
+\end{verbatim}
+
+が defmode よりも前に存在することを確認して、defmode の srt の部分
+に romkana-table を指
+定すれば良い。
+
+srt の指定がなければローマ字かな変換は行わない。
+
+gfn はこのモードで、入力が行われたときに実行される機能である。機能とし
+ては kakutei、henkan、zenkaku、hankaku、hiragana、katakana、romaji、
+to-upper、capitalize、to-lower が指定できる。各指定の意味については
+『かんな』マニュアルの方を参照すること。
+
+ただし、
+henkan、to-upper、capitalize、to-lower は『かんな』Version 2.2 では単
+に無視される。
+
+gfn の指定がなければ、空の機能リストが渡されたのと同じ意味となる。
+
+gus は defsymbol でのシンボル定義をそのモードでは使うかどうかを表す。
+例えば普段はローマ字かな変換を用い、defmode により疑似カナ入力を定義し時々
+用いる場合、疑似カナ入力では数字キーも用いるため数字キーに対する defsymbol
+は邪魔になる。
+
+gus が nil であれば、defsymbol での定義はそのモードでは用いられない。
+非 nil であれば、用いられる。指定がなければ nil とみなされる。
+
+\subsubsection{({\bf defsymbol} nkey{\it 1} s{\it 11} \ldots s{\it 1n}
+\ldots nkey{\it m} s{\it m1} \ldots s{\it mn}) SPECIAL}
+
+各引数は評価されない。nkey{\it i} は文字を記述する。
+
+defsymbol の意味については『かんな』マニュアル参照のこと。
+
+\subsubsection{({\bf set-mode-display} 'vmode 'sdpy) SUBR}
+
+vmode のモード表示文字列を sdpy にする。
+
+\subsubsection{({\bf set-key} 'vmode 'skeys 'gfn) SUBR}
+
+『かんな』のモード vmode にて、１つ以上のキーの並び skeys に１つ以上の
+機能の並び gfn をバインドする。
+
+gfn は機能を表す単一のシンボルか、機能を表すシンボルからなる線形リスト
+でなければならない。
+
+vmode がモードを表す機能でなかったり、gfn の機能の中に、機能を表すシン
+ボルでないものが含まれている場合はエラーになる。
+
+\subsubsection{({\bf global-set-key} 'skeys 'gfn) SUBR}
+
+すべてのモードに対してキーと機能のバインディングを行う点を除いて
+set-key と同じ。
+
+\subsubsection{({\bf unbind-key-function} 'vmode 'gfn) SUBR}
+
+vmode において gfn で指定された機能が割り当ててあるキーを無効にする。
+gfn は機能を表す単一のシンボルか、機能を表すシンボルからなる線形リスト
+でなければならない。
+
+\subsubsection{({\bf global-unbind-key-function} 'gfn) SUBR}
+
+すべてのモードに対してキーと機能のバインディングを行う点を除いて
+unbind-key-function と同じ。
+
+\subsubsection{({\bf define-esc-sequence} 'sterm 'sseq 'nkey) SUBR}
+
+\subsubsection{({\bf define-x-keysym} 'skey 'nkey) SUBR}
+
+これら２つの関数は将来の拡張用に予約してある。
+
+\subsubsection{({\bf use-dictionary} 's{\it 1} \ldots [':bushu 's{\it i}\/]
+\ldots [':user 's{\it j}\/] \ldots 's{\it n}\/) SUBR}
+
+辞書の利用を指示する。すべての引数は評価される。キーワード引数がいくつ
+か指定できる。利用できるキーワードは :bushu および :user である。
+
+use-dictionary の詳細は『かんな』マニュアルを参照のこと。
+
+\subsubsection{({\bf initialize-function} 'gfn) SUBR}
+
+初期化時に実行される機能を指定する。
+
+gfn は機能を表す単一のシンボルか、機能を表すシンボルからなる線形リスト
+でなければならない。
+
+\appendix
+
+\section{特殊なシンボルの表}
+
+\subsection{『かんな』関連の変数}
+
+以下のうち canna-directory は『かんな』Version 2.2 で追加された機能で
+ある。
+
+\begin{verbatim}
+abandon-illegal-phonogram   ローマ字かな変換に使われない文字を捨てるか
+allow-next-input            一覧表示時に次の入力を許すか
+auto                        逐次自動変換するか
+backspace-behaves-as-quit   バックスペースが quit のように働くか
+break-into-roman            バックスペースでローマ字に戻すか
+bunsetsu-kugiri             文節間にスペースを入れるか
+canna-directory             カスタマイズファイルなどがおいてあるディレクトリ
+canna-version               『かんな』のバージョン
+character-based-move        カーソル移動が文字単位か
+chikuji-continue            逐次自動変換候補表示中の入力で確定するかどうか
+chikuji-force-backspace     逐次自動文節時バックスペースで必ず1文字消すかどうか
+cursor-wrap                 右端から右へ行くと左へ行ったりするのをするか
+english-table               外来語変換用辞書を入れておく変数
+gakushu                     学習するか
+grammatical-question        単語登録時に品詞分類のための質問をするか
+hex-direct                  １６進コード入力で４ケタ目にワンクッション置くか
+index-hankaku               候補一覧のインデックス数値を半角にするか
+index-separator             候補一覧のインデックス数値と候補の間の文字を入れておく
+inhibit-list-callback       リストコールバックを禁止するか
+kakutei-if-end-of-bunsetsu  文節の最後から右へ行こうとした時に確定するか
+keep-cursor                 《使っていない》
+keep-cursor-position        変換から読みに戻した時のカーソル位置をどこにするか
+kojin                       個人別学習をするか
+kouho-count                 候補が何番目かを候補一覧時に表示するか
+learn-numerical-type        《使っていない》
+n-henkan-for-ichiran        何番目の変換キーで候補一覧を出すか
+n-keys-to-disconnect        どのくらいかな漢字変換しないと接続を切るか
+n-kouho-bunsetsu            逐次自動変換で確定しないでおく文節数
+numerical-key-select        候補一覧の時に数字キーを出すか
+protocol-version            プロトコルのバージョンが入っている変数
+quit-if-end-of-ichiran      一覧の最後で次の候補を出そうとすると一覧を終わるか
+reverse-widely              読み入力中のリバースの幅を広くするか
+reverse-word                一覧時のリバースの幅を広くするか
+romkana-table               ローマ字かな変換テーブルを入れておく
+select-direct               候補一覧で数字を選ぶと一覧が終るか
+server-name                 サーバ名が入っている変数
+server-version              サーバのバージョンが入っている変数
+stay-after-validate         候補一覧で選択した後、同じ文節にとどまるか
+\end{verbatim}
+
+\subsection{『かんな』のモードを表すシンボル}
+
+以下「＊」が付いているのはリアルモードで、他はイマジナリモードである。
+リアルモードではモード名の変更とそのモードだけでのキーの割当ができるが、
+イマジナリモードに関してはモード名の変更しか行えない。イマジナリモード
+はリアルモードの組合せで作られているのでイマジナリモードでのキーバイン
+ディングはベースとなるリアルモードによって決められる。例えば 
+extend-mode のキーバインディングは ichiran-mode でのキーバインディング
+がそのまま用いられる。
+
+\begin{verbatim}
+alpha-mode              ＊アルファベットモード
+bubun-muhenkan-mode     　編集モード
+bushu-mode              　部首モード
+changing-server-mode    　サーバを変更しようとしているモード
+chikuji-bunsetsu-mode   ＊逐次自動変換で文節上にいるモード
+chikuji-yomi-mode       ＊逐次自動変換で読みの上にいるモード
+delete-dic-mode         　単語削除モード
+empty-mode              ＊まだ入力をしていないときのモード
+extend-mode             　拡張メニューモード
+greek-mode              　ギリシャ文字選択モード
+han-alpha-henkan-mode   　半角アルファベット変換入力モード
+han-alpha-kakutei-mode  　半角アルファベット確定入力モード
+han-hira-henkan-mode    　半角ひらがな変換入力モード
+han-hira-kakutei-mode   　半角ひらがな確定入力モード
+han-kata-henkan-mode    　半角カタカナ変換入力モード
+han-kata-kakutei-mode   　半角カタカナ確定入力モード
+henkan-method-mode      　変換方式切替えモード
+henkan-nyuuryoku-mode   　変換入力モード
+hex-mode                　１６進コード入力モード
+ichiran-mode            ＊候補一覧モード
+kigou-mode              ＊記号入力モード
+line-mode               　罫線素片選択モード
+mojishu-mode            ＊字種変換モード
+mount-dic-mode          　辞書マウントアンマウントモード
+on-off-mode             ＊選択/非選択モード
+quoted-insert-mode      ＊引用入力モード
+russian-mode            　ロシア文字(キリル文字)選択モード
+shinshuku-mode          ＊文節伸縮モード
+tankouho-mode           ＊単候補表示モード
+touroku-dic-mode        　単語登録時辞書選択モード
+touroku-hinshi-mode     　単語登録時品詞選択モード
+touroku-mode            　単語登録モード
+yes-no-mode             ＊「はい」か「いいえ」を答えるモード
+yomi-mode               ＊読み入力モード
+zen-alpha-henkan-mode   　全角アルファベット変換入力モード
+zen-alpha-kakutei-mode  　全角アルファベット確定入力モード
+zen-hira-henkan-mode    　全角ひらがな変換入力モード
+zen-hira-kakutei-mode   　全角ひらがな確定入力モード
+zen-kata-henkan-mode    　全角カタカナ変換入力モード
+zen-kata-kakutei-mode   　全角カタカナ確定入力モード
+\end{verbatim}
+
+\subsection{『かんな』の機能を表すシンボル}
+
+\begin{verbatim}
+alpha-mode                    アルファベットモードになる
+backward                      後方(左)へ行く
+base-eisu                     ベースを英数にする
+base-hankaku                  ベースを半角にする
+base-henkan                   ベースを変換にする
+base-hiragana                 ベースをひらがなにする
+base-hiragana-katakana-toggle ベースをひらがなとカタカナのと間で切替える
+base-kakutei                  ベースを確定にする
+base-kakutei-henkan-toggle    ベースを確定と変換との間で切替える
+base-kana                     ベースをかな(ひらがなかカタカナ)にする
+base-kana-eisu-toggle         ベースをかなと英数との間で切替える
+base-katakana                 ベースをカタカナにする
+base-rotate-backward          ベースを順方向に切替える
+base-rotate-forward           ベースを逆方向に切替える
+base-zenkaku                  ベースを全角にする
+base-zenkaku-hankaku-toggle   ベースを全角と半角との間で切替える
+beginning-of-line             行頭に行く
+bushu-mode                    部首モードになる
+capitalize                    先頭文字を大文字にする
+convert-as-bushu              読みを部首名とみなして部首変換する
+convert-as-hex                読みを１６進コードとみなして１６進コード変換する
+delete-next                   次(右)の文字を削除する
+delete-previous               前(左)の文字を削除する
+end-of-line                   行末に行く
+extend                        文節伸ばし
+extend-mode                   拡張メニューモードへ行く
+forward                       前方(右)に行く
+han-alpha-kakutei-mode        半角アルファベット確定入力モードになる
+han-kata-kakutei-mode         半角カタカナ確定入力モードになる
+hankaku                       半角に変換する
+henkan                        変換する
+henkan-naive                  ナイーブに変換する
+henkan-nyuuryoku-mode         変換入力モードになる
+henshu                        編集モードに入る
+hex-mode                      １６進コード入力モードになる
+hiragana                      ひらがなに変換する
+japanese-mode                 日本語入力モードになる
+kakutei                       確定する
+katakana                      カタカナに変換する
+kigou-mode                    記号入力モードになる
+kill-to-end-of-line           行末まで削除する
+kouho-ichiran                 候補一覧を表示する
+mark                          マークを設定する
+next                          次を出す
+previous                      前を出す
+quit                          とりやめる
+quoted-insert                 引用入力をする
+romaji                        ローマ字に変換する
+self-insert                   自分自身を入力する
+shinshuku-mode                文節伸縮モードになる
+shrink                        文節縮め
+temporary                     一時モードに入る
+to-lower                      小文字に変換する
+to-upper                      大文字に変換する
+touroku                       単語登録モードに入る
+undefined                     未定義の機能
+zen-alpha-kakutei-mode        全角アルファベット確定入力モードになる
+zen-hira-kakutei-mode         全角ひらがな確定入力モードになる
+zen-kata-kakutei-mode         全角カタカナ確定入力モードになる
+zenkaku                       全角に変換する
+\end{verbatim}
+
+\end{document}
+

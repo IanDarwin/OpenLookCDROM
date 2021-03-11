@@ -1,0 +1,293 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;                                                                   ;;;;
+;;;;       Copyright IBM Corporation 1988,1991 - All Rights Reserved   ;;;;
+;;;;      For full copyright information see:'andrew/config/COPYRITE'  ;;;;
+;;;;                                                                   ;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; $Disclaimer: 
+; Permission to use, copy, modify, and distribute this software and its 
+; documentation for any purpose is hereby granted without fee, 
+; provided that the above copyright notice appear in all copies and that 
+; both that copyright notice, this permission notice, and the following 
+; disclaimer appear in supporting documentation, and that the names of 
+; IBM, Carnegie Mellon University, and other copyright holders, not be 
+; used in advertising or publicity pertaining to distribution of the software 
+; without specific, written prior permission.
+; 
+; IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+; DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+; ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+; SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+; BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+; DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+; WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+; ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+; OF THIS SOFTWARE.
+;  $
+
+; ELI library functions to simulate FLAMES primitives
+;
+; for use in writing test FLAMES code.
+;
+; what's here is good for a start, but needs work.
+
+(defun getheadercontents (msg hdr)
+  (cdr (assoc hdr msg)))
+
+(defun appendmsgtodir (msg dir)
+  (printf "Added message to directory %s\n" dir))
+
+(defun createfolderfrommessage (folder msg)
+  (printf "Creating folder %s from message\n" folder))
+
+(defun findfolder (folder mode)
+  (printf "Finding folder %s, mode %s\n" folder mode))
+
+(defun getparameter (param)
+  (cond ((eq param "uid") (getenv "USER"))
+        ((eq param "uidsuffix") "+")))
+
+(setq &AUTHSTR "<(.*)>")
+
+(defun getauthsender (msg)
+  (car (cdr (car (cdr (re-strdecompose+ &AUTHSTR
+                                        (car (cdr (assoc "from" msg)))))))))
+
+(defun add-to-folders (msg flist)
+  (cond ((null flist) T)
+        ((appendmsgtodir msg (car flist))
+         (add-to-folders msg (cdr flist)))
+        (T NIL)))
+
+(defun create-folders (msg creats)
+  (cond
+   ((NULL creats) T)
+   ((createfolderfrommessage (car creats) msg)
+    (create-folders msg (cdr creats)))
+   (T NIL)))
+
+
+(defun ensure-folders-exist (msg flist)
+  (cond
+   ((null flist) T)
+   ((findfolder (car flist) "w")
+    (ensure-folders-exist msg (cdr flist)))
+   ((createfolderfrommessage (car flist) msg)
+    (ensure-folders-exist msg (cdr flist)))
+   (T NIL)))
+      
+(defun post-by-keyword (msg default biglist)
+  (post-to-list msg
+                (map-heads-keys-folders msg biglist)
+                default NIL NIL NIL T NIL))
+
+(defun map-heads-keys-folders (msg biglist)
+  (cond ((null biglist) NIL)
+        (T (append (let* ((ca (car biglist))
+                          (cda (cdr ca)))
+                         (mhkf msg
+                               (car ca)
+                               (car cda)
+                               (car (cdr cda)) NIL))
+                   (map-heads-keys-folders msg (cdr biglist))))))
+  
+
+(defun mhkf (msg hlist klist flist ans)
+  (cond ((null hlist) ans)
+        ((any-pat-in-any-str
+          klist
+          (mapcar '(lambda (x) (car (getheadercontents msg x))) hlist))
+         (append ans flist))
+        (T ans)))
+
+(defun validate-folder-list (flist)
+  (validate-folder-list-aux flist NIL NIL NIL))
+
+
+(defun validate-folder-list-aux (flist adds errs creats)
+  (cond
+   ((null flist)
+    (list (remove-duplicates adds)
+          (remove-duplicates errs)
+          (remove-duplicates creats)))
+   (T (let*
+       ((foo (findfolder (car flist) "w"))
+        (bar (findfolder (car flist) "c")))
+       (cond ((null bar)
+              (validate-folder-list-aux (cdr flist)
+                                        adds
+                                        (append (list (car flist)) errs)
+                                        creats))
+             ((null foo)
+              (validate-folder-list-aux (cdr flist)
+                                        adds
+                                        errs
+                                        (append (list bar) creats)))
+             (T (validate-folder-list-aux (cdr flist)
+                                          (append (list foo) adds)
+                                          errs
+                                          creats)))))))
+
+(defun multi-getheadercontents (msg hnamelist)
+  (do ((hdrs hnamelist (cdr hdrs))
+       (result nil (append result
+                           (getheadercontents msg (car hdrs)))))
+      ((null hdrs) result)))
+
+(defun process-mapped-mailbox (msg pathroot prefix
+                                   headernamelist defaultfolder
+                                   rejto rejcc rejstr)
+  (process-mapped-restricted-mailbox msg pathroot prefix
+                                     headernamelist defaultfolder
+                                     rejto rejcc rejstr NIL))
+
+(defun process-mapped-restricted-mailbox (msg pathroot
+                                              prefix headernamelist
+                                              defaultfolder rejto
+                                              rejcc rejstr restrictions)
+  (post-to-list msg 
+                (mapcar '(lambda (x) (strcat pathroot x))
+                        (extract-liberally prefix
+                                           (multi-getheadercontents
+                                            msg
+                                            headernamelist)))
+                defaultfolder
+                rejto
+                rejcc
+                rejstr
+                T
+                restrictions))
+
+
+(defun standard-mapping (msg treeroot defaultfolder rejto rejcc rejstr)
+  (process-mapped-restricted-mailbox
+   msg
+   (strcat (findfolder treeroot "w") "/")
+   (strcat (getparameter "uid") (getparameter "uidsuffix"))
+   '("to" "cc" "resent-to" "resent-cc" "received")
+   (findfolder defaultfolder "w")
+   rejto
+   rejcc
+   rejstr
+   NIL))
+
+(defun apply-restrictions (msg flist rejto rejcc restricts)
+  (cond
+   ((null restricts) NIL)
+   ((apply-single-restriction msg flist	rejto rejcc (car restricts)) T)
+   (T (apply-restrictions msg flist rejto rejcc (cdr restricts)))))
+
+(defun apply-single-restriction (msg flist rejto rejcc restriction)
+  (cond
+   ((and (any-pat-in-any-str (car restriction) flist)
+	 (not (a-pat-in-any-str (getauthsender msg) (car (cdr restriction)))))
+    (reject-from-message
+     msg rejto rejcc
+     (car (cdr (cdr restriction)))
+     NIL))
+  (T NIL)))
+
+(defun post-to-list (msg flist default rejto rejcc
+                         rejstr allowcreats restricts)
+  (cond ((apply-restrictions msg flist rejto rejcc restricts) T)
+        (T (let* ((vlist
+                   (validate-folder-list flist))
+                  (def-folder
+                   (findfolder default "w"))
+                  (adds (car vlist))
+                  (errs (car (cdr vlist)))
+                  (creats (car (cdr (cdr vlist))))
+                  (result ""))
+     (cond ((and (null  flist)
+                 (null def-folder))
+            NIL)
+           ((null flist)
+            (appendmsgtodir msg def-folder))
+           ((and errs (null rejstr))
+            NIL)
+           (errs
+            (reject-from-message msg rejto rejcc rejstr errs))
+           ((null creats)
+            (add-to-folders msg adds))
+           ((null allowcreats)
+            (reject-from-message msg rejto rejcc
+                                 (strcat rejstr
+                                         " (creation not permitted) ")
+                                 creats))
+           ((ensure-folders-exist msg creats)
+            (add-to-folders msg (append creats adds)))
+           (T NIL))))))
+
+(defun reject-from-message (msg rejto rejcc rejstr flist)
+  (let* ((x (replyaddr msg "sender"))
+         (repaddr (cond (rejto rejto)
+                        (x x)
+                        (T "postman+"))))
+        (rejectmessage msg repaddr
+                       (cond ((null rejcc) "")
+                             (T rejcc))
+                       (strcat
+                        (cond (rejstr rejstr)
+                              (T
+                               "Message rejected with no reason specified: "))
+                        NEWLINE-TAB
+                        (cond (flist (list-to-str flist NEWLINE-TAB))
+                              (T ""))))))
+
+(defun extract-liberally (pattern strs)
+  (do ((refs strs (cdr refs))
+       (result nil (append result
+                           (extract-liberally-onestr pattern (car refs)))))
+      ((null refs) result)))
+
+(defun extract-liberally-onestr (pattern str)
+  (let* ((decomp (re-strdecompose+ (strcat pattern
+                                           &END-OF-EXTRACT-PATTERN)
+                                   str)))
+        (cond (decomp (cons (car (cdr (car (cdr decomp))))
+                            (extract-liberally-onestr
+                             pattern
+                             (car (cdr (cdr decomp))))))
+              (T NIL))))
+
+(setq &END-OF-EXTRACT-PATTERN "([^] ,@:)}>%;!\"]+)")
+
+(setq NEWLINE-TAB "\n\t")
+
+(load "elilib")
+
+(defun get-elts (pat l)
+  (cond
+   ((null l) NIL)
+   ((re-strcontains pat	(car l))
+    (cons (car l)
+	  (get-elts pat (cdr l))))
+   (T (get-elts pat (cdr l)))))
+
+(defun get-not-elts (l elts)
+  (cond
+   ((null l) NIL)
+   ((member (car l)
+	    elts)
+    (get-not-elts (cdr l) elts))
+   (T (cons (car l) (get-not-elts (cdr l) elts)))))
+
+(defun bboard-relevant-headers (msg)
+  (let*
+   ((resends (getheadercontents msg "resent-to")))
+   (cond
+    ((and resends (not (eq (car resends) "")))
+     '("resent-to" "received" "resent-cc"))
+    (T '("to" "cc" "received")))))
+
+(setq &BBM "Bboard.Maintainer@andrew.cmu.edu")
+(setq &TABCHAR "\t")
+(setq &DOT ".")
+
+(defun copy-fn (to from)
+  (eval (append (list 'defun to) (cdr (function from)))))
+
+(setq sample-msg '(("from" "me")
+                   ("to" "you")
+                   ("subject" "If there's anything that you want")))

@@ -1,0 +1,789 @@
+% Copyright 1994 NEC Corporation, Tokyo, Japan.
+%
+% Permission to use, copy, modify, distribute and sell this software
+% and its documentation for any purpose is hereby granted without
+% fee, provided that the above copyright notice appear in all copies
+% and that both that copyright notice and this permission notice
+% appear in supporting documentation, and that the name of NEC
+% Corporation not be used in advertising or publicity pertaining to
+% distribution of the software without specific, written prior
+% permission.  NEC Corporation makes no representations about the
+% suitability of this software for any purpose.  It is provided "as
+% is" without express or implied warranty.
+%
+% NEC CORPORATION DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+% INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN 
+% NO EVENT SHALL NEC CORPORATION BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+% CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF 
+% USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR 
+% OTHER TORTUOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR 
+% PERFORMANCE OF THIS SOFTWARE. 
+%
+% $Id: server.tex,v 2.8 1994/06/01 06:36:54 kuma Exp $
+%
+\chapter{かな漢字変換サーバ}
+\label{3.4かな漢字変換サーバと辞書}
+
+
+% ------------------------------ 3.4.1
+\section{\IDX{かな漢字変換サーバ}{かなかんしへんかんさーば}}
+\label{3.4.1かな漢字変換サーバ}
+
+\subsection{\HIDX{サーバクライアントモデル}{さーはくらいあんともてる}
+{H0.5.1.1.0}}
+
+本日本語入力システムはサーバクライアントモデルをベースにしています。
+
+つまり、かな漢字変換が行われる時は漢字に変換したい読みをプロセス間通
+信でかな漢字変換サーバに送り、かな漢字変換サーバでかな漢字変換辞書を元
+に漢字に変換した後に変換した結果をアプリケーションに返すことによりかな
+漢字変換を成し遂げています。
+
+すなわち、日本語入力デーモンや日本語入力を行うアプリケーションがかな漢
+字変換を行う時には、それらのプログラムが直接かな漢字変換辞書をアクセス
+してかな漢字変換を行うのではなく、かな漢字変換サーバを介して漢字に変換
+しています。
+
+このように、本システムではサーバクライアントモデルをベースとしたかな漢
+字変換が採用されています。
+
+\subsection{かな漢字変換\HIDX{サーバの指定}{さーはのしてい}{H0.5.1.2.0}}
+
+日本語入力を利用するプログラムとかな漢字変換サーバとの間はソケットを用
+いたプロセス間通信が行われます。このため、日本語入力を利用するプログ
+ラムと、かな漢字変換サーバは同一のマシン上に存在する必要はなく、かな漢
+字変換サーバとして利用するサーバを、ネットワーク上の任意のマシンから自
+由に選択して使用することができます。
+
+たとえば、ディスク容量がたくさんあり、CPUもある程度の性能を持つマシンに
+辞書を置き、かな漢字変換サーバを走らせておけば、ネットワーク上のどのマ
+シン上からでも高性能のかな漢字変換エンジンを利用することが可能となりま
+す。ネットワーク上のどのマシンを利用している時も、常に同一のかな漢字変
+換サーバを利用することにより、新たに登録した単語や頻度情報を一元管理す
+ることができます。
+
+\begin{itemize}
+\item \HIDX{CANNAHOST}{ＣＡＮＮＡＨＯＳＴ}{H0.5.1.2.0.1}
+\hptar{label=H0.5.1.2.0.1}
+
+どのマシンで動作しているかな漢字変換サーバを用いるかを指定するには環境
+変数CANNAHOSTで、利用したいかな漢字変換サーバが動作しているマシンのホ
+スト名を指定します。たとえば、ホスト名がmachine1というマシンで動作してい
+るかな漢字変換サーバを利用する場合は.loginファイルに次のように記述して
+ください。
+
+(例)
+
+\begin{nquote}{1em}
+\verb+ % setenv CANNAHOST machine1 + 
+\end{nquote}
+
+かな漢字変換サーバは、デフォルトでは同一マシン上で動作しているものが使
+われます。環境変数CANNAHOSTを設定することにより他のマシン上で動作して
+いるかな漢字変換サーバを用いるようになります。
+
+\item \HIDX{\refCANNALIBDIR /cannahost}{／ＵＳＲ／ＬＩＢ／ＣＡＮＮＡ／
+ＣＡＮＮＡＨＯＳＴ}{H0.5.1.2.0.2}
+\hptar{label=H0.5.1.2.0.2}
+
+環境変数CANNAHOSTが設定されていないときには通常は同一マシン上のかな漢字変換サーバが使われますが、/usr/lib/canna/cannahostというファイルに他のマシンのホスト名が記述されている場合は/usr/lib/canna/cannahostにて示されるマシン上のかな漢字変換サーバが用いられるようになります。
+すなわち、/usr/lib/canna/cannahostに他のマシンのホスト名を記述しておくと、そのマシンを利用しているユーザは環境変数CANNAHOSTを用いて明示的にかな漢字変換サーバを指定している場合以外は、/usr/lib/canna/cannahostにて指定されるサーバを用いるようにすることができます。
+
+たとえばディスクレスマシンのように、システム資源が足りない場合などは、\\ /usr/lib/canna/cannahostファイルにディスクレスサーバマシンなどのホスト名を記述しておくことにより、他のマシンのかな漢字変換サーバを利用するように記述しておいたほうが良いでしょう。
+
+(例)
+
+\begin{nquote}{1em}
+\verb+ % cat /usr/lib/canna/cannahost +
+\verb+ machine1 +
+\end{nquote}
+
+/usr/lib/canna/cannahostにて他のマシンを指定することにより、同一マシン上のかな漢字変換サーバは使われないようになります。
+その場合は、かな漢字変換サーバの起動は不要となりますので、/etc/rc0.d/Kaacanna、\\ /etc/rc1.d/Kaacanna、/etc/rc2.d/Saacanna を削除して cannaserver が起動しないようにしておくと良いでしょう。
+また、この場合、さらにかな漢字変換辞書等が不要となります。
+以下のファイルまたはディレクトリをそのマシンのハードディスクから削除することが可能となります。
+
+\begin{nquote}{1em} \tt
+\begin{tabular}{l}
+\refCANNALIBDIR /dic \\
+\refCANNALIBDIR /cannaserver \\
+\refCANNALIBDIR /cannakill \\
+\refCANNABINDIR /crxdic    \\
+\refCANNABINDIR /dicar     \\
+\refCANNABINDIR /dpbindic  \\
+\refCANNABINDIR /dpxdic    \\
+\refCANNABINDIR /forsort   \\
+\refCANNABINDIR /mkbindic
+\end{tabular}
+\end{nquote}
+
+\end{itemize}
+
+\subsection{\IDX{cannaserverの起動}{ＣＡＮＮＡＳＥＲＶＥＲのきどう}}
+
+日本語機能のかな漢字変換は、かな漢字変換サーバcannaserverが行っていま
+す。cannaserver はシステム起動時に/etc/rc0.d/Kaacanna、
+/etc/rc1.d/Kaacanna により起動されます。
+
+かな漢字変換の際、辞書はcannaserverを介してアクセスします。
+何らかの障害により\\
+cannaserverが異常終了してしまった場合は、
+ロックファイルが残りcannaserverが再起動できなくなることがあります。
+この場合はロックファイルを消してcannaserverを立ち上げ直してください。
+
+/usr/lib/canna/cannahost でそのマシン上のユーザが使用するかな漢字変
+換サーバとして、他のホスト上のサーバを指定している場合は、cannaserver 
+の起動は不要となりますので、/etc/rc0.d/Kaacanna、/etc/rc1.d/Kaacanna、
+/etc/rc2.d/Saacanna を削除して cannaserver が起動しないようにしておく
+と良いでしょう。
+
+
+
+\subsection{\HIDX{cannaserverのアクセス制御}{ＣＡＮＮＡＳＥＲＶＥＲの
+あくせすせいきよ}{H0.5.1.4.0}}
+
+cannaserverにアクセスできるホストとユーザを指定することができます。
+
+
+\begin{itemize}
+
+\item \HIDX{/etc/hosts.canna}{／ＥＴＣ／ＨＯＳＴＳ．ＣＡＮＮＡ}
+{H0.5.1.4.0}
+
+/etc/hosts.cannaというファイルを作成することで、
+同一のホスト上のcannaserverが接続要求を受け付けるホストの制限を
+付けることができます。
+cannaserverは同一のホスト、または/etc/hosts.cannaに登録された
+ホストと登録されたユーザに対してのみ接続要求を受け付けます。
+/etc/hosts.cannaが存在しないか、ファイルの長さが0の場合は
+すべてのホストがcannaserverにアクセスすることができます。
+(/etc/hosts.cannaに不正な記述をすると、
+サーバにアクセスできなくなるおそれがあるので注意
+してください。)
+ホスト名のあとにコロン":"を書き、その後にユーザ名を指定します。
+多数のユーザを指定する場合は、ユーザ名とユーザ名の間にカンマ","を書きます。
+ホスト名のみが指定された場合は、
+そのホストのユーザ全員のアクセスを受け付けます。
+
+cannaserverが存在するホストの名前は,"unix"と記述してください。 
+/etc/hosts.cannaファイルが存在する場合、そのファイルの中に"unix"という
+記述がないと、そのホスト自身の cannaserverにアクセスすることができなく
+なります。
+
+(例)
+
+\begin{nquote}{2em}
+\begin{verbatim}
+pdg3:hanafusa,root
+pbg1:
+pbg4
+pbg5
+unix
+\end{verbatim}
+\end{nquote}
+
+\item \IDX{cshost}{ＣＳＨＯＳＴ}
+
+cshost(1M)でアクセス可能なホスト名とユーザ名のリスト(アクセスコントロー
+ルリスト)
+を参照することができます。
+\end{itemize}
+
+
+\section{\IDX{辞　　書}{ししよ}}
+\label{3.4.2辞書}
+
+\subsection{辞書と\HIDX{辞書ファイル}{ししよふあいる}{H0.5.2.1.0}}
+
+かな漢字変換に用いる「辞書」は、かなを漢字に変換するためのデータを格納
+しているものです。「辞書」が納めてあるファイルを「辞書ファイル」と呼び
+ます。「辞書ファイル」には１個だけの「辞書」が納められている場合もあれ
+ば、複数の「辞書」が納められている場合もあります。「辞書ファイル」には
+テキスト形式のものとバイナリ形式のものがあります。システムで最初から提
+供されている辞書をシステム辞書と呼びます。
+
+\subsection{\HIDX{システム辞書のディレクトリ}{しすてむししよのていれく
+とり}{H0.5.2.2.0}}
+
+本システムではかな漢字変換辞書へのアクセスは単一のかな漢字変換サーバだ
+けが行います。かな漢字変換辞書はかな漢字変換サーバが動作しているマシン
+上の\HIDX{\refCANNALIBDIR /dic}{／ＵＳＲ／ＬＩＢ／ＣＡＮＮＡ／ＤＩＣ}
+{H0.5.2.2.0}の下にあります。
+
+\begin{itemize}
+
+\item \HIDX{辞書ホームディレクトリ}{ししよほーむていれくとり}
+{H0.5.2.2.0.1}
+\hptar{label=H0.5.2.2.0.1}
+
+\refCANNALIBDIR /dic
+を辞書ホームディレクトリと呼びます。辞書ホームディレクトリの下にはさら
+に canna、user、group というディレクトリがあります。
+
+\item \HIDX{辞書ディレクトリ}{ししよていれくとり}
+{H0.5.2.2.0.2}
+\hptar{label=H0.5.2.2.0.2}
+
+\refCANNALIBDIR /dic/canna、\refCANNALIBDIR /dic/user、
+\refCANNALIBDIR /dic/group、を辞書ディレクトリと呼びます。
+canna 配下のファイルは、システム辞書ファイルと呼びます。
+user 配下のディレクトリは、かな漢字変換の利用者ごとに使用する辞書を分
+けて管理するためのディレクトリです。
+ユーザ辞書ディレクトリ名はユーザ名と同じです
+( uid が異なる利用者でもユーザ名が同じ場合は同じ利用者とみなされますので
+注意してください )。
+また、group 配下のディレクトリは、グループ名(gid)が同じ利用者間で共通
+に使用する辞書を管理するためのディレクトリです。
+グループ辞書ディレクトリ名はグループ名と同じです。
+
+
+\item \HIDX{システム辞書ファイル}{しすてむししよふあいる}{H0.5.2.2.0.3}
+\hptar{label=H0.5.2.2.0.3}
+
+\refCANNALIBDIR /dic
+の下にあるディレクトリのうち、cannaという名前のディレクトリは、
+かな漢字変換を利用するすべてのユーザに共通に使用されます(このた
+めcannaというユーザ名をもつユーザによる辞書の作成等は禁止されています)。
+このディレクトリの下にある辞書ファイルのことをシステム辞書ファイルと呼
+びます。システム辞書ファイルには以下のものがあります。
+
+\begin{nquote}{1em}
+\begin{verbatim}
+iroha.d
+fuzokugo.d
+hojomwd.t
+hojoswd.t
+\end{verbatim}
+\end{nquote}
+
+
+\item \HIDX{ユーザ辞書ファイル}{ゆーさししよふあいる}{H0.5.2.2.0.4}
+\hptar{label=H0.5.2.2.0.4}
+
+かな漢字変換利用者はシステム辞書ファイル以外に各自で使用するための
+辞書ファイルを作成することができます。各自で用意した辞書ファイルは
+辞書ホームディレクトリの下にあるuser配下にログイン名と同名のディレ
+クトリを作成してその下に置いておきます。単語登録の際、かな漢字変換
+サーバが辞書ファイルに対して書き込みを行います。かな漢字変換サーバ
+はオーナ／グループがbin/binで動作していますので、辞書ファイルを作成
+する時はそのファイルのグループをbinにしてグループに対する書き込み権
+を開放しておいてください。
+
+例として辞書ホームディレクトリの下にあるuser配下に、userというディレクト
+リを準備しました。各自でディレクトリを作成する時の参考にしてください。
+userの下には以下の辞書ファイルがあります。
+
+\begin{nquote}{1em}
+\begin{verbatim}
+chimei.t
+katakana.t
+software.t
+user.t
+necgaiji.t
+\end{verbatim}
+\end{nquote}
+
+
+\item \HIDX{グループ辞書ファイル}{くるーふししよふあいる}
+{H0.5.2.2.0.5}
+\hptar{label=H0.5.2.2.0.5}
+
+かな漢字変換利用者のグループ名(gid)が同じ利用者間では、
+共通の辞書ファイルを利用することができます。
+この辞書ファイルに単語を登録することによって、グループ名が同じ利用者は、
+その単語を利用することができますので、各自で登録する手間がはぶけ、
+ディスクスペースを削減することができます。単語登録の際は、
+ユーザ辞書ファイルと同様に、かな漢字変換サーバが辞書ファイルに対して
+書き込みを行いますので、辞書ファイルを作成する時には、そのファイルの
+グループをbinにしてグループに対する書き込み権を開放しておいてください。
+グループ辞書は、辞書ホームディレクトリの下にあるgroup配下に、
+グループ名と同じディレクトリが作成され、その下に置かれます。
+
+グループ辞書は、『かんな』 Version 3.2 より前のクライアントでは使用できません。
+
+\item \HIDX{辞書サーチパス}{ししよさーちはす}{H0.5.2.2.0.6}
+\hptar{label=H0.5.2.2.0.6}
+
+辞書を探し出す順序のことを辞書サーチパスといいます。
+
+\begin{enumerate}
+
+\item 『かんな』Version 3.2 より前のクライアントの場合 \\
+かな漢字変換に用いる辞書は、辞書ホームディレクトリの下のログイン名と同
+名のディレクトリの下の辞書をまず用いようとし、次にシステム辞書ファイル
+の中から指定された辞書を探してきて用います。
+
+\item 『かんな』Version 3.2 以降のクライアントの場合 \\
+ユーザ辞書、グループ辞書、システム辞書という順で辞書をサーチして
+用いようとします。
+ユーザ辞書のサーチの際には 、user 配下にあるログイン名と同名のディレク
+トリの下の辞書を用いようとします。
+グループ辞書のサーチの際には、 group 配下にあるグループ名と同名のディ
+レクトリの下の辞書を用いようとします。
+最後に、システム辞書ファイルの中から指定された辞書を探してきて用います。 \\
+ユーザ辞書とグループ辞書に同じ名前のファイル名がある場合は、
+ユーザ辞書が優先されて用いられます。
+この場合は、単語を登録・削除する際にユーザ辞書に対して行いますので
+注意してください。
+\end{enumerate}
+\end{itemize}
+
+\subsection{辞書ファイルの形式}
+
+
+かな漢字変換辞書ファイルには次の２つの形式があります。
+
+\begin{itemize}
+
+
+\item \HIDX{テキスト形式辞書}{てきすとけいしきししよ}{H0.5.2.3.0.1}
+\hptar{label=H0.5.2.3.0.1}
+
+通常のテキスト形式の辞書ファイルです。単語登録などはこの辞書ファイルに
+格納されている辞書に対して行われます。テキスト形式ですので通常のエディ
+タでメンテナンスすることもできます。(ただし、サーバが使用中の辞書ファ
+イルをエディトしても、その変更は無効となります)
+
+辞書ファイル名の拡張子は ".t" でなければなりません。
+
+
+\item  \HIDX{バイナリ形式辞書}{はいなりけいしきししよ}{H0.5.2.3.0.2}
+\hptar{label=H0.5.2.3.0.2}
+
+辞書の読み込みが高速になるような形式に変換された辞書ファイルです。辞書
+ファイル名の拡張子は ".d" でなければなりません。辞書中にある不要な単語
+を削除することや、一度削除した単語を復活させることができます。
+辞書ユーティリティツールを使ってテキスト形式とバイナリ形式を相
+互変換することが可能です。また、複数のバイナリ形式の辞書ファイルを
+cat(1)またはdicar(1)で１つのバイナリ形式辞書ファイルに結合することがで
+きます。dicar(1)については {\dg\bf \ref{4かな漢字変換ユーティリティ}
+\hpref{count=13,label=H0.6.0.0.0}かな漢字変換ユーティリティ}を参照して
+ください。
+
+辞書ユーティリティツールを使ってテキスト形式辞書ファイルをバイナリ形式
+に変換した場合、バイナリ形式辞書ファイルは、内部にもとのテキスト形式辞
+書ファイルのファイル名を保持しておきます。cat(1)で単一のバイナリ形式辞
+書ファイルに結合した場合もこのテキスト形式辞書ファイル名は失われません。
+cat(1)で辞書を結合した場合、そのバイナリ辞書ファイルに含まれている辞書
+を区別するのにテキスト形式辞書ファイル名が用いられます。
+
+\end{itemize}
+
+
+\subsection{辞書の所有者・非所有者}
+
+辞書は、だれでも単語を登録したり、辞書の中身を見たりできる訳
+ではありません。辞書それぞれに制限があります。
+辞書に対しての制限は、所有者と非所有者によって変わります。
+辞書ディレクトリ \tt {/usr/lib/canna/dic} 配下の辞書の所有者についての
+考え方を以下に示します。
+
+\begin{center}
+\begin{tabular}{|c|p{10em}|p{10em}|}
+\hline
+&\hspace*{3em}所有者 & \hspace*{3em}非所有者 \\
+\hline
+\verb+user/*+ 配下 & ログイン名がディレクトリと同じ名前の利用者 & それ
+以外の利用者 \\
+\hline
+\verb+group/*+ 配下 & グループ名がディレクトリと同じ名前の利用者 & そ
+れ以外の利用者 \\
+\hline
+\verb+canna+ 配下 & 利用者全員 & なし\\
+\hline
+\end{tabular}
+\end{center}
+
+\vspace{1em}
+ユーザ辞書は、\tt {/usr/lib/canna/dic/user} 配下のディレクトリと同じログイン
+名の利用者に所有されます。またグループ辞書は、 \tt
+{/usr/lib/canna/dic/group} 配下のディレクトリと同じグループ名 
+の利用者に所有されます。システム辞書は、利用者全員が所有者となっていま
+すが、システム辞書への単語の登録・削除は行えません。
+
+\subsection{辞書の \tt {READ・WRITE}権}
+
+辞書の \tt{READ} 権は、非所有者が辞書の中身を見たり(\tt{catdic(1)})、
+辞書のコピー (\tt{cpdic(1)})をしたりできるかどうかの制限を与えます。
+
+他人に辞書の中身を見られたくない場合には、\tt{READ} 権をなくしておくことに
+よって、他人に中身を見られないようにすることができます。
+
+
+辞書の \tt{WRITE} 権は、所有者が単語の登録・削除できるかどうかの制限を与え
+ます。
+
+この制限は主にグループ辞書を考慮したもので、\tt{WRITE} 権をなくしておくこと
+で、同じグループの利用者間での不用意な単語登録・削除を避けることができま
+す。
+
+\begin{center}
+\begin{tabular}{|c|p{7em}|p{7em}|}
+\hline
+& \makebox[7em]{所有者} & \makebox[7em]{非所有者} \\
+\hline
+\verb+READ+ 権 & \makebox[7em]{○} & \makebox[7em]{○ ／ ×} \\
+\hline
+\verb+WRITE+ 権 & \makebox[7em]{○ ／ ×} & \makebox[7em]{×} \\
+\hline
+\end{tabular}
+\end{center}
+
+\vspace{1em}
+
+
+\subsection{\HIDX{辞書目録}{ししよもくろく}{H0.5.2.6.0}
+(\HIDX{dics.dir}{ＤＩＣＳ．ＤＩＲ}{H0.5.2.6.0})}
+
+辞書ホームディレクトリの下の各ディレクトリ配下にどのような辞書が存在する
+かは各ディレクトリの下のdics.dirという名前のファイルに記述されています。
+dics.dirの記述は以下のようになります。
+
+\begin{nquote}{1em}
+\begin{verbatim}
+#
+# システム辞書                        
+#
+fuzokugo.d(fuzokugo.swd)        -fuzokugo---
+fuzokugo.fq(fuzokugo.swd)       -fuzokugo---
+iroha.d(iroha.mwd)      -iroha---
+iroha.fq(iroha.mwd)     -iroha---
+iroha.d(yuubin.mwd)     -yuubin---
+yuubin.fq(yuubin.mwd)   -yuubin---
+iroha.d(bushu.mwd)      -bushu---
+bushu.fq(bushu.mwd)     -bushu---
+hojomwd.t(.mwd)         -hojomwd---
+hojoswd.t(.swd)         -hojoswd---
+\end{verbatim}
+\end{nquote}
+%
+
+\begin{nquote}{1em}
+\begin{verbatim}
+#                                     
+# ユーザ辞書                        
+#                                     
+user1.t(.mwd) -user1--r-
+user2.t(.mwd) -user2--rw-
+user3.t(.mwd) -user3--w-
+user4.t(.mwd) -user4---
+\end{verbatim}
+\end{nquote}
+%
+
+\begin{nquote}{1em}
+\begin{verbatim}
+#                                     
+# グループ辞書                        
+#                                     
+group1.t(.mwd) -group1--r-
+group2.t(.mwd) -group2--rw-
+group3.t(.mwd) -group3--w-
+group4.t(.mwd) -group4---
+\end{verbatim}
+\end{nquote}
+%
+	 	 
+dics.dirでは１行に１つの辞書についての記述を行います。まず、一番左に辞
+書ファイル名を記述します。次に()に挟まれて記述されるのが、その辞書ファ
+イルの中に存在する辞書の子辞書名です。右側にハイフン($-$)で囲って記述
+されているのがその辞書につけた辞書名です。この辞書名が辞書の指定に用い
+られます。辞書名はファイル名および子辞書名に依存せず、自由に命名するこ
+とができます。()内に記述される子辞書名は、その辞書をテキスト形式からバ
+イナリ形式に変換する際に命名されます。（子辞書名の拡張名の拡張子は
+".mwd"または".swd"でなければなりません。また、テキスト辞書の場合、
+ベースネームを省略して".mwd"または".swd"を子辞書名とします。）
+
+辞書名を囲んでいるハイフン \verb+"-"+ の次にアクセス権についての記述を
+行います。
+非所有者に \tt{READ} 権があるならば \tt {"r"} を、所有者に 
+\tt{WRITE} 権があるならば \tt {"w"} を、ハイフン \verb+"-"+ 
+で囲んで記述します。
+\tt{READ・WRITE}権がない場合には、ハイフンのみを続けて記述します。
+
+dics.dirで\#から改行まではコメントとして扱われます。
+
+頻度別学習情報ファイルについては、 \tt{READ・WRITE}権に関係なくそのファ
+イルの所有者であれば、書き込みを行うことができます。
+
+\subsection{\HIDX{テキスト形式辞書の作り方}{てきすとけいしきししよの
+つくりかた}{H0.5.2.7.0}}
+
+１行に読み、品詞、単語を空白またはタブで区切って記述します。単語は空白
+またはタブで区切れば複数記述することができます。
+
+辞書ファイル名は、バイナリ辞書と区別するためにxxx.tという名前にしてください。
+
+読み　品詞　単語　［単語］　…
+
+(例)
+\begin{nquote}{1em}
+\begin{tabular}{lll}
+あぷ       & \#T35 & アプリケーション　アプリケーションプログラム \\
+お         & \#KJ  & お　御 \\
+かなかん   & \#T30 & かな漢字変換 \\
+でふぉると & \#T15 & デフォルト \\
+ふじいえ   & \#JN  &  藤家 \\
+　：       &       &       \\
+　：       &       &       \\
+　：       &       &       \\
+\end{tabular}
+\end{nquote}
+
+品詞を表わす記号については{\dg\bf 付録\ref{品詞コード表}}
+\hpref{count=6,label=H0.I.0.0.0}品詞コード表を参照してください。
+
+\subsection{\IDX{バイナリ形式辞書}{はいなりけいしきししよ}の作り方}
+
+テキスト形式辞書ファイルをバイナリ形式辞書ファイルに変換するには、
+mkbindic(1)を使って行います。
+
+xxx.tというテキスト辞書をバイナリ形式に変換すると、xxx.mwdという名前が
+子辞書名になります。
+
+(例)
+\begin{nquote}{2em}
+\verb+ % mkbindic foo.t + 
+\end{nquote}
+
+mkbindic(1)を実行しますと、読みをキーとしてテキスト形式辞書ファイルを辞書順にソートし、それをバイナリ化し、xxx.d(例では、foo.d)というバイナリ形式辞書を作成します。
+
+複数の辞書ファイルをまとめて１つのバイナリ形式辞書にすることができます。
+
+(例1)
+\begin{nquote}{2em}
+\verb+ % cat foo.d >> bar.d +
+\end{nquote}
+
+(例2)
+\begin{nquote}{2em}
+\verb+ % dicar -r bar.d foo.d +
+\end{nquote}
+
+
+\subsection{バイナリ形式辞書ファイルとテキスト形式辞書ファイルの相互変換}
+
+辞書はテキスト形式でもバイナリ形式でも使用することができますが、単語登
+録用ユーザ辞書として使えるのはテキスト形式だけです。
+
+テキスト形式とバイナリ形式は、相互に変換することができます。バイナリ形
+式への変換はmkbindic(1)、バイナリ形式からテキスト形式への変換は 
+dpbindic(1)を使います。mkbindic(1)とdpbindic(1)についての詳細は、
+ {\dg\bf \ref{4かな漢字変換ユーティリティ}
+\hpref{count=13,label=H0.6.0.0.0}かな漢字変換ユーティリ
+ティ}を参照してください。
+
+
+\subsection{ユーザ辞書の設定}
+
+単語登録を行うには、カスタマイズ機能によりユーザ辞書の設定を行う必要が
+あります。カスタマイズ機能についての詳細は
+  {\dg\bf \ref{3.3カスタマイズ} \hpref{count=6,label=H0.4.0.0.0}カスタ
+マイズ} を参照してください。
+
+
+\usedictool
+%各ユーザのユーザ辞書の作成は以下に示すコマンド操作による方法と
+% GUI ベースの辞書ツールを使用する方法があります。
+%
+% GUI ベースの辞書ツールの操作方法については
+% {\dg\bf \ref{辞書ツール} \hpref{count=5,label=H0.7.0.0.0}辞書ツール}
+%を参照してください。
+
+
+\begin{enumerate}
+
+
+\item .cannaの作成
+
+ホームディレクトリに .canna というファイルを作成し、以下のように書き込
+んでください。引数には辞書名を記述します。最初の２行は基本になる辞書の名前
+ですので必ず記述してください。
+
+はじめは\refCANNALIBDIR /sampleの下のdefault.cannaというファイルをコピー
+して用いると良いでしょう。
+
+例)
+\begin{nquote}{1em}
+\begin{verbatim}
+(use-dictionary  "iroha"         
+                 "fuzokugo"      
+                 :user "dicname" )
+\end{verbatim}
+\end{nquote}
+
+
+\item ユーザ辞書ファイルの作成
+
+mkdic(1)によりユーザ辞書(テキスト形式)の作成が可能です。
+
+これらのコマンドにより辞書ディレクトリおよび辞書ファイルが作成され、必要に応じてdics.dirファイルが更新あるいは作成されます。
+
+(例)
+\begin{nquote}{2em}
+\verb+ % mkdic dicname + 
+\end{nquote}
+
+以下の操作によりmkdic(1)と同じ処理を行うことができます。
+
+\begin{enumerate}
+
+\item 辞書ディレクトリの作成
+
+\refCANNALIBDIR /dic/user/の下に自分のユーザ名のディレクトリを作ってください。
+
+\item 辞書ファイルの作成
+
+そのディレクトリにfilename.tというファイルを作ります。filenameは任意の名前で、これをdics.dirに書き込みます。登録はテキストファイルに行いますので、必ず .t という拡張子を付けてください。ファイルには何も書き込む必要はありません。
+
+このファイルのグループはbinとし、グループに対する書き込み権を許可しておいてください。これを行わないと単語登録が反映されない場合があります。
+
+\item dics.dirの作成
+
+ユーザ辞書ファイルと同じディレクトリにdics.dirというファイルを作ってください。
+
+dics.dirはそのディレクトリ下にある辞書の一覧を保持しているファイルです。
+このファイルには以下のように辞書ファイルの名前、辞書の種類、辞書名、
+辞書のアクセス権を書き込みます。
+
+例)
+
+\begin{nquote}{2em}
+\begin{tabular}{lc}
+{　　　}\underline{filename.t} (\underline{.mwd})  &
+\underline{-dicname-rw-} \\
+辞書ファイル名　　↓                               &
+     辞書名とアクセス権  \\
+\multicolumn{2}{c}{子辞書名(自立語辞書であることを指定)} \\
+\end{tabular}
+\end{nquote}
+注意  アクセス権(-rw-)は、\tt{r} は \tt{READ}権あり、\tt{w} は \tt{WRITE}
+権ありを表します。
+\end{enumerate}
+\end{enumerate}
+
+
+\subsection{グループ辞書の設定}
+
+単語登録を行うには、カスタマイズ機能によりユーザ辞書の設定を行う必要が
+あります。カスタマイズ機能についての詳細は
+ {\dg\bf \ref{3.3カスタマイズ} \hpref{count=6,label=H0.4.0.0.0}カスタ
+マイズ} を参照してください。
+
+
+\usedictool
+%各ユーザのユーザ辞書の作成は以下に示すコマンド操作による方法と
+% GUI ベースの辞書ツールを使用する方法があります。
+%
+% GUI ベースの辞書ツールの操作方法については
+% {\dg\bf \ref{辞書ツール} \hpref{count=5,label=H0.7.0.0.0}辞書ツール}
+%を参照してください。
+
+
+\begin{enumerate}
+
+\item .cannaの作成
+
+ホームディレクトリに .canna というファイルを作成し、以下のように書き込
+んでください。引数には辞書名を記述します。最初の２行は基本になる辞書の名前
+ですので必ず記述してください。
+
+はじめは\refCANNALIBDIR /sampleの下のdefault.cannaというファイルをコピー
+して用いると良いでしょう。
+
+例)
+\begin{nquote}{1em}
+\begin{verbatim}
+(use-dictionary  "iroha"         
+                 "fuzokugo"      
+                 :group "dicname" )
+\end{verbatim}
+\end{nquote}
+
+\item グループ辞書ファイルの作成
+
+mkdic(1)によりグループ辞書(テキスト形式)の作成が可能です。
+
+これらのコマンドにより辞書ディレクトリおよび辞書ファイルが作成され、
+必要に応じてdics.dirファイルが更新あるいは作成されます。
+
+(例)
+\begin{nquote}{2em}
+\verb+ % mkdic -G dicname + 
+\end{nquote}
+
+以下の操作によりmkdic(1)と同じ処理を行うことができます。
+
+\begin{enumerate}
+
+\item 辞書ディレクトリの作成
+
+\refCANNALIBDIR /dic/group/の下に共有するグループ名のディレクトリを
+作ってください。
+
+\item 辞書ファイルの作成
+
+そのディレクトリにfilename.tというファイルを作ります。filenameは任意の
+名前で、これをdics.dirに書き込みます。登録はテキストファイルに行います
+ので、必ず .t という拡張子を付けてください。ファイルには何も書き込む必
+要はありません。
+
+このファイルのグループはbinとし、グループに対する書き込み権を許可して
+おいてください。これを行わないと単語登録が反映されない場合があります。
+
+\item dics.dirの作成
+
+グループ辞書ファイルと同じディレクトリにdics.dirというファイルを作って
+ください。
+
+dics.dirはそのディレクトリ下にある辞書の一覧を保持しているファイルです。
+このファイルには以下のように辞書ファイルの名前、辞書の種類、辞書名、
+辞書のアクセス権を書き込みます。
+
+例)
+
+\begin{nquote}{2em}
+\begin{tabular}{lc}
+{　　　}\underline{filename.t} (\underline{.mwd})  &
+\underline{-dicname-rw-} \\
+辞書ファイル名　　↓                               &
+     辞書名とアクセス権  \\
+\multicolumn{2}{c}{子辞書名(自立語辞書であることを指定)} \\
+\end{tabular}
+\end{nquote}
+注意  アクセス権(-rw-)は、\tt{r} は \tt{READ}権あり、\tt{w} は \tt{WRITE}
+権ありを表します。
+\end{enumerate}
+\end{enumerate}
+
+\subsection{\IDX{Wnn}{ＷＮＮ}対応}
+
+今までかな漢字変換システムとしてWnnを使用してきたユーザに『かんな』
+を有効に御使用していただくための簡易ツールを用意しました。
+
+おそらく、Wnnを使い込んできたユーザには自分なりの辞書を持っていること
+でしょう。そこでWnnユーザはWnnでの使い慣れた辞書を『かんな』
+の形式に変換することにより、本システムで今までどおりのかな漢字変換がで
+きます。このために、Wnnのテキスト形式辞書を『かんな』のテキ
+スト形式辞書に変換するコマンドwtoc(1)があります。
+
+また、『かんな』とWnnの両方を使用しているユーザは『かんな』
+での辞書をWnnと共有することができれば便利でしょう。そのため
+に『かんな』のテキスト形式辞書をWnnの形式に変換するコマンドctow(1)が
+あります。wtocとctowによりWnnと『かんな』間でかな漢字変換辞
+書を相互に利用できます。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,178 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+	Copyright Carnegie Mellon University, 1992 - All rights Reserved
+		$Disclaimer: 
+Permission to use, copy, modify, and distribute this software and its 
+documentation for any purpose is hereby granted without fee, 
+provided that the above copyright notice appear in all copies and that 
+both that copyright notice, this permission notice, and the following 
+disclaimer appear in supporting documentation, and that the names of 
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+used in advertising or publicity pertaining to distribution of the software 
+without specific, written prior permission.
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+OF THIS SOFTWARE.
+ $
+\* ********************************************************************** */
+
+#ifndef _ness_gen_h_
+#define _ness_gen_h_
+
+
+/* gen.hn  -  definitions for nesscomp 
+
+	THIS FILE IS PROCESSED BY nodeclss.n TO PRODUCE gen.h
+	DO NOT EDIT gen.h
+
+	A source file which imports gen.h should also import nodeclss.h
+*/
+/* $Log: gen.hn,v $
+Revision 1.16  1994/03/01  23:05:54  rr2b
+Commented out text after #endif's
+BUG
+
+Revision 1.15  1993/05/04  01:23:55  susan
+RCS Tree Split
+
+Revision 1.13.1.1  1993/02/02  03:01:09  rr2b
+new R6tape branch
+
+Revision 1.13  1992/12/08  04:14:46  wjh
+fixed so it will not crash when a runtime error occurs
+	moved the recompile to locate error operations to compile.c
+.
+
+Revision 1.12  1992/11/26  02:55:09  wjh
+converted CorrectGetChar to GetUnsignedChar
+moved ExtendShortSign to interp.h
+remove xgetchar.h; use simpletext_GetUnsignedChar
+nessrun timing messages go to stderr
+replaced curNess with curComp
+replaced genPush/genPop with struct compilation
+created compile.c to handle compilation
+moved scope routines to compile.c
+converted from lex to tlex
+convert to use lexan_ParseNumber
+truncated logs to 1992 only
+use bison and gentlex instead of yacc and lexdef/lex
+
+.
+
+Revision 1.11  92/06/05  16:39:31  rr2b
+added deallocSysMarks
+
+...
+log truncated dec 1992 -wjh
+...
+
+Revision 1.5  89/06/01  15:58:25  wjh
+campus release version
+ 
+ */
+
+#include "class.h"
+#include "nesssym.ih"
+#include "compdefs.h"
+#include "interp.h"
+#include "envt.h"	/* for TSysMarkRef */
+
+extern boolean predcond;
+extern struct predstatenode *pssp;   /* (used in compile.c) */
+
+#define predEQ	0
+#define predNE	1
+#define predLT	2
+#define predLE	5
+#define predGT	4
+#define predGE	3
+#define predT	6
+#define predF	7
+#define predOR	7
+#define predAND	6
+
+#define MAXEXPRDEPTH 500  /* the number of elts in predstatestack */
+
+nodeclass fixupstackrefnode {
+	TCodeRef refloc;		/* offset from start of function */
+	struct nesssym *sym;
+	struct fixupstackrefnode *next;	
+};
+
+struct nessmark *makeFunction(/* TSysMarkRef *loc */); 
+		/*creates a marker for a new function */
+TSysMarkRef makeConst(/* unsigned char *s */);  
+		/*  return index of marker for const with s  */
+TSysMarkRef makeStyledConst(/* struct text *text, long pos, long len, 
+			boolean bsReduce */); 
+		/*  return index of marker for const from text at pos,len */
+TSysMarkRef makeGlobal();		
+		/*  return index of marker for a global var  */
+void addOp(/* struct nessmark *m, unsigned char op */);	
+		/* add operator to func def'n */
+TCodeRef refStack(/* struct nessmark *m, unsigned char op, TStackRef rand */); 
+		 /* add op w/ 1 byte rand */
+void fixRefStack(/* struct nessmark *m, TCodeRef loc, TStackRef val */);  
+		/* fix a refStack */
+TCodeRef refSysMark(/* struct nessmark *m, char op, TSysMarkRef rand */);  
+		/* op w/ 2 byte rand */
+void refAddress(/* struct nessmark *m, unsigned char op, 
+			struct object *address */);
+		/* add op followed by four byte operand */
+
+void genLinkGlobal(/* struct nesssym *sym */);	/* attach sym to *AttrDest */
+void genLocStore(/* struct nesssym *sym */);	/* call codelocStore */
+void defineBuiltins(/* nesssym_scopeType scope */);  
+		/* add def'ns of built-ins to symtab */
+TSysMarkRef genEnter(/* */);	/* generate function entry */
+boolean genExit(/* struct nesssym *parmlist, struct nesssym *locallist */);  
+		/* func exit */
+void startfunc(/* struct nesssym *fname */);
+void genreturn(/* boolean hasExpr */);
+void finishfunc(/* struct nesssym *fname, *locallist */);
+void abortfunc(/**/);	/* exit scope if in a func */
+struct nesssym * appendlists(/* struct nesssym *list1, *list2 */);
+
+struct exprnode *genarith(/* char op, exprnode left, exprnode right */);
+
+void gencomp(/* struct exprnode *left, *right */);   /* generate comparison code */
+void genvarref(/* struct nesssym *var */);
+void genvarstore(/* struct varnode *var */);
+struct varnode *genvarnode(/* struct nesssym *sym */);
+void genconstref(/* struct nesssym *constant */);
+void genop(/* unsigned char op */);
+
+long genlabel(/**/);  /*returns loc of next opcode emitted */
+long genbranch(/* unsigned char op, long dest */); /* emits branch to target; returns its loc */
+void fixbranch(/* long loc */); /* fix branch at 'loc' to go to next op code emitted */
+
+struct predstatenode * predpush(/* boolean cond, long loc */); /* return predicate state 
+					and init to cond */
+void predpop(/* */); /* restore predicate state */
+void predvalue(/* Texpr *type */);  /* emit code to generate value from a predicate */
+void predbranch(/* struct exprnode *expr */);  /* emit code to convert value to branching */
+void preddropthru(/* long rop */); /* generate branch & put fixup on dropthru list */
+void predtarget(/* long rop */); /* generate branch & put fixup on target list */
+void predfixdropthru(/**/); /* make elts of dropthru list goto next opcode emitted;  empty list */
+void predfixtarget(/**/); /* make elts of target list goto next opcode emitted;  empty the list */
+
+void demandsymboltype(/* sym, type */);  /* error message if wrong type  */
+void demandnodetype(/* exprnode, type */);  /* generate error if wrong type  */
+struct varnode *varIsStorable(/* varsym */); /* checks that var is a variable */
+struct varnode *varIsFunction(/* varsym */); /* checks that var is a function */
+struct nesssym *uniqueinscope(/* var, flags*/);  /* hide outer scope */
+void ProcessIdList(/* type, varlist, flags, kind */); 
+void parencheck(/* varnode left, struct toksym *right */);	/* check parenthesis match */
+void genCheckEndtag(/* struct nesssym *tag, long desired */);	/* check token after END */
+void genSaveFuncState(/* */);		/* save global initializer */
+void genRestoreFuncState(/* struct nesssym *func */);   /* resume global initializer */
+void deallocSysMarks(/* int n */);
+#endif /* _ness_gen_h_ */
+

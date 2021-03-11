@@ -1,0 +1,702 @@
+@begin(header)
+author: ackerman@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+expiration_date: 06/25/93
+last_modifier: ackerman@ics.uci.edu
+last_mod_date: 07/02/91
+mod_num: 2
+@end(header)
+@begin(Q)  
+Date: Wed, 2 Aug 89 10:00:57 CDT
+Subject: x and y
+
+I am writting an application using Widgets and I want to have a popup
+widget appear where the cursor is or else, at least where a known widget
+is.  When I get the x and y back from the event handler it is relative to
+the widget I clicked on (0,0 is the upper left corner of the widget).
+Also, when I try to get x and y values for the position of the widget it
+is relative to my toplevel widget and when I get x and y for my toplevel
+widget they are 0 and 0.  If I could get the x and y of the toplevel 
+widget this would be sufficient, hoever, what I really want is the cursor
+position when the event occurred.  Thanks,
+@end(Q)
+
+@begin(A)
+Subject: Re: x and y 
+Date: Wed, 02 Aug 89 13:47:12 -0400
+From: Chris D. Peterson
+
+> When I get the x and y back from the event handler it is relative to
+> the widget I clicked on ... what I really want is the cursor
+> position when the event occurred.  Thanks,
+
+Use XtTranslateCoords().
+
+Note: there is a small bug in this routine in R3 that causes the toolkit
+not to track movements of the window once it has been initially placed.  If
+you are planning to distribute your code before R4 is avaliable then you
+might want to temporarily use XTranslateCoordinates().
+@end(A)
+
+@begin(M)
+Date: Tue, 28 Mar 89 15:49:12 EST
+From: Chris D. Peterson 
+
+> I seem to be having a problem with Popup widgets.  I have a toplevel widget,
+> that is created with XtInitialize, that has several children widget.
+
+Each Toplevel ( or Shell ) Widget should have only one direct child, I
+do not think this is causing your problems, but it is worth noting.
+
+[ long discussion of problem deleted. ]
+
+> Another question is what does the grab_kind argument to
+> the XtPopup() function refer to and what does each of the possible args
+> (XtGrabNone,XtGrabNonexclusive, and XtGrabExclusive) mean????
+
+XtGrabNone means that events will still be passed to all widgets in the
+application.
+
+XtGrabExclusive means that events will be sent to no other widget in the
+application, as long as this widget is popped up.
+
+XtGrabNonExclusive means that other widgets on the grab list, Those that
+used XtAddGrab() or XtPopop(XtGrabNonexclusive) will also be able to 
+receive events, but no other widgets in the applicaion will receive events.
+
+When a widget is popped down, all grabs it made are removed.
+
+Read the sections on XtPopup() and XtAddGrab() in the Xt Intrinsics 
+Documentaion for a more detailed explanation of Grabs.
+@end(M)
+
+@begin(M)
+Subject: Re: Popup Shells & Iconify Operation 
+Date: Wed, 15 Nov 89 08:41:47 EST
+From: Ralph R. Swick 
+
+>	I understand completely why this happens.
+> What I want to know is...   What is the 'correct'
+> programming technique to overcome this problem?
+> (ie. I want the popups to go away on an iconfiy,
+> and come back when the de-iconify happens)
+
+I'd recommend that you set the WM_TRANSIENT_FOR hint and
+strongly lobby the window manager developers for a standard
+interpretation of this hint along the lines you've sketched.
+
+Until there is a standard interpretation, you've no choice
+but to manually unmap the popups when you notice that your
+main window has been unmapped.  Or only claim to run under
+window managers that interpret WM_TRANSIENT_FOR the way
+you need.
+@end(M)
+
+@begin(Q)
+Date: 20 Nov 88 22:56:57 GMT
+
+[Summary:  I would like to call XtMainLoop recursively.]
+
+What are the best ways for a Toolkit client to query the user and wait
+for a response?  I understand that this goes against the spirit of the
+toolkit, which is to have the program respond to the user rather than
+vice versa, but there are situations in which it is necessary:
+
+For example, an exceptional condition is discovered while processing a
+user request, such as "disk space full" or "out of memory" or "do you
+really want to delete all your files?".
+
+In most cases, it is possible to pop up widgets with callbacks to handle any
+of the possible responses, using the user-data-field to pass in some sort
+of context to continue processing in the appropriate manner.
+
+However, it is sometimes very difficult (in C) to encapsulate the entire
+execution context in a single data structure and restore it in the callback.
+It makes it difficult to use stack variables.
+
+In these cases, I would like to be able to pop up a widget and go into a
+recursive invocation of XtMainLoop (), which would return when the pop-up
+widget is unmapped, or when some routine like XtPopLevel is called.
+
+The only solution I can think of is to write my own main loop:
+
+int recursion_depth = 0;
+main_loop() {
+    XEvent e;
+    recursion_depth++;
+    while (recursion_depth > 0) {
+	XtNextEvent (&e);
+	XtDispatchEvent (&e);
+    } /* while */
+} /* main_loop */
+
+main_loop can be called recursively, provided XtDispatchEvent can.  Is this
+legal?  If it is, an application would "exit" by decrementing recursion_depth,
+rather than calling exit().  Is this the best way to prompt-and-block?  Is
+there a danger of XtDispatchEvent finding a different widget set present
+after it calls the callbacks?  Can this be handled by giving my main_loop
+some notion of a sub-tree of widgets that it can process?
+@end(Q)
+
+@begin(M)
+Date: 22 Nov 88 20:03:34 GMT
+
+I asked how I could write a routine that would pop up a widget and *block*
+until the user closed the widget.
+
+Chris D. Peterson answered a different question:
+[	How can I lock out events in the rest of my applicaion 
+  while processing an error condition? ]
+
+He suggested using XtPopup (widget, XtGrabExclusive), and referred me	
+to the R3 toolkit docs.  Unfortunately, I don't have the R3 documentation
+yet, but my intuition, the R2 documentation, and the R2 source code all seem
+to indicate that that routine will not block.  It will just perform
+the appropriate grabs to ensure that none of my other widgets' callbacks
+get called.
+
+What I want is to write a routine that does not return until a widget
+has been closed.  Is that what XtPopup does?
+@end(Q)
+
+@begin(A)
+Date: 22 Nov 88 21:31:45 GMT
+From: Chris D. Peterson
+Organization: Massachusetts Institute of Technology
+Subject: Re: Basic questions on X Toolkit Intrinsics
+
+> What I want is to write a routine that does not return until a widget
+> has been closed.  Is that what XtPopup does?
+
+This is not simple, perhaps the following method will serve your
+purposes.  ( I realize it seems like I am telling you how to get
+around the problem, rather then how to solve it).
+
+Create two routines rather than one, Setup() and Shutdown().
+
+Setup()	This routine pops up your XtGrabExclusive window that 
+	has Shutdown() as the proceedure that is called when the user
+	acknowledges your message window.  It then exits back 
+	to XtMainLoop().
+
+Since you have GrabExclusive set the only routine that can be called is
+Shutdown(), so in essence you are blocking until the user acknowledges
+your message.
+
+Shutdown()	Pops down the window, allowing the program to continue.
+
+I think this method is cleaner than trying to have a event handler in the 
+middle of your code.  As long as you comment it well the program flow
+should not be any harder to follow than the other toolkit code :-)
+@end(A)
+
+@begin(A)
+Date: 22 Nov 88 23:32:57 GMT
+From: Paul Asente
+Organization: DEC Western Software Lab
+Subject: Re: Basic questions on X Toolkit Intrinsics
+
+>[Summary:  I would like to call XtMainLoop recursively.]
+
+XtMainLoop is nothing but an infinite loop calling XtNextEvent and
+XtDispatchEvent.  You can call these yourself if you want to.
+
+XtDispatchEvent, in R3, is fully reentrant.  You can call it from
+anywhere.  In R2, it's not.
+@end(A)
+
+@begin(A)
+Date: 22 Nov 88 23:35:16 GMT
+From: Paul Asente
+Organization: DEC Western Software Lab
+Subject: Re: Another toolkit question
+
+>[Summary:  How do I detect typeahead in the toolkit?]
+>
+>To accomplish this in the toolkit, we would need to have a function
+>	XtWidgetMaskIfEvent (widget, event_mask, predicate, user_data);
+
+It's perfectly ok to call the Xlib routines to look for typeahead.  Just
+pull the display and window out of the widget with XtDisplay and XtWindow.
+@end(A)
+
+@begin(A)
+From: Miles O'Neal
+Organization: Sales Technologies Inc., Atlanta, GA
+Date: 23 Nov 88 16:08:57 GMT
+
+>I asked how I could write a routine that would pop up a widget and *block*
+>until the user closed the widget.
+>
+>What I want is to write a routine that does not return until a widget
+>has been closed.  Is that what XtPopup does?
+
+No.
+
+I don't know of anything In X11 or the Toolkit that really does this.
+
+What you CAN do is an XGrabCursor, setting the confine_to parameter
+to the window of the widget you wish to confine the cursor to. This
+will allow only that widget & its children (buttons, etc) to get
+cursor input.
+@end(A)
+
+@begin(M)
+Subject: Re: Popup speed? 
+Date: Thu, 06 Jul 89 17:14:43 -0400
+From: Chris D. Peterson 
+
+>    I have written a simple popup menu implementation but right now it is
+> painfully slow.  I'm sure it's because I shouldn't be using XtPopup to
+> popup the menu shells since this function realizes the shell widget even
+> if it has been realized in advance.
+
+You had better look deeper for the source of the problem, XtRealize
+widget checks to see if a widget is already realized and if it is then
+no action is taken.
+
+Do you have Save Unders active on your menus?  On slow machines this can
+cause things to be really slow.  Especially if it has to page that chunk of
+code in from the disk.
+@end(M)
+
+@begin(M)
+From: Donna Converse
+Subject: Re: lost Keyboard events after a PopUp 
+Organization: X Consortium, MIT Laboratory for Computer Science
+Date: Mon, 31 Jul 89 11:57:24 -0400
+
+> 
+>      I am having a problem with PopUps and I was wondering if 
+>      anyone could help me out.
+>      I receive keyboard events just fine until I do any sort
+>      of PopUp. 
+
+Your code fragments didn't indicate which interface you are using to actually
+do the popup.  Some types of popups "grab" keyboard events, meaning, any
+keyboard input to the application will be redirected to the popup.  
+Read section 5.4 of the X Intrinsics manual, "Mapping a Pop-Up Widget".
+
+> 
+> static void
+> Window_Event(widget, e, client_data)
+
+Wrong number of arguments, and type mismatch on argument 3, for an action
+procedure.
+
+> 
+>    dialog_shell= XtCreatePopupShell("dialog_shell",
+>                 overrideShellWidgetClass, toplevel, 
+> 		  shell_args, XtNumber(shell_args));
+
+Unless you are implementing a set of popup menus (in which case you 
+probably *would* want to do an exclusive grab of keyboard events)
+the ICCCCM recommends using transientShellWidgetClass, not override.
+@end(M)
+
+@begin(M)
+From: Donna Converse
+Organization: X Consortium, MIT Laboratory for Computer Science
+Subject: Re: TransientShell widget. 
+Date: Mon, 31 Jul 89 16:52:49 -0400
+
+> I am having trouble with transient shell widgets. I am able to iconify them
+> separtely even when the parent is not iconified. I am creating and mapping
+> the pop up widget as follows:
+
+[code deleted]
+
+> >    XtPopup(popup,XtCallbackNone);
+
+The second argument to XtPopup is of type XtGrabKind; XtCallbackNone
+is not of type XtGrabKind.
+
+> A note in the ICCCM manual (page 32) says: 
+> 
+> "Window managers are free to decide if WM_TRANSIENT_FOR windows should be
+> iconified when the window they  are transient for is. Clients displaying
+> WM_TRANSIENT_FOR windows which have the window they are transient for
+> iconified do not need to request that the same operation be performed on
+> the WM_TRANSIENT_FOR window; the window manager will change its state if
+> that is the policy it wishes to  enforce" 
+> 
+
+Shell widgets of class transientShellWidgetClass have the WM_TRANSIENT_FOR
+property set.  They are transient for (on behalf of) some other window.
+The passage above discusses the issue of iconifying the transient when
+the window it is transient for is iconified.  You are asking about it
+the other way around.
+
+Separately iconifying a transient window is not prohibited by the ICCCM.
+Whether it is allowed is an issue of window manager policy, implying that
+the application can't prevent the transient from being separately iconifed.
+So... what you see is not a problem.  It might allow the user to get some
+useful work done.  If it's deadly to your application, use an override
+shell and grab the pointer while the override shell is mapped.
+@end(M)
+
+@begin(Q)
+Date: 31 Jul 89 22:57:45 GMT
+Subject: More on TransientShells
+
+Thanks to Donna Converse for the help on Transient Shells. But I am still
+confused.
+
+The XtIntrinsic manual (pg. 45) describes TransientShell widgets as follows:
+
+"Used for shell windows that can be manipulated by the window manager but
+are not allowed to be iconified separately ... They are iconified by the
+window manager only if the main application shell is iconified."
+
+Donna Converse writes:
+>Separately iconifying a transient window is not prohibited by the ICCCM.
+>Whether it is allowed is an issue of window manager policy, implying that
+>the application can't prevent the transient from being separately iconifed.
+
+Does this imply that transient windows can be iconified seperately even
+when the main shell is not iconified? I was expecting the following
+behavior from Transient shells: 
+
+1. When the main application is iconified, the transient shells get
+iconified automatically.
+
+2. Cannot be iconified in any other way except as in 1.
+
+I am unable to get this behavior (I corrected the XtGrabKind; thanks).
+
+Your help is greatly appreciated.
+@end(Q)
+
+@begin(A)
+Date: 1 Aug 89 22:07:36 GMT
+From: Gabe Begeddov
+Organization: Hewlett-Packard Co., Corvallis, OR, USA
+Subject: Re: More on TransientShells
+
+  The XtIntrinsic manual (pg. 45) describes TransientShell widgets as follows:
+  
+  "Used for shell windows that can be manipulated by the window manager but
+  are not allowed to be iconified separately ... They are iconified by the
+  window manager only if the main application shell is iconified."
+
+These words are wrong. Xt only sets hints on shells. It is up to the WM (and
+the ICCC) to determine how these hints are used.
+  
+  Does this imply that transient windows can be iconified seperately even
+  when the main shell is not iconified? I was expecting the following
+  behavior from Transient shells: 
+
+  1. When the main application is iconified, the transient shells get
+  iconified automatically.
+  
+  2. Cannot be iconified in any other way except as in 1.
+  
+  I am unable to get this behavior (I corrected the XtGrabKind; thanks).
+
+There is a bug in the MIT Xt such that if you realize your transient shells
+prior to realizing your application shell the window group and transient_for
+hints will be set to None (0). Depending on the window manager this could
+cause separate iconification of the transients. This was the case with
+the OSF/Motif window manager until we fixed this bug.
+@end(A)  
+
+@begin(M)
+Subject: Re: Help with popup widgets 
+Date: Wed, 02 Aug 89 14:03:36 -0400
+From: Chris D. Peterson 
+
+> The menu is popped up on Btn1Down but it is not going down on releasing the
+> button. Where am I making the mistake?
+
+Put the MenuPopdown() translation in your menu, the toolkit use a bit of
+X magic to send all events to the menu once it has been popped up.  Since
+all the events go to the menu it must be responsible for popping itself down.
+@end(M)
+
+@begin(A)
+Date: 3 Aug 89 13:41:17 GMT
+From: Thomas J. Pusateri
+Subject: Re: x and y
+
+> I am writting an application using Widgets and I want to have a popup
+> widget appear where the cursor is or else, at least where a known widget
+> 
+[...] here is a code fragment taken from
+a pop up menu widget that puts the popup where you want it.
+
+----------------------------------------------------------------------------
+ * MenuShell Widget 
+ * Robert Blumen blumen@arisia.xerox.com blumen@cad.berkeley.edu
+ *
+/***********************************************************
+Copyright 1988 by Digital Equipment Corporation, Maynard, Massachusetts,
+and the Massachusetts Institute of Technology, Cambridge, Massachusetts.
+
+                        All Rights Reserved
+
+Permission to use, copy, modify, and distribute this software and its 
+documentation for any purpose and without fee is hereby granted, 
+provided that the above copyright notice appear in all copies and that
+
+/*-----------------------------------------------------------
+Find out where the pointer is and put the menu there.  Geometry request
+should always be satisfied since we are an override shell.
+*/
+
+static void
+_GetLocation(w)
+	Widget w;
+{
+	MenuShellWidget msw = (MenuShellWidget) w;
+	Window root, child;
+	int x_root, y_root, x_win, y_win;
+	unsigned int mask;
+	XtWidgetGeometry request;
+
+	XQueryPointer( XtDisplay( msw ), XtWindow( msw ), &root, &child, 
+		      &x_root, &y_root, &x_win, &y_win, &mask);
+
+	request.request_mode = CWX | CWY;
+	switch (msw->menu.menu_under_cursor) {
+	case XtJustifyLeft:
+		request.x = x_root;
+		break;
+	case XtJustifyCenter:
+		request.x = x_root - msw->core.width/2;
+		break;
+	case XtJustifyRight:
+		request.x = x_root - msw->core.width;
+		break;
+	default:
+		XtError("wrong type of menu justify.\n");
+		break;
+	}
+	request.y = y_root -1;
+	XtMakeGeometryRequest(msw, &request, (XtWidgetGeometry *)NULL);
+	return;
+}
+@end(A)
+
+@begin(A)
+Date: 5 Aug 89 04:31:58 GMT
+From: Paul Asente
+Organization: DEC Western Software Lab
+Subject: Re: More on TransientShells
+
+>
+>Thanks to Donna Converse for the help on Transient Shells. But I am still
+>confused.
+>
+>The XtIntrinsic manual (pg. 45) describes TransientShell widgets as follows:
+
+This is an error in the spec; it should be fixed in R4.  It was mistakenly
+written based upon just one window manager's implementation of transients.
+
+The only thing a transient shell does is set the transient property;
+interpreting the meaning of this property is up to the window manager.
+@end(A)
+
+@begin(Q)
+Date: 14 Aug 89 14:34:06 GMT
+Subject: Popup Dialog box: Some Questions!!
+
+Donna Converse posted a sample code in this newsgroup about a week ago
+which shows how a popup dialog box can be implemented. I have some
+questions about the code and anyone on the net who saw the same code,
+please help me out.  (I mailed the same message to Donna, but it
+probably didn't get through.)
+
+        1.  Where are XtNinput and XtNallowShellResize described? I
+was unable to locate them in the Intrinsics manual. The reason for
+using these resources in this code is not clear to me.
+
+        2.  Why do you have to execute BOTH of the following in
+PopupPrompt() routine? What is the exact difference between these 2
+calls with respect to a popup shell?
+
+                XtRealizeWidget (popup);
+                XtPopup (popup, ...);
+
+        Can you not just XtPopup(popup, ...)? I read somewhere that a
+popup shell need not be "realized" if you execute 'XtPopup()' on it. I
+removed XtRealizeWidget() call, and the program works!
+
+        3. Can anyone send me the description of "XtDialogAddButton()"
+routine?  It is not described in the Instrisics manpages.
+
+        4. I ran this program, opened the main "popup" window and
+positioned it on the screen. Then I MOVED it interactively BEFORE
+clicking on the button named "Press to see Simple Demo". The Dialog
+window appeared at a place where the main "popup" window had FIRST
+appeared.  (I had same problem with another program I wrote. The popup
+menu does not 'move' with the main window when the main window is
+moved to another place using window manager.) I want the dialog window
+to move with the "main window".  How can I obtain such a behaviour? Is
+the Window Manager causing this problem?
+
+        Thanks.
+@end(Q)
+
+@begin(A)
+From: Donna Converse
+Subject: Re: Popup Dialog box: Some Questions!! 
+Organization: X Consortium, MIT Laboratory for Computer Science
+Date: Mon, 14 Aug 89 14:30:52 -0400
+
+> Donna Converse posted a sample code in this newsgroup about a week ago
+> which shows how a popup dialog box can be implemented. I have some questions
+> about the code and anyone on the net who saw the same code, please help me out.
+
+>         1.  Where are XtNinput and XtNallowShellResize described? 
+
+Intrinsics Section 4.1.3  "ShellPart Default Values"
+
+> The reason for using these resources in this code is not clear to me.
+
+Setting the input resource of the shell widget to true lets the window
+manager know that your application expects to receive user keyboard and/or
+mouse events.   Some window managers will not pass on events to the
+application unless the application has indicated that it takes input.
+
+Setting XtNallowShellResize to true will allow the shell to make resize
+requests of the window manager in response to a resize request from the 
+the child of the shell.  Suppose the user, in the example code, types
+in a color name that is really long.  The popup window expands as the
+input area expands, because XtNallowShellResize is true.   In the example
+code, I set resizable on the value, but I forgot to set it on the label.
+If you set resizable on the label you'll see the shell resize as the prompt
+grows and shrinks.
+
+>         2.  Why do you have to execute BOTH of the following in PopupPrompt()
+> routine?  What is the exact difference between these 2 calls with respect to
+> a popup shell?
+>                 XtRealizeWidget (popup);
+>                 XtPopup (popup, ...);
+
+Good, you got me!   You don't have to execute both.
+See section 5.3 "Creating Popup Children".  XtPopup will call XtRealizeWidget.
+
+>         Can you not just XtPopup(popup, ...)? I read somewhere that a popup
+> shell need not be "realized" if you execute 'XtPopup()' on it. I removed
+> XtRealizeWidget() call, and the program works!
+
+You are right on all points: there is no particular reason to call
+XtRealizeWidget in this example.  Section 5.3 gives a reason why some
+implementations would want to realize before calling XtPopup.
+
+> 
+>         3. Can anyone send me the description of "XtDialogAddButton()" routine?
+> It is not described in the Instrinsics manpages.
+
+It is not documented in R3, but if it were, it would be with the
+Athena widgets.
+
+void XtDialogAddButton(dialog, name, function, param)
+Widget dialog;			/* dialog widget */
+char *name;			/* name of the command button to add to dialog */
+void (*function)();		/* button press callback function */	
+caddr_t param;			/* button press callback client data */
+
+>         4. I ran this program, opened the main "popup" window and positioned
+> it on the screen. Then I MOVED it interactively BEFORE clicking on the
+> button named "Press to see Simple Demo". The Dialog window appeared at a
+> place where the main "popup" window had FIRST appeared.
+> Is the Window Manager causing this problem?
+
+This exactly describes a problem in R3 with XtTranslateCoords.  Until R4,
+use XTranslateCoordinates instead.  It is not your window manager.
+Sorry I didn't warn you about this in the example code.
+@end(A)
+
+@begin(M)
+Organization: DEC/MIT Project Athena
+Date: Thu, 17 Aug 89 11:43:16 EDT
+From: Ralph R. Swick
+
+    Shell.h says that XtNinput is "only used at creation and can not be changed
+    via SetValues."  My question is, is Shell.h wrong?
+
+Yes, Shell.h is wrong; the Intrinsics document makes no such restriction.
+@end(M)
+
+@begin(M)
+Date: Fri, 01 Sep 89 16:50:36 EDT
+From: Ralph R. Swick 
+
+> Is there a way that I can 'turn a widget off'; set some flag so that it
+>    does not get drawn?
+
+Look at the mappedWhenManaged resource, and the XtSetMappedWhenManaged
+function.  This is probably what you want.
+
+> I have a popup window, a dialog box really, which I do not want the user
+>    to be able to move while it is popped up.
+
+This depends entirely upon the window manager.  Your best bet
+is to make your popup a transient (using TransientShell, or a
+variant), and hope that the window manager will conspire with you
+to give the user less control over the window.  However, there's
+no way to absolutely guarantee that no window manager will
+ever allow the user to reposition the window (the user signed
+the check, after all :-).
+
+If the popup is always drawn entirely in the confines of one of your
+application windows, then you could consider making the popup window a
+subwindow of the application window rather than a separate top-level
+window.
+@end(M)
+
+@begin(M)
+Date: 18 Sep 89 20:13:39 GMT
+Subject: popup windows, ICCCM compliance, and keyboard input
+
+Help!
+
+I may be suffering from brain rot, but for the life of me I can't
+figure out what combination of override_redirect, transient_for, and
+wmhints.input = True is needed to allow me to type in a popup window.
+I'm trying to run the program under olwm, which says it is
+pathologically ICCCM compliant.
+
+What I need is the words to tell the window manager to give a popup
+widget (at the moment I'm using a transientShellClass, but I've also
+tried overrideRedirectShellClass and wmShellClass) the input focus
+when I enter that popup.
+
+If anyone knows of code that does this (working under an ICCCM
+compliant window manager), PLEASE point me to it.
+
+Thanks a bunch!
+@end(M)
+
+@begin(M)
+Subject: Re: popup windows, ICCCM compliance, and keyboard input 
+Date: Tue, 19 Sep 89 07:52:49 EDT
+From: Ralph R. Swick
+
+> I may be suffering from brain rot, but for the life of me I can't
+> figure out what combination of override_redirect, transient_for, and
+> wmhints.input = True is needed to allow me to type in a popup window.
+
+override_redirect = False, wmhints.input = True should be sufficient.
+The semantics of transient_for (WM_TRANSIENT_FOR) are wm-specific
+and it's possible that a wm could disallow input to windows with
+this property (though I think that would be a big mistake).
+
+> What I need is the words to tell the window manager to give a popup
+> widget (at the moment I'm using a transientShellClass, but I've also
+> tried overrideRedirectShellClass and wmShellClass) the input focus
+> when I enter that popup.
+
+I assume you mean overrideShellClass; if not, you're not using
+the standard Xt.  WMShellClass is not intended to be instantiated
+by applications; you should use TopLevelShellClass instead, if
+TransientShellClass is not appropriate.  You might try modifying
+the transient (Boolean) resource with either a TransientShell
+or a TopLevelShell and see if that makes your wm any happier.
+
+We certainly have such things working here...
+@end(M)
+
+

@@ -1,0 +1,190 @@
+#!/bin/csh -f
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+%include pobbconfig.defs
+#
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+%ifdef pobb_RunMachines
+
+set nonomatch
+
+# Enqueue BBD jobs.
+if ($$#argv == 0) then
+    echo "use 'queueBBD -x' for help"
+    exit (1)
+endif
+set XXX="XXX"
+if ( "$$1" == "N") then
+%ifdef pobb_AutoPost
+	if ( ?[count(PurgingCommandsNightly)] > 0 ) then
+		set XXX="$${XXX} sublist nightstat nightpurge reindex";
+	else
+		set XXX="$${XXX} sublist nightstat reindex";
+	endif
+%endif pobb_AutoPost
+%ifdef pobbenv_AFS
+	set XXX="bbquota $${XXX}";
+%endif pobbenv_AFS
+%ifdef pobb_RunAMSDelivery
+%ifndef pobb_WPInteractive
+	set XXX="fwdcheck $${XXX}";
+%endif pobb_WPInteractive
+	set XXX="sqcheck pocheck $${XXX}";
+%endif pobb_RunAMSDelivery
+%ifdef pobb_WPUpdate
+	set XXX="pwcheck $${XXX}";
+%endif pobb_WPUpdate
+%ifdef pobb_NNTPIn
+	set XXX="nntpstat $${XXX}";
+%endif pobb_NNTPIn
+%ifdef pobb_CaptureAddresses
+	set XXX="$${XXX} capturenew";
+%endif pobb_CaptureAddresses
+endif
+if ( "$$1" == "W") then
+%ifdef pobb_AutoPost
+	set XXX="$${XXX} weekstat";
+	if ( ?[count(PurgingCommandsWeekly)] > 0 ) then
+		set XXX="$${XXX} weekpurge";
+	endif
+%endif pobb_AutoPost
+%ifdef pobb_TakeHelpStats
+	set XXX="$${XXX} helpstat"
+%endif pobb_TakeHelpStats
+endif
+if ( "$$1" == "BW") then
+%ifdef pobb_AutoPost
+	if ( ?[count(PurgingCommandsBiWeekly)] > 0 ) then
+		set XXX="$${XXX} biweekpurge";
+	endif
+%endif pobb_AutoPost
+endif
+if ( "$$1" == "M") then
+%ifdef pobb_AutoPost
+	set XXX="$${XXX} monthstat"
+	if ( ?[count(PurgingCommandsMonthly)] > 0 ) then
+		set XXX="$${XXX} monthpurge"
+	endif
+%endif pobb_AutoPost
+endif
+if ( "$$1" == "S") then
+%ifdef pobb_AutoPost
+	set XXX="$${XXX} semi-annualstat"
+	if ( ?[count(PurgingCommandsSemiAnnually)] > 0 ) then
+		set XXX="$${XXX} semi-annualpurge"
+	endif
+%endif pobb_AutoPost
+endif
+if ( "$${XXX}" != "XXX" ) then
+	set OurArgs=`echo $${XXX}`
+else
+	set OurArgs=`echo $$argv`
+endif
+
+#
+# IF NO ARGUMENT GIVEN, DON'T RUN
+#
+if ($$#OurArgs == 0) then
+    echo "use 'queueBBD -x' for help"
+    exit (1)
+endif
+
+while ( $$#OurArgs > 0 )
+	switch ( $$OurArgs[1] )
+	    case "-x":
+		echo "\
+One of the following flags must be given\
+	N\
+%ifdef pobb_AutoPost
+	-	sublist\
+%endif pobb_AutoPost
+%ifdef pobb_NNTPIn
+	-	nntpstat\
+%endif pobb_NNTPIn
+%ifdef pobb_AutoPost
+	-	nightstat\
+	-	nightpurge\
+%endif pobb_AutoPost
+%ifdef pobbenv_AFS
+	-	bbquota\
+%endif pobbenv_AFS
+%ifdef pobb_AutoPost
+	-	reindex\
+%endif pobb_AutoPost
+%ifdef pobb_WPUpdate
+	-	pwcheck\
+%endif pobb_WPUpdate
+%ifdef pobb_RunAMSDelivery
+	-	sqcheck\
+	-	pocheck\
+	-	fwdcheck\
+%endif pobb_RunAMSDelivery
+%ifdef pobb_CaptureAddresses
+	-	capturenew\
+%endif pobb_CaptureAddresses
+	W\
+%ifdef pobb_AutoPost
+	-	weekstat\
+%endif pobb_AutoPost
+%ifdef pobb_TakeHelpStats
+	-	helpstat\
+%endif pobb_TakeHelpStats
+%ifdef pobb_AutoPost
+	-	weekpurge\
+%endif pobb_AutoPost
+	BW\
+%ifdef pobb_AutoPost
+	-	biweekpurge\
+%endif pobb_AutoPost
+	M\
+%ifdef pobb_AutoPost
+	-	monthstat\
+	-	monthpurge\
+%endif pobb_AutoPost
+%ifdef pobb_AutoPost
+	S\
+	-	semi-annualstat\
+	-	semi-annualpurge"
+%endif pobb_AutoPost
+		exit (0)
+
+	    case "XXX":
+		breaksw
+
+	    default:
+		echo "queueBBD: enqueueing $$OurArgs[1]"
+		cp /dev/null ?[BigLocalDir]/bbdjobs/$$OurArgs[1]
+		set xstat = $$status
+		if ( $$xstat != 0 ) then
+			echo "Cannot enqueue file $$OurArgs[1]; status $$xstat"
+			exit ($$xstat)
+		endif
+		breaksw
+	endsw
+	shift OurArgs
+	sleep 2
+end
+exit(0)
+
+%endif pobb_RunMachines

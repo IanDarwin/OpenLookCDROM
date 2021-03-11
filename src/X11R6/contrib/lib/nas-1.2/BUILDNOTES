@@ -1,0 +1,157 @@
+# $NCDId: @(#)BUILDNOTES,v 1.1 1994/04/07 21:32:30 greg Exp $
+
+This file contains information on the following topics:
+
+	1. Solaris 2.3 OpenWindows notes
+	2. System V Release 4.0 notes
+	3. X11R4 notes
+
+		    ==============================
+
+Solaris 2.3 OpenWindows notes
+-----------------------------
+
+The imake configuration files in /usr/openwin/lib/config are slightly
+broken and require the following patches to work effectively.
+
+Firstly, symlink the following:
+
+	# cd /usr/openwin/lib/X11
+	# ln -s ../app-defaults ../config .
+	# cd config
+	# patch < patch-below
+
+
+--------------
+diff -c ORIG.5.3/Imake.tmpl ./Imake.tmpl
+*** ORIG.5.3/Imake.tmpl	Tue Sep  7 08:12:34 1993
+--- ./Imake.tmpl	Fri Jan 28 16:34:58 1994
+***************
+*** 885,896 ****
+  	  CCFLAGS = $(CDEBUGFLAGS) $(CCCOPTIONS) $(ALLDEFINES)
+          LINTFLAGS = $(LINTOPTS) -DLINT $(ALLDEFINES)
+  #if AlternateUsrLibDir && !defined(UseInstalled)
+!            LDLIBS = -L$(USRLIBDIR) $(SYS_LIBRARIES) $(EXTRA_LIBRARIES)
+  #else
+             LDLIBS = $(SYS_LIBRARIES) $(EXTRA_LIBRARIES)
+  #endif
+  #if AlternateUsrLibDir && defined(UseInstalled)
+!         LDOPTIONS = $(CDEBUGFLAGS) $(CCOPTIONS) $(EXTRA_LDOPTIONS) $(LOCAL_LDFLAGS) -L$(USRLIBDIR)
+  #else
+          LDOPTIONS = $(CDEBUGFLAGS) $(CCOPTIONS) $(EXTRA_LDOPTIONS) $(LOCAL_LDFLAGS)
+  #endif
+--- 885,896 ----
+  	  CCFLAGS = $(CDEBUGFLAGS) $(CCCOPTIONS) $(ALLDEFINES)
+          LINTFLAGS = $(LINTOPTS) -DLINT $(ALLDEFINES)
+  #if AlternateUsrLibDir && !defined(UseInstalled)
+!            LDLIBS = -L$(USRLIBDIR) -R$(USRLIBDIR) $(SYS_LIBRARIES) $(EXTRA_LIBRARIES)
+  #else
+             LDLIBS = $(SYS_LIBRARIES) $(EXTRA_LIBRARIES)
+  #endif
+  #if AlternateUsrLibDir && defined(UseInstalled)
+!         LDOPTIONS = $(CDEBUGFLAGS) $(CCOPTIONS) $(EXTRA_LDOPTIONS) $(LOCAL_LDFLAGS) -L$(USRLIBDIR) -R$(USRLIBDIR)
+  #else
+          LDOPTIONS = $(CDEBUGFLAGS) $(CCOPTIONS) $(EXTRA_LDOPTIONS) $(LOCAL_LDFLAGS)
+  #endif
+Only in .: ORIG.5.3
+diff -c ORIG.5.3/site.def ./site.def
+*** ORIG.5.3/site.def	Tue Sep  7 08:12:36 1993
+--- ./site.def	Fri Jan 28 15:21:10 1994
+***************
+*** 27,32 ****
+--- 27,33 ----
+  
+  /* #define HasGcc YES */
+  
++ #undef 	UseInstalled
+  #define UseInstalled YES
+  #endif /* BeforeVendorCF */
+--------------
+
+		    ==============================
+
+System V Release 4.0 notes
+--------------------------
+
+The audio library has been ported to use the STREAMSCONN transport if enabled.
+
+Currently auscope(1) doesn't have STREAMSCONN support, but works ok with
+TCPCONN on our system.
+
+A side effect of the aulib STREAMSCONN implimentation is that /etc/services must
+contain lines of the form to satisfy netdir_getbyname(3):
+
+--------------
+#
+#	defacto standard for X11, required by SVR4 XLIB STREAMSCONN code
+#	(for X11 clients and server)
+#
+xserver0	6000/tcp
+xserver1	6001/tcp
+xserver2	6002/tcp
+
+#	audio service required by SVR4 AULIB STREAMSCONN code
+#	(for audio clients and server)
+
+auserver8000	8000/tcp
+auserver8001	8001/tcp
+auserver8002	8002/tcp
+--------------
+
+One day this might be fixed.
+
+		    ==============================
+
+X11R4 notes
+-----------
+
+This code has been ported back to X11R4 on two platforms
+
+	SVR3.2/386 with Lachman TCP/IP, using STREAMSCONN
+	    (except for auscope which still uses TCPCONN)
+
+	IBM AIX 3.2
+
+The only significant change required to support X11R4 is that the
+definition of the new-to-X11R5 "XCOMM" symbol needs to be added to Imake.tmpl
+so that XCOMM style comments get translated back into has comments.
+
+Add these lines to the top of /usr/lib/X11/config/Imake.tmpl (or wherever
+you keep it):
+
+#ifndef XCOMM
+#define XCOMM #
+#endif
+
+If your C compiler has a limit on the number of -L options supplied
+(some SVR3.2 cc's have a limit of 6), you may need to put this wrapper version
+of "cc" in your path ahead of the system one.
+
+----------------
+#! /bin/sh
+
+#	Reduce the number of -L options so cc(1) can cope
+
+ARGS="/bin/cc"
+LASTL=""
+
+for a in "$@"
+do
+	case "$a" in
+	"$LASTL")
+		# ignore
+		;;
+	-L*)
+		LASTL="$a"
+		ARGS="$ARGS $a"
+		;;
+		
+	*)
+		ARGS="$ARGS $a"
+		;;
+	esac
+done
+
+echo + $ARGS
+exec $ARGS
+----------------

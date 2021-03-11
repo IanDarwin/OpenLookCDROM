@@ -1,0 +1,682 @@
+\begindata{text,19484160}
+\textdsversion{12}
+\template{default}
+-- funchdr.n
+
+--	Convert declarations from a .ch file into routine headers
+
+--
+
+--	Author: WJHansen
+
+
+-- HERE'S HOW
+
+
+--    To convert a few methods:
+
+--	- Copy the method declarations from your .ch file into the .c file.
+
+--	- Select them and type ESC-ESC.
+
+--	- At the Ness: prompt type 
+
+--		funchdr_cvt("<classname>")
+
+--	- where <classname> is the name of the class
+
+
+
+--    To convert a few classprocedures:
+
+--	- Copy the class procedure declarations from your .ch file into the .c 
+file.
+
+--	- Select them and type ESC-ESC.
+
+--	- At the Ness: prompt type 
+
+--		funchdr_cvtclassprocs("<classname>")
+
+--	- where <classname> is the name of the class
+
+
+
+--   To convert an entire .ch file and append the result to the .c file:
+
+--	give the command 
+
+--		nessrun /usr/andrew/lib/ness/funchdr.n <filename>.ch
+
+--
+
+--  NOTE: the keyword "class" should be at the beginning of a line 
+
+--  and followed by space or tab.  The word "class" must not appear
+
+--  at the beginning of a line in a comment.
+
+
+
+
+-- input and output syntax:
+
+--	a .ch header has an initial indent of a tab and the form:
+
+--		functionNameTail ( type-1 arg-1 , ... ) returns type-r;
+
+--			/* comment*/
+
+--	where the  -returns type-r-  is optional  (-void- if omitted)
+
+
+--	in order to locate functionNameTail, it is assumed that type-1 is one of 
+
+--		unsigned char [*]     char [*]     long [*]    unsigned long [*]
+
+--		struct xxx *    boolean [*]    real [*]
+
+
+-- 	corresponding output:
+
+--		/* comment
+
+--		*/
+
+--			type-r
+
+--		classname__functionNameTail(arg-0, arg-1, arg-2, ...)
+
+--			type-0 arg-0;
+
+--			type-1 arg-1;
+
+--			. . .
+
+--		\{
+
+--		\}
+
+--
+
+--	where for methods and overrides type-0 arg-0 is 
+
+--		struct <classsname> *self
+
+--	and for classprocedures:
+
+--		struct classhdr *ClassID
+
+
+
+
+marker CurTok	-- current token about to be processed
+
+marker EndTok	-- end of text to search for decls 
+
+
+marker Letters	-- the set which may start a word
+
+marker IdChars	-- the set of characters that may appear in words
+
+
+marker LastName 	-- side result from ParseAnArg
+
+
+function init()
+
+
+	Letters := "qwertyuiopasdfghjklzxcvbnm_"
+
+		~ "QWERTYUIOPASDFGHJKLZXCVBNM"
+
+	IdChars := Letters ~ "0123456789"
+
+
+end function
+
+
+-- ParseAnArg
+
+--	accumulate argument description
+
+--	ending at "," or unmatched ")"
+
+--	set LastName to last word encountered
+
+--
+
+function ParseAnArg()
+
+	integer parencnt
+
+	marker thebeginning
+
+	parencnt := 0
+
+	thebeginning := CurTok
+
+	while CurTok /= "," and (CurTok /= ")" or parencnt > 0) do
+
+		if CurTok = "(" then
+
+			parencnt := parencnt + 1
+
+		elif CurTok = ")" then
+
+		elif search(Letters, front(CurTok)) /= "" then
+
+			LastName := CurTok
+
+		end if
+
+		CurTok := tokens_getC(CurTok)
+
+		if CurTok = "" then
+
+			return(printline("ERROR: missing comma"))
+
+		end if
+
+	end while
+
+	return extent(thebeginning, start(CurTok))
+
+end function
+
+
+
+function DoADecl(classname, boolean classproc)
+
+	marker funcname, functype, names, types, comment, m, t
+
+
+	funcname := CurTok
+
+	printline("funcname: " ~ funcname)
+
+	CurTok := tokens_getC(CurTok)	-- get "("
+
+
+	if classproc then 
+
+		names := copy("ClassID")
+
+		types := copy("\\tstruct classhdr *ClassID;\\n")
+
+	else 
+
+		names := copy("self")
+
+		types := "\\tstruct " ~ classname ~ " *self;\\n"
+
+	end if
+
+	CurTok := tokens_getC(CurTok)	-- get ")" or first token of an arg
+
+	while CurTok /= ")" do
+
+		if CurTok = "" then
+
+			types ~:= printline("ERROR: missing right paren")
+
+			exit while
+
+		end if
+
+		if CurTok = "," then
+
+			-- advance to start of arg decl
+
+			CurTok := tokens_getC(CurTok)
+
+		end if
+
+		types ~:= "\\t" ~ ParseAnArg() ~ ";\\n"
+
+		names ~:= ", " ~ LastName		-- side result of ParseAnArg
+
+-- printline("	arg name: " ~ LastName)
+
+	end while
+
+
+	CurTok := tokens_getC(CurTok)	-- get token after ")"
+
+	-- CurTok is either ";" or "returns"
+
+	if CurTok = "returns" then
+
+		functype := newbase()
+
+		CurTok := tokens_getC(CurTok)	-- get token after "returns"
+
+		while CurTok /= ";" do
+
+			functype ~:= CurTok
+
+			CurTok := tokens_getC(CurTok)
+
+			functype ~:= tokens_PreSpace()
+
+			if CurTok = "" then
+
+				functype ~:= printline("ERROR: missing semicolon")
+
+				exit while
+
+			end if
+
+		end while
+
+	else
+
+		functype := "void"
+
+	end if
+
+
+	-- now CurTok is ";"
+
+	CurTok := tokens_getC(CurTok)  -- skip ";"
+
+				-- and load trailing comment into tokens_PreSpace()
+
+	comment := tokens_PreSpace()
+
+	m := search(comment, "/*")
+
+	if m = "" then
+
+		-- there was no comment.  Build one with room to describe args
+
+		t := search(names, ",")
+
+		if t /= "" then 
+
+			comment := "\\t" ~ extent(finish(next(t)), names) ~ " - \\n"
+
+			m := search(comment, ", ")
+
+			while m /= "" do
+
+				replace (m, " - \\n\\t")
+
+				m := search(finish(m), ", ")
+
+			end while
+
+		else comment := newbase()
+
+		end if
+
+	else
+
+		-- set t to space on line before  "/*"
+
+		t := previous(m)
+
+		while t /= "" and t /= "\\n" do
+
+			t := previous(t)
+
+		end while
+
+		t := extent(t, start(m))
+
+		
+
+		-- strip comment to the part between /* and */
+
+		-- strip trailing whitespace
+
+		comment := extent(next(m), comment)
+
+		m := search(comment, "*/")
+
+		while search("\\n\\t ", previous(m)) /= "" do
+
+			m := previous(m)
+
+		end while
+
+		comment := "\\t" ~ extent(comment, start(m)) ~ "\\n"
+
+
+		-- if "/*" is preceded by n tabs, strip n-1 tabs from front of each line
+
+		m := search(comment, t)
+
+		while m /= "" do
+
+			m := search(
+
+				extent(finish(replace (m, "\\n\\t")), comment),
+
+				t)
+
+		end while
+
+
+	end if
+
+	if functype /= "void" and search(comment, "Returns") = "" then
+
+		comment ~:= "\\tReturns: \\n"
+
+	end if
+
+	return 
+
+		"\\n/* " ~ classname ~ "__" ~ funcname ~"(" ~ names ~ ")\\n"
+
+		~ comment
+
+		~ "*/\\n"
+
+		~ "\\t" ~ functype ~ "\\n"
+
+		~ classname ~ "__" ~ funcname ~ "(" ~ names ~ ")\\n"
+
+		~ types
+
+		~ "\{\\n\}\\n"	
+
+end function
+
+
+
+function funchdr_convertsection(s, classname, boolean classproc)
+
+	marker tok1, tok2, cvted, m
+
+	EndTok := finish(s)
+
+	tok1 := tokens_getC(start(s))	-- get first token
+
+	tok2 := tokens_getC(tok1)		-- get second token
+
+	if tok2 /= ":" then
+
+		CurTok := tok1
+
+	else 
+
+		CurTok := tokens_getC(tok2)
+
+	end if
+
+
+	cvted := newbase()
+
+	while CurTok /= "" and extent(CurTok, s) /= "" do
+
+		cvted ~:= DoADecl(classname, classproc)
+
+	end while
+
+	return cvted 
+
+end function
+
+
+
+function funchdr_cvt(classname)
+
+	marker s
+
+	s := currentselection()
+
+	replace (s, funchdr_convertsection(s, classname, FALSE))
+
+end function
+
+
+function funchdr_cvtclassprocs(classname)
+
+	marker s
+
+	s := currentselection()
+
+	replace (s, funchdr_convertsection(s, classname, TRUE))
+
+end function
+
+
+
+
+-- SectionStart(t)
+
+--	finds the next section start after the end of text
+
+--	a section start is a colon preceded by one of the words
+
+--		methods  overrides  classprocedures  macromethods  data
+
+--
+
+function SectionStart(t)
+
+	marker w
+
+	while True do
+
+		t := search(finish(t), ":")
+
+		if t = "" then return t end if
+
+		-- find word before the colon
+
+		w := previous(t)
+
+		while search(" \\t\\r\\n", w) /= "" do w := previous(w) end while
+
+		while search(Letters, w) /= "" do w := previous(w) end while
+
+-- printline("SS: " ~ extent(finish(w), start(t)))
+
+		if search(" methods overrides classprocedures macromethods macros data ",
+
+				" " ~ extent(finish(w), start(t)) ~ " ") /= "" then 
+
+			-- bingo
+
+			return extent(w, t)
+
+		end if
+
+	end while
+
+end function
+
+
+
+-- NextSection(text)
+
+--	returns the next section following the argument, which must be a section
+
+--	a Section extends from one keyword-colon until just before the next
+
+function NextSection(text)
+
+	marker m
+
+	text := SectionStart(finish(text))
+
+	if text = "" then return allnext(start(text)) end if	-- everything after 
+the arg section
+
+	m := SectionStart(finish(text))
+
+	if m = "" then 
+
+		return allnext(start(text))		-- everything after the arg section
+
+	else
+
+		return extent(text, start(m))		-- from one keyword to the next
+
+	end if
+
+end function
+
+
+
+function main(args)
+
+	marker filename, outname, text, outtext, ClassName, keyword, m
+
+
+	filename := token(args, IdChars ~ "./")
+
+
+	m := extent(previous(previous(last(filename))), filename)  -- last 3 
+characters
+
+	if m /= ".ch" then
+
+		outname := filename ~ ".c"		-- append .c
+
+	else 
+
+		outname := extent(filename, start(m)) ~ ".c"  -- change .ch to .c
+
+	end if
+
+
+	text := readfile(filename)
+
+	if text = "" then
+
+		printline("empty input file: " ~ filename)
+
+		exit function
+
+	end if
+
+
+	keyword := regSearch(text, "\\nclass[ \\t]")
+
+	if keyword /= "" then
+
+		ClassName := token(finish(keyword), IdChars)
+
+	else
+
+		-- use filename as classname
+
+		classname := start(filename)
+
+		m := search(classname, "/")
+
+		while m = "/" and extent(m, filename) /= "" do
+
+			classname := finish(m)
+
+			m := search(classname, "/")
+
+		end while
+
+		ClassName := span(ClassName, IdChars)
+
+	end if
+
+
+	printline("funchdr: " ~ filename ~ " >> " ~ outname 
+
+			~ "   Class: " ~ ClassName)
+
+
+	outtext := newbase()
+
+	m := NextSection(finish(keyword))
+
+	keyword := token(m, Letters)
+
+	while m /= "" and keyword /= "" do
+
+-- printline("Found section: " ~ keyword)
+
+		if keyword = "methods" or keyword = "overrides" then
+
+			outtext ~:= funchdr_convertsection
+
+				(m, ClassName, FALSE) ~ "\\n"
+
+		elif keyword = "classprocedures" then
+
+			outtext ~:= funchdr_convertsection
+
+				(m, ClassName, TRUE) ~ "\\n"
+
+		end if
+
+		m := NextSection(finish(m))
+
+		keyword := token(m, Letters)
+
+	end while
+
+
+	m := outname ~ ".m0reFuNcs"
+
+	writefile(m, outtext)
+
+	system("cat " ~ m ~ " >> " ~ outname)
+
+	printline("Appended to " ~ outname)
+
+	system ("rm " ~ m)
+
+end function
+
+
+
+-- 
+\begindata{bp,19473984}
+\enddata{bp,19473984}
+\view{bpv,19473984,1,0,0}
+
+-- Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{-- $Disclaimer: 
+
+-- Permission to use, copy, modify, and distribute this software and its 
+
+-- documentation for any purpose is hereby granted without fee, 
+
+-- provided that the above copyright notice appear in all copies and that 
+
+-- both that copyright notice, this permission notice, and the following 
+
+-- disclaimer appear in supporting documentation, and that the names of 
+
+-- IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+-- used in advertising or publicity pertaining to distribution of the software 
+
+-- without specific, written prior permission.
+
+-- 
+
+-- IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+-- DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+-- ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+-- SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+-- BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+-- DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+-- WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+-- ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+-- OF THIS SOFTWARE.
+
+--  $
+
+}}\enddata{text,19484160}

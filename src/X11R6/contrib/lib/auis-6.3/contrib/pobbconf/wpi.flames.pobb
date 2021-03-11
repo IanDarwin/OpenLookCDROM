@@ -1,0 +1,120 @@
+;**********************************************************************
+;         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+;        For full copyright information see:'andrew/config/COPYRITE'
+;**********************************************************************
+; IBM, CARNEGIE MELLON UNIVERSITY, 
+; AND THE OTHER COPYRIGHT HOLDERS
+;  DISCLAIM ALL WARRANTIES WITH 
+; REGARD TO THIS SOFTWARE, INCLUDING 
+; ALL IMPLIED WARRANTIES OF MERCHANT-
+; ABILITY AND FITNESS. IN 
+; NO EVENT SHALL  IBM, CARNEGIE 
+; MELLON UNIVERSITY, OR ANY OTHER 
+; COPYRIGHT HOLDER BE LIABLE FOR 
+; ANY SPECIAL, INDIRECT OR CONSE-
+; QUENTIAL DAMAGES OR ANY DAMAGES 
+; WHATSOEVER RESULTING FROM LOSS OF
+; USE, DATA OR PROFITS, WHETHER IN AN
+; ACTION OF CONTRACT, NEGLIGENCE OR
+; OTHER TORTIOUS ACTION, ARISING OUT 
+; OF OR IN CONNECTION WITH THE USE OR
+; PERFORMANCE OF THIS SOFTWARE.
+;  $
+; ?[POBBRunWarning]
+; ?[POBBRunNotice]
+
+%include pobbconfig.defs
+%ifdef pobb_WPInteractive
+%ifdef pobb_AutoPost
+
+(defun process-wd00-mail (msg)		; WPI-daemon's mail hook
+  (let ((temp (special-cases msg)))
+    (cond (temp (car temp))
+      (t 
+	 (post-by-keyword msg "?[WPIAdminFolderRoot]/fodder"
+	    '(
+	      (("to" "received" "resent-to") ("?[wpbuildUser]\\+WPI-FAILURES") ("?[WPIAdminFolderRoot]/failures"))
+	      (("to" "received" "resent-to") ("?[wpbuildUser]\\+WPI-AUTHREQ") ("?[WPIAdminFolderRoot]/authreq"))
+	      (("to" "received" "resent-to") ("?[wpbuildUser]\\+WPI-AUDIT-TRAIL") ("?[WPIAdminFolderRoot]/audit"))
+	      (("to" "received" "resent-to") ("?[wpbuildUser]\\+WPI-REPLYTO") ("?[WPIAdminFolderRoot]/fodder"))
+	    )
+      ))))
+)
+
+(load "msvc")				; provide-mail-based-service
+(defun special-cases (msg)		; returns nil if msg is not a special
+					; case, (nil) if msg needs requeued [sic--pgh],
+					; (t) if msg is processed
+  (let ((fields (plus-part msg))
+	(authsender (GetAuthSender msg)))
+    (cond ((member "WPI-UPDATE-REQUEST" fields)
+	   (cond ((equal authsender "<TEMPORARILY UNRECOGNIZED USER>")
+		  (list nil))		; requeue on temp failures
+		 (t
+		  (list (provide-mail-based-service 
+			 msg
+			 "?[wpiupdat]"
+			 (cons "?[WPIWorkDir]/newreq"
+			       (cond ((member authsender 
+%ifdef pobbenv_AFS30
+					      (GetGroupMembers "?[WPIAdministratorGroup]")
+%else pobbenv_AFS30
+					      *wpi-admins*
+%endif pobbenv_AFS30
+					      )
+				      (list "administrator"))
+				     (t nil)))
+			 t			; unformat, since wpiupdat doesn't like ATK datastreams
+			 "?[wpbuildUser]+WPI-FAILURES"
+			 "?[wpbuildUser]+WPI-AUTHREQ"
+			 "?[wpbuildUser]+WPI-AUDIT-TRAIL"
+			 "?[wpbuildUser]+WPI-REPLYTO")))
+		 (t nil)))))		; failed to process
+  )
+
+(defun plus-part (msg)
+  (extract-liberally "?[wpbuildUser]\\+"
+   (multi-getheadercontents 
+    msg
+    '("to"
+      "received"
+      "resent-to"))))
+
+%ifndef pobbenv_AFS30
+(setq *wpi-admins* (list "?[wpbuildUser]" "?[arrlist(WPIAdministrators, "\q \q")]"))
+%endif pobbenv_AFS30
+
+;;
+;; Override the generic definitions in mailservices.flames, to tailor output
+;; to be WPI-specific
+;;
+(defun user-report-text (usertext stdout replyto)
+  (strcat usertext 
+	  "\nHere are the results of your specific change requests:\n\n" 
+	  stdout 
+	  "\nIf you have any problems with or questions about your white pages entry, please mail to " 
+	  (validate-address replyto) ".  Thank you.\n\n"))
+
+(setq *success-report-text 
+      "\nYour request to change the information about yourself that is stored
+in the white pages has been received and processed.  The changes
+listed below as ``successfully processed'' will be entered into the
+white pages database overnight, and should take effect some time
+tomorrow.  You can tell whether or not the changes have taken effect
+by using the `wpq' command and inspecting its output.\n")
+
+(setq *auth-req-text
+      "\nThe changes listed below as ``requires approval'' have been
+forwarded to an administrator for approval.  If you do not receive
+confirmation of these requested changes, you may assume they have been
+denied.\n")
+
+(setq *not-admin-text
+      "\nAny changes listed below as ``illegal'' or ``not understood'' or
+``administrator only'' could not be made, for the reason or reasons
+specified.  If you have questions about them, consult the help file
+for `wpi'.\n")
+
+;;
+%endif pobb_AutoPost
+%endif pobb_WPInteractive

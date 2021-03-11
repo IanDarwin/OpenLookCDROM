@@ -1,0 +1,1340 @@
+.\" Copyright 1994 NEC Corporation, Tokyo, Japan.
+.\"
+.\" Permission to use, copy, modify, distribute and sell this software
+.\" and its documentation for any purpose is hereby granted without
+.\" fee, provided that the above copyright notice appear in all copies
+.\" and that both that copyright notice and this permission notice
+.\" appear in supporting documentation, and that the name of NEC
+.\" Corporation not be used in advertising or publicity pertaining to
+.\" distribution of the software without specific, written prior
+.\" permission.  NEC Corporation makes no representations about the
+.\" suitability of this software for any purpose.  It is provided "as
+.\" is" without express or implied warranty.
+.\"
+.\" NEC CORPORATION DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+.\" INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN 
+.\" NO EVENT SHALL NEC CORPORATION BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+.\" CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF 
+.\" USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR 
+.\" OTHER TORTUOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR 
+.\" PERFORMANCE OF THIS SOFTWARE. 
+.\"
+.\" $Id: uilib.man,v 1.4 1994/01/27 11:10:53 kuma Exp $ NEC;
+.if t .pn 575
+.TH UILIBINTRO 3
+.SH "NAME"
+UILib intro \(em User interface library intro
+.SH "DESCRIPTION"
+.PP
+User interface libraries are responding to one-chracter 
+or one-key input, return various kinds of information.  They 
+include the unfixed character string, fixed character string, 
+marked segment position, status display character string, 
+and candidate list character string.
+.PP
+The application program displays the data according to 
+the returned information.  It can also control mode transition
+by triggering through something other than key pressing
+(for example, selection through the mouse). 
+.PP
+The user interface library provides \fIjrKanjiString\fP and
+\fIjrKanjiControl\fP for the input through the TTY.  It also provides
+\fIXLookupKanjiString\fP and \fIXKanjiControl\fP for the input through
+the X window.
+.PP
+Use of the user interface library requires the following:
+.IP "-" 3
+Through the TTY:
+.RS
+.IP "Function" 20
+jrKanjiString, jrKanjiControl
+.IP "Header file" 20
+canna/jrkanji.h
+.IP "Library" 20
+libcanna.a, libcanna.so
+.RE
+.IP "-" 3
+Through the X window:
+.RS
+.IP "Function" 20
+XLookupKanjiString, XKanjiControl
+.IP "Header file" 20
+canna/kanji.h
+.IP "Library" 20
+libXn.a, libXn.so, libcanna.a, libcanna.so
+.RE
+.SH "Outline"
+.IP "jrKanjiString" 20
+Converts ordinary keyboard input (input through the TTY,
+input with X) into Kanji strings.
+.IP "jrKanjiControl" 20
+Executes the control with jrKanjiString according
+to the specified parameters.
+.IP "XLookupKanjiString" 20
+Converts the keyboard input (key event)
+into Kanji strings in the X window system.
+.IP "XKanjiControl" 20
+Executes the control with XLookupKanjiString
+according to the specified parameters.
+.\" 
+.if t .pn 575
+.TH JRKANJISTRING 3
+.SH "NAME"
+jrKanjiString \(em Kana-to-Kanji Conversion for ordinary keyboard input
+.SH "SYNOPSIS"
+.nf
+.B #include <canna/jrkanji.h>
+.B int jrKanjiString(\fIcontext_id, ch, buffer_return, bytes_buffer, kanji_status_return\fP)
+.B int \fIcontext_id\fP;
+.B int \fIch\fP;
+.B char \fI*buffer_return\fP;
+.B int \fIbytes_buffer\fP;
+.B jrKanjiStatus \fI*kanji_status_return\fP;
+.fi
+.SH "DESCRIPTION"
+.PP
+\fIjrKanjiString\fP converts ordinary keyboard input (input through
+the TTY, input with X) into Kanji strings.
+.PP
+\fIjrKanjiString\fP is a convenient routine which 
+returns the character strings to be displayed.
+To convert the key input represented in ASCII code, into
+the Japanese characters, \fIjrKanjiString\fP specifies the input
+key code using \fIch\fP.  Romaji-to-Kana or Kana-to-Kanji Conversion
+is executed in \fIjrKanjiString\fP.
+.PP
+For a function or cursor key, specify a special code (listed in
+\fB``FUNCTION KEYS''\fP below) to \fIjrKanjiString\fP.  Do not specify
+the sequence caused by the key.
+.PP
+For the context identifier specified in \fIcontext_id\fP, the value is
+not used as it is.  Instead, a context that uses the context
+identifier as the key is created and used.  Thus, the application
+program may specify any value for the context identifier to be
+specified for \fIjrKanjiString\fP.  It is recommended that the input
+port's file descriptor be specified for this identifier.  If 0 is
+specified for the identifier, the context prepared as the system
+default will be used by way of exception.
+.PP
+It is recommended that 0 be specified unless particular consideration
+is given to the context.
+The intermediate result to be displayed is returned to the application
+through \fIkanji_status_return\fP.
+.PP
+Responding to the input, it is necessary to display the
+intermediate result of Romaji-to-Kana or Kana-to-Kanji Conversion.
+The application must display the intermediate result according
+to the information returned by \fIkanji_status_return\fP, which
+is a jrKanjiStatus type structure.
+.PP
+The jrKanjiStatus structure is defined as follows:
+.sp
+.ft CW
+.nf
+typedef struct {
+  unsigned char *echoStr; /* Character string for local echo */
+  int           length;   /* Length of the local echo character string */
+  int           revPos;   /* Offset to the reverse display field
+                             within local echo character string */
+  int           revLen;   /* Length of the reverse display within
+                             local echo echo character string */
+  unsigned long info;     /* Other information */
+  unsigned char *mode;    /* Mode information */
+  struct {
+    unsigned char *line;  /* Candidate list character string */
+    int           length; /* Length of candidate list character string */
+    int           revPos; /* Offset to the reverse display field
+                             within candidate list character string */
+    int           revLen; /* Length of reverse display field within
+                             candidate list character string */
+  } gline;                /* Information about the candidate list*/
+} jrKanjiStatus;
+.fi
+.ft
+.sp
+.PP
+When Kana-to-Kanji conversion is used during Japanese input,
+information such as the readings to be converted need to
+be echoed (local echo).  \fIjrKanjiString\fP does not perform display
+such as local echo.  Instead, it returns the character strings
+to be submitted to local echo, to the application by using
+the jrKanjiStatus structure.
+.PP
+The EUC character strings to be submitted to local echo
+include characters already converted into Kana from Romaji
+and conversion candidate characters.  Until the conversion
+is fixed, they are returned by the \fIechoStr\fP member.  At this
+time, the length of local echo character string is returned
+by the \fIlength\fP member.  Also, the starting position and length
+(bytes) of reverse display area are returned by the \fIrevPos\fP and
+\fIrevLen\fP member, respectively.  The buffer for local echo character
+strings is reserved automatically by \fIjrKanjiString\fP.  It must
+be used only for reading.  No character string must be written
+into this buffer.
+.PP
+If no character string is to be submitted to local echo,
+0 will be returned by the \fIlength\fP member.
+.PP
+The contents to be submitted to local echo may be the same
+as when \fIjrKanjiString\fP was previously called.  (This occurs,
+for example, when a control code is pressed and the key is
+disabled.)  In this case, \-1 returns to the \fIlength\fP member.
+.PP
+Mode changes and existence of information about the candidate
+list are passed by the \fIinfo\fP member.  If \fIinfo\fP
+member's KanjiModeInfo
+bit is on, the character string indicating the new mode will
+return to \fImode\fP.  If the \fIinfo\fP member's KanjiGLineInfo bit is
+on, the \fIgline\fP structure has contained information such
+as the candidate list.
+.PP
+The character string for candidate list display returns to the
+\fIgline\fP structure's line member.  The length, reverse dispaly
+starting position, and reverse display duration of the candidate list
+character string return to the \fIgline\fP structure's \fIline\fP,
+\fIrevPos\fP, and \fIrevLen\fP, respectively.
+.PP
+If there is an EUC character string fixed during conversion, it will
+be stored into buffer \fIbuffer_return\fP.  In this case, the length
+(bytes) of this character string will return. If there is no fixed
+character string, the return value will be 0.  Using
+\fIbytes_buffer\fP, specify the size of the buffer that is to contain
+the fixed character string (\fIbuffer_return\fP).  If the fixed
+character string is longer than \fIbytes_buffer\fP, only the
+\fIbytes_buffer\fP substring is stored into \fIbuffer_return\fP.  In
+this case, the value specified in \fIbytes_buffer\fP will be the
+return value of \fIjrKanjiString\fP.
+.SH "FUNCTION KEYS"
+.PP
+For any function key that issue an Escape sequence, specify one of the
+following codes as \fIch\fP instead of the Escape sequence:
+.IP "Logical name" 12
+Code
+.IP "Nfer" 12
+CANNA_KEY_Nfer
+.IP "Xfer" 12
+CANNA_KEY_Xfer
+.IP "Up" 12
+CANNA_KEY_Up
+.IP "Left" 12
+CANNA_KEY_Left
+.IP "Right" 12
+CANNA_KEY_Right
+.IP "Down" 12
+CANNA_KEY_Down
+.IP "Insert" 12
+CANNA_KEY_Insert
+.IP "Rollup" 12
+CANNA_KEY_Rollup
+.IP "Rolldown" 12
+CANNA_KEY_Rolldown
+.IP "Home" 12
+CANNA_KEY_Home
+.IP "Help" 12
+CANNA_KEY_Help
+.IP "S-Nfer" 12
+CANNA_KEY_Shift_Nfer
+.IP "S-Xfer" 12
+CANNA_KEY_Shift_Xfer
+.IP "S-Up" 12
+CANNA_KEY_Shift_Up
+.IP "S-Left" 12
+CANNA_KEY_Shift_Left
+.IP "S-Right" 12
+CANNA_KEY_Shift_Right
+.IP "S-Down" 12
+CANNA_KEY_Shift_Down
+.IP "C-Nfer" 12
+CANNA_KEY_Control_Nfer
+.IP "C-Xfer" 12
+CANNA_KEY_Control_Xfer
+.IP "C-Up" 12
+CANNA_KEY_Control_Up
+.IP "C-Left" 12
+CANNA_KEY_Control_Left
+.IP "C-Right" 12
+CANNA_KEY_Control_Right
+.IP "C-Down" 12
+CANNA_KEY_Control_Down
+.IP "F1" 12
+CANNA_KEY_F1
+.IP "PF1" 12
+CANNA_KEY_PF1
+.SH "SEE ALSO"
+jrKanjiControl(3)
+.SH "RETURN VALUE"
+.PP
+If an error occurs during input processing, \-1 will return
+as the return value of this function.  In this case, the error
+message will be stored in external variable (char*)jrKanjiError.
+.PP
+If a call to this function causes a character string to
+be fixed, the length (bytes) of this character string will
+return.  Otherwise, 0 will return.
+.\" 
+.if t .pn 575
+.TH JRKANJICONTROL 3
+.SH "NAME"
+jrKanjiControl \(em Control the jrKanjiControl modes and processes
+.SH "SYNOPSIS"
+.nf
+.B #include <canna/jrkanji.h>
+.B int jrKanjiControl(\fIcontext_id, request, arg\fP)
+.B int \fIcontext_id\fP;
+.B int \fIrequest\fP;
+.B char \fI*arg\fP;
+.fi
+.SH "DESCRIPTION"
+.PP
+\fIjrKanjiControl\fP executes process request for conversion context
+\fIcontext_id\fP.  Some processes are accompanied by the argument,
+specified in \fIarg\fP.
+.PP
+\fIjrKanjiControl\fP controls the following 13 functions:
+.IP "\fIrequest\fP name" 18
+Function
+.IP "KC_INITIALIZE" 18
+Initializes Kana-to-Kanji conversion.
+.IP "KC_CHANGEMODE" 18
+Changes the input mode.
+.IP "KC_SETWIDTH" 18
+Specifies the width used to display the candidate
+.IP "KC_FINALIZE" 18
+Finalizes (terminates) Kana-to-Kanji conversion processing.
+.IP "KC_SETUNDEFKEYFUNCTION" 18
+Sets a function for an undefined key.
+.IP "KC_SETMODEINFOSTYLE" 18
+Specifies whether mode information is represented in numeric form.
+.IP "KC_KAKUTEI" 18
+Fixes the currently entered character string.
+.IP "KC_KILL" 18
+Deletes the currently entered character string.
+.IP "KC_QUERYMODE" 18
+Queries about the current mode.
+.IP "KC_SETSERVERNAME" 18
+Specifies the server to be connected.
+.IP "KC_SETINITFILENAME" 18
+Specifies the customize file.
+.IP "KC_CLOSEUICONTEXT" 18
+Closes the context.
+.IP "KC_QUERYMAXMODESTR" 18
+Obtains the maximum length of mode display character string.
+.PP
+Basically, \fIjrKanjiControl\fP is enabled only for something
+specified in the context.  This rule does not apply to
+the initialize and terminate processes.
+.PP
+The unfixed character string condition may change, or details of the
+mode may vary, depending on the \fIjrKanjiControl\fP operation.  If
+this may occur, pass the pointer to a structure that can contain the
+varied information in the \fIarg\fP field.  This structure is defined
+as follows:
+.sp
+.nf
+.ft CW
+typedef struct {
+  int      val;          /* The length of the character string in the
+                            buffer returns. */
+  unsigned char *buffer; /* Specifies the buffer used to store the
+                            fixed character string. */
+  int      bytes_buffer; /* Specifies the size of the above buffer. */
+  jrKanjiStatus *ks;     /* Pointer to the structure that contains
+                            information about the unfixed character string. */
+} jrKanjiStatusWithValue;
+.ft
+.fi
+.sp
+.PP
+The \fIjrKanjiControl\fP functions can be executed in the following
+ways:
+.IP "(1)" 6
+KC_INITIALIZE \(em Initializes Kana-to-Kanji conversion.
+.RS
+.PP
+KC_INITIALIZE initializes Kana-to-Kanji conversion by specifying
+KC_INITIALIZE in the \fIrequest\fP field.  Specify one of the
+following in arg: (1) the pointer to the char ** type variable used to
+store the warning message and (2) NULL.
+.PP
+The initialize process is basically executed automatically when
+\fIjrKanjiString\fP(3) is first called.  This is skipped by using
+\fIjrKanjiControl\fP for initialization.
+.PP
+For example, when control about Kana-to-Kanji conversion is executed
+using \fIjrKanjiControl\fP before use of \fIjrKanjiString\fP(3),
+Kana-to-Kanji conversion must be initialized.
+.PP
+When the process terminates normally, 0 returns as the
+\fIjrKanjiControl\fP return value.  When it terminates abnormally, \-1
+returns.
+.PP
+When KC_INITIALIZE is executed, a warning, rather than an
+error, may occur.  When it occurs, the pointer to the warning
+character string array is stored in and returns to the variable
+specified in \fIarg\fP.  If no warning occurs, NULL is stored and
+returns.
+.sp
+(Example)
+.nf
+.ft CW
+  int res; /* Prepare for error return */
+  char **warning;
+  .....
+  res = jrKanjiControl(0, KC_INITIALIZE, &warning);
+  if (warning) {
+    char **p;
+
+    for (p = warning ; *p ; p++) {
+      fprintf(stderr, "%s\n", *p);
+    }
+  }
+.ft
+.fi
+.sp
+.PP
+In the library, malloc is done for the warning message
+returning to the third argument.  This message is freed when
+KC_INITIALIZE or KC_FINALIZE is executed next.  The application
+programmer must not free it.  The maximum number of warning
+messages is restricted to 64 now.  The subsequent ones are
+discarded.
+.PP
+The following warnings may be included in a message:
+.IP "-" 3
+All customize files including those of the system are unavailable.
+.IP "-" 3
+The customize file contains a syntax error.
+.IP "-" 3
+The Romaji-to-Kana conversion dictionary is unavailable.
+.IP "-" 3
+The Kana-to-Kanji conversion dictionary is unavailable.
+.IP "-" 3
+Connection to the Kana-to-Kanji conversion server is disabled.
+.PP
+If NULL is specified as the third argument, any warning
+message will be discarded.
+.RE
+.IP "(2)" 6
+KC_CHANGEMODE \(em Changes the input mode.
+.RS
+.PP
+KC_CHANGEMODE changes the input mode from the application.
+Specify KC_CHANGEMODE in the \fIrequest\fP field.  Specify the
+jrKanjiStatusWithValue structure in \fIarg\fP.
+.PP
+The Japanese mode is changed by specifying the mode number
+with the \fIval\fP member of jrKanjiStatusWithValue structure. 
+The mode number is indicated by the following macros:
+.IP "Macro number" 24
+Mode
+.IP "CANNA_MODE_AlphaMode" 24
+Alphabet mode
+.IP "CANNA_MODE_HenkanMode" 24
+Conversion input mode
+.IP "CANNA_MODE_KigoMode" 24
+Symbol input mode
+.IP "CANNA_MODE_ZenHiraKakuteiMode" 24
+Full-wide Hiragana fixed input mode
+.IP "CANNA_MODE_ZenKataKakuteiMode" 24
+Full-wide Katakana fixed mode
+.IP "CANNA_MODE_HanKataKakuteiMode" 24
+Half-wide Katakana fixed input mode
+.IP "CANNA_MODE_ZenAlphaKakuteiMode" 24
+Full-wide alphabet fixed input mode
+.IP "CANNA_MODE_HanAlphaKakuteiMode" 24
+Half-wide alphabet fixed input mode
+.IP "CANNA_MODE_HexMode" 24
+Hexadecimal code input mode
+.IP "CANNA_MODE_BushuMode" 24
+Bushu input mode
+.IP "CANNA_MODE_TorokuMode" 24
+Word register mode
+.PP
+This function causes much dispaly (mode name etc.) to vary
+in response to a mode change.  The display change is returned
+by the jrKanjiStatusWithValue structure specified as \fIarg\fP.
+.sp
+(Example)
+.ft CW
+.nf
+  jrKanjiStatus ks;
+  jrKanjiStatusWithValue ksv;
+  unsigned char buf[SOMESIZE];
+  .....
+  ksv.ks = &ks;
+  ksv.buffer = buf;
+  ksv.bytes_buffer = SOMESIZE;
+  ksv.val = CANNA_MODE_HexMode;
+
+  jrKanjiControl(context, KC_CHANGEMODE, &ksv);
+  len = ksv.val;
+  .....
+
+/* Information about the unfixed or fixed character string is returned
+   by ksv. */
+.fi
+.ft
+.sp
+.RE
+.IP "(3)" 6
+KC_SETWIDTH \(em Specifies the width used to display the candidate list.
+.RS
+.PP
+KC_SETWIDTH specifies the number of columns of the area
+on which the candidate list is to be displayed.  The width
+of one column equals that of an alphabetical or half-wide
+Katakana character.  Each full-wide Kanji character occupies
+two columns.  Using KC_SETWIDTH, specify the width of candidate
+list display area to be specified in the \fIrequest\fP field.  At
+this time, specify the number of columns in \fIarg\fP.
+.sp
+(Example)
+.ft CW
+.nf
+  jrKanjiControl(0, KC_SETWIDTH, (char *)60);
+.fi
+.ft
+.sp
+.RE
+.IP "(4)" 6
+KC_FINALIZE \(em Finalizes (terminates) processing of Kana-to-Kanji conversion
+.RS
+.PP
+KC_FINALIZE specifies that Kana-to-Kanji conversion also finalizes
+(terminates) at the end of the program and in other cases.
+ Be sure to execute this process when terminating Kana-to-Kanji
+conversion processing.  All contents learned up to now are
+registered in the file.  Specify KC_FINALIZE in the \fIrequest\fP
+field.
+.PP
+When the process terminates normally, 0 returns.  When it terminates
+abnormally, \-1 returns.
+.PP
+When KC_FINALIZE is executed, a warning, rather than an error, may
+occur.  When it occurs, the pointer to the warning character string
+array is stored in and returns to the variable specified in \fIarg\fP.
+If no warning occurs, NULL is stored and returns.
+.sp
+(Example)
+.ft CW
+.nf
+.fi
+  int res; /* Prepare for error return */
+  char **warning;
+  .....
+  res = jrKanjiControl(0, KC_FINALIZE, &warning);
+  if (warning) {
+    char **p;
+
+    for (p = warning ; *p ; p++) {
+      fprintf(stderr, "%s\n", *p);
+    }
+  }
+.ft
+.sp
+.PP
+In the library, malloc is done for the warning message
+returning to the third argument.  This message is freed when
+KC_INITIALIZE or KC_FINALIZE is executed next.  The application
+programmer must not free it.
+.PP
+The maximum number of warning messages is restricted to
+64 now.  The subsequent ones are discarded.
+.PP
+The following warning may be included in a message:
+.IP "-" 3
+The dictionary cannot be unmounted.
+.PP
+If NULL is specified as the third argument, any warning
+message will be discarded.
+.RE
+.IP "(5)" 6
+KC_SETUNDEFKEYFUNCTION \(em Sets a function for an undefined key.
+.RS
+.PP
+For example, if you press CTRL-t during input of a reading,
+it is regarded as undefined key input.  The following processes
+are executed, responding to undefined key input:
+.IP "Macro name" 12
+Process
+.IP "kc_normal" 12
+Beep
+.IP "kc_through" 12
+Passes the input to the application
+.IP "kc_kakutei" 12
+Fixes the input and passes it to the application program.
+.IP "kc_kill" 12
+Deletes the input and passes it to the application
+program.
+.PP
+If kc_normal is specified, the function set in external
+variable jrBeepFunc is called automatically by the library
+when an undefined key is input.  If the value is not set in
+jrBeepFunc, nothing occurs when ``jrBeepFunc == NULL'' appears.
+.sp
+(Example)
+.ft CW
+.nf
+  extern (*jrBeepFunc)(), beep();
+
+  jrBeepFunc = beep;
+  jrKanjiControl(0, KC_SETUNDEFKEYFUNCTION, kc_normal);
+.fi
+.ft
+.sp
+.RE
+.IP "(6)" 6
+KC_SETMODEINFOSTYLE \(em Specifies mode information representation.
+.RS
+.PP
+You may want to display mode information with data such as the bit
+map, rather than character strings.  In this case, return of numeric
+data as mode information helps you execute the process.  Specify
+KC_SETMODEINFOSTYLE in \fIjrKanjiControl\fP, and pass 1 to \fIarg\fP.
+After this, one character representing the mode code (numeric) plus
+'@' (0x40) returns to the jrKanjiStatus structure's \fImode\fP member.
+To convert the value into the mode code, subtract '@' (0x40) from the
+returned character string.  For the mode codes, see the mode change
+description of Item (2) KC_CHANGEMODE.
+.RE
+.IP "(7)" 6
+KC_KAKUTEI, (8) KC_KILL \(em Kill the currently input character string.
+.RS
+.PP
+You may want to relinquish the currently entered character string for
+some reason.  There are two relinquishing methods.  One is to
+relinquish the character string after including the currently entered
+character string as a fixed one.  The other is to discard the
+character string completely then relinquish it.  For the first method,
+specify KC_KAKUTEI in \fIjrKanjiControl\fP.  For the second method,
+specify KC_KILL.
+.PP
+Each of the above influences the display.  The jrKanjiStatusWithValue
+must thus be specified as the third argument.
+.sp
+(Example)
+.nf
+.ft CW
+  jrKanjiStatusWithValue ksv;
+  jrKanjiStatus ks;
+  unsigned char buf[SOMESIZE];
+  .....
+  ksv.ks = &ks;
+  ksv.buffer = buf;
+  ksv.bytes_buffer = SOMESIZE;
+
+  jrKanjiControl(context, KC_KAKUTEI, &ksv);
+  len = ksv.val;
+  .....
+.ft
+.fi
+.sp
+.RE
+.IP "(9)" 6
+KC_QUERYMODE \(em Inquiry about the mode
+.RS
+.PP
+To inquire about the current mode, specify KC_QUERYMODE
+in \fIjrKanjiControl\fP.
+.PP
+Specify the pointer to the character array in which the mode character
+string is to be stored.  The mode character string is a character
+string ending with a null character.  To return a numeric here,
+specify KC_SETMODEINFOSTYLE in \fIjrKanjiControl\fP to change the mode
+character string style.
+.sp
+(Example)
+.nf
+.ft CW
+  char currentMode[MAXMODELEN];
+  .....
+  jrKanjiControl(0, KC_QUERYMODE, currentMode);
+  .....
+.ft
+.fi
+.sp
+.RE
+.IP "(10)" 6
+KC_SETSERVERNAME   Specifies the server to be connected.
+.RS
+.PP
+KC_SETSERVERNAME enables you to switch the Kana-to-Kanji conversion
+server without terminating the application program.  To set the server
+to connect as the Kana-to-Kanji conversion server, specify
+KC_SETSERVERNAME in \fIjrKanjiControl\fP.  In the third argument,
+specify the name of the server to be connected.
+.RE
+.IP "(11)" 6
+KC_SETINITFILENAME \(em Specifies the customize file.
+.RS
+.PP
+KC_SETINITFILENAM enables the application program to change
+the customize file.  To change the customize file, specify
+KC_SETINITFILENAME as the second argument and the file name
+character string as the third argument.  This process must
+be executed before KC_INTIALIZE.
+.sp
+(Example)
+.nf
+.ft CW
+  char *inifile = "app-own.canna"
+  .....
+  jrKanjiControl(0, KC_SETINITFILENAME, initfile);
+  .....
+.ft
+.fi
+.sp
+.RE
+.IP "(12)" 6
+KC_CLOSEUICONTEXT   Closes the context.
+.RS
+.PP
+Any integer may be assigned as the context ID that represents the
+conversion context.  A context ID that has never been used can be
+assigned to \fIjrKanjiString\fP or \fIjrKanjiControl\fP.  In this
+case, initialization for this context is executed to reserve the
+required memory.
+.PP
+If an input port used up to now is not used, you may want to free the
+memory reserved for the context ID assigned to this port.  To do so,
+call \fIjrKanjiControl\fP by specifying KC_CLOSEUICONTEXT as the
+second argument.
+.PP
+Because this process causes a display change, specify
+jrKanjiStatusWithValue as the third structure.
+.sp
+(Example)
+.nf
+.ft CW
+  jrKanjiStatusWithValue ksv;
+  jrKanjiStatus ks;
+  unsigned char buf[SOMESIZE];
+  .....
+  ksv.ks = &ks;
+  ksv.buffer = buf;
+  ksv.bytes_buffer = SOMESIZE;
+
+  jrKanjiControl(0, KC_CLOSEUICONTEXT, &ksv);
+  .....
+.ft
+.fi
+.sp
+.RE
+.IP "(13)" 6
+KC_QUERYMAXMODESTR \(em Obtains the maximum length of mode display
+character string.
+.RS
+.PP
+The mode display character string can be customized using the
+initialize file.  It is necessary to examine the size of the display
+area (in the customized resulting mode display character string) that
+is to be reserved.  Specify KC_QUERYMAXMODESTR as the second argument,
+then call \fIjrKanjiControl\fP.  As a result, the number of columns
+necessary for the mode display character string is returned.  The
+number of columns is represented, defining that the width of one
+half-wide alphanumeric character is 1.
+.PP
+The third argument is unused; dummy value 0 is assigned
+to it.
+.sp
+(Example)
+.ft CW
+.nf
+  int max_mode_columns;
+  .....
+  max_mode_columns = jrKanjiControl(0, KC_QUERYMAXMODESTR, 0);
+  .....
+.fi
+.ft
+.sp
+.RE
+.\" 
+.\" @(#)kanji.man	1.5	89/06/30 09:13:01
+.TH XLookupKanjiString 3
+.SH NAME
+XLookupKanjiString \(em Converts the keyboard input into Kanji
+.SH SYNOPSIS
+.nf
+.ft B
+#include <X11/Xlib.h>
+#include <X11/kanji.h>
+.PP
+.ft B
+int
+XLookupKanjiString(\fIevent_struct, buffer_return, bytes_buffer,\fP
+                   \fIkeysym_return, status_return, kanji_status_return\fP)
+        XKeyEvent \fI*event_struct\fP;
+        char \fI*buffer_return\fP;
+        int \fIbytes_buffer\fP;
+        KeySym \fI*keysym_return\fP;
+        XComposeStatus \fI*status_return\fP;
+        XKanjiStatus \fI*kanji_status_return\fP;
+.fi
+.ft R
+.SH ARGUMENTS
+.RS
+.IP \fIevent_struct\fP 16
+Specifies the key event.
+.IP \fIbuffer_return\fP 16
+Returns the resulting Kanji string.
+.IP \fIbytes_buffer\fP 16
+Specifies the buffer length.
+.IP \fIkeysym_return\fP 16
+Returns the key symbol.  NULL may be specified
+.IP \fIstatus_return\fP 16
+Specifies the pointer to the XCompose structure.
+.IP \fIkanji_status_return\fP 16
+Returns the Kana-to-Kanji conversion status.
+.RE
+.SH DESCRIPTION
+.PP
+\fIXLookupKanjiString\fP is a convenient routine that associates a key
+event with a Japanese character string.  It uses the modifier key bit
+to processes such as shift, lock, and control.
+.PP
+\fIXLookupKanjiString\fP enables eight- and 16-bit Japanese characters
+to be processed.
+.PP
+\fIXLookupKanjiString\fP processes alphabetical characters in
+the same way as XLookupString.  
+.PP
+For Japanese character processing, Romaji-to-Kana conversion
+and Kana-to-Kanji conversion are done in this function.
+The XKanjiStatus, defined below, is used during Japanese
+data input:
+.PP
+.nf
+	typedef struct _XKanjiStatus {
+	    unsigned char *echoStr;     /* local echo string */
+	    int length;		        /* length of echo string */
+	    int revPos;                 /* reverse position  */
+	    int revLen;                 /* reverse length    */
+	    unsigned long info;		/* other informations */
+	    unsigned char *mode;	/* mode information */
+	    struct {
+		unsigned char *line;	/* a grance of Kanji characters */
+		int length;		/* length of it */
+		int revPos;		/* reverse position of it */
+		int revLen;		/* reverse length of it */
+	    } gline;			/* a grancing line information */
+	} XKanjiStatus;
+
+	#define KanjiModeInfo	01
+	#define KanjiGLineInfo	02
+.fi
+.PP
+When Kana-to-Kanji conversion is used during Japanese input,
+information such as the readings to be converted need to be echoed
+(local echo).  \fIXLookupKanjiString\fP does not perform display such
+as local echo.  Instead, it returns the character strings to be
+submitted to local echo, to the application by using the
+\fIXKanjiStatus\fP structure.
+.PP
+The EUC character strings to be submitted to local echo include
+characters already converted into Kana from Romaji and conversion
+candidate characters.  Until the conversion is fixed, they are
+returned by the \fIechoStr\fP member.  At this time, the length of
+local echo character string is returned by the \fIlength\fP member.
+Also, the starting position and length (bytes) of reverse display are
+returned by the \fIrevPos\fP and \fIrevLen\fP member, respectively.
+The buffer for local echo character strings is reserved automatically
+by \fIXLookupKanjiString\fP.  It should be used only for reading.  No
+character string must be written into this buffer.
+.PP
+If no character string is to be submitted to local echo,
+0 will return to the length member.
+.PP
+The contents to be submitted to local echo may be the same as when
+\fIXLookupKanjiString\fP was previously called.  (This occurs, for
+example, when the Shift key is pressed.)  In this case, \-1 returns to
+the length member.
+.PP
+Mode changes and existence of information about the candidate list are
+passed by the \fIinfo\fP member.  If \fIinfo\fP member's KanjiModeInfo
+bit is on, the character string indicating the new mode will return to
+\fImode\fP.  If the info member's KanjiGLineInfo bit is on, the
+\fIgline\fP structure has contained information such as the candidate
+list.
+.PP
+The character string for candidate list display returns to the
+\fIgline\fP structure's line member.  The length, reverse dispaly
+starting position, and reverse display duration of the candidate list
+character string return to the \fIgline\fP structure's \fIline\fP,
+\fIrevPos\fP, and \fIrevLen\fP, respectively.
+.PP
+If there is an EUC character string fixed during conversion, it
+will be stored in \fIbuffer_return\fP.  In this case, the length
+(bytes) of this character string will return as the return value of
+this function.  If there is no fixed character string, the return
+value will be 0.
+.\" 
+.if t .pn 575
+.TH XKANJICONTROL 3
+.SH NAME
+XKanjiControl \(em Control the XLookupKanjiString mode and process.
+.SH "SYNOPSIS"
+.nf
+.B #include <X11/kanji.h>
+.B int XKanjiControl(\fIdpy, win, request, arg\fP)
+.B Display \fIdpy\fP;
+.B Window \fIwin\fP;
+.B int \fIrequest\fP;
+.B char \fI*arg\fP;
+.fi
+.SH "DESCRIPTION"
+.PP
+\fIXKanjiControl\fP executes a process that relates to Japanese input
+within the window defined by \fIdpy\fP and \fIwin\fP.  The process is
+specified in \fIrequest\fP.  Some processes are accompanied by the
+argument, specified in \fIarg\fP.
+.PP
+\fIXKanjiControl\fP controls the following functions:
+.IP "\fIrequest\fP name" 18
+Function
+.IP "KC_INITIALIZE" 18
+Initializes Kana-to-Kanji conversion.
+.IP "KC_CHANGEMODE" 18
+Changes the input mode.
+.IP "KC_SETWIDTH" 18
+Specifies the width used to display the candidate
+.IP "KC_FINALIZE" 18
+Finalizes (terminates) Kana-to-Kanji conversion processing.
+.IP "KC_SETUNDEFKEYFUNCTION" 18
+Sets a function for an undefined key.
+.IP "KC_SETMODEINFOSTYLE" 18
+Specifies whether mode information is represented in numeric form.
+.IP "KC_KAKUTEI" 18
+Fixes the currently entered character string.
+.IP "KC_KILL" 18
+Deletes the currently entered character string.
+.IP "KC_QUERYMODE" 18
+Queries about the current mode.
+.IP "KC_SETSERVERNAME" 18
+Specifies the server to be connected.
+.IP "KC_SETINITFILENAME" 18
+Specifies the customize file.
+.IP "KC_CLOSEUICONTEXT" 18
+Closes the context.
+.IP "KC_QUERYMAXMODESTR" 18
+Obtains the maximum length of mode display character string.
+.PP
+Basically, \fIXKanjiControl\fP is enabled only for the window
+specified in the \fIdpy\fP and \fIwin\fP.  This rule does not apply to
+the initialize and terminate processes.
+.PP
+The unfixed character string condition may change, or details of the
+mode may vary, depending on the \fIXKanjiControl\fP operation.  If
+this may occur, pass the pointer to a structure that can contain the
+varied information in the arg field.  This structure is defined as
+follows:
+.sp
+.nf
+.ft CW
+typedef struct {
+  int      val;          /* The length of the character string in the
+                            buffer returns. */
+  unsigned char *buffer; /* Specifies the buffer used to store the
+                            fixed character string. */
+  int      bytes_buffer; /* Specifies the size of the above buffer. */
+  XKanjiStatus *ks;      /* Pointer to the structure that contains
+                            information about the unfixed character string. */
+} XKanjiStatusWithValue;
+.ft
+.fi
+.sp
+.PP
+The \fIXKanjiControl\fP functions can be executed in the following ways:
+.IP "(1)" 6
+KC_INITIALIZE \(em Initializes Kana-to-Kanji conversion.
+.RS
+.PP
+KC_INITIALIZE initializes Kana-to-Kanji conversion by specifying
+KC_INITIALIZE in the \fIrequest\fP field.  Specify one of the
+following in arg: (1) the pointer to the char ** type variable used to
+store the warning message and (2) NULL.  The initialize process is
+basically executed automatically when \fIXLookupKanjiString\fP(3) is
+first called.  This is skipped by using \fIXKanjiControl\fP for
+initialization.
+.PP
+For example, when control about Kana-to-Kanji conversion is executed
+using \fIXKanjiControl\fP before use of \fIXLookupKanjiString\fP(3),
+Kana-to-Kanji conversion must be initialized.
+.PP
+When the process terminates normally, 0 returns as the
+\fIXKanjiControl\fP return value.  When it terminates abnormally, \-1
+returns.
+.PP
+When KC_INITIALIZE is executed, a warning, rather than an error, may
+occur.  When it occurs, the pointer to the warning character string
+array is stored in and returns to the variable specified in \fIarg\fP.
+If no warning occurs, NULL is stored and returns.
+.sp
+(Example)
+.nf
+.ft CW
+  int res; /* Prepare for error return */
+  char **warning;
+  .....
+  res = XKanjiControl(dpy, win, KC_INITIALIZE, &warning);
+  if (warning) {
+    char **p;
+
+    for (p = warning ; *p ; p++) {
+      fprintf(stderr, "%s\n", *p);
+    }
+  }
+.ft
+.fi
+.sp
+.PP
+In the library, malloc is done for the warning message returning to
+the fourth argument.  This message is freed when KC_INITIALIZE or
+KC_FINALIZE is executed next.  The application programmer must not
+free it.  The maximum number of warning messages is restricted to 64
+now.  The subsequent ones are discarded.
+.PP
+The following warnings may be included in a message:
+.IP "-" 3
+All customize files including those of the system are unavailable.
+.IP "-" 3
+The customize file contains a syntax error.
+.IP "-" 3
+The Romaji-to-Kana conversion dictionary is unavailable.
+.IP "-" 3
+The Kana-to-Kanji conversion dictionary is unavailable.
+.IP "-" 3
+Connection to the Kana-to-Kanji conversion server is disabled.
+.PP
+If NULL is specified as the fourth argument, any warning message will
+be discarded.
+.RE
+.IP "(2)" 6
+KC_CHANGEMODE \(em Changes the input mode.
+.RS
+.PP
+KC_CHANGEMODE changes the input mode from the application.  Specify
+KC_CHANGEMODE in the \fIrequest\fP field.  Specify the
+XKanjiStatusWithValue structure in \fIarg\fP.  The Japanese mode is
+changed by specifying the \fImode\fP number with the \fIval\fP member
+of XKanjiStatusWithValue structure.  The mode number is indicated by
+the following macros:
+.IP "Macro number" 24
+Mode
+.IP "CANNA_MODE_AlphaMode" 24
+Alphabet mode
+.IP "CANNA_MODE_HenkanMode" 24
+Conversion input mode
+.IP "CANNA_MODE_KigoMode" 24
+Symbol input mode
+.IP "CANNA_MODE_ZenHiraKakuteiMode" 24
+Full-wide Hiragana fixed input mode
+.IP "CANNA_MODE_ZenKataKakuteiMode" 24
+Full-wide Katakana fixed mode
+.IP "CANNA_MODE_HanKataKakuteiMode" 24
+Half-wide Katakana fixed input mode
+.IP "CANNA_MODE_ZenAlphaKakuteiMode" 24
+Full-wide alphabet fixed input mode
+.IP "CANNA_MODE_HanAlphaKakuteiMode" 24
+Half-wide alphabet fixed input mode
+.IP "CANNA_MODE_HexMode" 24
+Hexadecimal code input mode
+.IP "CANNA_MODE_BushuMode" 24
+Bushu input mode
+.IP "CANNA_MODE_TorokuMode" 24
+Word register mode
+.PP
+This function causes much dispaly (mode name etc.) to vary in response
+to a mode change.  The display change is returned by the
+XKanjiStatusWithValue structure specified as \fIarg\fP.
+.sp
+(Example)
+.ft CW
+.nf
+  XKanjiStatus ks;
+  XKanjiStatusWithValue ksv;
+  unsigned char buf[SOMESIZE];
+  .....
+  ksv.ks = &ks;
+  ksv.buffer = buf;
+  ksv.bytes_buffer = SOMESIZE;
+  ksv.val = CANNA_MODE_HexMode;
+
+  XKanjiControl(dpy, win, KC_CHANGEMODE, &ksv);
+  len = ksv.val;
+  .....
+  /* Information about the unfixed or fixed character string is
+     returned by ksv. */
+.fi
+.ft
+.sp
+.RE
+.IP "(3)" 6
+KC_SETWIDTH \(em Specifies the width used to display the candidate list.
+.RS
+.PP
+KC_SETWIDTH specifies the number of columns of the area on which the
+candidate list is to be displayed.  The width of one column equals
+that of an alphabetical or half-wide Katakana character.  Each
+full-wide Kanji character occupies two columns.  Using KC_SETWIDTH,
+specify the width of candidate list display area to be specified in
+the \fIrequest\fP field.  At this time, specify the number of columns
+in \fIarg\fP.
+.sp
+(Example)
+.ft CW
+.nf
+  XKanjiControl(dpy, win, KC_SETWIDTH, (char *)60);
+.fi
+.ft
+.sp
+.RE
+.IP "(4)" 6
+KC_FINALIZE \(em Finalizes (terminates) processing of Kana-to-Kanji conversion
+.RS
+.PP
+KC_FINALIZE specifies that Kana-to-Kanji conversion also finalizes
+(terminates) at the end of the program and in other cases.  Be sure to
+execute this process when terminating Kana-to-Kanji conversion processing.
+All contents learned up to now are registered in the file.  Specify
+KC_FINALIZE in the \fIrequest\fP field.
+.PP
+When the process terminates normally, 0 returns.  When it
+terminates abnormally, \-1 returns.
+.PP
+When KC_INITIALIZE is executed, a warning, rather than an error, may
+occur.  When it occurs, the pointer to the warning character string
+array is stored in and returns to the variable specified in arg.  If
+no warning occurs, NULL is stored and returns.
+.sp
+(Example)
+.ft CW
+.nf
+.fi
+  int res; /* Prepare for error return */
+  char **warning;
+  .....
+  res = XKanjiControl(dpy, win, KC_FINALIZE, &warning);
+  if (warning) {
+    char **p;
+
+    for (p = warning ; *p ; p++) {
+      fprintf(stderr, "%s\n", *p);
+    }
+  }
+.ft
+.sp
+.PP
+In the library, malloc is done for the warning message returning to
+the fourth argument.  This message is freed when KC_INITIALIZE or
+KC_FINALIZE is executed next.  The application programmer must not
+free it.
+.PP
+The maximum number of warning messages is restricted to 64 now.  The
+subsequent ones are discarded.
+.PP
+The following warning may be included in a message:
+.IP "-" 3
+The dictionary cannot be unmounted.
+.PP
+If NULL is specified as the fourth argument, any warning
+message will be discarded.
+.RE
+.IP "(5)" 6
+KC_SETUNDEFKEYFUNCTION \(em Sets a function for an undefined key.
+.RS
+.PP
+For example, if you press CTRL-t during input of a reading, it is
+regarded as undefined key input.  The following processes are
+executed, responding to undefined key input:
+.IP "Macro name" 12
+Process
+.IP "kc_normal" 12
+Beep
+.IP "kc_through" 12
+Passes the input to the application program.
+.IP "kc_kakutei" 12
+Fixes the input and passes it to the application program.
+.IP "kc_kill" 12
+Deletes the input and passes it to the application program.
+.PP
+If kc_normal is specified, the function set in external variable
+\fIjrBeepFunc\fP is called automatically by the library when an
+undefined key is input.  If the value is not set in jrBeepFunc,
+nothing occurs when "jrBeepFunc == NULL" appears.
+.sp
+(Example)
+.ft CW
+.nf
+  extern (*jrBeepFunc)(), beep();
+
+  jrBeepFunc = beep;
+  XKanjiControl(dpy, win, KC_SETUNDEFKEYFUNCTION, kc_normal);
+.fi
+.ft
+.sp
+.RE
+.IP "(6)" 6
+KC_SETMODEINFOSTYLE \(em Specifies mode information representation.
+.RS
+.PP
+You may want to display mode information with data such as the bit
+map, rather than character strings.  In this case, return of numeric
+data as mode information helps you execute the process.  Specify
+KC_SETMODEINFOSTYLE in \fIXKanjiControl\fP, and pass 1 to \fIarg\fP.
+After this, one character representing the mode code (numeric) plus
+'@' (0x40) returns to the XKanjiStatus structure's \fImode\fP member.
+To convert the value into the mode code, subtract '@' (0x40) from the
+returned character string.  For the mode codes, see the mode change
+description of Item (2) KC_CHANGEMODE.
+.RE
+.IP "(7)" 6
+KC_KAKUTEI, (8) KC_KILL \(em Kill the currently input character string.
+.RS
+.PP
+You may want to relinquish the currently entered character string for
+some reason.  There are two relinquishing methods.  One is to
+relinquish the character string after including the currently entered
+character string as a fixed one.  The other is to discard the
+character string completely then relinquish it.  For the first method,
+specify KC_KAKUTEI in \fIjrKanjiControl\fP.  For the second method,
+specify KC_KILL.
+.PP
+Each of the above influences the display.  The XKanjiStatusWithValue
+must thus be specified as the fourth argument.
+.sp
+(Example)
+.nf
+.ft CW
+  XKanjiStatusWithValue ksv;
+  XKanjiStatus ks;
+  unsigned char buf[SOMESIZE];
+  .....
+  ksv.ks = &ks;
+  ksv.buffer = buf;
+  ksv.bytes_buffer = SOMESIZE;
+
+  XKanjiControl(dpy, win, KC_KAKUTEI, &ksv);
+  len = ksv.val;
+  .....
+.ft
+.fi
+.sp
+.RE
+.IP "(9)" 6
+KC_QUERYMODE \(em Inquiry about the mode
+.RS
+.PP
+To inquire about the current mode, specify KC_QUERYMODE in
+\fIXKanjiControl\fP.
+.PP
+Specify the pointer to the character array in which the mode character
+string is to be stored.  The mode character string is a character
+string ending with a null character.  To return a numeric here,
+specify KC_SETMODEINFOSTYLE in \fIXKanjiControl\fP to change the mode
+character string style.
+.sp
+(Example)
+.nf
+.ft CW
+  char currentMode[MAXMODELEN];
+  .....
+  XKanjiControl(dpy, win, KC_QUERYMODE, currentMode);
+  .....
+.ft
+.fi
+.sp
+.RE
+.IP "(10)" 6
+KC_SETSERVERNAME \(em Specifies the server to be connected.
+.RS
+.PP
+KC_SETSERVERNAME enables you to switch the Kana-to-Kanji conversion
+server without terminating the application program.  To set the server
+to connect as the Kana-to-Kanji conversion server, specify
+KC_SETSERVERNAME in \fIXKanjiControl\fP.  In the fourth argument,
+specify the name of the server to be connected.
+.RE
+.IP "(11)" 6
+KC_SETINITFILENAME \(em Specifies the customize file.
+.RS
+.PP
+KC_SETINITFILENAM enables the application program to change the
+customize file.  To change the customize file, specify
+KC_SETINITFILENAME as the third argument and the file name character
+string as the fourth argument.  This process must be executed before
+KC_INTIALIZE.
+.sp
+(Example)
+.nf
+.ft CW
+  char *inifile = "app-own.canna"
+  .....
+  XKanjiControl(dpy, win, KC_SETINITFILENAME, initfile);
+  .....
+.ft
+.fi
+.sp
+.RE
+.IP "(12)" 6
+KC_CLOSEUICONTEXT   Closes the context.
+.RS
+.PP
+When \fIXKanjiControl\fP or \fIXLookupKanjiString\fP is called, one
+conversion context is assigned to combination of \fIdpy\fP and
+\fIwin\fP.  Combination of \fIdpy\fP and \fIwin\fP not used yet can be
+specified for \fIXKanjiControl\fP or \fIXLookupKanjiString\fP.  When
+this is done, a new context is created for the window and the required
+memory is reserved.
+.PP
+If a window used up to now is not used, you may want to free the
+context memory that has been assigned to this window.  To do so, call
+\fIXKanjiControl\fP by specifying KC_CLOSEUICONTEXT as the third
+argument.
+.PP
+Because this process causes a display change, specify
+XKanjiStatusWithValue as the fourth structure.
+.sp
+(Example)
+.nf
+.ft CW
+  XKanjiStatusWithValue ksv;
+  XKanjiStatus ks;
+  unsigned char buf[SOMESIZE];
+  .....
+  ksv.ks = &ks;
+  ksv.buffer = buf;
+  ksv.bytes_buffer = SOMESIZE;
+
+  XKanjiControl(dpy, win, KC_CLOSEUICONTEXT, &ksv);
+  .....
+.ft
+.fi
+.sp
+.RE
+.IP "(13)" 6
+KC_QUERYMAXMODESTR \(em Obtains the maximum length of mode display
+character string.
+.RS
+.PP
+The mode display character string can be customized using the
+initialize file.  It is necessary to examine the size of the display
+area (in the customized resulting mode display character string) that
+is to be reserved.  Specify KC_QUERYMAXMODESTR as the third argument,
+then call \fIXKanjiControl\fP.  As a result, the number of columns
+necessary for the mode display character string is returned.  (The
+number of columns is represented, defining that the width of one
+half-wide alphanumeric character is 1.
+.PP
+The fourth argument is unused; dummy value 0 is assigned to it.
+.sp
+(Example)
+.ft CW
+.nf
+  int max_mode_columns;
+  .....
+  max_mode_columns = XKanjiControl(dpy, win, KC_QUERYMAXMODESTR, 0);
+  .....
+.fi
+.ft
+.sp
+.RE

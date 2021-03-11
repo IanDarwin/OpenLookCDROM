@@ -1,0 +1,208 @@
+#! /bin/sh
+set -k
+# usage:  mkparser prefix [c-file [h-file]]
+#  		where 'prefix' is the name of the grammar.
+#	The generated table will have the name prefix_ParseTable (with 
+#	'prefix' replaced).
+#	The c-file must exist.  If not named in the arguments, its name
+#	must be prefix.tab.c.
+#	If the h-file is not specified, it is taken to be prefix.tab.h;
+#	the h-file need not exist.
+#
+# Output: files prefix.c and prefix.h suitable for compilation
+
+export prefix
+prefix=$1
+
+# determine file names
+# c-file
+#	$2, if specified, otherwise prefix.tab.c
+#	if file does not exist, exit with error
+export cfile
+cfile=${2-$1.tab.c}
+if test \! -r $cfile; then echo Missing .c file: $cfile; exit 3
+	else echo Reading $cfile.  Creating ${prefix}.c;  fi
+# h-file
+#	$3, if specified,otherwise prefix.tab.h
+#	if file does not exist, set name to ""
+export hfile
+hfile=${3-$1.tab.h}
+if test \! -r $hfile; then 
+	echo Found no .h file.  Creating ${prefix}.h
+	hfilename=""
+else
+	hfilename=$hfile
+fi
+
+#generate initial segment of parser declaration in .h file
+cat <<EOF > ${prefix}.h
+/*  declaration of parser $prefix
+
+	Created by mkparser from  $cfile  $hfilename
+*/
+#include <cparser.h>
+
+extern struct parser *${prefix}_New();
+
+EOF
+
+#process cfile to produce prefix.c
+awkfile=/tmp/makepC$$
+trap "rm -f ${awkfile} ${awkfile}.2" 0 1 2 15 
+
+cat<<EOF>$awkfile
+BEGIN {
+	print "/* produced by mkparser from $cfile */"
+	print ""
+	print "#include <cparser.h>"
+}
+
+# if we see ErrorGuts declared, be sure to call parser_SetErrorFunc
+/${prefix}_ErrorGuts.*\(/  {if (sawErrorGuts == 0) {
+	sawErrorGuts = 1
+}}
+
+# delete bison.simple stuff
+/#line.*bison/ {deleting = 1; next}
+/#line/ {deleting = 0}
+/Note some compilers choke/ {next}
+# insert declaration of reduceActions in place of Bison's parser
+/switch \(yyn\)/  {
+	print ""
+	print "#define yyval (*pyyval)"
+	print "	static int"
+	print "reduceActions(i, pyyval, yyvsp, parser)\nint i;\nYYSTYPE *pyyval;\nYYSTYPE *yyvsp;\n"
+	print "		struct parser *parser; {"
+	print "	switch (i) {"
+	print "" 
+	deleting = 0
+	intables = 0
+	next
+}
+
+# insert end of reduceActions function
+/action file gets copied/ {
+	print ""
+	print " return 0;  /* no special action */"
+	print "}"
+	print "#undef yyval"
+	deleting = 1
+	next
+}
+
+# remove  '#if...YYDEBUG' ... '#endif'  from table declarations
+#	and add them around  yyprhs, yyrhs, yyrline
+#	(but NOT arount yytname)
+/stdio\.h/ {intables = 1}
+/#if.*YYDEBUG/ {if (intables == 1) {inyydebug = 1; next}}
+/#endif/ {if (inyydebug == 1) {inyydebug = 0; next}}
+/(short yyprhs)|(short yyrhs)|(short yyrline)/ {
+	print "#if YYDEBUG != 0"
+	print
+	inrhsdebug = 1
+	next
+}
+# (continue below)
+
+# delete YYSTYPE declaration
+/#ifndef.*YYSTYPE/,/#endif/ {next}
+
+# pass through all lines not handled above
+{if (deleting == 0) {print}}
+
+# (continuation of wrapping rhs stuff with #if YYDEBUG ...)
+/};/ {if (inrhsdebug == 1) {print "#endif"; inrhsdebug = 0}}
+
+# at end, append the table and class declaration
+END {
+	print "#line 119 \"mkparser\""
+	print ""
+	print "static struct parser_tables ${prefix}_ParseTable = {"
+	print "	YYNTOKENS,	/* num_tokens */"
+	print "	YYNNTS,		/* num_nt */"
+	print "	YYMAXUTOK,	/* max_user_token */"
+	print "	YYNRULES,	/* num_rules */"
+	print "	YYNSTATES,	/* num_states */"
+	print "	YYFINAL,	/* final_state */"
+	print ""
+	print "	sizeof(YYSTYPE),	/* eltsz */"
+	print ""
+	print "	YYFLAG,		/* defflag */"
+	print "	YYLAST,		/* table_max */"
+	print ""
+	print "	(char **)yytname,	/* name */"
+	print "	(char *)yytranslate,	/* translate */"
+	print ""
+	print "	(short *)yyr1,		/* lhs */"
+	print "#if YYDEBUG != 0"
+	print "	(short *)yyprhs,	/* rhsx */"
+	print "	(short *)yyr2,		/* rhssz */"
+	print "	(short *)yyrhs,		/* rhs */"
+	print "#else"
+	print "	(short *)NULL,		/* rhsx */"
+	print "	(short *)yyr2,		/* rhssz */"
+	print "	(short *)NULL,		/* rhs */"
+	print "#endif"
+	print "	(short *)yytable,	/* table */"
+	print "	(short *)yycheck,	/* valid */"
+	print ""
+	print "	(short *)yydefact,	/* defred */"
+	print "	(short *)yypact,	/* actx */"
+	print "	(short *)yydefgoto,	/* defnext */"
+	print "	(short *)yypgoto, 	/* nextx */"
+	print "	(parser_semfptr)reduceActions	/* actions */"
+	print "};"
+	print ""
+	print "struct parser *${prefix}_New() {"
+	print "	struct parser *self=parser_New();"
+	print "	parser_SetTables(self, &${prefix}_ParseTable);"
+	if (sawErrorGuts) {
+		print "	parser_SetErrorFunc(self, (parser_errfptr)${prefix}_ErrorGuts);"
+	}
+	print "	return self;"
+	print "}"
+}
+EOF
+awk -f $awkfile $cfile > ${prefix}.c
+
+if  test -r $hfile; then 
+	echo Reading $hfile.  Creating ${prefix}.h
+
+	#process hfile to make prefix.h
+	cat<<EOF>$awkfile.2
+		#terminate class declaration
+		BEGIN {
+			print ""
+		}
+		# delete YYSTYPE declaration
+		/#ifndef.*YYSTYPE/,/#endif/ {next}
+		# delete declaration of yylval
+		/yylval/ {next}
+		# otherwise, just copy the whole thing
+		{print}
+EOF
+	awk -f $awkfile.2 $hfile >> ${prefix}.h
+fi
+rm -f $awkfile $awkfile.2
+
+# Copyright 1994 Carnegie Mellon University All rights reserved.
+#  $Disclaimer: 
+# Permission to use, copy, modify, and distribute this software and its 
+# documentation for any purpose is hereby granted without fee, 
+# provided that the above copyright notice appear in all copies and that 
+# both that copyright notice, this permission notice, and the following 
+# disclaimer appear in supporting documentation, and that the names of 
+# IBM, Carnegie Mellon University, and other copyright holders, not be 
+# used in advertising or publicity pertaining to distribution of the software 
+# without specific, written prior permission.
+# 
+# IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+# DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+# SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+# BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+# DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+# WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+# ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+# OF THIS SOFTWARE.
+#  $

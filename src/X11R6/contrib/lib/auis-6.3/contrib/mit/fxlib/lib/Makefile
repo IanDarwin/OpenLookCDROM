@@ -1,0 +1,73 @@
+#
+# Makefile for the FX (file exchange) intermediate level
+#
+# $Author: wdc $
+# $Source: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/contrib/mit/fxlib/lib/RCS/Makefile,v $
+# $Header: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/contrib/mit/fxlib/lib/RCS/Makefile,v 1.1 1992/02/13 20:29:26 wdc R6tape $
+#
+# Copyright (c) 1989, Massachusetts Institute of Technology
+#
+
+# Client-server protocol, error tables kept in separate directories
+PROTDIR=../protocol
+ETSDIR=../ets
+
+# Client-server protocol, error tables kept in separate directories
+VPATH=../protocol:../ets
+
+FXCLSRC = _fx_lengthen.c	fx_create.c		fx_move.c \
+	_fx_rpc_errno.c		fx_delete.c		fx_open.c \
+	_fx_shorten.c		fx_destroy.c		fx_retrieve.c \
+	_fx_unshorten.c		fx_directory.c		fx_retrieve_file.c \
+	fx_acl_add.c		fx_directory_destroy.c	fx_send.c \
+	fx_acl_del.c		fx_host_list.c		fx_send_file.c \
+	fx_acl_list.c		fx_host_list_destroy.c	fx_stat.c \
+	fx_acl_list_destroy.c	fx_init.c		fx_stat_destroy.c \
+	fx_connect.c		fx_list.c		libacl.c \
+	fx_copy.c		fx_list_destroy.c	strcasecmp.c \
+	${ETSDIR}/fxcl_err.c	${ETSDIR}/fxserver_err.c \
+	${ETSDIR}/krb_err.c	${ETSDIR}/rpc_err.c \
+	${PROTDIR}/fx_prot_clnt.c ${PROTDIR}/fx_prot_xdr.c
+
+FXCLOBJ = _fx_lengthen.o	fx_create.o		fx_move.o \
+	_fx_rpc_errno.o		fx_delete.o		fx_open.o \
+	_fx_shorten.o		fx_destroy.o		fx_retrieve.o \
+	_fx_unshorten.o		fx_directory.o		fx_retrieve_file.o \
+	fx_acl_add.o		fx_directory_destroy.o	fx_send.o \
+	fx_acl_del.o		fx_host_list.o		fx_send_file.o \
+	fx_acl_list.o		fx_host_list_destroy.o	fx_stat.o \
+	fx_acl_list_destroy.o	fx_init.o		fx_stat_destroy.o \
+	fx_connect.o		fx_list.o		libacl.o \
+	fx_copy.o		fx_list_destroy.o	strcasecmp.o \
+	${ETSDIR}/fxcl_err.o	${ETSDIR}/fxserver_err.o \
+	${ETSDIR}/krb_err.o	${ETSDIR}/rpc_err.o \
+	${PROTDIR}/fx_prot_clnt.o ${PROTDIR}/fx_prot_xdr.o
+
+INCLUDES = -I../rpc3.9/usr/include -I../include
+LIBS = -L../rpc3.9/usr/lib -L/usr/athena/lib -lhesiod -lkrb -ldes -lcom_err -lrpclib
+
+CFLAGS = ${INCLUDES} -DKERBEROS -DHESIOD
+
+all: libfxcl.a llib-lfxcl.ln libacl.a
+
+libfxcl.a: ${FXCLOBJ}
+	ar cr libfxcl.a ${FXCLOBJ}
+	ranlib libfxcl.a
+
+llib-lfxcl.ln: ${FXCLSRC}
+	lint ${CFLAGS} -Cfxcl ${FXCLSRC}
+
+libacl.a: libacl.o
+	ar cr $@ libacl.o
+	ranlib $@
+
+lint:	${FXCLSRC}
+	lint -u ${CFLAGS} ${FXCLSRC}
+
+saber_src:
+	#suppress 287
+	#load ${CFLAGS} ${LIBS} ${FXCLSRC} ../rpc3.9/rpc/xdr_reference.o
+	#link
+
+clean:
+	rm -f *.o core *~ libfxcl.a llib-lfxcl.ln libacl.a

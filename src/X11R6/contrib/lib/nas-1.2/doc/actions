@@ -1,0 +1,125 @@
+$NCDId: @(#)actions,v 1.1 1994/05/26 16:19:20 greg Exp $
+
+To: kurz@cenatls.cena.dgac.fr (Gregory KURZ)
+cc: netaudio@ncd.com
+Subject: Re: buckets 
+In-reply-to: Your message of "Fri, 18 Mar 94 18:52:22 GMT."
+             <9403181852.AA00846@verso.cena.dgac.fr> 
+Date: Fri, 18 Mar 94 11:05:31 PST
+From: Greg Renda <greg@hansen.ncd.com>
+
+kurz@cenatls.cena.dgac.fr (Gregory KURZ) writes:
+
+> I'm studying real-time sound synthesis and I would like to use
+> buckets in order to decrease the working time of my program (it's
+> better to let the server deal with the samples when they're ready to
+> be played). I've tried to do the following thing :
+>
+>         _ storing the first sample-table in a bucket
+>         _ asking the server to play from the bucket (AuSoundPlayFromBucket)
+>         _ storing the second sample-table in another bucket (while the first
+>           one is being played)
+>         - asking the server to play from the second bucket as soon 
+>           as the first one is finished (with the "done" callback)
+>        and so on...
+> 
+> The problem is that between two different requests of playing, there's a 1/2
+> second blank which is quite annoying for the real-time effect. Since the goal
+> was to compute a continuous sound, I've also tried to store in a Bucket a
+> single sample-table which would produce a nice sound if it was played
+> continuosly (using the parameter Count in AuSoundPlayFromBucket), but that
+> changes nothing.
+> 
+> So, at last, my quesion is : is it possible to establish a kind of "link"
+> between two buckets, so that one can be immediatly used after the other ?
+
+You betcha!  You want to use the "actions" feature.  When creating a
+component element (an import or an export) you can specify actions
+that occur whenever the element changes state.  An action can change
+the state of another element, send a notify event, or do nothing
+(useful for overriding the default actions).  All actions contain:
+
+	- a trigger state, previous state, and reason
+
+		This says when the action is to be triggered.  For
+		example, if you want the action to be triggered when
+		the element changed from started to paused due to some
+		user interaction you'd set:
+
+			trigger state = AuStatePause
+			previous state = AuStateStart
+			reason = AuReasonUser
+
+A ChangeStateAction also contains:
+
+	- the flow id containing the element to perform the state change on.
+	- the element number in the flow to perform the state change
+	  on.  This may be AuElementAll to change the state of all the
+	  elements in the specified flow.
+	- the new state for the element.
+
+Legal states are:
+
+	AuStateStop
+	AuStateStart
+	AuStatePause
+	AuStateAny (used only for a trigger or previous state match)
+
+Legal reasons are:
+
+	AuReasonUser		a client interaction
+	AuReasonUnderrun	the element ran out of data unexpectedly
+	AuReasonOverrun		the element overran its buffer
+	AuReasonEOF		the element reached the end of its data
+	AuReasonWatermark	the element's buffer reached a watermark
+	AuReasonHardware	some hardware problem (perhaps it can't keep up)
+	AuReasonAny		any of the above
+
+Note that when you specify actions for an element, you are overriding
+any default actions that the element might have.  So if you want any
+of those default actions to occur in addition to your own actions, you
+have to specify them in the action list.  Here are the default actions
+for each component element:
+
+Component	Action		Trigger	Prev	Reason	Flow	Element	State
+--------------- --------------- ------- ------- ------- ------- ------- -----
+
+ImportClient	SendNotify	Pause	Any	Any
+     "		SendNotify	Stop	Any	Any
+     "		ChangeState	Pause	Any	Any	Own	All	Pause
+     "		ChangeState	Start	Pause	Any	Own	All	Start
+     "		ChangeState	Stop	Any	Any	Own	All	Stop
+
+ImportDevice	(None)
+
+ImportBucket	SendNotify	Pause	Any	Any
+     "		SendNotify	Stop	Any	Any
+     "		ChangeState	Stop	Any	Any	Own	All	Stop
+
+ImportWaveForm	SendNotify	Pause	Any	Any
+     "		SendNotify	Stop	Any	Any
+     "		ChangeState	Stop	Any	Any	Own	All	Stop
+
+ExportClient	SendNotify	Pause	Any	Any
+     "		SendNotify	Stop	Any	Any
+     "		ChangeState	Pause	Any	Any	Own	All	Pause
+     "		ChangeState	Start	Pause	Any	Own	All	Start
+     "		ChangeState	Stop	Any	Any	Own	All	Stop
+
+ExportDevice	(None)
+
+ExportBucket	SendNotify	Pause	Any	Any
+     "		SendNotify	Stop	Any	Any
+     "		ChangeState	Stop	Any	Any	Own	All	Stop
+
+ExportMonitor	(None)
+
+
+For examples of using actions, see audial and auphone.  auphone uses
+an action to contiuously play the ringing and busy sounds.
+
+The catch to all of this is that you'll have to use the lower level
+API calls for your client since the higher level calls don't support
+actions.  Again, see the sample clients for examples.
+
+-Greg

@@ -1,0 +1,89 @@
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; ;;
+;;         Copyright IBM Corporation 1988,1991 - All Rights Reserved      ;;
+;;        For full copyright information see:'andrew/config/COPYRITE'     ;;
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; ;;
+; Extra library functions for bboard-daemon FLAMES files
+; includes flib.flm
+; $Disclaimer: 
+; Permission to use, copy, modify, and distribute this software and its 
+; documentation for any purpose is hereby granted without fee, 
+; provided that the above copyright notice appear in all copies and that 
+; both that copyright notice, this permission notice, and the following 
+; disclaimer appear in supporting documentation, and that the names of 
+; IBM, Carnegie Mellon University, and other copyright holders, not be 
+; used in advertising or publicity pertaining to distribution of the software 
+; without specific, written prior permission.
+; 
+; IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+; DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+; ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+; SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+; BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+; DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+; WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+; ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+; OF THIS SOFTWARE.
+;  $
+
+(load "flib")
+
+; This one returns either the received headers,
+; the resent headers or the To and CC headers.
+; Received headers are checked first; if they exist and contain of the
+; strings in "strings", they're returned.  Otherwise,
+; resent headers are returned (if they exist).  If all
+; else fails, the to and cc headers are returned.
+; (The return value is a flat list of strings.)
+(defun right-sending-headers (msg strings)
+  (let* ((received-headers (getheadercontents msg "received"))
+         (resent-headers (multi-getheadercontents msg
+                                                  '("resent-to" "resent-cc")))
+         (dest-headers (multi-getheadercontents msg '("to" "cc"))))
+    (cond ((and received-headers
+                (or (not strings)
+                    (any-str-in-any-str strings received-headers)))
+           received-headers)
+          (resent-headers resent-headers)
+          (T dest-headers))))
+
+(defunv any-str-in-any-str (args)
+        (let ((pats (car args))
+              (refs (car (cdr args)))
+              (ignoreCase (car (cdr (cdr args)))))
+          (cond ((null pats) nil)
+                (T (a-str-in-any-str (car pats)
+                                     refs
+                                     ignoreCase)))))
+
+(defunv any-str-in-a-str (args)
+        (let ((pats (car args))
+              (ref (car (cdr args)))
+              (ignoreCase (car (cdr (cdr args)))))
+          (cond ((null pats) nil)
+                (T (or (strcontains (car pats) ref ignoreCase)
+                       (any-str-in-a-str (cdr pats) ref ignoreCase))))))
+
+; If any strings in "strings" appear in any of the strings in "headers",
+; and if the string "sender" appears in any of the strings in "posters"
+; (or if "posters" is NIL), then post the message on dir.  If "strings"
+; do appear in "headers" but posters is non-NIL and sender is not in posters,
+; reject the message.
+(defun post-if-applicable (msg strings headers ignoreCase sender
+                               posters dir rejto rejcc rejstr)
+  (cond ((any-str-in-any-str strings headers ignoreCase)
+         (cond ((or (null posters)
+                    (a-str-in-any-str sender posters T))
+                (progn
+                 (appendmsgtodir msg dir) T))
+               (T (progn
+                   (rejectmessage msg rejto rejcc rejstr) T))))
+        (T NIL)))
+
+(defun post-by-case (msg headersText sender rejto caseList)
+  (do ((cases caseList (cdr cases)))
+      ((let* ((case (car cases))
+              (string (car case))
+              (posters (car (cdr case)))
+              (dir (car (cdr (cdr case))))
+              (rejcc (car (cdr (cdr (cdr case)))))
+              (rejstr (car (cdr (cdr (cdr (cdr case))))))

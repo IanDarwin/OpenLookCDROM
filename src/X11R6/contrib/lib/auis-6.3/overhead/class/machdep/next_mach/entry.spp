@@ -1,0 +1,90 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+ *        For full copyright information see:'andrew/config/COPYRITE'     *
+\* ********************************************************************** */
+
+/*
+	$Disclaimer: 
+* Permission to use, copy, modify, and distribute this software and its 
+* documentation for any purpose is hereby granted without fee, 
+* provided that the above copyright notice appear in all copies and that 
+* both that copyright notice, this permission notice, and the following 
+* disclaimer appear in supporting documentation, and that the names of 
+* IBM, Carnegie Mellon University, and other copyright holders, not be 
+* used in advertising or publicity pertaining to distribution of the software 
+* without specific, written prior permission.
+* 
+* IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+* DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+* ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+* SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+* BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+* DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+* WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+* ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+* OF THIS SOFTWARE.
+*  $
+*/
+
+
+LL0:
+	.globl	_class_Lookup
+	.data
+	.globl	_class_ErrorReturnValue
+	.text
+#ifdef mc68020
+	.align	1
+#else
+	.even
+#endif
+| Sure hope I am not responsible for saving any registers across a call!
+L000:
+	movl	sp@(8),sp@-	| Move 1st arg over return address & index
+	| index is already in right place as 2nd arg to class_Lookup
+	jbsr	_class_Lookup	| Call class_Lookup.
+	addqw	#4, sp		| Pop argument to class_Lookup.
+	tstl	d0
+	jne	L001
+
+	movl	_class_ErrorReturnValue,d0
+	addqw	#4,sp		| pop index
+	rts
+
+L001:	movl	sp@+,d1
+	asll	#2,d1
+	addl	d1, d0		| Add index to returned value.
+	movl	d0, a0		| Put it into an address register.
+	movl	a0@, a0		| Get the function pointer to jmp to from memory.
+	jmp	a0@		| Jump indirect off of scratch register.
+
+#ifdef __STDC__
+#define ClassEntry(n) \
+        .globl  _ClassEntry ## n:
+#else
+#define ClassEntry(n) \
+        .globl  _ClassEntry/**/n
+#endif 
+
+#include <../common/entrydefs.h>
+
+#undef ClassEntry
+#ifdef __STDC__
+#define ClassEntry(n) \
+_ClassEntry ## n: \
+        movl \#n, sp@-; /* Push index onto stack for later. */ \
+        bra L000
+#else
+#define ClassEntry(n) \
+_ClassEntry/**/n: \
+        movl #n, sp@-; /* Push index onto stack for later. */ \
+        bra L000
+#endif
+
+#include <../common/entrydefs.h>
+
+#ifdef mc68020
+	.align	1
+#else
+	.even
+#endif
+	.data

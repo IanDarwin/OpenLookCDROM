@@ -1,0 +1,184 @@
+Copyright 1992 Carnegie Mellon University.  All rights Reserved.
+$Disclaimer: 
+Permission to use, copy, modify, and distribute this software and its 
+documentation for any purpose is hereby granted without fee, 
+provided that the above copyright notice appear in all copies and that 
+both that copyright notice, this permission notice, and the following 
+disclaimer appear in supporting documentation, and that the names of 
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+used in advertising or publicity pertaining to distribution of the software 
+without specific, written prior permission.
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+OF THIS SOFTWARE.
+ $
+
+parse
+
+The parse object class provides a convenient method for parsing text 
+according to some grammar.  The grammar is represented by tables and the
+parser is in static code, so there are no name conflicts and multiple parsers
+can be employed with impunity.  (However, only one parser can be used from
+any given .c file.)
+
+Tables are generated with a version of the bison package from the Free 
+Software Foundation.  The parser is newly written code specific to the 
+Andrew User Interface System.
+
+
+Source Code
+
+An application which wants to use a grammar prepares the grammar in a 
+file with extension .y using all the conventions of yacc with a few extensions
+noted below.  Suppose the input file is sample.y.  Processing by bison (utilizing the -n and -d options) will 
+yield two files of interest:  sample.tab.c and sample.act.
+
+The application utilizing the parser is a .c file, say sample.c.
+The includes section of sample.c has at least these items,
+in the given order:
+	#include <yystype.h>	/* for YYSTYPE */
+	#include <parse.ih>	/* parse object */
+	#include <sample.tab.c>	/* parse tables */
+	#include <parsedesc.h>	/* declare parse_description */
+	#include <parsepre.h>	/* begin function 'reduceActions' */
+	#include <sample.act>	/* body of function 'reduceActions' */
+	#include <parsepost.h>	/* end of function 'reduceActions' */
+The first of these, yystype.h, may have any name and is only needed
+if the grammar employs the <type> construct;  the file must #define
+YYSTYPE to be suitable as a type in declarations. (See RESTRICTION below.)
+The inclusion of sample.tab.c defines various identifiers and tables;
+their names begin yy and YY, but they are all static.  The inclusion of
+parsedesc.h declares the variable
+	parse_description
+which contains pointers to the tables included from sample.tab.c.  The
+parse_description value is passed to the parse object and to the lexical
+analyzer.
+
+The sample.act file contains the semantics portions of the grammar rules.
+Between sample.act and the parsepre.h and parsepost.h files a function 
+reduceActions() is declared.  It is passed to the parser and called for each
+grammar reduction.
+
+RESTRICTION - The value stack in parse_Run is a stack of (void *).  The
+YYSTYPE value should be no bigger than the size of such a value.
+
+During initialization, the application must create a parser object and pass
+it various information:
+
+	struct parse *parseobject;
+	struct lexan *lexanobject;
+	...
+	lexanobject = lexan_Create(&lexan_description);
+		/* see lexan.doc for further initialization,
+		including setting the lexanobject to refer to input text */
+	parseobject = parse_Create(
+		&parse_description, 	/* declared in parsedesc.h */
+		lexanobject, 		/* created just above */
+		reduceActions, 		/* function defined during includes */
+		rock, 			/* any void* value */
+		error);			/* function called for errors */
+The reduceActions parameter may be NULL, in which case no semantics are 
+performed.  Usually the value is created with the parsepre/act/parsepost
+sandwich indicated above.
+
+The error parameter may be NULL, in which case the error message is printed
+with no indication of where it is in the source stream.  If a function is provided, it will be called for errors with this calling sequence:
+	error(parseobject, severity, message)
+where the message is a character string and
+severity is one of these constants declared in parse.ih:
+
+	parse_WARNING	/* processing continues */
+	parse_SERIOUS	/* compile ceases, but continue error check */
+	parse_SYNTAX	/* like parse_SERIOUS, but was a syntax error */
+	parse_FATAL	/* cannot even continue error checking */
+
+if the severity value is or'ed with parse_FREEMSG, the error routine is
+expected to free() the message.
+
+
+After the parser has been initialized and the lexan object set to the 
+source text, the entire parse is performed with the single call:
+	parse_Run(parseobject)
+the value returned indicates whether success or various degrees of failure.
+
+Note on stack size
+
+The stacks are initially  allocated at 2000 elements, but can grow if needed.
+Use left recursion in grammars to avoid requiring great stack depth.  Note that
+stack depth reflects the amount of information a program reader needs to 
+interpret the program and a grammar requiring a large stack is too complex.
+
+The value stack is pointers to objects as returned by the lexer and set
+in the action routines.  The client is responsible for the memory occupied 
+by the pointees of this stack.  If the parser terminates early for a syntax 
+error or ABORT, these values can be deleted by supplying a KillVal function.
+
+	SetKillVal(parser, f)
+
+will establish f as the killval function.  After a syntax error and before 
+discarding the stack, the killval function is called for each value on the 
+stack.  The function is also called as states are popped for error recovery.
+The call to killval is
+
+	(self->killval)(self, value-pointer-from-stack)
+
+
+Compilation
+
+In the Imakefile, the bison processing is done via a rule like
+
+	sample.tab.c: sample.gra
+		ExecuteFromDESTDIR(bison -n sample.gra)
+
+If sample.c is an object itself, the Imakefile might be as simple as:
+
+IHFILES = sample.ih
+DOFILES = sample.do
+
+NormalObjectRule()
+NormalATKRule()
+
+sample.tab.c: sample.gra
+	ExecuteFromDESTDIR(bison -n sample.gra)
+
+InstallClassFiles($(DOBJS), $(IHFILES))
+
+
+In some applications, a single parse object can be reused for all compilations.
+Usually the only values differing between one use and the next are the 
+lexical analyzer and the rock value.  To provide for recursive compilations,
+these can be stored in local variables and resotred after the parse:
+
+struct parse *parser;	
+
+initialization
+...  parser = parse_Create(...);
+
+compilesomething(self) 
+	struct something *self;
+{
+	struct lexan *savelexan;
+	void *saverock;
+	struct tlex *tlex;
+	...
+	savelexan = parse_GetLex(parser);
+	saverock = parse_GetRock(parser);
+	... 
+	tlex = tlex_Create (...);
+	...
+	parse_SetLex(parser, tlex);
+	parse_SetRock(parser, self /* ( forinstance) */ );
+	parse_Run(parser);
+	...
+	parse_SetLex(parser, savelexan);
+	parse_SetRock(parser, saverock);
+	...
+}
+	

@@ -1,0 +1,411 @@
+$NCDId: @(#)PATCHES.sk,v 1.1 1994/06/03 17:18:43 greg Exp $
+
+Here are some patches from Steven King that improve the handling of
+audio clipping in the server.  I've not applied them to the standard
+distribution yet because I'm concerned about their possible
+performance impact.
+
+-Greg
+
+Return-Path: netaudio-owner@bryant.ncd.com
+Received: from bryant.ncd.com (root@bryant.ncd.com [192.43.159.209]) by hansen.ncd.com (8.6.8.1/8.6.5.Beta11) with ESMTP id DAA26189 for <greg@hansen.ncd.com>; Mon, 23 May 1994 03:48:38 -0700
+Received: (majordom@localhost) by bryant.ncd.com (8.6.9/8.6.5.Beta11) id CAA18248 for netaudio-outgoing; Mon, 23 May 1994 02:23:33 -0700
+Received: from rosebud.ncd.com (root@rosebud.ncd.com [192.43.159.161]) by bryant.ncd.com (8.6.9/8.6.5.Beta11) with ESMTP id CAA18230 for <netaudio.p@bryant.ncd.com>; Mon, 23 May 1994 02:23:28 -0700
+Received: from welch.ncd.com (root@welch.ncd.com [192.43.160.250]) by rosebud.ncd.com (8.6.8.1/8.6.5.Beta11) with ESMTP id CAA08083 for <netaudio@ncd.com>; Mon, 23 May 1994 02:23:26 -0700
+Received: from geraldo.cc.utexas.edu (geraldo.cc.utexas.edu [128.83.217.4]) by welch.ncd.com (8.6.8.1/8.6.6) with ESMTP id CAA13786 for <netaudio@ncd.com>; Mon, 23 May 1994 02:23:23 -0700
+Received: from nowhere.UUCP (uucp@localhost) by geraldo.cc.utexas.edu (8.6.8.1/8.6.6/%M%-%I%) with UUCP id EAA13851 for ncd.com!netaudio; Mon, 23 May 1994 04:23:11 -0500
+Received: by nowhere (5.65/1.35)
+	id AA00876; Mon, 23 May 94 02:27:32 -0500
+From: nowhere!sking@geraldo.cc.utexas.edu (Steven King)
+Message-Id: <9405230727.AA00876@nowhere>
+Subject: audio clipping in auprocess.c (1.2a)
+To: ncd.com!netaudio@geraldo.cc.utexas.edu (netaudio mailing list)
+Date: Mon, 23 May 1994 02:27:32 -0500 (CDT)
+X-Mailer: ELM [version 2.4 PL23]
+Mime-Version: 1.0
+Content-Type: text/plain; charset=US-ASCII
+Content-Transfer-Encoding: 7bit
+Content-Length: 2566      
+Sender: netaudio-owner@bryant.ncd.com
+Precedence: bulk
+
+
+  I expect this is whats meant by the referrence in BUGS to the
+ improper handling of audio clipping.
+
+  The code in accumulateOutput and accumulateOutputSimple doesnt
+ make any adjustment for overflow.
+  The following patches result in more work for the server, but
+ the result sounds much better to my ear.
+
+*** server/dia/auprocess.c.orig	Fri May 20 01:26:34 1994
+--- server/dia/auprocess.c	Mon May 23 01:47:49 1994
+***************
+*** 856,867 ****
+  	     out += output->component->numTracks,
+  	     in += input->component->numTracks)
+  	    for (j = 0; j < input->numTracks; j++)
+! 		out[input->outTrack[j]] += (in[input->inTrack[j]] *
+! 				      multiplyConstant + addConstant) >> 16;
+      else
+  	for (i = 0; i < input->flowEl->minibufSamples; i++)
+  	    for (j = 0; j < output->component->numTracks; j++)
+! 		*out++ += (*in++ * multiplyConstant + addConstant) >> 16;
+  }
+  
+  static void
+--- 856,874 ----
+  	     out += output->component->numTracks,
+  	     in += input->component->numTracks)
+  	    for (j = 0; j < input->numTracks; j++)
+! 	    {
+! 		AuInt32 x = out[input->outTrack[j]] + ((in[input->inTrack[j]] *
+! 				      multiplyConstant + addConstant) >> 16);
+! 		out[input->outTrack[j] = x < -32768 ? -32768 : x > 32767 ? 32767 : x;
+! 	    }
+      else
+  	for (i = 0; i < input->flowEl->minibufSamples; i++)
+  	    for (j = 0; j < output->component->numTracks; j++)
+! 	    {
+! 		AuInt32 x = *out + ((*in * multiplyConstant + addConstant) >> 16);
+! 		*out++ = x < -32768 ? -32768 : x > 32767 ? 32767 : x;
+! 	    }
+! 
+  }
+  
+  static void
+***************
+*** 879,885 ****
+      multiplyConstant = input->multiplyConstant;
+  
+      for (i = 0; i < input->flowEl->minibufSamples; i++)
+! 	*out++ += (*in++ * multiplyConstant) >> 16;
+  }
+  
+  /* process an audio flow */
+--- 886,895 ----
+      multiplyConstant = input->multiplyConstant;
+  
+      for (i = 0; i < input->flowEl->minibufSamples; i++)
+!     {
+! 	AuInt32 x = *out + ((*in++ * multiplyConstant) >> 16);
+! 	*out++ = x < -32768 ? -32768 : x > 32767 ? 32767 : x;
+!     }
+  }
+  
+  /* process an audio flow */
+  
+
+-------------------------------------------------------------------------------
+take your pick                         sking@nowhere
+                                       nowhere!sking@geraldo.cc.utexas.edu
+                                       ...!cs.utexas.edu!geraldo!nowhere!sking
+
+  In questions of science the authority of a thousand is not worth the humble
+ reasoning of a single individual
+                                                            -- Galileo Galilei
+Return-Path: netaudio-owner@bryant.ncd.com
+Received: from bryant.ncd.com (root@bryant.ncd.com [192.43.159.209]) by hansen.ncd.com (8.6.8.1/8.6.5.Beta11) with ESMTP id DAA26194 for <greg@hansen.ncd.com>; Mon, 23 May 1994 03:49:08 -0700
+Received: (majordom@localhost) by bryant.ncd.com (8.6.9/8.6.5.Beta11) id CAA18250 for netaudio-outgoing; Mon, 23 May 1994 02:23:34 -0700
+Received: from rosebud.ncd.com (root@rosebud.ncd.com [192.43.159.161]) by bryant.ncd.com (8.6.9/8.6.5.Beta11) with ESMTP id CAA18234 for <netaudio.p@bryant.ncd.com>; Mon, 23 May 1994 02:23:29 -0700
+Received: from welch.ncd.com (root@welch.ncd.com [192.43.160.250]) by rosebud.ncd.com (8.6.8.1/8.6.5.Beta11) with ESMTP id CAA08088 for <netaudio@ncd.com>; Mon, 23 May 1994 02:23:27 -0700
+Received: from geraldo.cc.utexas.edu (geraldo.cc.utexas.edu [128.83.217.4]) by welch.ncd.com (8.6.8.1/8.6.6) with ESMTP id CAA13788 for <netaudio@ncd.com>; Mon, 23 May 1994 02:23:22 -0700
+Received: from nowhere.UUCP (uucp@localhost) by geraldo.cc.utexas.edu (8.6.8.1/8.6.6/%M%-%I%) with UUCP id EAA13855 for ncd.com!netaudio; Mon, 23 May 1994 04:23:17 -0500
+Received: by nowhere (5.65/1.35)
+	id AA01133; Mon, 23 May 94 03:05:16 -0500
+From: nowhere!sking@geraldo.cc.utexas.edu (Steven King)
+Message-Id: <9405230805.AA01133@nowhere>
+Subject: audio clipping in dda code
+To: ncd.com!netaudio@geraldo.cc.utexas.edu (netaudio mailing list)
+Date: Mon, 23 May 1994 03:05:12 -0500 (CDT)
+X-Mailer: ELM [version 2.4 PL23]
+Mime-Version: 1.0
+Content-Type: text/plain; charset=US-ASCII
+Content-Transfer-Encoding: 7bit
+Content-Length: 2718      
+Sender: netaudio-owner@bryant.ncd.com
+Precedence: bulk
+
+
+  I'm not using any of the sample servers, but in the one I have
+ (loosely based on the dbri server), combining stereo and mono
+ tracks results in a volume loss that becomes quite noticible if
+ one of the outputs is quiter than the other.  I think it much
+ sounds better if it does a range check on the result (ala my
+ previous patch for auprocess.c) instead of dividing it down, ie,
+ for the sun dbri server, something like this:
+
+
+*** server/dda/sun/audbri.c.orig	Wed Apr 27 12:49:24 1994
+--- server/dda/sun/audbri.c	Mon May 23 03:01:14 1994
+***************
+*** 68,76 ****
+                  inputGain;
+  static AuBool   updateGains,
+                  updateSampleRate;
+! static AuUint32 leftAverage,
+!                 rightAverage,
+!                 sampleRate,
+                 *leftSamples,
+                 *rightSamples,
+                 *monoSamples,
+--- 68,74 ----
+                  inputGain;
+  static AuBool   updateGains,
+                  updateSampleRate;
+! static AuUint32 sampleRate,
+                 *leftSamples,
+                 *rightSamples,
+                 *monoSamples,
+***************
+*** 465,472 ****
+  
+      for (i = 0; i < n; i++)
+      {
+! 	*p++ = ((*l++ + *m + *s++) * leftAverage) >> 16;
+! 	*p++ = ((*r++ + *m++ + *s++) * rightAverage) >> 16;
+      }
+  
+      writeOutput(auOutputStereo, n);
+--- 463,473 ----
+  
+      for (i = 0; i < n; i++)
+      {
+! 	AuInt32 x;
+! 	x = *l++ + *m + *s++;
+! 	*p++ = x < -32768 ? -32768 : x > 32767 : 32767 : x;
+! 	x = *r++ + *m + *s++;
+! 	*p++ = x < -32768 ? -32768 : x > 32767 : 32767 : x;
+      }
+  
+      writeOutput(auOutputStereo, n);
+***************
+*** 492,523 ****
+  	    *funct = writeStereoOutput;
+  	else
+  	{
+- 	    int             left,
+- 	                    right;
+- 
+- 	    leftAverage = rightAverage = 0x10000;
+- 
+- 	    left = mask & PhysicalOutputLeft ? 1 : 0;
+- 	    right = mask & PhysicalOutputRight ? 1 : 0;
+- 
+- 	    if (mask & PhysicalOutputMono)
+- 	    {
+- 		left++;
+- 		right++;
+- 	    }
+- 
+- 	    if (mask & PhysicalOutputStereo)
+- 	    {
+- 		left++;
+- 		right++;
+- 	    }
+- 
+- 	    if (left > 1)
+- 		leftAverage /= left;
+- 
+- 	    if (right > 1)
+- 		rightAverage /= right;
+- 
+  	    *funct = writeAllOutputs;
+  	}
+      else
+--- 493,498 ----
+  
+-------------------------------------------------------------------------------
+take your pick                         sking@nowhere
+                                       nowhere!sking@geraldo.cc.utexas.edu
+                                       ...!cs.utexas.edu!geraldo!nowhere!sking
+
+  In questions of science the authority of a thousand is not worth the humble
+ reasoning of a single individual
+                                                            -- Galileo Galilei
+Return-Path: netaudio-owner@bryant.ncd.com
+Received: from bryant.ncd.com (root@bryant.ncd.com [192.43.159.209]) by hansen.ncd.com (8.6.8.1/8.6.5.Beta11) with ESMTP id DAA26218 for <greg@hansen.ncd.com>; Mon, 23 May 1994 03:49:41 -0700
+Received: (majordom@localhost) by bryant.ncd.com (8.6.9/8.6.5.Beta11) id CAA18252 for netaudio-outgoing; Mon, 23 May 1994 02:23:33 -0700
+Received: from rosebud.ncd.com (root@rosebud.ncd.com [192.43.159.161]) by bryant.ncd.com (8.6.9/8.6.5.Beta11) with ESMTP id CAA18235 for <netaudio.p@bryant.ncd.com>; Mon, 23 May 1994 02:23:29 -0700
+Received: from welch.ncd.com (root@welch.ncd.com [192.43.160.250]) by rosebud.ncd.com (8.6.8.1/8.6.5.Beta11) with ESMTP id CAA08089 for <netaudio@ncd.com>; Mon, 23 May 1994 02:23:27 -0700
+Received: from geraldo.cc.utexas.edu (geraldo.cc.utexas.edu [128.83.217.4]) by welch.ncd.com (8.6.8.1/8.6.6) with ESMTP id CAA13787 for <netaudio@ncd.com>; Mon, 23 May 1994 02:23:23 -0700
+Received: from nowhere.UUCP (uucp@localhost) by geraldo.cc.utexas.edu (8.6.8.1/8.6.6/%M%-%I%) with UUCP id EAA13859 for ncd.com!netaudio; Mon, 23 May 1994 04:23:18 -0500
+Received: by nowhere (5.65/1.35)
+	id AA01209; Mon, 23 May 94 03:15:28 -0500
+From: nowhere!sking@geraldo.cc.utexas.edu (Steven King)
+Message-Id: <9405230815.AA01209@nowhere>
+Subject: implementation of multiply constant in auprocess.c (1.2a)
+To: ncd.com!netaudio@geraldo.cc.utexas.edu (netaudio mailing list)
+Date: Mon, 23 May 1994 03:15:26 -0500 (CDT)
+X-Mailer: ELM [version 2.4 PL23]
+Mime-Version: 1.0
+Content-Type: text/plain; charset=US-ASCII
+Content-Transfer-Encoding: 7bit
+Content-Length: 4236      
+Sender: netaudio-owner@bryant.ncd.com
+Precedence: bulk
+
+
+  The implementation of multiply constant in auprocess can result in
+ overflow and loss of sign on 32 bit machines.  The following patch is
+ dependent upon the patch for clipping I posted earlier.
+
+
+*** server/dia/auprocess.c.orig	Mon May 23 01:47:49 1994
+--- server/dia/auprocess.c	Mon May 23 01:46:10 1994
+***************
+*** 839,850 ****
+                     *out;
+      AuUint32        i,
+                      j;
+!     AuInt32         multiplyConstant,
+                      addConstant;
+  
+      in = (AuInt16 *) input->flowEl->minibuf;
+      out = (AuInt16 *) output->flowEl->minibuf;
+!     multiplyConstant = input->multiplyConstant;
+      addConstant = input->addConstant;
+  
+      /*
+--- 839,852 ----
+                     *out;
+      AuUint32        i,
+                      j;
+!     AuInt32         multiplyConstantInteger,
+!                     multiplyConstantFraction,
+                      addConstant;
+  
+      in = (AuInt16 *) input->flowEl->minibuf;
+      out = (AuInt16 *) output->flowEl->minibuf;
+!     multiplyConstantInteger = AuFixedPointIntegralAddend(input->multiplyConstant);
+!     multiplyConstantFraction = AuFixedPointFractionalAddend(input->multiplyConstant);
+      addConstant = input->addConstant;
+  
+      /*
+***************
+*** 857,874 ****
+  	     in += input->component->numTracks)
+  	    for (j = 0; j < input->numTracks; j++)
+  	    {
+! 		AuInt32 x = out[input->outTrack[j]] + ((in[input->inTrack[j]] *
+! 				      multiplyConstant + addConstant) >> 16);
+! 		out[input->outTrack[j] = x < -32768 ? -32768 : x > 32767 ? 32767 : x;
+  	    }
+      else
+  	for (i = 0; i < input->flowEl->minibufSamples; i++)
+! 	    for (j = 0; j < output->component->numTracks; j++)
+  	    {
+! 		AuInt32 x = *out + ((*in * multiplyConstant + addConstant) >> 16);
+  		*out++ = x < -32768 ? -32768 : x > 32767 ? 32767 : x;
+  	    }
+- 
+  }
+  
+  static void
+--- 859,874 ----
+  	     in += input->component->numTracks)
+  	    for (j = 0; j < input->numTracks; j++)
+  	    {
+! 		AuInt32 x = out[input->outTrack[j]] + (in[input->inTrack[j]] * multiplyConstantInteger) + ((in[input->inTrack[j]] * multiplyConstantFraction + addConstant) >> 16);
+! 		out[input->outTrack[j]] = x < -32768 ? -32768 : x > 32767 ? 32767 : x;
+  	    }
+      else
+  	for (i = 0; i < input->flowEl->minibufSamples; i++)
+! 	    for (j = 0; j < output->component->numTracks; j++, in++)
+  	    {
+! 		AuInt32 x = *out + (*in *multiplyConstantInteger) + ((*in * multiplyConstantFraction + addConstant) >> 16);
+  		*out++ = x < -32768 ? -32768 : x > 32767 ? 32767 : x;
+  	    }
+  }
+  
+  static void
+***************
+*** 879,893 ****
+      AuInt16        *in,
+                     *out;
+      AuUint32        i;
+!     AuInt32         multiplyConstant;
+  
+      in = (AuInt16 *) input->flowEl->minibuf;
+      out = (AuInt16 *) output->flowEl->minibuf;
+!     multiplyConstant = input->multiplyConstant;
+  
+!     for (i = 0; i < input->flowEl->minibufSamples; i++)
+      {
+! 	AuInt32 x = *out + ((*in++ * multiplyConstant) >> 16);
+  	*out++ = x < -32768 ? -32768 : x > 32767 ? 32767 : x;
+      }
+  }
+--- 879,894 ----
+      AuInt16        *in,
+                     *out;
+      AuUint32        i;
+!     AuInt32         multiplyConstantInteger, multiplyConstantFraction;
+  
+      in = (AuInt16 *) input->flowEl->minibuf;
+      out = (AuInt16 *) output->flowEl->minibuf;
+!     multiplyConstantInteger = AuFixedPointIntegralAddend(input->multiplyConstant);
+!     multiplyConstantFraction = AuFixedPointFractionalAddend(input->multiplyConstant);
+  
+!     for (i = 0; i < input->flowEl->minibufSamples; i++, in++)
+      {
+! 	AuInt32 x = *out + (*in * multiplyConstantInteger) + ((*in * multiplyConstantFraction) >> 16);
+  	*out++ = x < -32768 ? -32768 : x > 32767 ? 32767 : x;
+      }
+  }
+
+-------------------------------------------------------------------------------
+take your pick                         sking@nowhere
+                                       nowhere!sking@geraldo.cc.utexas.edu
+                                       ...!cs.utexas.edu!geraldo!nowhere!sking
+
+  In questions of science the authority of a thousand is not worth the humble
+ reasoning of a single individual
+                                                            -- Galileo Galilei
+Replied: Wed, 25 May 94 18:35:48 PDT
+Replied: "nowhere!sking@geraldo.cc.utexas.edu (Steven King) netaudio"
+Return-Path: netaudio-owner@bryant.ncd.com
+Received: from bryant.ncd.com (majordom@bryant.ncd.com [192.43.159.209]) by hansen.ncd.com (8.6.8.1/8.6.5.Beta11) with ESMTP id SAA09706 for <greg@hansen.ncd.com>; Wed, 25 May 1994 18:16:27 -0700
+Received: (from majordom@localhost) by bryant.ncd.com (8.6.9/8.6.9) id SAA05498 for netaudio-outgoing; Wed, 25 May 1994 18:13:41 -0700
+Received: from rosebud.ncd.com (root@rosebud.ncd.com [192.43.159.161]) by bryant.ncd.com (8.6.9/8.6.9) with ESMTP id SAA05492 for <netaudio.p@bryant.ncd.com>; Wed, 25 May 1994 18:13:38 -0700
+Received: from welch.ncd.com (root@welch.ncd.com [192.43.160.250]) by rosebud.ncd.com (8.6.8.1/8.6.5.Beta11) with ESMTP id SAA16611 for <netaudio@ncd.com>; Wed, 25 May 1994 18:13:37 -0700
+Received: from geraldo.cc.utexas.edu (geraldo.cc.utexas.edu [128.83.217.4]) by welch.ncd.com (8.6.9/8.6.6) with ESMTP id SAA12007 for <netaudio@ncd.com>; Wed, 25 May 1994 18:13:34 -0700
+Received: from nowhere.UUCP (uucp@localhost) by geraldo.cc.utexas.edu (8.6.8.1/8.6.6/%M%-%I%) with UUCP id UAA24427 for ncd.com!netaudio; Wed, 25 May 1994 20:13:24 -0500
+Received: by nowhere (5.65/1.35)
+	id AA05573; Wed, 25 May 94 12:19:18 -0500
+From: nowhere!sking@geraldo.cc.utexas.edu (Steven King)
+Message-Id: <9405251719.AA05573@nowhere>
+Subject: multiply constant
+To: ncd.com!netaudio@geraldo.cc.utexas.edu (netaudio mailing list)
+Date: Wed, 25 May 1994 12:19:18 -0500 (CDT)
+X-Mailer: ELM [version 2.4 PL23]
+Mime-Version: 1.0
+Content-Type: text/plain; charset=US-ASCII
+Content-Transfer-Encoding: 7bit
+Content-Length: 1063      
+Sender: netaudio-owner@ncd.com
+Precedence: bulk
+
+
+  Previously I had written that the code in accumulateOutput in auprocess.c
+ that handles multiply constant should be changed in order to avoid overflow.
+ Well, my proposed fix doesnt completely avoid overflow.  The expression
+
+ (in[input->inTrack[j]] * multiplyConstantFraction + addConstant)
+
+ can still overflow with a change of sign if addConstant is not 0. ie if
+ in[input->inTrack[j]] = 0x7fff and multiplyConstantFraction = 0xfd70 (a
+ MultiplyConstant of 99%) and addConstant is greater than 0x148fd6f then
+ overflow will result with a change in sign.  accumulateOutputSimple is
+ safe as it omits addConstant (is this intentional?).
+
+  Ofcourse, no one actually uses AddConstant do they?
+
+ 
+-------------------------------------------------------------------------------
+take your pick                         sking@nowhere
+                                       nowhere!sking@geraldo.cc.utexas.edu
+                                       ...!cs.utexas.edu!geraldo!nowhere!sking
+
+ if you have reached this number advertently, at the tone please a message
+

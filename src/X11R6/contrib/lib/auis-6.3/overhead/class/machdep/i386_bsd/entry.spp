@@ -1,0 +1,93 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+ *        For full copyright information see:'andrew/config/COPYRITE'     *
+\* ********************************************************************** */
+
+/*
+	$Disclaimer: 
+# Permission to use, copy, modify, and distribute this software and its 
+# documentation for any purpose is hereby granted without fee, 
+# provided that the above copyright notice appear in all copies and that 
+# both that copyright notice, this permission notice, and the following 
+# disclaimer appear in supporting documentation, and that the names of 
+# IBM, Carnegie Mellon University, and other copyright holders, not be 
+# used in advertising or publicity pertaining to distribution of the software 
+# without specific, written prior permission.
+# 
+# IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+# DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+# SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+# BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+# DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+# WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+# ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+# OF THIS SOFTWARE.
+#  $
+*/
+
+
+	.globl	_class_Lookup
+	.data
+	.globl	_class_ErrorReturnValue
+	.text
+	.align	2
+
+
+0:
+/*
+ * All code comes here with eax loaded with the table entry
+ */
+	/* dynamic link for entry */
+	pushl	%ebp
+	movl	%esp, %ebp
+
+	/* call _class_Lookup(int, my-stack) */
+	pushl	%eax		/* index of class */	
+	pushl	8(%ebp)		/* pointer to header */
+
+/*
+ *	Stack is now:
+ *
+ * EBP + 0x28           parm...         <-- EBP points here at entry time
+ * EBP + 0x24           parm4
+ * EBP + 0x20           parm3
+ * EBP + 0x1C           parm2
+ * EBP + 0x08           parm1           (pointer to header)
+ * EBP + 0x04           return address
+ * EBP + 0x00           saved EBP       <-- EBP during execution <-.
+ * EBP - 0x04           passed parm     (passed index)		   |
+ * EBP - 0x08           passed parm     (pointer to header) -------'
+ */
+
+	call	_class_Lookup
+
+        /* back from class_Lookup */
+        cmpl    $0, %eax        /* lookup failed? */
+        je      ErrorExit       /* yes return class_ErrorReturnValue */
+                                /* no, jump to the proper class routine */
+
+        /* non-zero value from class_Lookup is base of proc table */
+        movl    -0x04(%ebp), %edx       /* get back index */
+        movl    (%eax, %edx, 4), %eax   /* get routine address in %eax using
+					   the funky addr modes */
+        leave                           /* fix up stack */
+        jmp     *%eax                   /* jump to the routine */
+
+ErrorExit:
+        /* return the value in _class_ErrorReturnValue */
+        movl    _class_ErrorReturnValue, %eax   /* get return value in correct
+						   place */
+        leave                           /* restore stack */
+        ret                             /* and return to caller */
+
+
+#define ClassEntry(n) \
+	.align 2 ; \
+	.globl  _ClassEntry ## n; \
+_ClassEntry ## n ## : \
+        movl	$ ## n, %eax ; /* Push index onto stack for later. */ \
+        jmp	0b
+
+#include <../common/entrydefs.h>
+

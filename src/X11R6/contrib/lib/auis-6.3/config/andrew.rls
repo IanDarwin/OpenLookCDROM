@@ -1,0 +1,1221 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+ *        For full copyright information see:'andrew/config/COPYRITE'     *
+\* ********************************************************************** */
+
+/* $Disclaimer: 
+Permission to use, copy, modify, and distribute this software and its 
+documentation for any purpose is hereby granted without fee, 
+provided that the above copyright notice appear in all copies and that 
+both that copyright notice, this permission notice, and the following 
+disclaimer appear in supporting documentation, and that the names of 
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+used in advertising or publicity pertaining to distribution of the software 
+without specific, written prior permission.
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+OF THIS SOFTWARE.
+ $ */
+
+/* ***************************************************************** *\
+ * andrew.rls - macro (rules) for Imakefiles
+ *
+ * Last modified: 1 October 1991 - Gary Keim & Adam Stoller
+\* ***************************************************************** */
+
+/* definition line for HOWINSTALL_ENV, 
+     to be used in calling further imake commands.
+     If HOWINSTALL_ENV is not defined, definer is empty. */
+
+#ifdef HOWINSTALL_ENV
+#define HOWINSTALL_DEFINER -DHOWINSTALL_ENV=HOWINSTALL_ENV
+#else
+#define HOWINSTALL_DEFINER
+#endif
+
+/* ***************************************************************** *\
+ * Preprocessor Dependent Rules 
+ * ================
+ *	Variables:
+ *		AIX
+ *	 	LIBDL_ENV
+ *		LINKINSTALL_ENV
+ *		mips
+ *		SCOunix
+ *		GNU_ENV
+ *		_IBMR2
+ *		hpux
+ *		FLEX_ENV
+\* ***************************************************************** */
+
+#ifdef LIBDL_ENV
+
+#ifndef NO_SHARED_DIR
+SHARED = shared
+#define SharedObjects()						@@\
+$(SHARED)::							@@\
+	@if [ ! -d $(SHARED) ]; then \				@@\
+		mkdir $(SHARED) ; \				@@\
+	else \							@@\
+		exit 0 ; \					@@\
+	fi							@@\
+tidy::								@@\
+	@if [ -d $(SHARED) ]; then \				@@\
+		$(RM) $(SHARED)/?*.o; \				@@\
+	else \							@@\
+		exit 0; \					@@\
+	fi
+#else
+SHARED = .
+#define SharedObjects()						@@\
+tidy::								@@\
+	@if [ -d $(SHARED) ]; then \				@@\
+		$(RM) $(SHARED)/?*.o; \				@@\
+	else \							@@\
+		exit 0; \					@@\
+	fi
+
+#endif
+
+#else	/* LIBDL_ENV */
+#define SharedObjects() /* nothing */
+SHARED =
+#endif	/* LIBDL_ENV */
+
+/*
+ *==================================================
+ * For plaforms with shared libraries, build both 
+ * PIC and non-PIC versions.
+ *==================================================
+ */
+#ifdef LIBDL_ENV
+#ifndef NO_SHARED_DIR
+#define CC_RULE $(CC) $(PICFLAG) -c $(CFLAGS) $*.c		@@\
+	$(MV) $*.o $(SHARED)/$*.o					@@\
+	$(CC) -c $(CFLAGS) $*.c
+#else
+#define CC_RULE $(CC) $(PICFLAG) -c $(CFLAGS) $*.c
+#endif
+#else
+#define CC_RULE $(CC) -c $(CFLAGS) $*.c
+#endif
+
+/* could be in imake.tmpl perhaps ? */
+#ifdef LIBDL_ENV
+#ifndef NO_SHARED_DIR
+MKDOFLGS = $(MAKEDOFLAGS) -s
+#else
+MKDOFLGS = $(MAKEDOFLAGS)
+#endif
+#else
+MKDOFLGS = $(MAKEDOFLAGS)
+#endif
+
+#if (defined(AIX) || defined(hpux) || defined(_IBMR2))
+#define RANLIBHERE /* nothing */
+#define RANLIBRULE(dest) ) done)
+#else
+#define RANLIBHERE $(RANLIB) $@
+#define RANLIBRULE(dest) $(RANLIB) dest/$$i) done)
+#endif
+
+
+
+
+
+/* ***************************************************************** *\
+ * Standard Compilation Rules
+\* ***************************************************************** */
+
+/***************************************************
+ * 	Export:
+ *		AppendFiles()
+ *		CleanTarget()
+ *		CppAndFilter()
+ *		DependTarget()
+ *		DynamicMultiObject()
+ *		DynamicObject()
+ *		ExecuteFromDESTDIR()
+ *		LexWithReplacement()
+ *		LibraryTarget()
+ *		MkdirTarget()
+ *		NCLex()
+ *		NCYaccWithHeader()
+ *		NormalATKRule()
+ *		NormalAsmPPRule()
+ *		NormalAsmRule()
+ *		NormalHelpRule()
+ *		FlexOrLexFileRule()
+ *		NormalLexRule()
+ *		NormalObjectRule()
+ *		NormalScribeRule()
+ *		NormalYaccRule()
+ *		ProgramTarget()
+ *		SharedObjects()
+ *		TagsTarget()
+ *		TestProgramTarget()
+ *		TestingOnlyTestingRule()
+ *		YaccWithHeader()
+ *		YaccWithReplacement()
+ *================
+ *	Variables:
+ *		mips
+ *		SGI_4D_ENV
+ *		NeXT
+ *		hpux
+ ***************************************************/
+
+#ifndef NO_DYNAMIC_LOADING_ENV
+#define doIndex(args) $(DOINDEX) args
+#define Makedo(args) $(MAKEDO) args
+#else
+#define doIndex(args)
+#define Makedo(args)
+#endif /* NO_DYNAMIC_LOADING_ENV */
+
+#define NormalObjectRule()					@@\
+all:: $(SHARED)							@@\
+.c.o:								@@\
+	$(RM) $@ 						@@\
+	CC_RULE
+
+#ifndef STRINGIZE
+#if __STDC__ && !defined(UnixCpp)
+#define STRINGIZE(x) #x
+#else
+#define STRINGIZE(x) "x"
+#endif
+#endif /*STRINGIZE */
+
+#define NormalATKRule()						@@\
+all:: $(SHARED) $(IHFILES) $(DOBJS)				@@\
+								@@\
+.ch.ih: ; $(CLASS) -s $(CLASSFLAGS) $*.ch			@@\
+.ch.eh: ; $(CLASS) -s $(CLASSFLAGS) $*.ch			@@\
+.o.do:								@@\
+	$(REGISTER) $(DESTDIR) "$*.do" "$*.o" ""		@@\
+	Makedo($(MKDOFLGS) -o $*.do $*.o $(LDFLAGS) $(GCCLIB))	@@\
+	doIndex($*.do)						@@\
+.c.do:								@@\
+	$(RM) $*.do						@@\
+	$(CC) -c $(CFLAGS) $*.c					@@\
+	$(REGISTER) $(DESTDIR)  "$*.do" "$*.o" ""		@@\
+	Makedo($(MKDOFLGS) -o $*.do $*.o $(LDFLAGS) $(GCCLIB))	@@\
+	doIndex($*.do)
+
+
+#define NormalHelpRule()					@@\
+install.alias:: doc do.alias					@@\
+	@sh -c 'if [ -f ,help.alias ]; then  \			@@\
+		$(ADDALIASES) ,help.alias \			@@\
+		$(DESTDIR)/help/help.aliases;\			@@\
+		fi; \						@@\
+	exit 0'							@@\
+								@@\
+do.alias::							@@\
+	@$(RM) ,help.alias
+
+#define	NormalYaccRule()					@@\
+all:: $(SHARED)							@@\
+.y.o: 								@@\
+	$(YACC) $*.y						@@\
+	$(RM) $*.c						@@\
+	$(MV) y.tab.c $*.c					@@\
+	CC_RULE						@@\
+	$(RM) $*.c
+
+
+#define	NormalAsmPPRule()					@@\
+.spp.o:								@@\
+	$(RM) $@ ,$*.s ,$*.c					@@\
+	$(CP) $*.spp ,$*.c					@@\
+	$(ASMPP_CC) $(CFLAGS)  ,$*.c > ,$*.s			@@\
+	$(AS) $(AS_FLAGS) -o $*.o ,$*.s				@@\
+	$(RM) ,$*.c ,$*.s
+
+
+#ifdef FLEX_ENV
+#define FlexOrLexFileRule(file)					@@\
+clean::								@@\
+	$(RM) file.l file.c					@@\
+file.l: file.flex						@@\
+	$(RM) file.l file.c					@@\
+	$(LN) file.flex file.l
+#else
+#define FlexOrLexFileRule(file)					@@\
+clean::								@@\
+	$(RM) file.l file.c					@@\
+file.l: file.lex						@@\
+	$(RM) file.l file.c					@@\
+	$(LN) file.lex file.l
+#endif
+
+#define	NormalLexRule()						@@\
+all:: $(SHARED)							@@\
+.l.o:								@@\
+	$(LEX) $*.l						@@\
+	$(RM) $*.c						@@\
+	$(MV) lex.yy.c $*.c					@@\
+	CC_RULE						@@\
+	$(RM) $*.c
+
+#define	NormalScribeRule()					@@\
+.mss.PS: ; $(SCRIBE) $*.mss
+
+
+/*
+ *==================================================
+ * Either not quite standard but related rules or
+ * standard rules which did not seem to be used
+ *==================================================
+ */
+
+#define	NormalAsmRule()						@@\
+.s.o:								@@\
+	$(RM) $@						@@\
+	$(AS) -o $*.o $*.s
+
+#define	Parser(classname,bisonargs)		@@\
+all:: $(SHARED)	@@\
+depend:: classname.h classname.c	@@\
+classname.h classname.c: classname.gra	@@\
+	$(RM) classname.tab.c classname.tab.h	@@\
+	ExecuteFromBASEDIR(bison bisonargs -b classname -k  classname.gra)	@@\
+	$(RM) classname.c classname.h	@@\
+	$(BASEDIR)/bin/mkparser classname	@@\
+	$(RM) classname.tab.c classname.tab.h	@@\
+classname.o: classname.c	@@\
+clean::		@@\
+	$(RM) classname.h classname.c
+
+#define YaccWithHeader(file)					@@\
+all:: $(SHARED)							@@\
+file.c file.h: file.y						@@\
+	$(YACC) -d file.y					@@\
+	$(RM) file.c file.h					@@\
+	$(MV) y.tab.c file.c					@@\
+	$(MV) y.tab.h file.h					@@\
+								@@\
+file.o: file.c							@@\
+	$(RM) file.o						@@\
+	CC_RULE						@@\
+								@@\
+depend:: file.h file.c						@@\
+tidy::  ; $(RM) file.c						@@\
+clean::	; $(RM) file.h
+
+
+#define	YaccWithReplacement(file, string)			@@\
+all:: $(SHARED)							@@\
+file.c file.h: file.y						@@\
+	$(YACC) -d file.y					@@\
+	$(RM) file.c file.h y.tab._c				@@\
+	$(SED) -e '/yy/s//'string'/g' y.tab.c > y.tab._c		@@\
+	$(RM) y.tab.c						@@\
+	$(MV) y.tab._c file.c					@@\
+	$(MV) y.tab.h file.h					@@\
+								@@\
+file.o: file.c							@@\
+	$(RM) file.o						@@\
+	CC_RULE						@@\
+								@@\
+depend:: file.h file.c						@@\
+tidy::  ; $(RM) file.c						@@\
+clean::	; $(RM) file.h
+
+
+#define	LexWithReplacement(file, string)			@@\
+all:: $(SHARED)							@@\
+file.o: file.l							@@\
+	$(LEX) $*.l						@@\
+	$(RM) $*.c						@@\
+	$(SED) -e '/yy/s//'string'/g' lex.yy.c > lex.yy._c	@@\
+	$(RM) lex.yy.c						@@\
+	$(MV) lex.yy._c file.c					@@\
+	CC_RULE						@@\
+								@@\
+tidy:: ; $(RM) file.c
+
+#define NCYaccWithHeader(yfile)					@@\
+y.tab.c y.tab.h: yfile						@@\
+	$(RM) y.tab.c y.tab.h					@@\
+	$(YACC) -d yfile					@@\
+								@@\
+depend:: y.tab.h
+
+#define NCLex(lfile)						@@\
+lex.yy.c: lfile							@@\
+	$(RM) lex.yy.c						@@\
+	$(LEX) lfile
+
+#define CppAndFilter(file, lyfile, incfiles, filter)		@@\
+clean::							@@\
+	$(RM) ,file file					@@\
+file: lyfile incfiles						@@\
+	$(RM) ,file file 					@@\
+	$(CPP) lyfile | filter > ,file			@@\
+	$(MV) ,file file 
+
+#define AppendFiles(target, sources)				@@\
+clean::								@@\
+	$(RM) ,target target					@@\
+target: sources							@@\
+	$(RM) ,target target						@@\
+	cat sources > ,target					@@\
+	$(MV) ,target target
+
+#define TestingOnlyTestingRule(libs, syslibs)				@@\
+.SUFFIXES: .test						@@\
+.c.test:							@@\
+	$(RM) $@						@@\
+	$(CC) $(TESTING_CFLAGS) -o $*.test $*.c libs $(LDFLAGS) syslibs                                @@\
+	$(RM) $*.o						@@\
+tidy:: ; $(RM) *.test
+
+/*
+ *==================================================
+ * Basic rules for compilation (and cleanup)
+ *==================================================
+ */
+
+#define	LibraryTarget(library, objs)				@@\
+all:: library							@@\
+library: objs							@@\
+	$(RM) $@						@@\
+	$(AR) $@ objs						@@\
+	RANLIBHERE
+
+
+#define	TestProgramTarget(program, objs, libs, syslibs)		@@\
+test:: program							@@\
+program: objs libs						@@\
+	$(RM) $@						@@\
+	$(CC) $(CFLAGS) -o $@ objs libs $(LDFLAGS) syslibs 	@@\
+clean:: ; $(RM) program
+
+
+#ifdef mips
+#ifdef SGI_4D_ENV
+#define ClassTestProgramTarget(program, objs, libs, syslibs)    @@\
+test:: program							@@\
+								@@\
+program: objs libs						@@\
+	$(RM) $@						@@\
+	ld -r -d /usr/lib/crt1.o objs libs $(CLASSLDFLAGS) syslibs -lc_s \		@@\
+	/usr/lib/crtn.o -lc -o $@.raw 	@@\
+	$(MKSDPOOL) $@.raw sd_$@				@@\
+	$(RM) $@.raw						@@\
+	ld sd_$@.o /usr/lib/crt1.o objs libs $(CLASSLDFLAGS) syslibs -lc_s \		@@\
+	/usr/lib/crtn.o -lc -o $@ 	@@\
+                                                                @@\
+clean::								@@\
+	$(RM) program sd_$@.o
+#else /* SGI_4D_ENV */
+#define ClassTestProgramTarget(program, objs, libs, syslibs)    	@@\
+test:: program								@@\
+									@@\
+program: objs libs							@@\
+	$(RM) $@							@@\
+	$(RM) $@							@@\
+	$(CCNOG0) $(CFLAGS) -DMIPS_GLOBAL_SPACE_SIZE=0 -c \		@@\
+	$(MIPS_GS_FILE)							@@\
+	$(CCNOG0) $(CFLAGS) -o $@.temp mips_global_space.o objs libs \	@@\
+	$(CLASSLDFLAGS)	syslibs						@@\
+	sh -c 'gsize=`size -A $@.temp | awk -f $(MIPS_GSIZE_SCRIPT)`; \	@@\
+	echo "Available gp addressable space for dynamic loading"; \	@@\
+	echo "in $@ is $$gsize bytes." ; \				@@\
+	$(CCNOG0) $(CFLAGS) -DMIPS_GLOBAL_SPACE_SIZE=$$gsize \		@@\
+	-G $$gsize -c $(MIPS_GS_FILE)'					@@\
+	$(RM) $@.temp						    	@@\
+	$(CCNOG0) $(CFLAGS) -o $@ mips_global_space.o objs libs \	@@\
+	    $(CLASSLDFLAGS) syslibs 					@@\
+	$(RM) mips_global_space.o					@@\
+									@@\
+clean::									@@\
+	$(RM) program
+#endif /* SGI */
+#else /* mips */
+#ifdef NeXT
+#define	ClassTestProgramTarget(program, objs, libs, syslibs)	@@\
+test:: program							@@\
+								@@\
+program: objs libs						@@\
+	$(RM) $@						@@\
+	$(CC) -u libsys_s $(CFLAGS) -o $@ objs libs \		@@\
+		$(CLASSLDFLAGS)	syslibs 			@@\
+								@@\
+clean::								@@\
+	$(RM) program
+#else
+#ifdef _IBMR2
+#define	ClassTestProgramTarget(program, objs, libs, syslibs)    @@\
+test:: program							@@\
+								@@\
+program: objs libs						@@\
+	$(RM) $@						@@\
+	$(CC) $(IBMEXP) $(CFLAGS) -o $@ objs libs \		@@\
+		$(CLASSLDFLAGS)	syslibs 			@@\
+								@@\
+clean::								@@\
+	$(RM) program
+#else /* _IBMR2 */
+#define	ClassTestProgramTarget(program, objs, libs, syslibs)    @@\
+TestProgramTarget(program, objs, libs, syslibs)
+#endif /* _IBMR2 */
+#endif /* NeXT */
+#endif /* mips */
+
+
+#define	ProgramTarget(program, objs, libs, syslibs)		@@\
+all:: program							@@\
+program: objs libs						@@\
+	$(RM) $@						@@\
+	$(CC) $(CFLAGS) -o $@ objs libs $(LDFLAGS) syslibs 	@@\
+clean:: ; $(RM) program
+
+
+#ifdef mips
+#ifdef SGI_4D_ENV
+#define ClassProgramTarget(program, objs, libs, syslibs)	    @@\
+all:: program							    @@\
+								    @@\
+program: objs libs						    @@\
+	$(RM) $@						    @@\
+	ld -r -d /usr/lib/crt1.o objs libs $(CLASSLDFLAGS) syslibs -lc_s \		@@\
+	/usr/lib/crtn.o -lc -o $@.raw	@@\
+	$(MKSDPOOL) $@.raw sd_$@				@@\
+	$(RM) $@.raw						@@\
+	ld sd_$@.o /usr/lib/crt1.o objs libs $(CLASSLDFLAGS) syslibs -lc_s \		@@\
+	/usr/lib/crtn.o -lc -o $@ @@\
+								    @@\
+clean::								    @@\
+	$(RM) program sd_$@.o
+#else /* SGI_4D_ENV */
+#define ClassProgramTarget(program, objs, libs, syslibs)		@@\
+all:: program								@@\
+									@@\
+program: objs libs							@@\
+	$(RM) $@							@@\
+	$(CCNOG0) $(CFLAGS) -DMIPS_GLOBAL_SPACE_SIZE=0 -c \		@@\
+	$(MIPS_GS_FILE)							@@\
+	$(CCNOG0) $(CFLAGS) -o $@.temp mips_global_space.o objs libs \	@@\
+          $(CLASSLDFLAGS) syslibs 					@@\
+	sh -c 'gsize=`size -A $@.temp | awk -f $(MIPS_GSIZE_SCRIPT)`; \	@@\
+	echo "Available gp addressable space for dynamic loading"; \	@@\
+	echo "in $@ is $$gsize bytes." ;\ 				@@\
+	$(CCNOG0) $(CFLAGS) -DMIPS_GLOBAL_SPACE_SIZE=$$gsize \		@@\
+	-G $$gsize -c $(MIPS_GS_FILE)'					@@\
+	$(RM) $@.temp							@@\
+	$(CCNOG0) $(CFLAGS) -o $@ mips_global_space.o objs libs \	@@\
+	    $(CLASSLDFLAGS) syslibs 					@@\
+	$(RM) mips_global_space.o					@@\
+									@@\
+clean::									@@\
+	$(RM) program
+#endif /* SGI_4D_ENV */
+#else /* mips */
+#if defined(hpux) && (HP_OS >= 80)
+#define ClassProgramTarget(program, objs, libs, syslibs)	@@\
+all:: program							@@\
+								@@\
+program: objs libs						@@\
+	$(RM) $@						@@\
+	$(LD) -E -u $(CLASS_ROUTINESTRUCT) -o $@ /lib/crt0.o \	@@\
+	objs libs $(CLASSLDFLAGS) syslibs -lc			@@\
+								@@\
+clean::								@@\
+	$(RM) program
+#else /* hpux8.0 */
+#if NeXT
+#define	ClassProgramTarget(program, objs, libs, syslibs)	@@\
+all:: program							@@\
+								@@\
+program: objs libs						@@\
+	$(RM) $@						@@\
+	$(CC) -u libsys_s $(CFLAGS) -o $@ objs libs \		@@\
+		$(CLASSLDFLAGS)	syslibs 			@@\
+								@@\
+clean::								@@\
+	$(RM) program
+#else /* NeXT */
+#ifdef _IBMR2
+#define ClassProgramTarget(program, objs, libs, syslibs)	@@\
+all:: program							@@\
+								@@\
+program: objs libs						@@\
+	$(RM) $@						@@\
+	$(CC)  $(CFLAGS) $(IBMEXP) -o $@ objs libs \		@@\
+	     $(CLASSLDFLAGS) syslibs 				@@\
+								@@\
+clean::								@@\
+	$(RM) program
+#else /* _IBMR2 */
+#ifdef linux
+#define	ClassProgramTarget(program, objs, libs, syslibs)		@@\
+all:: program							@@\
+program: objs libs						@@\
+	$(RM) $@						@@\
+	$(CC) -nostdlib $(CFLAGS) -o $@ /usr/lib/crt0.o objs \	@@\
+	   libs $(CLASSLDFLAGS) syslibs -lgcc -lc -lgcc 	@@\
+clean:: ; $(RM) program
+#else
+#define ClassProgramTarget(program, objs, libs, syslibs)	@@\
+all:: program							@@\
+program: objs libs						@@\
+	$(RM) $@						@@\
+	$(CC) $(CFLAGS) -o $@ objs libs $(CLASSLDFLAGS) syslibs						@@\
+clean:: ; $(RM) program
+#endif /* linux */
+#endif /* _IBMR2 */
+#endif /* NeXT */
+#endif /* hpux */
+#endif /* mips */
+
+#ifdef NO_DYNAMIC_LOADING_ENV
+#undef ClassProgramTarget
+#define ClassProgramTarget(program, objs, libs, syslibs)	@@\
+ProgramTarget(program, objs, libs, syslibs)
+#undef ClassTestProgramTarget
+#define ClassTestProgramTarget(program, objs, libs, syslibs)	@@\
+TestProgramTarget(program, objs, libs, syslibs)
+#endif /* NO_DYNAMIC_LOADING_ENV */
+
+#define	CleanTarget(files)					@@\
+clean:: ; $(RM) files
+
+#define MkdirTarget(dirs)					@@\
+install.time:: makedirs						@@\
+	@echo -n ''						@@\
+install.doc:: makedirs						@@\
+	@echo -n ''						@@\
+makedirs::							@@\
+	@echo "Checking Destination Directories...."		@@\
+	@$(TOP)/config/mkdirs dirs
+
+#define	TagsTarget()						@@\
+tags::								@@\
+	$(TAGS) -w *.[ch]					@@\
+	$(TAGS) -xw *.[ch] > TAGS
+
+#define	DependTarget()				@@\
+depend:: 					@@\
+	$(DEPENDSCRIPT) $(XMAKEDEPEND) $(CLASS) \		@@\
+	"$(ALL_INCLUDES)" "$(ALL_DEFINES)"
+
+#define DependTargetFiles(dependencies)				@@\
+depend:: dependencies						@@\
+	$(DEPENDSCRIPT) $(XMAKEDEPEND) $(CLASS) \		@@\
+	"$(ALL_INCLUDES)" "$(ALL_DEFINES)"
+
+
+/*==================================================*\
+ * ATK compilation rules
+\*==================================================*/
+
+#define DynamicObject(dobj, libs, syslibs)			@@\
+all:: dobj.do							@@\
+dobj.do: dobj.o libs 						@@\
+	$(REGISTER) $(DESTDIR)	dobj.do	\	@@\
+           dobj.o --- libs syslibs	@@\
+	Makedo($(MKDOFLGS) -o dobj.do dobj.o libs syslibs $(LDFLAGS) $(GCCLIB))			@@\
+	doIndex(dobj.do)
+
+#define	DynamicMultiObject(dobj, objs, libs, syslibs)		@@\
+all:: dobj							@@\
+dobj: objs libs							@@\
+	$(REGISTER) $(DESTDIR)	dobj	\	@@\
+           objs --- libs syslibs		@@\
+	Makedo($(MKDOFLGS) -o dobj objs libs syslibs $(LDFLAGS) $(GCCLIB))				@@\
+	doIndex(dobj)
+
+#define ExecuteFromDESTDIR(cmd)	 (ANDREWDIR=$(DESTDIR); export ANDREWDIR; \		@@\
+	 CLASSPATH=$(DESTDIR)/dlib/atk; export CLASSPATH; \	@@\
+	 PATH=$(DESTDIR)/bin:$${PATH}; export PATH; \		@@\
+	 cmd)
+
+#define ExecuteFromBASEDIR(cmd)	 (ANDREWDIR=$(BASEDIR); export ANDREWDIR; \		@@\
+	 CLASSPATH=$(BASEDIR)/dlib/atk; export CLASSPATH; \	@@\
+	 PATH=$(BASEDIR)/bin:$${PATH}; export PATH; \		@@\
+	 cmd)
+
+
+/***************************************************
+ *	Export:
+ *		FontRule()
+ *		DeclareFont()
+ *		NSDeclareFont()
+ ***************************************************
+ *	Variables:
+ *		AIX
+ *		FONTS_TO_BDF_ENV
+ *		FONTS_TO_PCF_ENV
+ *		LINKINSTALL_ENV
+ *		NO_FONTS_ENV
+ *		OPENWINDOWS_ENV
+ *		SCOunix
+ *		WM_ENV
+ *		X11_ENV
+ *		i386
+ ***************************************************
+ *	.SUFFIXES: .fdb .bdf .fb
+ ***************************************************/
+
+#ifdef X11_ENV
+FONTEXT = snf
+#ifdef FONTS_TO_BDF_ENV
+FONTEXT = bdf
+#else
+#if (defined(AIX) && ! defined(i386))		/* RT AIX 221 (RS_AIX31 ?) */
+FONTEXT = rtx
+#else
+#ifdef FONTS_TO_PCF_ENV
+FONTEXT = pcf
+#endif
+#endif
+#endif
+#endif
+
+#ifdef FONTS_TO_BDF_ENV
+#define XFCRULE $(MV) /tmp/$*.bdf $*.bdf 			@@\
+	$(RM) /tmp/$*.tfdb
+#else
+#ifdef SCOunix
+#define XFCRULE $(XFC) /tmp/$*.bdf				@@\
+	$(MV) /tmp/$*.snf $*.snf				@@\
+	$(RM) /tmp/$*.bdf /tmp/$*.tfdb
+#else
+#define XFCRULE $(XFC) /tmp/$*.bdf >$*.$(FONTEXT)		@@\
+	$(RM) /tmp/$*.bdf /tmp/$*.tfdb
+#endif
+#endif
+
+#ifdef OPENWINDOWS_ENV
+#define OWFONTRULE						@@\
+.fdb.fb:							@@\
+	$(SED) -e 's/^$$spacing \(.*\),.*$$/$$spacing \1,0/' \	@@\
+	$*.fdb > /tmp/$*.tfdb					@@\
+	$(FDBBDF) /tmp/$*.tfdb >/tmp/$*.bdf			@@\
+	$(CONVERTFONT) -n `egrep '^FONT ' /tmp/$*.bdf | \	@@\
+	sed -e 's/FONT //'` -o $* -f 200 /tmp/$*.bdf		@@\
+	$(RM) /tmp/$*.bdf /tmp/$*.tfdb				@@\
+.bdf.fb:							@@\
+	$(CONVERTFONT) -n `egrep '^FONT '  $*.bdf | \		@@\
+	sed -e 's/FONT //'` -o $* -f 200 $*.bdf
+
+#define OWDECLAREFONT(fontname)					@@\
+all:: fontname.fb
+
+#else
+#define OWFONTRULE
+#define OWDECLAREFONT(fontname)
+#endif
+
+#define XFontRule()						@@\
+.fdb.$(FONTEXT):						@@\
+	$(SED) -e 's/^$$spacing \(.*\),.*$$/$$spacing \1,0/' \	@@\
+	$*.fdb > /tmp/$*.tfdb					@@\
+	$(FDBBDF) /tmp/$*.tfdb >/tmp/$*.bdf			@@\
+	XFCRULE							@@\
+.bdf.$(FONTEXT):						@@\
+	$(XFC) $*.bdf > $*.$(FONTEXT)				@@\
+	OWFONTRULE
+
+#define WMFontRule()						@@\
+.fdb.fwm: ; $(FDBWM) -O -F $*.fdb
+
+
+#ifdef LINKINSTALL_ENV	/* ====================================== */
+#ifdef OPENWINDOWS_ENV
+#define InstallOWFont(fontname)					@@\
+install.time:: fontname.fb					@@\
+	$(RM) $(DESTDIR)/$(FONTDESTOPENWIN)/fontname.fb			@@\
+	$(LN) `pwd`/fontname.fb $(DESTDIR)/$(FONTDESTOPENWIN)/fontname.fb
+else
+#define InstallOWFont(fontname)
+#endif
+#define InstallXFont(fontname)					@@\
+install.time:: fontname.$(FONTEXT)				@@\
+	$(RM) $(DESTDIR)/$(FONTDESTX)/fontname.$(FONTEXT)		@@\
+	$(LN) `pwd`/fontname.$(FONTEXT) \			@@\
+	$(DESTDIR)/$(FONTDESTX)/fontname.$(FONTEXT)			@@\
+	InstallOWFont(fontname)
+#define InstallWMFont(fontname)					@@\
+install.time:: fontname.fwm					@@\
+	$(RM) $(DESTDIR)/$(FONTDESTWM)/fontname.fwm			@@\
+	$(LN) `pwd`/fontname.fwm $(DESTDIR)/$(FONTDESTWM)/fontname.fwm
+#else 			/* ====================================== */
+#ifdef OPENWINDOWS_ENV
+#define InstallOWFont(fontname)					@@\
+install.time:: fontname.fb					@@\
+	$(INSTALL) $(INSTINCFLAGS) fontname.fb \		@@\
+	$(DESTDIR)/$(FONTDESTOPENWIN)/fontname.fb
+#else
+#define InstallOWFont(fontname)
+#endif
+#define InstallXFont(fontname)					@@\
+install.time:: fontname.$(FONTEXT)				@@\
+	$(INSTALL) $(INSTINCFLAGS) fontname.$(FONTEXT) \	@@\
+	$(DESTDIR)/$(FONTDESTX)/fontname.$(FONTEXT)			@@\
+	InstallOWFont(fontname)
+#define InstallWMFont(fontname)					@@\
+install.time:: fontname.fwm					@@\
+	$(INSTALL) $(INSTINCFLAGS) fontname.fwm $(DESTDIR)/$(FONTDESTWM)
+#endif 			/* ====================================== */
+
+
+#ifdef NO_FONTS_ENV
+#define FontRule()
+#define DeclareFont()
+#define NSDeclareFont()
+#else
+#ifdef X11_ENV	/* <============================================> */
+#ifdef WM_ENV	/* [============================================] *//* X11 and WM */
+#define FontRule()						@@\
+XFontRule()							@@\
+WMFontRule()
+#define InstallFont(fontname)					@@\
+InstallXFont(fontname)						@@\
+InstallWMFont(fontname)
+#define DeclareFont(fontname)					@@\
+all:: fontname.$(FONTEXT) fontname.fwm				@@\
+	OWDECLAREFONT(fontname)					@@\
+InstallFont(fontname)
+#define NSDeclareFont(fontname)					@@\
+all:: fontname.$(FONTEXT) fontname.fwm				@@\
+fontname.fwm: fontname.fdb					@@\
+	$(FDBWM) -g -F fontname.fdb				@@\
+InstallFont(fontname)
+#else		/* [============================================] *//* X11 only */
+#define FontRule()						@@\
+XFontRule()
+#define InstallFont(fontname)					@@\
+InstallXFont(fontname)
+#define DeclareFont(fontname)					@@\
+all:: fontname.$(FONTEXT) 					@@\
+	OWDECLAREFONT(fontname)					@@\
+InstallFont(fontname)
+#define NSDeclareFont(fontname)					@@\
+DeclareFont(fontname)
+#endif		/* [============================================] */
+#else		/* <============================================> *//* WM only */
+#ifdef WM_ENV	/* [============================================] */
+#define FontRule()						@@\
+WMFontRule()
+#define InstallFont(fontname)					@@\
+InstallWMFont(fontname)
+#define DeclareFont(fontname)					@@\
+all:: fontname.fwm						@@\
+InstallFont(fontname)
+#define NSDeclareFont(fontname)					@@\
+all:: fontname.fwm						@@\
+fontname.fwm: fontname.fdb					@@\
+	$(FDBWM) -g -F fontname.fdb				@@\
+InstallFont(fontname)
+#endif		/* [============================================] */
+#endif		/* <============================================> */
+#endif
+
+/*
+ *==================================================
+ * Installation rules
+ *==================================================
+ * Exported rules:
+ *	InstallBasename()
+ *	InstallByPattern()
+ *	InstallClassFiles()
+ *	InstallClassProgram()
+ *	InstallDocs()
+ *	InstallExampleClassFiles()
+ *	InstallFile()
+ *	InstallFileToFile()
+ *	InstallFiles()
+ *	InstallHardLink()
+ *	InstallHelpAlias()
+ *	InstallLibraries()
+ *	InstallLibrary()
+ *	InstallLink()
+ *	InstallMultiple()
+ *	InstallMultipleByExtension()
+ *	InstallProgram()
+ *	InstallPrograms()
+ *	InstallProgramsRW()
+ *	InstallRO()
+ *==================================================
+ */
+
+
+
+#ifndef LINKINSTALL_ENV
+/*
+ *==================================================
+ * WITHOUT LinkInstall
+ *==================================================
+ */
+
+#define ForceInstallFiles(files, mode, dest)				@@\
+install.time::								@@\
+	@(case '$(MFLAGS)' in *[i]*) set +e;; esac; \			@@\
+	for i in files; do \						@@\
+		(set -x; $(INSTALL) mode $$i dest/$$i) done)
+
+
+#define InstallFiles(files, mode, dest)					@@\
+install.time:: files							@@\
+	@(case '$(MFLAGS)' in *[i]*) set +e;; esac; \			@@\
+	for i in $?; do \						@@\
+		(set -x; $(INSTALL) mode $$i dest/$$i) done)
+
+#if NeXT
+#define InstallClassProgram(file, dest)					@@\
+install.time:: file							@@\
+	$(CP) file file.stripped					@@\
+	strip -s $(BASEDIR)/lib/libclass.syms file.stripped		@@\
+	$(INSTALL) $(INSTPROGFLAGS) file.stripped dest/file		@@\
+	$(RM) file.stripped
+#else /* NeXT */
+#define InstallClassProgram(file, dest)					@@\
+InstallFiles(file, $(INSTPROGFLAGS), dest)
+#endif /* NeXT */
+
+
+#define InstallLibraries(libs, dest)					@@\
+install.time:: libs							@@\
+	@(case '$(MFLAGS)' in *[i]*) set +e;; esac; \			@@\
+	for i in $?; do \						@@\
+		(set -x; \						@@\
+		$(INSTALL) $(INSTLIBFLAGS) $$i dest/$$i ;\		@@\
+		RANLIBRULE(dest)
+
+#define InstallFileToFile(file, mode, destfile)				@@\
+install.time:: file							@@\
+	$(INSTALL) mode file destfile
+
+#define InstallFWDE(files, mode, dest, ex1, ex2)			@@\
+install.time:: files							@@\
+	@(case '$(MFLAGS)' in *[i]*) set +e;; esac; \			@@\
+	a=`echo ex1 | tr -d " 	"`; \					@@\
+	b=`echo ex2 | tr -d " 	"`; \					@@\
+	for i in $?; do \						@@\
+		(c=`basename $$i .$$a`.$$b; \				@@\
+		set -x; \						@@\
+		$(INSTALL) mode $$c dest/$$c ) done )
+
+#define InstallBasename(files, mode, dest, ex1, ex2)			@@\
+install.time:: files							@@\
+	@(case '$(MFLAGS)' in *[i]*) set +e;; esac; \			@@\
+	a=`echo ex1 | tr -d " 	"`; \					@@\
+	b=`echo ex2 | tr -d " 	"`; \					@@\
+	for i in $?; do \						@@\
+		(c=`basename $$i .$$a`.$$b; \				@@\
+		set -x; \						@@\
+		$(INSTALL) mode $$i dest/$$c ) done)
+
+#ifdef SCOunix
+#define InstallCshScript(file, dest)				         @@\
+install.time:: file						         @@\
+	$(RM) /tmp/,file					         @@\
+	/bin/echo \: "\n/bin/csh -f -s csh \$$* << '==EOF=='\nshift" > /tmp/,file	 @@\
+	cat file >> /tmp/,file					    @@\
+	/bin/echo "==EOF==" >> /tmp/,file			    @@\
+	$(INSTALL) $(INSTAPROFGLAGS) /tmp/,file dest		    @@\
+	$(RM) /tmp/,file
+
+#define InstallShScript(file, dest)				     @@\
+install.time:: file						     @@\
+	$(RM) /tmp/file					     @@\
+	/bin/echo \: > /tmp/,file	     @@\
+	cat file >> /tmp/,file					     @@\
+	$(INSTALL) $(INSTAPROFGLAGS) /tmp/,file dest	     @@\
+	$(RM) /tmp/,file
+#else /* SCOunix */
+#define InstallShScript(file, dest)			     @@\
+InstallFileToFile(file, $(INSTPROGFLAGS), dest)
+
+#define InstallCshScript(file, dest)			     @@\
+InstallFileToFile(file, $(INSTPROGFLAGS), dest)
+#endif /* SCOunix */
+
+
+#else /* LINKINSTALL_ENV */
+/*
+ *==================================================
+ * WITH LinkInstall
+ *==================================================
+ */
+
+#define ForceInstallFiles(files, mode, dest)					@@\
+install.time::									@@\
+	@(case '$(MFLAGS)' in *[i]*) set +e;; esac; \			@@\
+	for i in files; do \						@@\
+		(set -x; \						@@\
+		$(RM) dest/$$i; \					@@\
+		chmod mode `pwd`/$$i ; \				@@\
+		$(LN) `pwd`/$$i dest/$$i) done)
+
+#define InstallFiles(files, mode, dest)					@@\
+install.time:: files							@@\
+	@(case '$(MFLAGS)' in *[i]*) set +e;; esac; \			@@\
+	for i in $?; do \						@@\
+		(set -x; \						@@\
+		$(RM) dest/$$i; \					@@\
+		chmod mode `pwd`/$$i ; \				@@\
+		$(LN) `pwd`/$$i dest/$$i) done)
+
+
+#if NeXT
+#define InstallClassProgram(file, dest)					@@\
+install.time:: file							@@\
+	$(CP) file file.stripped					@@\
+	strip -s $(BASEDIR)/lib/libclass.syms file.stripped		@@\
+	$(RM) dest/file							@@\
+	chmod $(INSTPROGFLAGS) `pwd`/file.stripped			@@\
+	$(LN) `pwd`/file.stripped dest/file
+#else /* NeXT */
+#define InstallClassProgram(file, dest)					@@\
+InstallProgram(file, dest)
+#endif /* NeXT */
+
+#define	InstallLibraries(libs, dest)					@@\
+InstallFiles(libs, $(INSTLIBFLAGS) , dest)
+
+#define	InstallFileToFile(file, flags, destfile)			@@\
+install.time:: file							@@\
+	$(RM) destfile							@@\
+	chmod flags `pwd`/file						@@\
+	$(LN) `pwd`/file destfile
+
+#define InstallFWDE(files, mode, dest, ex1, ex2)			@@\
+install.time:: files							@@\
+	@(case '$(MFLAGS)' in *[i]*) set +e;; esac; \			@@\
+	a=`echo ex1 | tr -d " 	"`; \					@@\
+	b=`echo ex2 | tr -d " 	"`; \					@@\
+	for i in $?; do \						@@\
+		(c=`basename $$i .$$a`.$$b; \				@@\
+		set -x; \ 						@@\
+		$(RM) dest/$$c; \					@@\
+		chmod mode `pwd`/$$c; \					@@\
+		$(LN) `pwd`/$$c dest/$$c ) done )
+
+#define InstallBasename(files, mode, dest, ex1, ex2)			@@\
+install.time:: files							@@\
+	@(case '$(MFLAGS)' in *[i]*) set +e;; esac; \			@@\
+	a=`echo ex1 | tr -d " 	"`; \					@@\
+	b=`echo ex2 | tr -d " 	"`; \					@@\
+	for i in $?; do \						@@\
+		(c=`basename $$i .$$a`.$$b; \				@@\
+		set -x; \						@@\
+		$(RM) dest/$$c; \					@@\
+		chmod mode `pwd`/$$i; \					@@\
+		$(LN) `pwd`/$$i dest/$$c ) done)
+#ifdef SCOunix
+#define InstallCshScript(file, dest)				    @@\
+install.time:: file						    @@\
+	$(RM) /tmp/,file					    @@\
+	/bin/echo \: "\n/bin/csh -f -s csh \$$* << '==EOF=='\nshift" > /tmp/,file @@\
+	cat file >> /tmp/,file					    @@\
+	/bin/echo "==EOF==" >> /tmp/,file			    @@\
+	$(INSTALL) $(INSTAPROFGLAGS) /tmp/,file dest		    @@\
+	$(RM) /tmp/,file
+
+#define InstallShScript(file, dest)				    @@\
+install.time:: file						    @@\
+	$(RM) /tmp/file						    @@\
+	/bin/echo \: > /tmp/,file @@\
+	cat file >> /tmp/,file					    @@\
+	$(INSTALL) $(INSTAPROFGLAGS) /tmp/,file dest		    @@\
+	$(RM) /tmp/,file
+#else /* SCOunix */
+#define InstallCshScript(file, dest) 				    @@\
+InstallFileToFile(file, $(INSTPROGFLAGS), dest)
+#define InstallShScript(file, dest)				    @@\
+InstallFileToFile(file, $(INSTPROGFLAGS), dest)
+#endif /* SCOunix */
+
+#endif /* LINKINSTALL_ENV */
+
+/*
+ *==================================================
+ * Not Dependent On LinkInstall
+ *==================================================
+ */
+
+#define InstallClassFiles(dolist, ihlist)				@@\
+InstallFiles(dolist, $(INSTDOFLAGS), $(DESTDIR)/dlib/atk)		@@\
+install.time::								@@\
+	doIndex(-d $(DESTDIR)/dlib/atk dolist)    			@@\
+InstallFWDE(ihlist, $(INSTINCFLAGS), $(DESTDIR)/include/atk,ih,ch)		@@\
+InstallFiles(ihlist, $(INSTINCFLAGS), $(DESTDIR)/include/atk)
+
+#define InstallExampleClassFiles(dolist, ihlist, dest)			@@\
+InstallFiles(dolist, $(INSTDOFLAGS), dest)				@@\
+install.time::								@@\
+	doIndex(-d dest dolist)					@@\
+InstallFiles(ihlist Imakefile, $(INSTINCFLAGS), dest)			@@\
+InstallFWDE(ihlist, $(INSTINCFLAGS), dest,ih,c)				@@\
+InstallFWDE(ihlist, $(INSTINCFLAGS), dest,ih,ch)			@@\
+InstallFWDE(ihlist, $(INSTINCFLAGS), dest,ih,eh)
+
+#define InstallPrograms(files, dest)					@@\
+InstallFiles(files, $(INSTPROGFLAGS), dest)
+
+#define InstallRO(files, dest)						@@\
+InstallFiles(files, $(INSTINCFLAGS), dest)
+
+#define InstallProgramsRW(files, dest)					@@\
+InstallFiles(files, $(INSTPROGRWFLAGS), dest)
+
+
+#define	InstallHardLink(file, link)					@@\
+install.time:: file							@@\
+	$(RM) link							@@\
+	ln file link
+
+#define InstallHelpAlias(file, aliases)					@@\
+do.alias::								@@\
+	@(case '$(MFLAGS)' in *[i]*) set +e;; esac; \			@@\
+	PWD=`pwd`; for i in aliases; do \				@@\
+	(set -x; echo "$$i	"STRINGIZE(file)"	!$$PWD" >> ,help.alias) done)
+
+#define	InstallLink(file, link)						@@\
+install.time::								@@\
+	$(RM) link							@@\
+	$(LN) file link
+
+/***************************************************
+ * For Backward Compatibility - should be removed
+ * eventually
+ ***************************************************/
+#define InstallFile(file, flags, dest)					@@\
+InstallFiles(file, flags, dest)
+
+#define InstallLibrary(file, dest)					@@\
+InstallLibraries(file, dest)
+
+#define InstallMultiple(list, flags, dest)				@@\
+InstallFiles(list, flags, dest)
+
+#define InstallByPattern(pattern, flags, dest)				@@\
+InstallFiles(pattern, flags, dest)
+
+/* - needs to be based on install.doc not install.time */
+#define InstallDocs(files, dest)					@@\
+InstallFiles(files, $(INSTINCFLAGS), dest)
+
+#define InstallProgram(file, dest)					@@\
+InstallPrograms(file, dest)
+
+#define InstallMultipleByExtension(extension, flags, dest)		@@\
+InstallFiles(*.extension, flags, dest)
+
+
+/* ***************************************************************** *\
+ * Internal (to template) rules
+\* ***************************************************************** */
+
+#define	GenericCleanTarget()					@@\
+tidy::								@@\
+	$(RM) \#* ,* *~ *.CKP *.BAK *.bas errs core		@@\
+	$(RM) *.ln *.o *.dog tags TAGS make.log			@@\
+clean::								@@\
+	$(RM) *.do *.eh *.ih *.a *.fwm *.snf *.pcf *.rtx *.fb	@@\
+	$(RM) install.time install.doc
+
+#define	MakefileTarget()					@@\
+Makefile:: Imakefile \						@@\
+	$(IRULESRC)/andyenv.h \					@@\
+	$(IRULESRC)/imake.tmpl \				@@\
+	$(IRULESRC)/andrew.rls \				@@\
+	$(IRULESRC)/allsys.h \					@@\
+	$(IRULESRC)/allsys.mcr \				@@\
+	$(IRULESRC)/site.rls \					@@\
+	$(IRULESRC)/site.h \					@@\
+	$(IRULESRC)/site.mcr \					@@\
+	$(IRULESRC)/$(MACROFILE) \				@@\
+	$(IRULESRC)/$(SYSTEM_H_FILE)				@@\
+		$(IMAKE_CMD) -DTOPDIR=$(TOP) HOWINSTALL_DEFINER; \		    	@@\
+		touch .depends; \				@@\
+		cat .depends >>Makefile
+
+#ifndef FAILEXIT
+#define FAILEXIT true
+#endif
+
+#define SubdirTarget(dirs, mktag, string)				@@\
+mktag::								@@\
+	@(case '$(MFLAGS)' in *[ik]*) set +e;; esac; \		@@\
+	for i in dirs; do \					@@\
+	    (cd $$i; echo string "(`pwd`)"; \			@@\
+		$(MAKE) $(MFLAGS) DESTDIR=$(DESTDIR) mktag; FAILEXIT );FAILEXIT; done)
+
+/*************************************************************
+NOTE: The following uses of SubdirTarget() have no spaces between the 
+arguments because the HP version of imake does some weird expansion 
+of the space into a tab, which causes the target tag to be tabbed 
+and, thus, unrecognized by make.
+**************************************************************/
+
+#define MakeSubdirs(dirs)					@@\
+SubdirTarget(dirs,All,"making")
+
+#define DependMakeSubdirs(dirs)					@@\
+SubdirTarget(dirs,dependAll,"depend/making")
+
+#define InstallSubdirs(dirs)					@@\
+SubdirTarget(dirs,Install,"installing")
+
+#define InstallDocSubdirs(dirs)					@@\
+SubdirTarget(dirs,Doc,"installing docs")
+
+#define InstallAliasSubdirs(dirs)				@@\
+SubdirTarget(dirs,Aliases,"installing aliases")
+
+#define DependInstallSubdirs(dirs)				@@\
+SubdirTarget(dirs,dependInstall,"building (dependInstall)")
+
+#define WorldInstallSubdirs(dirs)				@@\
+SubdirTarget(dirs,World,"building (World)")
+
+#define CleanSubdirs(dirs)					@@\
+SubdirTarget(dirs,Clean,"cleaning")
+
+#define TidySubdirs(dirs)					@@\
+SubdirTarget(dirs,Tidy,"tidying")
+
+#define TagSubdirs(dirs)					@@\
+tags::								@@\
+	@case '$(MFLAGS)' in *[ik]*) set +e;; esac; \		@@\
+	for i in dirs; do \					@@\
+	    (cd $$i; echo "tagging (`pwd`)"; \			@@\
+		$(MAKE) $(MFLAGS) TAGS='$(TAGS)' tags; FAILEXIT); FAILEXIT;\		@@\
+	done
+
+#define MakeMakeSubdirs(dirs)					@@\
+Makefiles::							@@\
+	@case '$(MFLAGS)' in *[ik]*) set +e;; esac; \		@@\
+	for i in dirs; do \					@@\
+		echo "Making Makefiles (`pwd`/$$i)"; \		@@\
+		$(MAKE) subdirMakefiles NEWTOP=../ \		@@\
+		MAKE_SUBDIR=$$i;FAILEXIT; \				@@\
+	done
+
+#define MakefileSubdirs(dirs)					@@\
+MakeMakeSubdirs(dirs)						@@\
+								@@\
+subdirMakefiles:						@@\
+	cd $(MAKE_SUBDIR); \					@@\
+	$(DOTDOTIMAKE_CMD) -DTOPDIR=../$(TOP) HOWINSTALL_DEFINER; \		@@\
+	touch .depends;  \					@@\
+	cat .depends >>Makefile; \				@@\
+	$(MAKE) $(MFLAGS) Makefiles 
+
+
+#ifdef SITE_ENV
+#include <site.rls>
+#endif /* SITE_ENV */

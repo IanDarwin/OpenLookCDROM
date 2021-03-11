@@ -1,0 +1,91 @@
+#!/bin/csh -f
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+#
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+
+%include pobbconfig.defs
+#
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+%ifdef pobb_AutoPost
+
+set nonomatch
+
+# Start selected bboard daemons.
+foreach Q ($$*)
+    /bin/echo -n " "
+    if ($$Q == "nntppoll") then
+%ifdef pobb_NNTPIn
+	cd ?[NetDatabaseRoot]
+	rm -f ?[NetDatabaseRoot]/newarts.*
+# Don't put FlushOld into background; wait for it to finish.
+	?[SmallLocalDir]/FlushOld ?[NNTPSuffix] ?[NNTPKeepLen]
+	/bin/echo -n "FlushOld "
+	?[BigLocalDir]/nntppoll -N ?[DuplicateDB]/?[NNTPSuffix] -d ?[NetDatabaseRoot]/ReadyBox -h ?[NetDatabaseRoot]/Hold -t ?[NetDatabaseRoot]/temp -i ?[NNTPPollSleepTime] -l ?[NNTPPollHome]/last_time -s ?[NNTPhost] -f ?[DaemonLog]/nntppoll.log -A '?[NetworkAuthentication]' -n 'control,?[arrlist(NNTPGroups, ".*,")].*' -L '<?[arrlist(NNTPDists, ",")],?[arrlist(NNTPGroups, ",")]>'
+	/bin/echo "nntppoll" >& ?[BigLocalDir]/config/nntppoll
+%else pobb_NNTPIn
+	/bin/echo -n "IGNORED::"
+%endif pobb_NNTPIn
+    else if ($$Q == "undigest") then
+%ifdef pobb_UnDigest
+	cd ?[UnDigestHome]
+	?[BigLocalDir]/undigest -m ?[UnDigestHome]/?[MailboxName]/ -t ?[UnDigestHome]/temp/ -r ?[UnDigestHome]/ReadyBox/ -s ?[UnDigestSleepTime] >& /dev/console &
+	/bin/echo "undigest" >& ?[BigLocalDir]/config/undigest
+%else pobb_UnDigest
+	/bin/echo -n "IGNORED::"
+%endif pobb_UnDigest
+    else if ($$Q == "msdaemon.netnews") then
+%ifdef pobb_NNTPIn
+	cd ?[NetDatabaseRoot]
+	?[SmallLocalDir]/post-netnews >& /dev/console &
+	/bin/echo "post-netnews" >& ?[BigLocalDir]/config/post-netnews
+%else pobb_NNTPIn
+	/bin/echo -n "IGNORED::"
+%endif pobb_NNTPIn
+    else if ($$Q == "msdaemon.dj") then
+%ifdef pobb_DowJonesIn
+	/bin/su ?[DJUserName] `cat ?[DJPassword]` -c "?[SmallLocalDir]/dj-startup `cat ?[DJPassword]`" >& /dev/console
+	/bin/echo -n " dj-startup" >& /dev/console
+	cd ?[NetBBHome]
+	?[BigLocalDir]/cuin set level wizard \; set script on \; set log ?[DaemonLog]/cuilog\; source ?[BigLocalDir]/scripts/$$Q
+	/bin/echo $$Q >& ?[BigLocalDir]/config/cuin.$$Q
+%else pobb_DowJonesIn
+	/bin/echo -n "IGNORED::"
+%endif pobb_DowJonesIn
+    else if ($$Q == "muserver") then
+%ifdef pobb_MUServer
+	/bin/echo -n " muserver" >& /dev/console
+	?[BigLocalDir]/muserver &
+	/bin/echo "muserver" >& ?[BigLocalDir]/config/muserver
+%else pobb_MUServer
+	/bin/echo -n "IGNORED::"
+%endif pobb_MUServer	
+    else
+	cd ?[NetBBHome]
+	?[BigLocalDir]/cuin set level wizard \; set script on \; set log ?[DaemonLog]/cuilog\; source ?[BigLocalDir]/scripts/$$Q
+	/bin/echo $$Q >& ?[BigLocalDir]/config/cuin.$$Q
+    endif
+    /bin/echo -n $$Q
+end
+
+%endif pobb_AutoPost

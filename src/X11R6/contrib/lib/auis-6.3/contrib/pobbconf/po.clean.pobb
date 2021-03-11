@@ -1,0 +1,64 @@
+#!/bin/csh -f
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+
+%include pobbconfig.defs
+#
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+
+%ifdef pobb_RunAMSDelivery
+
+sleep 60
+set MYHOST=`hostname`
+while (1)
+    if ( "$${MYHOST}" == "" ) then
+	set MYHOST=`hostname`
+    endif
+    if ( "$${MYHOST}" == "" ) then
+	sleep 300
+    else
+# Publish local mail-queue state
+	echo "<critical>(pid $$$$) po.clean run starting" > /dev/console
+# Post the status of the local disk to ?[POQueues].
+	echo "Status of post office $${MYHOST} at `date`:" >& /tmp/status.$$$$
+	uptime >>& /tmp/status.$$$$
+	?[oldsendmail] -bp >>& /tmp/status.$$$$
+	cp /tmp/status.$$$$ ?[POQueues]/$${MYHOST}
+	rm -f /tmp/status.$$$$
+# Now post the status of all the given mail queues, too.
+	set IX=2
+	while ( $$IX <= $$#argv)
+		?[queuemail] -E -q ?[CellCommonPrefix]?[WorkstationCell]?[CellCommonSuffix]?[CellCommonMailQueueDirSuffix]/$$argv[$$IX] > /tmp/status.$$$$
+		if (! -z /tmp/status.$$$$ ) then
+			cp /tmp/status.$$$$ ?[POQueues]/status.$$argv[$$IX]
+		endif
+		rm -f /tmp/status.$$$$
+		@ IX++
+	end
+	echo "<critical>(pid $$$$) po.clean run all done." > /dev/console
+	sleep $$1
+    endif
+end
+
+%endif pobb_RunAMSDelivery

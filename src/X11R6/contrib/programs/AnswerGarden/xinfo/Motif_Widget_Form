@@ -1,0 +1,231 @@
+@begin(header)
+author: ackerman=ag@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+node_expert: ackerman=ag@ics.uci.edu 
+expiration_date: 09/02/93
+last_modifier: ackerman=ag@.ics.uci.edu
+last_mod_date: 11/25/91
+mod_num: 3
+@end(header)
+--------------
+ Form Widget
+--------------
+
+@begin(Q)
+Why don't labels in a Form resize when the label is changed?  I've got
+some labels in a form. The labels don't resize whenever the label
+string resource is changed. As a result, the operator has to resize
+the window to see the new label contents. I am using Motif 1.1.
+@end(Q)
+
+@begin(A)
+This problem may happen to any widget inside a Form widget. The
+problem was that the Form will resize itself when it gets geometry
+requests from its children. If its preferred size is not allowed, the
+Form will disallow all geometry requests from its children. The
+workaround is that you should set any ancestor of the Form to be
+resizable. For the shell which contains the Form you should set the
+shell resource XmNallowShellResize to be True (by default, it is set
+to FALSE).  There is currently an inconsistency on how resizing is
+being done, and it may get fixed in Motif 1.2.
+				
+				Motif FAQ 8/12/91
+
+@end(A)
+
+@begin(Q)
+I know that I should set allowShellResize to true in order to get
+the form to resize accordingly. My problem is if I have a form big
+enough, with a small label. When the label changes its string, the
+form changes size too, although the form has enough space for the
+label to grow.
+@end(Q)
+
+@begin(A)
+This is because by default, the resizePolicy for a form is
+XmRESIZE_ANY, it will grow or shrink as needed. Since its child
+changes size, it will try to match that size, that is why you see
+the form changes its size. To make the form stay with its initial
+size, set the resizePolicy for the form to XmRESIZE_NONE.  You may
+even want to set it to XmRESIZE_GROW, so that whenthe child grows
+beyond the form size, the form will grow too.  
+@end(A)
+
+
+@begin(Q)
+How can I center a widget in a form?
+@end(Q)
+
+@begin(A)
+One of Motif's trickier questions.  The problems are that: Form gives
+no support for centering, only for edge attachments, and the widget
+must stay in the center if the form or the widget is resized.  Just
+looking at horizontal centering (vertical is similar) some solutions
+are:
+
+ a.  Use the table widget instead of Form.
+
+ b.  This is complex, but can be used for arbitrary placement.  It is an amalgam
+     of several suggestions, and all bits seem to be needed.  Create an `anchor'
+     in the middle of the form.  Use a widget of zero width and height for this
+     (e.g. a separator).  Place this anchor in the form where you want it to
+     stay (attach position to 50 for centering).  You want the middle of the
+     widget to be over the anchor (and stay there even if the form is resized).
+     You don't know where the middle of the widget is until you know its size,
+     and you won't know that until you manage it.  So create and manage the
+     widget and use XtGetValues to find its width.  Then attach its left
+     position to half the width from the anchor.  Doing this will move the
+     widget.  Depending upon the order in which widgets are managed and realized
+     the widget may be visible after it has been managed and so will `flicker'
+     when it is moved.  If this happens, set mappedWhenManaged to False so that
+     it doesn't show until you map it yourself.
+
+
+              n = 0;
+              XtSetArg (args[n], XmNseparatorType, XmNO_LINE); n++;
+              XtSetArg (args[n], XmNleftAttachment, XmATTACH_POSITION); n++;
+              XtSetArg (args[n], XmNleftPosition, 50); n++;
+              anchor = XmCreateSeparator (form, "anchor", args, n);
+              XtManageChild (anchor);
+
+              n = 0;
+              XtSetArg (args[n], XmNmappedWhenManaged, False); n++;
+              button = XmCreatePushButton (form, "Center Button", args, n);
+              XtManageChild (button);
+
+              n = 0;
+              XtSetArg (args[n], XmNwidth, (Dimension *) &width); n++;
+              XtGetValues (button, args, n);
+
+              n = 0;
+              XtSetArg (args[n], XmNleftAttachment, XmATTACH_OPPOSITE_WIDGET); n++;
+              XtSetArg (args[n], XmNleftWidget, anchor); n++;
+              XtSetArg (args[n], XmNleftOffset, -width/2); n++;
+              XtSetValues (button, args, n);
+              XtMapWidget (button);
+
+     This does not center the widget correctly if it is resized by the
+     application (say by changing its label) - you have to fix it up yourself by
+     resetting the left offset.
+
+ c.  Attach the things you want centered to the middle of the form (attach
+     position to 50%), and then set the offest to half the width or height
+     (calculated as in the previous solution).  The documentation for Form
+     states that this will not work.  I can't get it to work (Motif 1.1.0), but
+     some people say that it works just fine (Motif 1.1.1, 1.1.2).
+
+ d.  No uil solution has been suggested, because of the widget size problem
+				
+				Motif FAQ 8/12/91
+
+@end(A)
+
+@begin(Q)
+How do I line up two columns of widgets of different types?  I have a
+column of say label widgets, and a column of text widgets and I want
+to have them lined up horizontally. The problem is that they are of
+different heights.  Just putting them in a form or rowcolumn doesn't
+line them up properly because the label and text widgets are of
+different height.  I also want the labels to be right adjusted e.g.
+
+         -------------------------------------
+        |                    ---------------- |
+        |          a label  |Some text       ||
+        |                    ---------------- |
+                             ---------------- |
+        |   a longer label  |Some more text  ||
+        |                    ---------------- |
+        |                    ---------------- |
+        |a very long label  |Even more text  ||
+        |                    ---------------- |
+         -------------------------------------
+@end(Q)
+
+@begin(A)
+To get the widgets lined up horizontally, use a form but place the
+widgets using XmATTACH_POSITION.  In the example, attach the top of
+the first label to the form, the bottomPosition to 33 (33% of the
+height).  Attach the topPosition of the second label to 33 and the
+bottomPosition to 66.  Attach the topPosition of the third label to 66
+and the bottom of the label to the form.  Do the same with the text
+widgets.
+
+To get the label widgets lined up vertically, use the right attachment
+of XmATTACH_OPPOSITE_WIDGET: starting from the one with the longest
+label, attach widgets on the right to each other. In the example,
+attach the 2nd label to the third, and the first to the second.  To
+get the text widgets lined up, just attach them on the left to the
+labels.  To get the text in the labels aligned correctly, use
+XmALIGNMENT_END for the XmNalignment resource.
+
+        /* geometry for label 2
+        */
+        n = 0;
+        XtSetArg (args[n], XmNalignment, XmALIGNMENT_END); n++;
+        XtSetArg (args[n], XmNleftAttachment, XmATTACH_FORM); n++;
+        XtSetArg (args[n], XmNbottomAttachment, XmATTACH_FORM); n++;
+        XtSetArg (args[n], XmNtopAttachment, XmATTACH_POSITION); n++;
+        XtSetArg (args[n], XmNtopPosition, 66); n++;
+        XtSetValues (label[2], args, n);
+
+        /* geometry for label 1
+        */
+        n = 0;
+        XtSetArg (args[n], XmNalignment, XmALIGNMENT_END); n++;
+        XtSetArg (args[n], XmNbottomAttachment, XmATTACH_POSITION); n++;
+        XtSetArg (args[n], XmNbottomPosition, 66); n++;
+        XtSetArg (args[n], XmNtopAttachment, XmATTACH_POSITION); n++;
+        XtSetArg (args[n], XmNtopPosition, 33); n++;
+        XtSetArg (args[n], XmNleftAttachment, XmATTACH_FORM); n++;
+        XtSetArg (args[n], XmNrightAttachment, XmATTACH_OPPOSITE_WIDGET); n++;
+        XtSetArg (args[n], XmNrightWidget, label[2]); n++;
+        XtSetValues (label[1], args, n);
+
+        /* geometry for label 0
+        */
+        n = 0;
+        XtSetArg (args[n], XmNalignment, XmALIGNMENT_END); n++;
+        XtSetArg (args[n], XmNbottomAttachment, XmATTACH_POSITION); n++;
+        XtSetArg (args[n], XmNbottomPosition, 33); n++;
+        XtSetArg (args[n], XmNtopAttachment, XmATTACH_FORM); n++;
+        XtSetArg (args[n], XmNleftAttachment, XmATTACH_FORM); n++;
+        XtSetArg (args[n], XmNrightAttachment, XmATTACH_OPPOSITE_WIDGET); n++;
+        XtSetArg (args[n], XmNrightWidget, label[1]); n++;
+        XtSetValues (label[0], args, n);
+
+        /* geometry for text 0
+        */
+        n = 0;
+        XtSetArg (args[n], XmNtopAttachment, XmATTACH_FORM); n++;
+        XtSetArg (args[n], XmNbottomAttachment, XmATTACH_POSITION); n++;
+        XtSetArg (args[n], XmNbottomPosition, 33); n++;
+        XtSetArg (args[n], XmNrightAttachment, XmATTACH_FORM); n++;
+        XtSetArg (args[n], XmNleftAttachment, XmATTACH_WIDGET); n++;
+        XtSetArg (args[n], XmNleftWidget, label[0]); n++;
+        XtSetValues (text[0], args, n);
+
+        /* geometry for text 1
+        */
+        XtSetArg (args[n], XmNtopAttachment, XmATTACH_POSITION); n++;
+        XtSetArg (args[n], XmNtopPosition, 33); n++;
+        XtSetArg (args[n], XmNbottomAttachment, XmATTACH_POSITION); n++;
+        XtSetArg (args[n], XmNbottomPosition, 66); n++;
+        XtSetArg (args[n], XmNrightAttachment, XmATTACH_FORM); n++;
+        XtSetArg (args[n], XmNleftAttachment, XmATTACH_WIDGET); n++;
+        XtSetArg (args[n], XmNleftWidget, label[1]); n++;
+        XtSetValues (text[1], args, n);
+
+        /* geometry for text 2
+        */
+        XtSetArg (args[n], XmNtopAttachment, XmATTACH_POSITION); n++;
+        XtSetArg (args[n], XmNtopPosition, 66); n++;
+        XtSetArg (args[n], XmNrightAttachment, XmATTACH_FORM); n++;
+        XtSetArg (args[n], XmNleftAttachment, XmATTACH_WIDGET); n++;
+        XtSetArg (args[n], XmNleftWidget, label[2]); n++;
+        XtSetArg (args[n], XmNbottomAttachment, XmATTACH_FORM); n++;
+        XtSetValues (text[2], args, n);
+			
+				Motif FAQ 8/12/91
+
+@end(A)

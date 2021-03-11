@@ -1,0 +1,866 @@
+#!/bin/csh -f
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+
+
+%include pobbconfig.defs
+
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+# This file has been modified to use gawk instead of awk, if available
+
+if ( $$#argv < 1 ) then
+	set INSTLxqt="install -c -m 0755"
+	set INSTLnox="install -c -m 0644"
+else
+	set INSTLxqt="$$1 -c -m 0755"
+	set INSTLnox="$$1 -c -m 0644"
+endif
+
+if ( $$#argv < 2 ) then
+	set FDIR=?[POBBAndrewDir]/
+else
+	set FDIR="$$2"
+endif
+
+set and_dir=?[POBBAndrewDir]
+if ( $$??ANDREWDIR ) then
+	set and_dir=$$ANDREWDIR
+endif
+%ifdef pobbenv_AFS
+if ( $$#argv < 3 ) then
+	set AFSDIR=?[POBBAndrewDir]
+else
+	set AFSDIR="$$3"
+endif
+
+# Use the Gnu gawk if possible, else use awk
+set AWK=awk
+if ( -x /usr/contributed/bin/gawk ) then
+    set AWK=/usr/contributed/bin/gawk
+endif
+
+set FS=echo
+if ( ?[AMS_ViceIsRunning] != 0 ) then
+    if ( -x $${AFSDIR}/bin/fs ) then
+	set FS=$${AFSDIR}/bin/fs
+    else
+	if ( -x $${and_dir}/bin/fs ) then
+	    set FS=$${and_dir}/bin/fs
+	endif
+    endif
+endif
+%endif pobbenv_AFS
+%ifdef pobb_AutoPost
+set CUI=echo
+if ( -x $${and_dir}/bin/cui ) then
+	set CUI=$${and_dir}/bin/cui
+endif
+%endif pobb_AutoPost
+
+set nonomatch
+
+%ifdef pobb_RunMachines
+set ServiceDir=?[CellCommonPrefix].?[WorkstationCell]?[CellCommonSuffix]
+%ifdef pobb_WPUpdate
+%ifdef pobbenv_AFS
+$$FS setacl $${ServiceDir}?[CellCommonWPDirSuffix] -clear ?[wpbuildUser] all ?[arrlist(PostmanDirOwners, " all ")] all System:AnyUser rl
+%endif pobbenv_AFS
+%endif pobb_WPUpdate
+%ifdef pobb_RunAMSDelivery
+set MQDir="?[CellCommonPrefix]?[WorkstationCell]?[CellCommonSuffix]?[CellCommonMailQueueDirSuffix]"
+if ( ! -e $$MQDir ) then
+	echo "Standard mail-queue directory $$MQDir doesn't exist;"
+	set MQDir="?[CellCommonPrefix].?[WorkstationCell]?[CellCommonSuffix]?[CellCommonMailQueueDirSuffix]"
+	echo "   trying to use read/write-mounted $$MQDir"
+else
+	if ( ! -d $$MQDir ) then
+		echo "Standard mail-queue directory $$MQDir is not a directory;"
+		set MQDir="?[CellCommonPrefix].?[WorkstationCell]?[CellCommonSuffix]?[CellCommonMailQueueDirSuffix]"
+		echo "   trying to use read/write-mounted $$MQDir"
+	endif
+endif
+if ( ! -e $$MQDir ) then
+	echo "**Read/write-mounted $$MQDir doesn't exist**"
+	set InstalledMQs="";
+	set InstalledSQs="";
+else
+	if ( ! -d $$MQDir ) then
+		echo "**Read/write-mounted $$MQDir not a directory**"
+		set InstalledMQs=""
+		set InstalledSQs=""
+	else
+		pushd $$MQDir
+		set InstalledMQs={test,}q*
+		if ( "$$InstalledMQs" == "{test,}q*" ) set InstalledMQs="";
+		set InstalledSQs={test,}sq*
+		if ( "$$InstalledSQs" == "{test,}sq*" ) set InstalledSQs="";
+		popd
+	endif
+endif
+%ifdef pobbenv_AFS
+$$FS setacl $${ServiceDir}?[CellCommonMailQueueDirSuffix] -clear ?[arrlist(PostmanDirOwners, " all ")] all System:AnyUser rl
+%endif pobbenv_AFS
+set ConfMQs=`echo ?[arrlist(GlobalMailQueues)]`
+set ConfSQs=`echo ?[arrlist(GlobalSlowMailQueues)]`
+set Announced=0
+foreach cnf ( $$ConfMQs )
+	set found = 0
+	foreach instl ( $$InstalledMQs )
+		if ( "$$cnf" == "$$instl" ) then
+			set found = 1
+			break
+		endif
+	end
+	if ( $$found == 0 ) then
+		if ( $$Announced == 0 ) then
+			echo "Mail queues not (yet) installed in $${MQDir} :"
+			set Announced = 1
+		endif
+		echo "	" $$cnf
+	endif
+end
+set Announced=0
+foreach instl ( $$InstalledMQs )
+	set found = 0
+	foreach cnf ( $$ConfMQs )
+		if ( "$$instl" == "$$cnf" ) then
+			set found = 1
+			break
+		endif
+	end
+	if ( $$found == 0 ) then
+		if ( $$Announced == 0 ) then
+			echo "**Installed mail queues in $${MQDir} that are not configured:"
+			set Announced = 1
+		endif
+		echo "	" $$instl
+	else
+		if ( ! -e $${MQDir}/$${instl} ) then
+			echo "(Probable AFS failure checking $${MQDir}/$${instl}.)"
+		else
+			if ( ! -d $${MQDir}/$${instl} ) then
+				echo "**Queue $${MQDir}/$${instl} not a directory**"
+%ifdef pobbenv_AFS
+			else
+				$$FS setacl $${MQDir}/$${instl} -clear ?[arrlist(PostmanDirOwners, " $$READPERMS ")] $$READPERMS ?[generalEnqueueingPublic] li
+%endif pobbenv_AFS
+			endif
+		endif
+	endif
+end
+set Announced=0
+foreach cnf ( $$ConfSQs )
+	set found = 0
+	foreach instl ( $$InstalledSQs )
+		if ( "$$cnf" == "$$instl" ) then
+			set found = 1
+			break
+		endif
+	end
+	if ( $$found == 0 ) then
+		if ( $$Announced == 0 ) then
+			echo "Slow mail queues not (yet) installed in $${MQDir} :"
+			set Announced = 1
+		endif
+		echo "	" $$cnf
+	endif
+end
+set Announced=0
+foreach instl ( $$InstalledSQs )
+	set found = 0
+	foreach cnf ( $$ConfSQs )
+		if ( "$$instl" == "$$cnf" ) then
+			set found = 1
+			break
+		endif
+	end
+	if ( $$found == 0 ) then
+		if ( $$Announced == 0 ) then
+			echo "**Installed slow mail queues in $${MQDir} that are not configured:"
+			set Announced = 1
+		endif
+		echo "	" $$instl
+	else
+		if ( ! -e $${MQDir}/$${instl} ) then
+			echo "(Probable AFS failure checking $${MQDir}/$${instl}.)"
+		else
+			if ( ! -d $${MQDir}/$${instl} ) then
+				echo "**Queue $${MQDir}/$${instl} not a directory"
+%ifdef pobbenv_AFS
+			else
+				$$FS setacl $${MQDir}/$${instl} -clear ?[arrlist(PostmanDirOwners, " $$READPERMS ")] $$READPERMS ?[generalEnqueueingPublic] l
+%endif pobbenv_AFS
+			endif
+		endif
+	endif
+end
+%endif pobb_RunAMSDelivery
+
+set echo
+
+if ( ! -d ?[PackageHome] ) mkdir ?[PackageHome]
+%ifdef pobbenv_AFS
+$$FS setacl ?[PackageHome] -clear ?[PackageAccess]
+%endif pobbenv_AFS
+cp /dev/null ?[PackageHome]/null
+if ( ! -d ?[PackageHome]/etc ) mkdir ?[PackageHome]/etc
+%ifdef pobbenv_AFS
+$$FS setacl ?[PackageHome]/etc -clear ?[PackageAccess]
+%endif pobbenv_AFS
+$$INSTLxqt rc.local.msh ?[PackageHome]/etc/rc.local
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt config.monitor.msh ?[PackageHome]/etc/config.monitor
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt pobb.shutdown.msh ?[PackageHome]/etc/pobb.shutdown
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%ifdef pobb_ButlerPool
+$$INSTLxqt butlertelnetd.msh ?[PackageHome]/etc/butlertelnetd
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%endif pobb_ButlerPool
+$$INSTLnox butler.conf.csh ?[PackageHome]/etc/butler.conf
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox syslog.conf.csh ?[PackageHome]/etc/syslog.conf
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox user.permits.msh ?[PackageHome]/etc/user.permits
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+echo "startup" | $$AWK -f config.awk.msh > startup.awkout
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt startup.awkout ?[PackageHome]/etc/startup
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+rm startup.awkout
+%ifdef pobb_DowJonesIn
+$$INSTLxqt dj-startup.msh ?[PackageHome]/etc/dj-startup
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%endif pobb_DowJonesIn
+$$INSTLxqt queueBBD.msh ?[PackageHome]/etc/queueBBD
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt runBBD.msh ?[PackageHome]/etc/runBBD
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+
+%ifdef pobb_RunAMSDelivery
+$$INSTLxqt FlushOld.msh ?[PackageHome]/etc/FlushOld
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%else pobb_RunAMSDelivery
+%ifdef pobb_NNTPIn
+$$INSTLxqt FlushOld.msh ?[PackageHome]/etc/FlushOld
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%endif pobb_NNTPIn
+%endif pobb_RunAMSDelivery
+
+%ifdef pobb_RunAMSDelivery
+$$INSTLxqt po.clean.msh ?[PackageHome]/etc/po.clean
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt qmd.msh ?[PackageHome]/etc/qmd
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox sendmail.cf.msh ?[PackageHome]/etc/sendmail.cf
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%endif pobb_RunAMSDelivery
+%ifdef pobb_AutoPost
+$$INSTLxqt bbd.msh ?[PackageHome]/etc/bbd
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%ifdef pobb_NNTPIn
+$$INSTLxqt post-netnews.msh ?[PackageHome]/etc/post-netnews
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox nns.conf.msh ?[PackageHome]/etc/nns.conf
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%endif pobb_NNTPIn
+%endif pobb_AutoPost
+
+%ifdef pobb_AutoPost
+if ( ! -d ?[PackageHome]/scripts ) mkdir ?[PackageHome]/scripts
+%ifdef pobbenv_AFS
+$$FS setacl ?[PackageHome]/scripts -clear ?[PackageAccess]
+%endif pobbenv_AFS
+$$INSTLnox msdaemon.localhigh.msh ?[PackageHome]/scripts/msdaemon.localhigh
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox msdaemon.locallow.msh ?[PackageHome]/scripts/msdaemon.locallow
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox msdaemon.local.msh ?[PackageHome]/scripts/msdaemon.local
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%ifdef pobb_DowJonesIn
+$$INSTLnox msdaemon.dj.msh ?[PackageHome]/scripts/msdaemon.dj
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%endif pobb_DowJonesIn
+$$INSTLnox msdaemon.extnonetnews.msh ?[PackageHome]/scripts/msdaemon.extnonetnews
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox msonce.extnonetnews.msh ?[PackageHome]/scripts/msonce.extnonetnews
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox msdaemon.locextnonetnews.msh ?[PackageHome]/scripts/msdaemon.locextnonetnews
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox msdaemon.takehints.msh ?[PackageHome]/scripts/msdaemon.takehints
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox msdaemon.external.msh ?[PackageHome]/scripts/msdaemon.external
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%ifdef pobb_NNTPIn
+$$INSTLnox msdaemon.netnews.msh ?[PackageHome]/scripts/msdaemon.netnews
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox msonce.netnews.msh ?[PackageHome]/scripts/msonce.netnews
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%endif pobb_NNTPIn
+%endif pobb_AutoPost
+
+if ( ! -d ?[PackageHome]/src ) mkdir ?[PackageHome]/src
+%ifdef pobbenv_AFS
+$$FS setacl ?[PackageHome]/src -clear ?[PackageAccess]
+%endif pobbenv_AFS
+$$INSTLnox package.Makefile.msh ?[PackageHome]/src/Makefile
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox pobbconfig.defs ?[PackageHome]/src/pobbconfig.defs
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox post.office.msh ?[PackageHome]/src/post.office
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%ifdef pobb_RunAMSDelivery
+$$INSTLnox uses.sendmail.msh ?[PackageHome]/src/uses.sendmail
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%endif pobb_RunAMSDelivery
+$$INSTLnox uses.processes.msh ?[PackageHome]/src/uses.processes
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox uses.nntp.msh ?[PackageHome]/src/uses.nntp
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox uses.named.msh ?[PackageHome]/src/uses.named
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox uses.cuin.msh ?[PackageHome]/src/uses.cuin
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+
+%ifdef pobb_RunAMSDelivery
+foreach machine (?[arrlist(PossiblePOs)])
+    if ( ! -d ?[PackageHome]/$${machine} ) mkdir ?[PackageHome]/$${machine}
+%ifdef pobbenv_AFS
+    $$FS setacl ?[PackageHome]/$${machine} -clear ?[PackageAccess]
+%endif pobbenv_AFS
+
+    echo "crontab $${machine}" | $$AWK -f config.awk.msh > $${machine}-crontab.awkout
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+    $$INSTLnox $${machine}-crontab.awkout ?[PackageHome]/$${machine}/crontab
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+    rm $${machine}-crontab.awkout
+
+    $$INSTLnox inetd.conf.bsd.msh ?[PackageHome]/$${machine}/inetd.conf.bsd
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+    $$INSTLnox inetd.conf.ultrx.msh ?[PackageHome]/$${machine}/inetd.conf.ultrx
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+    $$INSTLnox main-netd.conf.msh ?[PackageHome]/$${machine}/netd.conf
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+end
+%endif pobb_RunAMSDelivery
+
+%ifdef pobb_AutoPost
+foreach machine (?[arrlist(PossibleBBs)])
+    if ( ! -d ?[PackageHome]/$${machine} ) mkdir ?[PackageHome]/$${machine}
+%ifdef pobbenv_AFS
+    $$FS setacl ?[PackageHome]/$${machine} -clear ?[PackageAccess]
+%endif pobbenv_AFS
+
+    echo "crontab $${machine}" | $$AWK -f config.awk.msh > $${machine}-crontab.awkout
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+    $$INSTLnox $${machine}-crontab.awkout ?[PackageHome]/$${machine}/crontab
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+    rm $${machine}-crontab.awkout
+
+    $$INSTLnox inetd.conf.bsd.msh ?[PackageHome]/$${machine}/inetd.conf.bsd
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+    $$INSTLnox inetd.conf.ultrx.msh ?[PackageHome]/$${machine}/inetd.conf.ultrx
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+    $$INSTLnox main-netd.conf.msh ?[PackageHome]/$${machine}/netd.conf
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+end
+%endif pobb_AutoPost
+
+%ifdef pobb_ButlerPool
+$$INSTLnox butler-inetd.conf.bsd.msh ?[PackageHome]/?[WorkstationCell]/inetd.conf.bsd
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox butler-inetd.conf.ultrx.msh ?[PackageHome]/?[WorkstationCell]/inetd.conf.ultrx
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox butler-netd.conf.msh ?[PackageHome]/?[WorkstationCell]/netd.conf
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%endif pobb_ButlerPool
+
+%ifdef pobb_RunAMSDelivery
+foreach machine (?[arrlist(PossiblePOs)])
+# If it's also a bboard machine, use pobbmachine rather than pomachine.
+    set ISALSOBB=0
+    set ISALSONN=0
+%ifdef pobb_AutoPost
+    set SAWBB=0
+    foreach bbmach (?[arrlist(PossibleBBs)])
+    	if ("$$machine" == "$$bbmach") then
+		set ISALSOBB=1
+		if ( $$SAWBB == 0 ) set ISALSONN=1
+	endif
+	set SAWBB = 1
+    end
+%endif pobb_AutoPost
+    set ix=1
+    set machs=`echo ?[arrlist(PossiblePOs)]`
+    set disks=`echo ?[arrlist(PossiblePOHDSizes)]`
+    set thisdisk=40
+    while ( $$ix <= $$#machs )
+	if ( "$$machs[$$ix]" == "$$machine" ) set thisdisk=$$disks[$$ix]
+	@ ix++
+    end
+    if ($$ISALSOBB == 0) then
+	set pfx="po"
+%ifdef pobb_NNTPIn
+    else if ($$ISALSONN != 0) then
+	set pfx="pobbnn"
+%endif pobb_NNTPIn
+    else
+	set pfx="pobb"
+    endif
+    if ($$thisdisk > 40) then
+	set sfx="BD"
+    else
+	set sfx=""
+    endif
+    $$INSTLnox $${pfx}machine$${sfx}.proto.csh ?[PackageHome]/src/$${machine}.proto
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+end
+%endif pobb_RunAMSDelivery
+
+%ifdef pobb_AutoPost
+%ifdef pobb_NNTPIn
+set SAWBB=0
+%else pobb_NNTPIn
+set SAWBB=1
+%endif pobb_NNTPIn
+foreach machine (?[arrlist(PossibleBBs)])
+# If it's also a post office machine, this is already done.
+    set ISALSOPO=0
+%ifdef pobb_RunAMSDelivery
+    foreach pomach (?[arrlist(PossiblePOs)])
+    	if ("$$machine" == "$$pomach") then
+		set ISALSOPO=1
+	endif
+	
+    end
+%endif pobb_RunAMSDelivery
+    set ix=1
+    set machs=`echo ?[arrlist(PossibleBBs)]`
+    set disks=`echo ?[arrlist(PossibleBBHDSizes)]`
+    set thisdisk=40
+    while ( $$ix <= $$#machs )
+	if ( "$$machs[$$ix]" == "$$machine" ) set thisdisk=$$disks[$$ix]
+	@ ix++
+    end
+    if ($$thisdisk > 40) then
+	set sfx="BD"
+    else
+	set sfx=""
+    endif
+    if ($$ISALSOPO == 0) then
+      if ($$SAWBB == 0) then
+	$$INSTLnox bbnnmachine$${sfx}.proto.csh ?[PackageHome]/src/$${machine}.proto
+		set STAT=$$status
+		if ($$STAT != 0) exit($$STAT)
+      else
+	$$INSTLnox bbmachine$${sfx}.proto.csh ?[PackageHome]/src/$${machine}.proto
+		set STAT=$$status
+		if ($$STAT != 0) exit($$STAT)
+      endif
+    endif
+
+    foreach root ( `echo '?[DEFAULTSEARCHPATHTEMPLATE]' | tr ':' ' '` ?[LOCALSEARCHPATHTEMPLATE] ?[OFFICIALSEARCHPATHTEMPLATE] ?[EXTERNALSEARCHPATHTEMPLATE] )
+      if ( "$$root" =~ */* ) then
+	if ( -d $${root}/.MS.Master ) then
+	    if ( ! -d $${root}/.MS.Master/$${machine} ) then
+		mkdir $${root}/.MS.Master/$${machine}
+%ifdef pobbenv_AFS
+		$$FS setacl $${root}/.MS.Master/$${machine} -clear ?[PostmasterAccess]
+%endif pobbenv_AFS
+	    endif
+	endif
+      endif
+    end
+    set SAWBB=1
+end
+%endif pobb_AutoPost
+
+if ( ! -d ?[PostmasterHome] ) mkdir ?[PostmasterHome]
+%ifdef pobbenv_AFS
+$$FS setacl ?[PostmasterHome] -clear ?[PostmasterAccess]
+%endif pobbenv_AFS
+%ifdef pobb_RunAMSDelivery
+if ( ! -d ?[POQueues] ) mkdir ?[POQueues]
+%ifdef pobbenv_AFS
+$$FS setacl ?[POQueues] -clear ?[PostmasterAccess]
+%endif pobbenv_AFS
+%endif pobb_RunAMSDelivery
+set tempdir=?[SomeScriptDir]
+if ( ! -d $${tempdir:h} ) mkdir $${tempdir:h}
+if ( ! -d $${tempdir} ) mkdir $${tempdir}
+%ifdef pobbenv_AFS
+$$FS setacl $${tempdir} -clear ?[PostmasterAccess]
+%endif pobbenv_AFS
+$$INSTLxqt postlog.csh ?[SomeScriptDir]/postlog
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt postlog.cron.msh ?[SomeScriptDir]/postlog.cron
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt restart.msh ?[SomeScriptDir]/restart
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt list-subscribe.csh ?[SomeScriptDir]/list-subscribe
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt list-de-subscribe.csh ?[SomeScriptDir]/list-de-subscribe
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt ckmbs.msh ?[SomeScriptDir]/ckmbs
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%ifdef pobb_NNTPIn
+$$INSTLxqt nntp-purge.msh ?[SomeScriptDir]/nntp-purge
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt list-newsgroups.msh ?[SomeScriptDir]/list-newsgroups
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%endif pobb_NNTPIn
+echo "config" | $$AWK -f config.awk.msh > config.awkout
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox config.awkout ?[SomeScriptDir]/config.mss
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+rm config.awkout
+$$INSTLnox sampdoc.mss.msh ?[SomeScriptDir]/sampdoc.mss
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+
+set tempdir=?[BBDaemonDir]
+if ( ! -d $${tempdir:h} ) mkdir $${tempdir:h}
+if ( ! -d $${tempdir} ) mkdir $${tempdir}
+%ifdef pobbenv_AFS
+$$FS setacl $${tempdir} -clear ?[PostmasterAccess]
+%endif pobbenv_AFS
+$$INSTLxqt cron.BBD.msh ?[BBDaemonDir]/cron.BBD
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt BBD.msh ?[BBDaemonDir]/BBD
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%endif pobb_RunMachines
+
+%ifdef pobb_AutoPost
+%ifdef pobb_GetListOfLists
+$$INSTLxqt getlist.cron.msh ?[BBDaemonDir]/getlist.cron
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt getlistoflists.msh ?[BBDaemonDir]/getlistoflists
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%endif pobb_GetListOfLists
+
+%ifdef pobb_GetHostTable
+$$INSTLxqt gettables.cron.msh ?[BBDaemonDir]/gettables.cron
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt gettables.msh ?[BBDaemonDir]/gettables
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt gettables.sub.msh ?[BBDaemonDir]/gettables.sub
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%endif pobb_GetHostTable
+
+$$INSTLxqt bbmcheck.cron.msh ?[BBDaemonDir]/bbmcheck.cron
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt bbm-check.msh ?[BBDaemonDir]/bbm-check
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+
+$$INSTLxqt cron.movelogs.msh ?[BBDaemonDir]/cron.movelogs
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt Dmovelogs.msh ?[BBDaemonDir]/Dmovelogs
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+set tempdir=?[ViceCUILogsDir]
+if ( ! -d $${tempdir:h} ) mkdir $${tempdir:h}
+if ( ! -d $${tempdir} ) mkdir $${tempdir}
+%ifdef pobbenv_AFS
+$$FS setacl $${tempdir} -clear ?[PostmasterAccess]
+%endif pobbenv_AFS
+set tempdir=?[CUIDatabase]
+if ( ! -d $${tempdir:h} ) mkdir $${tempdir:h}
+if ( ! -d $${tempdir} ) mkdir $${tempdir}
+%ifdef pobbenv_AFS
+$$FS setacl $${tempdir} -clear ?[PostmasterAccess]
+%endif pobbenv_AFS
+if ( ! -d ?[NetBBHome] ) mkdir ?[NetBBHome]
+%ifdef pobbenv_AFS
+$$FS setacl ?[NetBBHome] -clear ?[PostmasterAccess] ?[NetBBUser] all
+%endif pobbenv_AFS
+%endif pobb_AutoPost
+
+%ifdef pobb_CaptureAddresses
+set tempdir=?[AFSCaptureProcess]/c-addr
+if ( ! -d $${tempdir:h} ) mkdir $${tempdir:h}
+if ( ! -d $${tempdir} ) mkdir $${tempdir}
+%ifdef pobbenv_AFS
+$$FS setacl $${tempdir} -clear ?[PostmasterAccess]
+%endif pobbenv_AFS
+set tempdir=?[AFSCaptureProcess]/Addrs
+if ( ! -d $${tempdir:h} ) mkdir $${tempdir:h}
+if ( ! -d $${tempdir} ) mkdir $${tempdir}
+%ifdef pobbenv_AFS
+$$FS setacl $${tempdir} -clear ?[PostmasterAccess]
+%endif pobbenv_AFS
+$$INSTLxqt newaddr.msh ?[AFSCaptureProcess]/Addrs/newaddr.csh
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+cp /dev/null ?[AFSCaptureProcess]/Addrs/Addrs
+%endif pobb_CaptureAddresses
+
+%ifdef pobb_WPUpdate
+if ( ! -d ?[wpbuildHome] ) mkdir ?[wpbuildHome]
+%ifdef pobbenv_AFS
+$$FS setacl ?[wpbuildHome] -clear ?[wpbuildUser] all ?[PostmasterAccess]
+%endif pobbenv_AFS
+set tempdir=?[wpbuildDir]
+if ( ! -d $${tempdir:h} ) mkdir $${tempdir:h}
+if ( ! -d $${tempdir} ) mkdir $${tempdir}
+%ifdef pobbenv_AFS
+$$FS setacl $${tempdir} -clear ?[wpbuildUser] all ?[PostmasterAccess]
+%endif pobbenv_AFS
+$$INSTLxqt runmakeboth.msh ?[wpbuildDir]/runmakeboth
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt buildwp.msh ?[wpbuildDir]/buildwp
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt buildwp.cron.msh ?[wpbuildDir]/buildwp.cron
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+if ( ! -d ?[wpbuildDir]/hist ) mkdir ?[wpbuildDir]/hist
+if ( ! -d ?[wpbuildDir]/names ) mkdir ?[wpbuildDir]/names
+if ( ! -d ?[WPBackupDir] ) mkdir ?[WPBackupDir]
+%ifdef pobbenv_AFS
+$$FS setacl ?[wpbuildDir]/hist -clear ?[wpbuildUser] all ?[PostmasterAccess]
+$$FS setacl ?[wpbuildDir]/names -clear ?[wpbuildUser] all ?[PostmasterAccess]
+$$FS setacl ?[WPBackupDir] -clear ?[wpbuildUser] all ?[PostmasterAccess]
+%endif pobbenv_AFS
+%endif pobb_WPUpdate
+
+%ifdef pobb_WPInteractive
+set tempdir=?[WPIInBox]
+if ( ! -d $${tempdir:h} ) mkdir $${tempdir:h}
+if ( ! -d $${tempdir} ) mkdir $${tempdir}
+%ifdef pobbenv_AFS
+%ifdef pobbenv_AFS30
+$$FS setacl $${tempdir:h} -clear ?[wpbuildUser] all ?[PostmasterAccess] ?[WPIAdministratorGroup] all
+%else pobbenv_AFS30
+$$FS setacl $${tempdir:h} -clear ?[wpbuildUser] all ?[PostmasterAccess] ?[arrlist(WPIAdministrators, " all ")] all
+%endif pobbenv_AFS30
+$$FS setacl $${tempdir} -clear ?[wpbuildUser] $$READPERMS ?[arrlist(PostmanDirOwners, " $$READPERMS ")] $$READPERMS ?[generalEnqueueingPublic] lik
+%endif pobbenv_AFS
+$$INSTLnox wpi.flames.msh $${tempdir:h}/.AMS.flames
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+set tempdir=?[WPIWorkDir]
+if ( ! -d $${tempdir:h} ) mkdir $${tempdir:h}
+if ( ! -d $${tempdir} ) mkdir $${tempdir}
+%ifdef pobbenv_AFS
+%ifdef pobbenv_AFS30
+$$FS setacl $${tempdir:h} -clear ?[wpbuildUser] all ?[PostmasterAccess] ?[WPIAdministratorGroup] all
+$$FS setacl $${tempdir} -clear ?[arrlist(PostmanDirOwners, " rl ")] rl ?[wpbuildUser] all ?[WPIAdministratorGroup] all
+%else pobbenv_AFS30
+$$FS setacl $${tempdir:h} -clear ?[wpbuildUser] all ?[PostmasterAccess] ?[arrlist(WPIAdministrators, " all ")] all
+$$FS setacl $${tempdir} -clear ?[arrlist(PostmanDirOwners, " rl ")] rl ?[wpbuildUser] all ?[arrlist(WPIAdministrators, " all ")] all
+%endif pobbenv_AFS30
+%endif pobbenv_AFS
+if ( ! -d ?[WPIWorkDir]/newreq ) mkdir ?[WPIWorkDir]/newreq
+if ( ! -d ?[WPIWorkDir]/holdreq ) mkdir ?[WPIWorkDir]/holdreq
+%ifdef pobbenv_AFS
+%ifdef pobbenv_AFS30
+$$FS setacl ?[WPIWorkDir]/newreq -clear ?[PostmasterName] $$READPERMS ?[wpbuildUser] $$READPERMS ?[WPIAdministratorGroup] $$READPERMS
+$$FS setacl ?[WPIWorkDir]/holdreq -clear ?[wpbuildUser] $$READPERMS ?[WPIAdministratorGroup] $$READPERMS
+%else pobbenv_AFS30
+$$FS setacl ?[WPIWorkDir]/newreq -clear ?[PostmasterName] $$READPERMS ?[wpbuildUser] $$READPERMS ?[arrlist(WPIAdministrators, " $$READPERMS ")] $$READPERMS
+$$FS setacl ?[WPIWorkDir]/holdreq -clear ?[wpbuildUser] $$READPERMS ?[arrlist(WPIAdministrators, " $$READPERMS ")] $$READPERMS
+%endif pobbenv_AFS30
+%endif pobbenv_AFS
+%ifdef pobb_AutoPost
+set tempdir=?[WPIAdminFolderRoot]
+if ( ! -d $${tempdir} ) $$CUI create $${tempdir:t} $${tempdir:h} \; quit
+%ifdef pobbenv_AFS
+%ifdef pobbenv_AFS30
+$$FS setacl $${tempdir} -clear ?[arrlist(PostmanDirOwners, " all ")] all ?[wpbuildUser] all ?[WPIAdministratorGroup] all
+%else pobbenv_AFS30
+$$FS setacl $${tempdir} -clear ?[arrlist(PostmanDirOwners, " all ")] all ?[wpbuildUser] all ?[arrlist(WPIAdministrators, " all ")] all
+%endif pobbenv_AFS30
+%endif pobbenv_AFS
+%endif pobb_AutoPost
+%endif pobb_WPInteractive
+
+%ifdef pobb_PublishAccounts
+if ( ! -d ?[AndrewAcctDir] ) mkdir ?[AndrewAcctDir]
+%ifdef pobbenv_AFS
+$$FS setacl ?[AndrewAcctDir] -clear ?[wpbuildUser] all ?[PostmasterAccess]
+%endif pobbenv_AFS
+%endif pobb_PublishAccounts
+
+%ifdef pobb_UnDigest
+if ( ! -d ?[UnDigestHome] ) mkdir ?[UnDigestHome]
+%ifdef pobbenv_AFS
+$$FS setacl ?[UnDigestHome] -clear ?[PostmasterAccess]
+%endif pobbenv_AFS
+if ( ! -d ?[UnDigestHome]/temp ) mkdir ?[UnDigestHome]/temp
+if ( ! -d ?[UnDigestHome]/ReadyBox ) mkdir ?[UnDigestHome]/ReadyBox
+%ifdef pobbenv_AFS
+$$FS setacl ?[UnDigestHome]/temp -clear ?[PostmasterAccess]
+$$FS setacl ?[UnDigestHome]/ReadyBox -clear ?[PostmasterAccess]
+%endif pobbenv_AFS
+%endif pobb_UnDigest
+
+%ifdef pobb_NNTPIn
+if ( ! -d ?[NNTPPollHome] ) mkdir ?[NNTPPollHome]
+%ifdef pobbenv_AFS
+$$FS setacl ?[NNTPPollHome] -clear ?[PostmasterAccess]
+%endif pobbenv_AFS
+if ( ! -d ?[NNTPPollHome]/temp ) mkdir ?[NNTPPollHome]/temp
+if ( ! -d ?[NNTPPollHome]/ReadyBox ) mkdir ?[NNTPPollHome]/ReadyBox
+if ( ! -d ?[NNTPPollHome]/Hold ) mkdir ?[NNTPPollHome]/Hold
+%ifdef pobbenv_AFS
+$$FS setacl ?[NNTPPollHome]/temp -clear ?[PostmasterAccess]
+$$FS setacl ?[NNTPPollHome]/ReadyBox -clear ?[PostmasterAccess]
+$$FS setacl ?[NNTPPollHome]/Hold -clear ?[PostmasterAccess]
+%endif pobbenv_AFS
+%endif pobb_NNTPIn
+
+%ifdef pobb_NNTPOut
+if ( ! -d ?[OutnewsHome] ) mkdir ?[OutnewsHome]
+%ifdef pobbenv_AFS
+$$FS setacl ?[OutnewsHome] -clear ?[PostmasterAccess]
+%endif pobbenv_AFS
+%endif pobb_NNTPOut
+
+set tempdir=?[POConsoleDir]
+if ( ! -d $${tempdir:h} ) mkdir $${tempdir:h}
+if ( ! -d $${tempdir} ) mkdir $${tempdir}
+%ifdef pobbenv_AFS
+$$FS setacl ?[POConsoleDir] -clear ?[PostmasterAccess]
+%endif pobbenv_AFS
+
+set CellServiceDir=?[CellCommonPrefix].?[WorkstationCell]?[CellCommonSuffix]
+set CellConfDir="$${CellServiceDir}?[CellCommonConfigDirSuffix]"
+if ( ! -d $$CellConfDir ) mkdir $$CellConfDir
+%ifdef pobbenv_AFS
+$$FS setacl $$CellConfDir -clear ?[ConfigDirAccess]
+%endif pobbenv_AFS
+$$INSTLnox Postmaster.csh $$CellConfDir/?[CellConfigPostmaster]
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLnox AMS-Server.csh $$CellConfDir/?[CellConfigMessageServer]
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+
+%ifdef pobb_RunAMSDelivery
+foreach DR ( ?[arrlist(lastDitchPrefixes)] ?[arrlist(bailoutPrefixes)] ?[LocalErrorDir] )
+	if ( ! -d $${DR} )		mkdir $${DR}
+%ifdef pobbenv_AFS
+	if ( "$${DR}" =~ ?[CellCommonPrefix]* ) $$FS setacl $${DR} -clear ?[arrlist(PostmanDirOwners, " $$READPERMS ")] $$READPERMS ?[generalEnqueueingPublic] lik
+%endif pobbenv_AFS
+end
+%endif pobb_RunAMSDelivery
+
+%ifdef pobb_AutoPost
+%ifdef pobb_DowJonesIn
+foreach DR ( ?[arrlist(CUILocalBoxes)] ?[arrlist(CUIExtBoxes)] ?[arrlist(CUIDJBoxes)] )
+%else pobb_DowJonesIn
+foreach DR ( ?[arrlist(CUILocalBoxes)] ?[arrlist(CUIExtBoxes)] )
+%endif pobb_DowJonesIn
+	if ( -d $${DR} ) then
+%ifdef pobbenv_AFS
+	    if ( "$${DR}" =~ ?[CellCommonPrefix]* ) $$FS setacl $${DR} ?[arrlist(PostmanDirOwners, " $$READPERMS ")] $$READPERMS ?[generalEnqueueingPublic] lik
+%endif pobbenv_AFS
+	endif
+end
+%endif pobb_AutoPost
+
+%ifdef pobb_RunAMSDelivery
+$$INSTLxqt mailq.msh $${FDIR}bin/mailq
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+$$INSTLxqt startmailsystem.msh $${FDIR}etc/startmailsystem
+	set STAT=$$status
+	if ($$STAT != 0) exit($$STAT)
+%endif pobb_RunAMSDelivery
+
+exit(0)

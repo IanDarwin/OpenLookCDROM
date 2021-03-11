@@ -1,0 +1,317 @@
+-- ness.tlx
+--	Token descriptions for Ness
+
+-- ******************************************************
+--	Copyright 1992, Carnegie Mellon University.  All Rights Reserved.
+--	$Disclaimer: 
+-- Permission to use, copy, modify, and distribute this software and its 
+-- documentation for any purpose is hereby granted without fee, 
+-- provided that the above copyright notice appear in all copies and that 
+-- both that copyright notice, this permission notice, and the following 
+-- disclaimer appear in supporting documentation, and that the names of 
+-- IBM, Carnegie Mellon University, and other copyright holders, not be 
+-- used in advertising or publicity pertaining to distribution of the software 
+-- without specific, written prior permission.
+-- 
+-- IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+-- DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+-- ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+-- SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+-- BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+-- DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+-- WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+-- ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+-- OF THIS SOFTWARE.
+--  $
+-- ******************************************************
+
+
+tokenclass -errorhandler-
+{
+	parse_Error(CURCOMP->parser, parse_SERIOUS, parm->msg);
+	return tlex_IGNORE;
+}
+
+-- whitespace:  control characters, space, DEL, and \200+ controls
+--
+tokenclass -none-
+	recognizer	ScanWhitespace
+	set		[\000-\040\177-\237]
+	charset 	continueset [\000-\040\177-\237]
+
+-- comments:   -- ... \n
+--
+tokenclass -none-
+	recognizer	ScanComment
+	seq		"--"
+	char		*endseq		"\n"
+
+-- pragmats:  --$ ... \n
+--
+tokenclass -none-
+	recognizer	ScanComment
+	seq		"--$"
+	char 		*endseq		"\n"
+{
+	long p = tlex_CurrPos(tlex);	/* pos after newline */
+	tlex_BackUp(tlex, p - tlex_GetTokPos(tlex) - 3);
+	tlex_StartToken(tlex);			/* start after --$ */
+	while (p > tlex_CurrPos(tlex)) 
+		tlex_Advance(tlex);		/* copy comment to TokenText */
+	tlex_EndToken(tlex);
+	parsepragmat(CURCOMP->ness, tlex_GetTokenText(tlex));
+	return tlex_IGNORE;
+}
+
+-- mapping:	[ and {  map to (
+--		] and }  map to )
+--
+--tokenclass '('
+--	set	[{\[]
+--tokenclass ')'
+--	set	[}\]]
+
+-- id:  [a-zA-Z_] [a-zA-Z0-9_]*
+--	also catch reserved words here
+--
+tokenclass setID
+	set		[a-zA-Z_]
+	recognizer	ScanID
+	charset 	continueset  [a-zA-Z0-9_]
+{
+	struct toksym *s;  /* the value will be a nesssym via CC->proto */
+	char *cx;
+	boolean new;
+	struct compilation *CC = CURCOMP;
+
+	/* fold case */
+	for (cx = tlex_GetTokenText(tlex); *cx; cx++)
+		if (isascii(*cx) && isupper(*cx))
+			*cx = tolower(*cx);
+
+	s = toksym_TLocate(tlex_GetTokenText(tlex), CC->proto, 
+		CC->scopes[CC->scopex], &new);
+	if (new) {
+		s->toknum = tlex_GetTokenNumber(tlex);
+		SETPOS(s);
+	}
+	tlex_SetTokenNumber(tlex, s->toknum);  /* maybe it's a res'v'd word */
+	tlex_SetTokenValue(tlex, (void *)s);
+	return tlex_ACCEPT;
+}
+
+-- numbers:	decimal: [1-9] [0-9]*
+--		hex: 0 x [0-9a-f]*
+--		octal: 0 [0-7]*
+--		real: ((.[0-9]+)|([0-9]+.[0-9]*))((e|E)(+|-)?[0-9]+)?
+--		quoted char: 'x' (with \ escapes)
+--		the syntax is coded in lexan_ParseNumber
+--		the handler may convert the tokennumber to setREALCON
+--
+tokenclass setINTCON
+	set	[0-9'.]
+	recognizer	ScanNumber
+	tokennumber	realtok     setREALCON
+{
+	struct toksym *t;	/* due to proto, the value will be a nesssym */
+	boolean new;
+	if ( ! parm->IsInt)
+		tlex_SetTokenNumber(tlex, parm->realtok);
+	t = toksym_TLocate(tlex_GetTokenText(tlex), CURCOMP->proto,
+		curComp->ness->constScope, &new);
+	if (new) {
+		if ( ! parm->IsInt) {
+			/* real value */
+			t->info.realval = (double *)malloc(sizeof(double));
+			*(t->info.realval) = parm->realval;
+		}
+		else {
+			/* integer value   (or error) */
+			t->info.intval = parm->intval;
+		}
+		t->toknum = tlex_GetTokenNumber(tlex);
+		SETPOS(t);
+	}
+	tlex_SetTokenValue(tlex, (void *)t);
+	return tlex_ACCEPT;
+}
+
+-- string	" ... "   escape is \
+--
+-- the four cases of  setSTRINGCON  token values are distinguished by 
+-- the first character of the name field:
+--	"	if no character follows in name, this is an empty string
+--	"	if characters follow in name, the \ reduced version of the 
+--			string follows in name
+--	~	a short string with styles
+--	/	long string.  
+-- For ~ and /, the name contains only a sequence number.
+-- Initially CurrPos is just after closing "
+-- The loc/len values in the nesssym include the contents, not the delimiters.
+--	The TokPos, TokEnd values include the delimiters.
+--
+tokenclass setSTRINGCON
+	seq		"\""
+	recognizer	ScanString
+	char		*endseq		"\""
+	char		*escapechar	"\\"
+	char		*badchar 	"\n"
+{
+	boolean styled;
+	long loc, loclast;
+	struct text *text;
+	struct toksym *t;
+	boolean new;
+
+	loc = tlex_GetTokPos(tlex) + 1;		/* just after " */
+	loclast = tlex_GetTokEnd(tlex) - 1;	/* just before " */
+	text = (struct text *)(CURCOMP->ness);
+
+	if (loclast - loc < 0) {
+		tlex_SetTokenValue(tlex, (void *)EmptyStringToken);
+		return tlex_ACCEPT;
+	}
+
+	/* test to see if text is styled */
+	if (textClass == NULL)
+		textClass = class_Load("text");
+	if ( ! class_IsType(text, textClass))
+		styled = FALSE;
+	else {
+		struct environment *env;
+		env = environment_GetInnerMost(text->rootEnvironment, loc);
+		while (env != NULL && (env->type != environment_Style 
+				|| env->data.style == NULL))
+			env = environment_GetParent(env);
+		styled = ( env != NULL
+			||  environment_GetNextChange(text->rootEnvironment, 
+				loc) < loclast - loc + 1);
+			/* XXX need to test styling the last character */
+	}
+
+	if (styled) {
+		/* short styled string */
+		char buf[50];
+		sprintf(buf, "~%d", GenNum++);
+		t = toksym_TLocate(buf, CURCOMP->proto, 
+			curComp->ness->constScope, &new);
+		t->info.str = NULL;
+		t->loc = loc;
+		t->len = loclast - loc + 1;
+	}
+	else {
+		char *sx, *dx;
+		int elen;
+	
+		/* put characters (including initial ") into token buffer */
+		tlex_BackUp(tlex, tlex_CurrPos(tlex) - loc +1);
+		tlex_StartToken(tlex);
+		while (tlex_CurrPos(tlex) <= loclast)
+			tlex_Advance(tlex);
+		tlex_NextChar(tlex);  /* skip closing " */
+		tlex_EndToken(tlex);
+
+		/* backslash reduce the token text */
+		sx = tlex_GetTokenText(tlex);
+		dx = sx;
+		while (*sx) {
+			if (*sx != '\\')
+				*dx++ = *sx++;
+			else {
+				*dx++ = lexan_TransEscape(sx+1, &elen);
+				if (elen == 0) dx--;
+				sx += elen+1;
+			}
+		}
+		*dx = '\0';
+
+		t = toksym_TLocate(tlex_GetTokenText(tlex), CURCOMP->proto, 
+			curComp->ness->constScope, &new);
+		if (new) {
+			t->loc = loc;
+			t->len = loclast - loc + 1;
+		}
+	}
+	t->toknum = tlex_GetTokenNumber(tlex);
+	tlex_SetTokenValue(tlex, (void *)t);
+	return tlex_ACCEPT;
+}
+
+-- long string:   \n//\n ... \n\\\\	 no escape
+--
+--	the string may be of any length and contain objects
+--	the internals are not processed for backslashes
+--	there is no way for the enclosed text to contain a line
+--		beginning with two backslashes
+--	none of the three newlines in the delimiters is included 
+--		in the string value
+--	the newlines are not processed by tlex, so initially
+--		the current character is the newline right after //
+--	symbol string in token value is a dummy
+--		of form  /ddd, where ddd is a number
+--	The nesssym loc/len values include the contents, not the delimiters.
+--		The TokPos, TokEnd values include // and \\.
+--	at end, the next character is left as the one after the
+--		second backslash
+--
+tokenclass setSTRINGCON
+seq	"//"
+{
+	register int c;
+	static char delim[4] = "\n\\\\";
+	register char *dx;
+	struct toksym *t;	/* is really a nesssym */	
+	long startloc;
+
+	/* check for newlines around // */
+	tlex_BackUp(tlex, 3);
+	if (tlex_CurrChar(tlex) != '\n') {
+		/* missing leading newline: fail */
+		tlex_Error(tlex, "missing newline before //");
+		tlex_BackUp(tlex, -3);
+		return tlex_IGNORE;
+	}
+	tlex_NextChar(tlex);
+	tlex_StartToken(tlex);		/* start at first / */
+	tlex_NextChar(tlex);
+	tlex_NextChar(tlex);
+	if (tlex_CurrChar(tlex) != '\n') 
+		/* missing closing newline; let it get by */
+		parse_Error(CURCOMP->parser, parse_WARNING,
+			"missing newline after //");
+	else tlex_NextChar(tlex);
+	/* now we know about newlines and CurrChar is first char of string */
+	startloc = tlex_CurrPos(tlex);
+
+	dx = delim;
+	c = tlex_CurrChar(tlex);
+	while (*dx && c != EOF) {
+		if (*dx == c)
+			dx++, c = tlex_NextChar(tlex);
+		else if (dx == delim)
+			c = tlex_NextChar(tlex);
+		else dx = delim;
+	}
+	if (c == EOF) {
+		tlex_Error(tlex, "unterminated string starting with //");
+		return tlex_IGNORE;			
+	}
+	/* now we are at the character following the \\ */
+	tlex_EndToken(tlex);
+
+	if (tlex_GetTokEnd(tlex)-tlex_GetTokPos(tlex) < 1)
+		t = EmptyStringToken;
+	else {
+		char buf[15];
+		boolean new;
+		sprintf(buf, "/%d", GenNum++);
+		t = toksym_TLocate(buf, CURCOMP->proto, 
+			CURCOMP->scopes[CURCOMP->scopex], &new);
+		t->info.str = NULL;
+		t->toknum = tlex_GetTokenNumber(tlex);
+		t->loc = startloc;
+		t->len = tlex_CurrPos(tlex) - startloc - 3;
+	}
+	tlex_SetTokenValue(tlex, (void *)t);
+	return tlex_ACCEPT;
+}

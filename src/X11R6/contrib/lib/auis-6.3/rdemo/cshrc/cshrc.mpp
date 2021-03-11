@@ -1,0 +1,86 @@
+# ~rdemo/.cshrc must be a link to this file
+
+# Copyright 1992 Carnegie Mellon University.  All rights reserved
+# $Disclaimer: 
+# Permission to use, copy, modify, and distribute this software and its 
+# documentation for any purpose is hereby granted without fee, 
+# provided that the above copyright notice appear in all copies and that 
+# both that copyright notice, this permission notice, and the following 
+# disclaimer appear in supporting documentation, and that the names of 
+# IBM, Carnegie Mellon University, and other copyright holders, not be 
+# used in advertising or publicity pertaining to distribution of the software 
+# without specific, written prior permission.
+# 
+# IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+# DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+# SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+# BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+# DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+# WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+# ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+# OF THIS SOFTWARE.
+#  $
+
+source $(MISCDIR)/config.csh
+
+setenv HOST `/bin/hostname`
+
+if (! $$?FIRSTTIME) source $$pathsfile
+
+if ($$?RDEMO_ACTIVATE) then
+	unsetenv RDEMO_ACTIVATE
+	set uniqueid = `$$ANDREWDIR/etc/ams_genid | tr =: _.`
+	$$bindir/check $$HOST
+	if ($$status != 0) then
+		set ohosts = `$$setsprog $$demohosts -d $$HOST`
+		echo " "
+		echo The Remote Andrew Demo host $$HOST
+		echo is currently serving the maximum number of users.
+		echo Please try one of our other hosts.
+		echo "    xhost +$$ohosts[1]"
+		echo "    finger run-demo[...]@$$ohosts[1]"
+		shift ohosts
+		foreach host ($$ohosts)
+			echo "OR"
+			echo "    xhost +$$host"
+			echo "    finger run-demo[...]@$$host"
+		end
+		(echo $$HOST $$DISPLAY BUSY; date) \
+			> $$auditdir/`$$genidprog`
+		$$unlogprog -p
+		exit 0
+	endif
+	touch $$semaphoredir/$$HOST/$${uniqueid}-$${DISPLAY},$$$$
+	setenv PATH $${bindir}:$$PATH
+	setenv CLASSPATH $${dlibdir}:$$CLASSPATH
+	set newhome = $$HOME/home/$$uniqueid
+	mkdir $$newhome
+	$$fsprog sa $$newhome system:anyuser rwlidk
+	echo Setting up home directory, stand by...
+	(cd $$homedir; tar cf - .) | (cd $$newhome; tar xf -)
+	setenv HOME $$newhome
+	cd $$HOME
+	setenv PROFILES $$miscdir/preferences
+	echo Setting up mail subscriptions...
+	$$mppprog -DHOME=$$newhome .AMS.prof.mpp > .AMS.prof
+	rm -f .AMS.prof.mpp
+	echo Mailing welcome-message...
+#	$$mppprog -DRDEMOCONTROLDIR=$$RDEMOCONTROLDIR \
+#		Mailbox/welcome-message.mpp > Mailbox/welcome-message
+#	rm -f Mailbox/welcome-message.mpp
+	echo Creating mail folders...
+	$$mppprog -DHOME=$$newhome .MESSAGES/.SubscriptionMap.mpp \
+		> .MESSAGES/.SubscriptionMap
+	rm -f .MESSAGES/.SubscriptionMap.mpp
+	limit core 0
+	echo Starting demo application...
+	$$runappprog rdemosh -d $$HOST $$uniqueid || \
+		echo 'Something went wrong. Did you run xhost? Please notify rdemo+@andrew.cmu.edu'
+	exec $$bindir/deafmute csh -cf \
+		"$$xsetprog -display $$DISPLAY -fp tcp/fontserv.itc.cmu.edu:7000 >& /dev/null; \
+		 rm -f $$semaphoredir/$$HOST/$${uniqueid}-$${DISPLAY},$$$$ >& /dev/null; \
+		 if (-e $$newhome/.comments) mv $$newhome/.comments $$commentdir/$$uniqueid >& /dev/null; \
+		 cd ..; rm -rf $$newhome >& /dev/null; \
+		 $$unlogprog >& /dev/null"
+endif

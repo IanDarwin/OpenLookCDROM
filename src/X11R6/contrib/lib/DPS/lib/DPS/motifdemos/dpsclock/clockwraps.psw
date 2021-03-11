@@ -1,0 +1,347 @@
+/* clockwraps.psw
+
+ *
+ * (c) Copyright 1990-1994 Adobe Systems Incorporated.
+ * All rights reserved.
+ * 
+ * Permission to use, copy, modify, distribute, and sublicense this software
+ * and its documentation for any purpose and without fee is hereby granted,
+ * provided that the above copyright notices appear in all copies and that
+ * both those copyright notices and this permission notice appear in
+ * supporting documentation and that the name of Adobe Systems Incorporated
+ * not be used in advertising or publicity pertaining to distribution of the
+ * software without specific, written prior permission.  No trademark license
+ * to use the Adobe trademarks is hereby granted.  If the Adobe trademark
+ * "Display PostScript"(tm) is used to describe this software, its
+ * functionality or for any other purpose, such use shall be limited to a
+ * statement that this software works in conjunction with the Display
+ * PostScript system.  Proper trademark attribution to reflect Adobe's
+ * ownership of the trademark shall be given whenever any such reference to
+ * the Display PostScript system is made.
+ * 
+ * ADOBE MAKES NO REPRESENTATIONS ABOUT THE SUITABILITY OF THE SOFTWARE FOR
+ * ANY PURPOSE.  IT IS PROVIDED "AS IS" WITHOUT EXPRESS OR IMPLIED WARRANTY.
+ * ADOBE DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL
+ * IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NON- INFRINGEMENT OF THIRD PARTY RIGHTS.  IN NO EVENT SHALL ADOBE BE LIABLE
+ * TO YOU OR ANY OTHER PARTY FOR ANY SPECIAL, INDIRECT, OR CONSEQUENTIAL
+ * DAMAGES OR ANY DAMAGES WHATSOEVER WHETHER IN AN ACTION OF CONTRACT,
+ * NEGLIGENCE, STRICT LIABILITY OR ANY OTHER ACTION ARISING OUT OF OR IN
+ * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.  ADOBE WILL NOT
+ * PROVIDE ANY TRAINING OR OTHER SUPPORT FOR THE SOFTWARE.
+ * 
+ * Adobe, PostScript, and Display PostScript are trademarks of Adobe Systems
+ * Incorporated which may be registered in certain jurisdictions
+ * 
+ * Author:  Adobe Systems Incorporated
+ */
+
+defineps PSWInitClock1(DPSContext ctxt; char *clockFont; int ww, hh)
+  clear cleardictstack
+  /width ww def
+  /height hh def
+
+  /NUMBER_FONT_FRACT 0.25 def
+
+  /SECOND_HAND_FRACT 0.70 def
+  /SECOND_WIDTH_FRACT 0.05 def
+
+  /MINUTE_HAND_FRACT 0.50 def
+  /HOUR_HAND_FRACT 0.25 def
+
+  /HAND_WIDTH_FRACT 0.07 def
+
+  /lastSecondAngle 0.0 def
+  /lastMinuteAngle -1.0 def
+  /lastHourAngle -1.0 def
+
+  /SetBackgroundColor {6 7 div setgray} def
+  /SetForegroundColor {0 setgray} def
+  /SetShadowColor {4 7 div dup dup setrgbcolor} def
+  /SetHandColor {.678 .917 .917 setrgbcolor} def
+
+  true setstrokeadjust
+
+  /max
+    % a b max -> (a > b ? a : b)
+  {
+    2 copy
+    lt
+    {exch} if
+    pop
+  } def
+
+  /min
+    % a b min -> (a < b ? a : b)
+  {
+    2 copy
+    gt
+    {exch} if
+    pop
+  } def
+
+  /ResizeClock
+   %
+   % devicePadding deviceWidth deviceHeight ResizeClock
+   % Compute new dimensions to fit window of given size.
+   %
+  {
+    idtransform neg
+
+    /height exch def
+    /width exch def
+
+    0 idtransform pop
+    /padding exch def
+
+    width height ge
+     {
+       /xScale 1.0 def
+       /yScale height width div def
+     }
+     {
+       /xScale width height div def
+       /yScale 1.0 def
+     }
+    ifelse
+
+    /centreX width 2 div def
+    /centreY height 2 div def
+
+    /radius width height max padding 2 mul sub 2 div 1.0 max def
+
+    /secondHandLength SECOND_HAND_FRACT radius mul def
+    /minuteHandLength MINUTE_HAND_FRACT radius mul def
+    /hourHandLength HOUR_HAND_FRACT radius mul def
+
+    /secondHandWidth SECOND_WIDTH_FRACT radius mul def
+    /hourHandWidth HAND_WIDTH_FRACT radius mul def
+    /minuteHandWidth hourHandWidth .75 mul def
+
+    % Compute digital clock scale using 26 Ws
+
+    /clockFont 36 selectfont
+
+    /digitalClockWidth
+      (Thu Dec 88 15:17:00  1988) stringwidth pop
+      padding 2 mul add
+    def
+
+    /digitalClockHeight
+      currentfont /FontBBox get dup 3 get exch 1 get neg add
+      36.0 mul 1000.0 div
+    def
+
+    /digitalClockXScale width digitalClockWidth div def
+    /digitalClockYScale height digitalClockHeight div def
+  } def
+
+  /SetupDrawing {
+    centreX centreY translate
+    xScale yScale scale
+  } def
+
+  /RedrawClockFace
+  {
+    initclip
+    gsave
+      gsave
+        SetBackgroundColor 0 0 width height rectfill
+      grestore
+
+      /lastSecondAngle 0.0 def
+      /lastMinuteAngle -1.0 def
+      /lastHourAngle -1.0 def
+
+      SetupDrawing
+      1 setlinewidth
+      0 0 radius 0 360 arc
+      stroke
+
+      /clockFont radius NUMBER_FONT_FRACT mul selectfont
+
+      1 1 60 {
+        /i exch def
+        -6 rotate
+        i 5 mod 0 eq
+	  { % Draw number
+	   i 5 idiv =string cvs dup stringwidth pop 2 div neg 
+	   radius dup NUMBER_FONT_FRACT mul 0.8 mul sub moveto
+	   show
+	  }
+	  { % Draw minute tick mark
+	   0 radius moveto
+           0 radius 20 div neg rlineto
+           stroke
+	  }
+        ifelse
+      } for
+    grestore
+  } def
+endps
+
+defineps PSWInitClock2(DPSContext ctxt)
+  /SecondHandPath {
+    0 minuteHandLength 2 add moveto
+    secondHandWidth secondHandLength minuteHandLength 2 add sub 2 div
+    2 copy rlineto
+    exch neg exch
+    2 copy rlineto
+    neg rlineto
+    closepath
+  } def
+
+  /RedrawSecondHand {	% angle RedrawSecondHand --
+    dup	% need a copy of the angle...
+    gsave 5 -5 translate neg rotate SecondHandPath SetShadowColor fill grestore
+    neg rotate SecondHandPath gsave SetHandColor fill grestore 0 setgray stroke
+  } def
+
+  /EraseSecondHand {   % angle EraseSecondHand --
+    SetBackgroundColor 
+    dup	% need a copy of the angle...
+    gsave 5 -5 translate neg rotate SecondHandPath fill grestore % Shadow
+    neg rotate SecondHandPath gsave fill grestore stroke % Hand
+  } def
+
+  /DrawSecondHand {
+    gsave
+      SetupDrawing
+      lastSecondAngle gsave EraseSecondHand grestore
+      /lastSecondAngle exch def
+      lastSecondAngle gsave RedrawSecondHand grestore
+    grestore
+  } def
+
+  /HandPath	% length width HandPath --
+    {
+    dup 3 1 roll
+    dup neg moveto
+    0 exch lineto
+    neg dup lineto
+    closepath
+    } def
+
+  /DrawHand % length width DrawHand --
+    {
+    SetHandColor
+    HandPath
+    gsave fill grestore
+    0 setgray stroke
+    } def
+
+  /EraseHands % minuteAngle hourAngle EraseHands --
+    {
+    gsave
+      2 copy
+      SetupDrawing
+      SetBackgroundColor
+
+      % Handle Shadows...
+      5 -5 translate
+      gsave neg rotate hourHandLength hourHandWidth HandPath fill grestore
+      gsave neg rotate minuteHandLength minuteHandWidth HandPath fill grestore
+
+      % Do the real hands...
+      -5 5 translate
+      gsave 
+        neg rotate hourHandLength hourHandWidth HandPath
+	gsave fill grestore stroke
+      grestore
+      gsave 
+        neg rotate minuteHandLength minuteHandWidth HandPath
+	gsave fill grestore stroke
+      grestore
+    grestore
+    } def
+
+  /RedrawHands % minuteAngle hourAngle RedrawHands --
+    {
+    gsave
+      2 copy
+      SetupDrawing
+
+      % Handle Shadows...
+      SetShadowColor
+      5 -5 translate
+      gsave neg rotate hourHandLength hourHandWidth HandPath fill grestore
+      gsave neg rotate minuteHandLength minuteHandWidth HandPath fill grestore
+
+      % Do the real hands...
+      -5 5 translate
+      SetHandColor
+      gsave neg rotate hourHandLength hourHandWidth DrawHand grestore
+      gsave neg rotate minuteHandLength minuteHandWidth DrawHand grestore
+    grestore
+    } def
+
+  /DrawHands
+    % minuteAngle hourAngle DrawHands --
+  {
+%    count 2 ne
+%      {(ERROR: Stack contents incorrect in RedrawHands) = pstack flush}
+%    if
+
+    lastMinuteAngle lastHourAngle EraseHands
+
+    /lastHourAngle exch def
+    /lastMinuteAngle exch def
+
+    lastMinuteAngle lastHourAngle RedrawHands
+  } def
+
+  /UpdateDigitalClock
+   % timeString prefixLength UpdateDigitalClock --
+  {
+    /prefixLength exch def
+
+    prefixLength 0 eq
+      {	% Erase contents of window in case it became smaller
+        gsave
+	  SetBackgroundColor
+	  0 0 width height rectfill
+	grestore
+      }
+    if
+
+    gsave
+      digitalClockXScale digitalClockYScale scale
+      padding padding moveto
+      dup	% timeString
+      0 prefixLength getinterval 
+      stringwidth
+      rmoveto
+      gsave
+        SetBackgroundColor
+        currentpoint pop dup digitalClockWidth exch sub 0 max 0 exch
+	height digitalClockYScale div
+        rectfill
+      grestore
+      dup length prefixLength sub prefixLength exch getinterval
+      show
+    grestore
+  } def
+endps
+
+defineps PSWUpdateDigitalClock(
+  DPSContext ctxt; char *timeString; int prefixLength)
+  % pre: length(timestring) <= 26 && prefixLength in [0,length(timeString)]
+  (timeString) prefixLength UpdateDigitalClock
+endps
+
+defineps PSWResizeClock(DPSContext ctxt; int deviceWidth, deviceHeight, devicePadding)
+  0 deviceHeight setXoffset
+  devicePadding deviceWidth deviceHeight ResizeClock
+endps
+
+defineps PSWRedrawClockFace(DPSContext ctxt)
+  RedrawClockFace
+endps
+
+defineps PSWDrawSecondHand(DPSContext ctxt; float angle)
+  angle DrawSecondHand
+endps
+
+defineps PSWDrawHands(DPSContext ctxt; float hourAngle, minuteAngle)
+  minuteAngle hourAngle DrawHands
+endps

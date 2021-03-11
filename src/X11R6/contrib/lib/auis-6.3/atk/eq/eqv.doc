@@ -1,0 +1,1423 @@
+\begindata{text,538380552}
+\textdsversion{12}
+\template{default}
+\define{fixedtext
+menu:[Region~4,Fixedtext]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{fixedindent
+menu:[Region~4,Fixedindent]
+attr:[LeftMargin LeftMargin Cm 83230]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{fieldheading
+menu:[Region~4,Fieldheading]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace Bold Int Set]
+attr:[FontFamily AndySans Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{fieldtext
+menu:[Region~4,Fieldtext]
+attr:[LeftMargin LeftMargin Cm 83230]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFamily AndySans Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{paramname
+menu:[Font~1,Paramname]
+attr:[FontFace Italic Int Set]}
+\formatnote{\chapter{eqview}}
+
+
+This module handles the view object for the equation inset.  It allows the 
+drawing of formulae within the equation as well as all positioning commands. 
+ The distinction between view and data is somewhat blurred in the current 
+implementation of the equation inset, so for clarity, this document will 
+describe the implementation as it is currently written.
+
+
+
+\section{About this section}
+
+
+In order to understand this module, the reader should be familiar with the 
+basics of ATK programming and inset development.  In particular, familiarity 
+with the view, im and graphic modules of the basic ATK library will be 
+helpful.  The eq module describes the data object for the equation inset and 
+is related to this module.
+
+
+This document corresponds to ATK version 11.8 or higher, and application 
+version 1.0 or higher.
+
+
+
+\section{About eqview}
+
+
+The eqview class deals with the view for an equation.  Currently, the equation 
+pointer in the data object is not view-independent, so the eqview cheats and 
+simply contains a pointer to an equation.  Since the equations has markers in 
+it, it doesn't qualify as a view independent data object.
+
+
+In order to draw a formula on the screen, the reference point, origin, 
+baseline and axis are used.  The reference point for a group is the point with 
+respect to which the reference points of all items of the group are 
+positioned.  The origin of a group is a point on the baseline for aligning 
+items in a horizontal list group.  The offset from the origin to the reference 
+point of a group is left in the pos variable for the formula after that 
+formula is formatted.  The origin of a simple atom is the font-defined origin 
+of the first character in the string for the atom and is coincident with the 
+reference point.  Dimensions are relative to the reference point.
+
+
+
+\section{Related classes}
+
+
+In order to use the eqv class, the reader may also wish to look at the eq 
+class as well as being familiar with the view, im, graphic, rectlist, keymap, 
+keystate and menulist classes and the class system as a whole.
+
+
+
+\section{\italic{eqview} functions}
+
+
+See the sections below for details regarding the class procedures and methods 
+for the eqview class.
+
+
+
+\section{eqview key bindings and proctable functions}
+
+
+Below is a list of the current set of keybindings for eqview.
+
+
+eqview-write-c	 	\\032c		eqview_WriteC
+
+eqview-write-eqn	 	\\032e		eqview_WriteEqn
+
+eqview-write-troff	 	\\032t		eqview_WriteTroff
+
+eqview-write-dvi	 	\\032d		eqview_WriteDvi
+
+eqview-root		 \\022		eqview_Root
+
+eqview-root		 \\033root\\n	eqview_Root
+
+eqview-fraction		 /		eqview_Fraction
+
+eqview-superscript	 	^		eqview_SuperScript
+
+eqview-subscript	 	_		eqview_SubScript
+
+eqview-above-script	 !		eqview_AboveScript
+
+eqview-below-script	 #		eqview_BelowScript
+
+eqview-special	 	\\033a		eqview_Special
+
+eqview-cut		 \\027		eqview_Cut
+
+eqview-copy	 	\\021		eqview_Copy
+
+eqview-paste	 	\\031		eqview_Paste
+
+eqview-dump-and-write	 \\030\\030		eqview_DumpAndWrite
+
+eqview-move-forward	 \\006		eqview_MoveForward
+
+eqview-move-backward	 \\002		eqview_MoveBackward
+
+eqview-move-to-beginning	 \\001		eqview_MoveToBeginning
+
+eqview-move-to-end	 \\005		eqview_MoveToEnd
+
+eqview-move-up		 \\020		eqview_MoveUp
+
+eqview-move-down	 	\\016		eqview_MoveDown
+
+eqview-carriage-return	 \\015		eqview_CR
+
+eqview-delete-forward	 \\004		eqview_DeleteForward
+
+eqview-delete-backward	 \\010		eqview_DeleteBackward
+
+eqview-delete-backward	 177		eqview_DeleteBackward
+
+eqview-left-brace	 	\{		eqview_lbrace
+
+eqview-close-paren	 )		eqview_Close
+
+eqview-close-bracket	 ]		eqview_Close
+
+eqview-close-brace	 \}		eqview_Close
+
+eqview-prime		 \\'		eqview_Prime
+
+
+\begindata{bp,538271624}
+\enddata{bp,538271624}
+\view{bpv,538271624,1026,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_DesiredSize}
+
+				
+
+\majorheading{Sets the size of the view}
+
+______________________________________________________
+
+
+\fixedtext{enum view_DSattributes \bold{eqview_DesiredSize }(}\fixedindent{
+
+struct eqview *\paramname{eqview},
+
+long \paramname{width},
+
+long \paramname{height},
+
+enum view_DSpass \paramname{pass},
+
+long *\paramname{widthp},
+
+long *\paramname{heightp});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Override}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function sets the size of the view by a process of negotiation 
+with the parent view.}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns view_Fixed, a view_DSattribute which 
+describes the flexibility of the view's borders.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used to request a change in the size of the view.
+
+}
+
+ \fieldheading{See Also}
+
+\fieldtext{view_DesiredSize}
+
+
+
+
+
+
+\view{bpv,538271624,1027,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_Update}
+
+				
+
+\majorheading{Updates the contents of the view}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eqview_Update }(}\fixedindent{
+
+struct eqview *\paramname{eqview});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Override}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function updates the contents of the view.  Various levels of 
+update are accomplished by looking at the value of the changed enumerated 
+type.  Everything is updated by erasing the current contents of the logical 
+rectangle, reformatting the equation and redrawing the equation and caret.  It 
+is also possible to specify that only the equation or only the caret be 
+redrawn.  The default state is that nothing is redrawn, after the function has 
+been called, it sets the changed variable value to nothing.  This function 
+also takes care of updating the marks and menus if it has the input focus.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is called by the parent view whenever a WantUpdate is 
+received.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{Currently the view redraws too often.  All of the redundant redraws 
+have not been corrected yet.  Doesn't always update properly with multiple 
+views.  Should enable scrolling function.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{eqview_FullUpdate
+
+view_WantUpdate
+
+view_Update}
+
+
+
+
+
+
+\view{bpv,538271624,1028,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_FullUpdate}
+
+				
+
+\majorheading{FullUpdates the contents of the view}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eqview_FullUpdate }(}\fixedindent{
+
+struct eqview *\paramname{eqview},
+
+enum view_UpdateType \paramname{type},
+
+long \paramname{left},
+
+long \paramname{top},
+
+long \paramname{width},
+
+long \paramname{height});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Override}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function sets the changed variable to everything and then 
+calls eqview_Update to cause a complete update of the view.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is called by the parent view whenever a 
+WantFullUpdate is received.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{Currently the view redraws too often.  All of the redundant redraws 
+have not been corrected yet.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{eqview_Update
+
+view_WantUpdate
+
+view_FullUpdate}
+
+
+
+
+
+
+\view{bpv,538271624,1029,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_ReceiveInputFocus}
+
+				
+
+\majorheading{Receives the input focus from the parent view}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eqview_ReceiveInputFocus }(}\fixedindent{
+
+struct eqview *\paramname{eqview});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Override}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function changes the state of some of the variables in the 
+view data, posts its keystate and then requests an update from the parent 
+view.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is called by the parent view whenever a 
+WantInputFocus is received.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{eqview_LoseInputFocus
+
+view_ReceiveInputFocus
+
+view_WantInputFocus}
+
+
+
+
+
+
+\view{bpv,538271624,1030,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_LoseInputFocus}
+
+				
+
+\majorheading{Relinquishes the input focus}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eqview_LoseInputFocus }(}\fixedindent{
+
+struct eqview *\paramname{eqview});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Override}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function cleans up the state of the view to the point that it 
+can relinquish the input focus, and then requests an update.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is called by the parent view when another inset has 
+requested the input focus.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{eqview_ReceiveInputFocus
+
+view_LoseInputFocus}
+
+
+
+
+
+
+\view{bpv,538271624,1031,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_Hit}
+
+				
+
+\majorheading{Responds to a mouse hit within the view}
+
+______________________________________________________
+
+
+\fixedtext{struct eqview *\bold{eqview_Hit }(}\fixedindent{
+
+struct eqview *\paramname{eqview},
+
+enum view_MouseAction \paramname{action},
+
+long \paramname{x},
+
+long \paramname{y},
+
+long \paramname{clicks});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Override}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function finds the position within the inset where the mouse 
+hit occurred, sets the caret position and length, requests the input focus and 
+requests an update.}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the view that received the Hit.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is called by the parent view when a mouse hit has 
+been received.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{view_Hit}
+
+
+
+
+
+
+\view{bpv,538271624,1032,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_SetDataObject}
+
+				
+
+\majorheading{Sets the data object for this view}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eqview_SetDataObject }(}\fixedindent{
+
+struct eqview *\paramname{eqview},
+
+struct dataobject *\paramname{dataObject});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Override}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function sets the data object for this view, creates the marks 
+which deal with the caret and sets the caret position.}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is called by the parent view.
+
+}
+
+\fieldheading{Error Conditions}
+
+\fieldtext{The eqview view type will only accept eq data objects.  This 
+function will report an error if called with a non-eq data object.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{view_SetDataObject}
+
+
+
+
+
+
+\view{bpv,538271624,1033,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_Print}
+
+				
+
+\majorheading{Sends a printable representation of the view to the printer}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eqview_Print }(}\fixedindent{
+
+struct eqview *\paramname{eqview},
+
+FILE *\paramname{f},
+
+char *\paramname{process},
+
+char *\paramname{final},
+
+int \paramname{toplevel});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Override}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function calls eq_Parse to produce an eqn representation of 
+the view which is then sent to the printer.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is called by the parent view to request that this 
+view be printed.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{Some of the more unusual special symbols cannot be printed.  There 
+are especially problems with braces and square roots.  This inset should be 
+using a postscript representation rather than eqn and troff.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{view_Print
+
+eq_Parse}
+
+
+
+
+
+
+\view{bpv,538271624,1034,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_Draw}
+
+				
+
+\majorheading{Draws the view}
+
+______________________________________________________
+
+
+\fixedtext{struct formula *\bold{eqview_Draw }(}\fixedindent{
+
+struct eqview *\paramname{eqview},
+
+struct eq *\paramname{eqptr},
+
+struct formula *\paramname{f},
+
+long \paramname{x},
+
+long \paramname{y});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function moves through the equation structure and actually 
+takes care of displaying the symbols on the screen.  This includes looking up 
+symbols, checking baselines and hotspots and looking into the font summaries 
+for pertinent font sizing information among other things.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the formula which has just been drawn.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is called whenever the view needs to be drawn or 
+redisplayed.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{Should only redraw changed portions where possible.  Should allow 
+in-line equations.  Should allow numbering of equations.  Should allow the 
+fonts to be changed, possibly get font information from parent inset.
+
+
+}
+\fieldheading{See Also}
+
+\fieldtext{eqview_DrawCaret}
+
+
+
+
+
+
+\view{bpv,538271624,1035,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_Find}
+
+				
+
+\majorheading{Finds a mouse click}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eqview_Find }(}\fixedindent{
+
+struct eqview *\paramname{eqview},
+
+struct eq *\paramname{eqptr},
+
+long \paramname{mx},
+
+long \paramname{my},
+
+long \paramname{restrict});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function takes a mouse hit and determines the closest viable 
+position within the equation where the mouse hit can have occurred.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns a caret position.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is called from the eqview_Hit function to determine 
+the precise location of a mouse hit.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{This function does not recognize mouse hits which are too far to 
+the right of any of the symbols on the same line.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{eqview_Hit}
+
+
+
+
+
+
+\view{bpv,538271624,1036,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_CalculateCaret}
+
+				
+
+\majorheading{Calculates a new caret position}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eqview_CalculateCaret }(}\fixedindent{
+
+struct eqview *\paramname{eqview});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function uses information about the current caret position and 
+length as well as hotspot information from the current formula to calculate a 
+new caret position.}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used in the eqview_Update function to calculate a 
+new caret position.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{Should allow rubberbanding of selection region.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{eqview_Update}
+
+
+
+
+
+
+\view{bpv,538271624,1037,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_DrawCaret}
+
+				
+
+\majorheading{Draws the caret at the current caret position}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eqview_DrawCaret }(}\fixedindent{
+
+struct eqview *\paramname{eqview});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function uses information about the current caret position and 
+length to draw the caret on the screen.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used by eqview_Update to draw the caret on the 
+screen.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{Should allow rubberbanding of selection region.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{eqview_Update}
+
+
+
+
+
+\view{bpv,538271624,1038,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_SetDotPosition}
+
+				
+
+\majorheading{Sets the current caret position}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eqview_SetDotPosition }(}\fixedindent{
+
+struct eqview *\paramname{eqview},
+
+long \paramname{newp});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function sets the caret position, marks the view as changed, 
+and then requests an update.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used when inserting or deleting symbols or any 
+other time when the caret position must be changed.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{eqview_SetDotLength
+
+eqview_GetDotPosition}
+
+
+
+
+
+
+\view{bpv,538271624,1039,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_SetDotLength}
+
+				
+
+\majorheading{Sets the current caret length}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eqview_SetDotLength }(}\fixedindent{
+
+struct eqview *\paramname{eqview},
+
+long \paramname{newl});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function sets the length of the caret, marks the view as 
+changed, and then requests an update.}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used when inserting or deleting symbols or any 
+other time when the caret length must be changed.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{eqview_SetDotPosition
+
+eqview_GetDotLength}
+
+
+
+
+
+
+\view{bpv,538271624,1040,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_GetDotPosition}
+
+				
+
+\majorheading{Returns the current position of the caret}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eqview_GetDotPosition }(}\fixedindent{
+
+struct eqview *\paramname{eqview});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function uses mark_GetPos to return the current caret 
+position.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the current caret position.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used when inserting or deleting symbols or any 
+other time when the current caret position must be checked.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{eqview_SetDotPosition
+
+eqview_GetDotLength
+
+mark_GetPos}
+
+
+
+
+
+\view{bpv,538271624,1041,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_GetDotLength}
+
+				
+
+\majorheading{Returns the current length of the caret}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eqview_GetDotLength }(}\fixedindent{
+
+struct eqview *\paramname{eqview});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function uses mark_GetLength to return the current caret 
+length.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the current caret length.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used when inserting or deleting symbols or any 
+other time when the current caret length must be checked.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{eqview_GetDotPosition
+
+eqview_SetDotLength
+
+mark_GetLength}
+
+
+
+
+
+
+\view{bpv,538271624,1042,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_Changed}
+
+				
+
+\majorheading{Marks the view as changed}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eqview_Changed }(}\fixedindent{
+
+struct eqview *\paramname{eqview},
+
+enum changed \paramname{changed});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function sets the changed variable in the view data.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used to indicate that something in the data 
+structure has changed and that an update should eventually be requested.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{eqview_Update
+
+eqview_FullUpdate}
+
+
+
+
+
+
+\view{bpv,538271624,1043,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_InitializeObject}
+
+				
+
+\majorheading{Initializes the eqview object}
+
+______________________________________________________
+
+
+\fixedtext{boolean \bold{eqview_InitializeObject }(}\fixedindent{struct eq 
+*\paramname{self});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Classprocedure}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function initializes the eqview object by allocating any 
+necessary resources and initializing all data variables.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns TRUE to indicate that the object has been 
+initialized correctly.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used to initialize a newly created eqview object.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{class.h}
+
+
+
+
+
+
+\view{bpv,538271624,1044,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_FinalizeObject}
+
+				
+
+\majorheading{Finalizes the eqview object}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eqview_FinalizeObject }(}\fixedindent{struct eqview 
+*\paramname{self});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Classprocedure}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function is used to finalize the eqview object, freeing any 
+resources that have been allocated for it.}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used to finalize an eqview data object that is 
+about to be removed.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{class.h}
+
+
+
+
+
+
+\view{bpv,538271624,1045,0,0}
+______________________________________________________				
+
+
+\paragraph{eqview_InitializeClass}
+
+				
+
+\majorheading{Initializes the eqview class}
+
+______________________________________________________
+
+
+\fixedtext{boolean \bold{eqview_InitializeClass }(}\fixedindent{);}
+
+
+\fieldheading{Category}
+
+\fieldtext{Classprocedure}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function initializes the eqview class and initializes the 
+keymap.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns TRUE to indicate that the class has been 
+initialized correctly.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used once to initialize the class.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{class.h}
+
+
+
+
+
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1047,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,538380552}

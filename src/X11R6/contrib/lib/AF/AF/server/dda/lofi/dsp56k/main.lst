@@ -1,0 +1,873 @@
+
+
+
+Motorola DSP56000 Assembler  Version 3.1.11.1  93-11-19  08:19:23  main.asm  Page 1
+
+
+
+1                        ;
+2                        ; Copyright 1993 by Digital Equipment Corporation, Maynard, Massachusetts.
+3                        ;
+4                        ; Permission to use, copy, modify, distribute, and sell this software and its
+5                        ; documentation for any purpose is hereby granted without fee, provided that
+6                        ; the above copyright notice appear in all copies and that both that
+7                        ; copyright notice and this permission notice appear in supporting
+8                        ; documentation, and that the name of Digital not be used in advertising or
+9                        ; publicity pertaining to distribution of the software without specific,
+10                       ; written prior permission.  Digital makes no representations about the
+11                       ; suitability of this software for any purpose.  It is provided "as is"
+12                       ; without express or implied warranty.
+13                       ;
+14                       ; DIGITAL DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING
+15                       ; ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL
+16                       ; DIGITAL BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY
+17                       ; DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
+18                       ; AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+19                       ; OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+20                       ;
+21                       ;------------------------------------------------------------------------------
+22                       ;
+23                       ;       Customized version of crt056y.asm for Lo-Fi.
+24                       ;       Used by AudioFile server for LoFi too!
+25                       ;
+26                       ; Modfied by:
+27                       ;  ?/?/91       tml     from motorola original.
+28                       ;  4/11/91      tml     change boot sequence, mode bits.
+29                       ;                       add host port initialization.  fix ipl levels.
+30                       ;  1/23/92      tml     CHange to mode 0, placing reset at 0.
+31                       ;                       Manipulate memory organization, use same crt file
+32                       ;                       for AudioFile and devices area.
+33                       ;------------------------------------------------------------------------------
+34                                                                           ; $Id: main.asm,v 1.9 1993/11/12 17:51:59 tml Exp $
+35     
+36                                 opt     so,xr
+37                                 page    132,66,3,3
+38     
+39                                 include "lofihw.asm"
+40     
+41     
+42        00FFF0         ACODEC0   EQU     $FFF0                             ; primary codec base address
+43        00FFF8         ACODEC1   EQU     $FFF8                             ; primary codec base address
+44        050000         CBb       EQU     $5<<16                            ; Bb register
+45        00E800         ACSR      EQU     $E800                             ; CSR Address
+46        000000         CIR       EQU     0                                 ; Codec Interrupt addr.
+47     
+48     
+49     
+50                                 include "intequ.asm"
+51                       ;************************************************************************
+52                       ;
+53                       ;       EQUATES for DSP56000 interrupts
+54                       ;       Reference: DSP56000 User's Manual, Table 8.1, Interrupt Sources
+55                       ;
+56                       ;************************************************************************
+
+
+
+
+
+
+Motorola DSP56000 Assembler  Version 3.1.11.1  93-11-19  08:19:23  ../../include/intequ.asm  Page 2
+
+
+
+57     
+58                       intequ    ident   1,0
+59     
+60        000000         I_RESET   EQU     $0000                             ; hardware _RESET
+61        000002         I_STACK   EQU     $0002                             ; stack error
+62        000004         I_TRACE   EQU     $0004                             ; trace
+63        000006         I_SWI     EQU     $0006                             ; SWI
+64        000008         I_IRQA    EQU     $0008                             ; _IRQA
+65        00000A         I_IRQB    EQU     $000A                             ; _IRQB
+66     
+67        00000C         I_SSIRD   EQU     $000C                             ; SSI receive data
+68        00000E         I_SSIRDE  EQU     $000E                             ; SSI receive data with exception status
+69        000010         I_SSITD   EQU     $0010                             ; SSI transmit data
+70        000012         I_SSITDE  EQU     $0012                             ; SSI transmit data with exception status
+71     
+72        000014         I_SCIRD   EQU     $0014                             ; SCI receive data
+73        000016         I_SCIRDE  EQU     $0016                             ; SCI receive data with exception status
+74        000018         I_SCITD   EQU     $0018                             ; SCI transmit data
+75        00001A         I_SCIIL   EQU     $001A                             ; SCI idle line
+76        00001C         I_SCITM   EQU     $001C                             ; SCI timer
+77     
+78        000020         I_HSTRD   EQU     $0020                             ; host receive data
+79        000022         I_HSTTD   EQU     $0022                             ; host transmit data
+80        000024         I_HSTCM   EQU     $0024                             ; host command (default)
+81                                 include "ioequlc.asm"
+82                       ;
+83                       ; This program originally available on the Motorola DSP bulletin board.
+84                       ; It is provided under a DISCLAMER OF WARRANTY available from
+85                       ; Motorola DSP Operation, 6501 Wm. Cannon Drive W., Austin, Tx., 78735.
+86                       ;
+87                       ; Motorola Standard I/O Equates (lower case).
+88                       ;
+89                       ; Last Update 25 Aug 87   Version 1.1  (fixed m_of)
+90                       ;
+91                       ;************************************************************************
+92                       ;
+93                       ;       EQUATES for DSP56000 I/O registers and ports
+94                       ;
+95                       ;************************************************************************
+96     
+97                       ioequlc   ident   1,0
+98     
+99                       ;------------------------------------------------------------------------
+100                      ;
+101                      ;       EQUATES for I/O Port Programming
+102                      ;
+103                      ;------------------------------------------------------------------------
+104    
+105                      ;       Register Addresses
+106    
+107       00FFFE         m_bcr     EQU     $FFFE                             ; Port A Bus Control Register
+108       00FFE0         m_pbc     EQU     $FFE0                             ; Port B Control Register
+109       00FFE2         m_pbddr   EQU     $FFE2                             ; Port B Data Direction Register
+110       00FFE4         m_pbd     EQU     $FFE4                             ; Port B Data Register
+111       00FFE1         m_pcc     EQU     $FFE1                             ; Port C Control Register
+112       00FFE3         m_pcddr   EQU     $FFE3                             ; Port C Data Direction Register
+
+
+
+
+
+
+Motorola DSP56000 Assembler  Version 3.1.11.1  93-11-19  08:19:23  ../../include/ioequlc.asm  Page 3
+
+
+
+113       00FFE5         m_pcd     EQU     $FFE5                             ; Port C Data Register
+114    
+115    
+116                      ;------------------------------------------------------------------------
+117                      ;
+118                      ;       EQUATES for Host Interface
+119                      ;
+120                      ;------------------------------------------------------------------------
+121    
+122                      ;       Register Addresses
+123    
+124       00FFE8         m_hcr     EQU     $FFE8                             ; Host Control Register
+125       00FFE9         m_hsr     EQU     $FFE9                             ; Host Status Register
+126       00FFEB         m_hrx     EQU     $FFEB                             ; Host Receive Data Register
+127       00FFEB         m_htx     EQU     $FFEB                             ; Host Transmit Data Register
+128    
+129                      ;       Host Control Register Bit Flags
+130    
+131       000000         m_hrie    EQU     0                                 ; Host Receive Interrupt Enable
+132       000001         m_htie    EQU     1                                 ; Host Transmit Interrupt Enable
+133       000002         m_hcie    EQU     2                                 ; Host Command Interrupt Enable
+134       000003         m_hf2     EQU     3                                 ; Host Flag 2
+135       000004         m_hf3     EQU     4                                 ; Host Flag 3
+136    
+137                      ;       Host Status Register Bit Flags
+138    
+139       000000         m_hrdf    EQU     0                                 ; Host Receive Data Full
+140       000001         m_htde    EQU     1                                 ; Host Transmit Data Empty
+141       000002         m_hcp     EQU     2                                 ; Host Command Pending
+142       000018         m_hf      EQU     $18                               ; Host Flag Mask
+143       000003         m_hf0     EQU     3                                 ; Host Flag 0
+144       000004         m_hf1     EQU     4                                 ; Host Flag 1
+145       000007         m_dma     EQU     7                                 ; DMA Status
+146    
+147                      ;------------------------------------------------------------------------
+148                      ;
+149                      ;       EQUATES for Serial Communications Interface (SCI)
+150                      ;
+151                      ;------------------------------------------------------------------------
+152    
+153                      ;       Register Addresses
+154    
+155       00FFF4         m_srxl    EQU     $FFF4                             ; SCI Receive Data Register (low)
+156       00FFF5         m_srxm    EQU     $FFF5                             ; SCI Receive Data Register (middle)
+157       00FFF6         m_srxh    EQU     $FFF6                             ; SCI Receive Data Register (high)
+158       00FFF4         m_stxl    EQU     $FFF4                             ; SCI Transmit Data Register (low)
+159       00FFF5         m_stxm    EQU     $FFF5                             ; SCI Transmit Data Register (middle)
+160       00FFF6         m_stxh    EQU     $FFF6                             ; SCI Transmit Data Register (high)
+161       00FFF3         m_stxa    EQU     $FFF3                             ; SCI Transmit Data Address Register
+162       00FFF0         m_scr     EQU     $FFF0                             ; SCI Control Register
+163       00FFF1         m_ssr     EQU     $FFF1                             ; SCI Status Register
+164       00FFF2         m_sccr    EQU     $FFF2                             ; SCI Clock Control Register
+165    
+166                      ;       SCI Control Register Bit Flags
+167    
+168       000003         m_wds     EQU     $3                                ; Word Select Mask
+
+
+
+
+
+
+Motorola DSP56000 Assembler  Version 3.1.11.1  93-11-19  08:19:23  ../../include/ioequlc.asm  Page 4
+
+
+
+169       000000         m_wds0    EQU     0                                 ; Word Select 0
+170       000001         m_wds1    EQU     1                                 ; Word Select 1
+171       000002         m_wds2    EQU     2                                 ; Word Select 2
+172       000004         m_sbk     EQU     4                                 ; Send Break
+173       000005         m_wake    EQU     5                                 ; Wake-up Mode Select
+174       000006         m_rwi     EQU     6                                 ; Receiver Wake-up Enable
+175       000007         m_woms    EQU     7                                 ; Wired-OR Mode Select
+176       000008         m_re      EQU     8                                 ; Receiver Enable
+177       000009         m_te      EQU     9                                 ; Transmitter Enable
+178       00000A         m_ilie    EQU     10                                ; Idle Line Interrupt Enable
+179       00000B         m_rie     EQU     11                                ; Receive Interrupt Enable
+180       00000C         m_tie     EQU     12                                ; Transmit Interrupt Enable
+181       00000D         m_tmie    EQU     13                                ; Timer Interrupt Enable
+182    
+183                      ;       SCI Status Register Bit Flags
+184    
+185       000000         m_trne    EQU     0                                 ; Transmitter Empty
+186       000001         m_tdre    EQU     1                                 ; Transmit Data Register Empty
+187       000002         m_rdrf    EQU     2                                 ; Receive Data Register Full
+188       000003         m_idle    EQU     3                                 ; Idle Line
+189       000004         m_or      EQU     4                                 ; Overrun Error
+190       000005         m_pe      EQU     5                                 ; Parity Error
+191       000006         m_fe      EQU     6                                 ; Framing Error
+192       000007         m_r8      EQU     7                                 ; Received Bit 8
+193    
+194                      ;       SCI Clock Control Register Bit Flags
+195    
+196       000FFF         m_cd      EQU     $FFF                              ; Clock Divider Mask
+197       00000C         m_cod     EQU     12                                ; Clock Out Divider
+198       00000D         m_scp     EQU     13                                ; Clock Prescaler
+199       00000E         m_rcm     EQU     14                                ; Receive Clock Source
+200       00000F         m_tcm     EQU     15                                ; Transmit Clock Source
+201    
+202                      ;------------------------------------------------------------------------
+203                      ;
+204                      ;       EQUATES for Synchronous Serial Interface (SSI)
+205                      ;
+206                      ;------------------------------------------------------------------------
+207    
+208                      ;       Register Addresses
+209    
+210       00FFEF         m_rx      EQU     $FFEF                             ; Serial Receive Data Register
+211       00FFEF         m_tx      EQU     $FFEF                             ; Serial Transmit Data Register
+212       00FFEC         m_cra     EQU     $FFEC                             ; SSI Control Register A
+213       00FFED         m_crb     EQU     $FFED                             ; SSI Control Register B
+214       00FFEE         m_sr      EQU     $FFEE                             ; SSI Status Register
+215       00FFEE         m_tsr     EQU     $FFEE                             ; SSI Time Slot Register
+216    
+217                      ;       SSI Control Register A Bit Flags
+218    
+219       0000FF         m_pm      EQU     $FF                               ; Prescale Modulus Select Mask
+220       001F00         m_dc      EQU     $1F00                             ; Frame Rate Divider Control Mask
+221       006000         m_wl      EQU     $6000                             ; Word Length Control Mask
+222       00000D         m_wl0     EQU     13                                ; Word Length Control 0
+223       00000E         m_wl1     EQU     14                                ; Word Length Control 1
+224       00000F         m_psr     EQU     15                                ; Prescaler Range
+
+
+
+
+
+
+Motorola DSP56000 Assembler  Version 3.1.11.1  93-11-19  08:19:23  ../../include/ioequlc.asm  Page 5
+
+
+
+225    
+226                      ;       SSI Control Register B Bit Flags
+227    
+228       000003         m_of      EQU     $3                                ; Serial Output Flag Mask
+229       000000         m_of0     EQU     0                                 ; Serial Output Flag 0
+230       000001         m_of1     EQU     1                                 ; Serial Output Flag 1
+231       00001C         m_scd     EQU     $1C                               ; Serial Control Direction Mask
+232       000002         m_scd0    EQU     2                                 ; Serial Control 0 Direction
+233       000003         m_scd1    EQU     3                                 ; Serial Control 1 Direction
+234       000004         m_scd2    EQU     4                                 ; Serial Control 2 Direction
+235       000005         m_sckd    EQU     5                                 ; Clock Source Direction
+236       000008         m_fsl     EQU     8                                 ; Frame Sync Length
+237       000009         m_syn     EQU     9                                 ; Sync/Async Control
+238       00000A         m_gck     EQU     10                                ; Gated Clock Control
+239       00000B         m_mod     EQU     11                                ; Mode Select
+240       00000C         m_ste     EQU     12                                ; SSI Transmit Enable
+241       00000D         m_sre     EQU     13                                ; SSI Receive Enable
+242       00000E         m_stie    EQU     14                                ; SSI Transmit Interrupt Enable
+243       00000F         m_srie    EQU     15                                ; SSI Receive Interrupt Enable
+244    
+245                      ;       SSI Status Register Bit Flags
+246    
+247       000002         m_if      EQU     $2                                ; Serial Input Flag Mask
+248       000000         m_if0     EQU     0                                 ; Serial Input Flag 0
+249       000001         m_if1     EQU     1                                 ; Serial Input Flag 1
+250       000002         m_tfs     EQU     2                                 ; Transmit Frame Sync
+251       000003         m_rfs     EQU     3                                 ; Receive Frame Sync
+252       000004         m_tue     EQU     4                                 ; Transmitter Underrun Error
+253       000005         m_roe     EQU     5                                 ; Receiver Overrun Error
+254       000006         m_tde     EQU     6                                 ; Transmit Data Register Empty
+255       000007         m_rdf     EQU     7                                 ; Receive Data Register Full
+256    
+257                      ;------------------------------------------------------------------------
+258                      ;
+259                      ;       EQUATES for Exception Processing
+260                      ;
+261                      ;------------------------------------------------------------------------
+262    
+263                      ;       Register Addresses
+264    
+265       00FFFF         m_ipr     EQU     $FFFF                             ; Interrupt Priority Register
+266    
+267                      ;       Interrupt Priority Register Bit Flags
+268    
+269       000007         m_ial     EQU     $7                                ; IRQA Mode Mask
+270       000000         m_ial0    EQU     0                                 ; IRQA Mode Interrupt Priority Level (low)
+271       000001         m_ial1    EQU     1                                 ; IRQA Mode Interrupt Priority Level (high)
+272       000002         m_ial2    EQU     2                                 ; IRQA Mode Trigger Mode
+273       000038         m_ibl     EQU     $38                               ; IRQB Mode Mask
+274       000003         m_ibl0    EQU     3                                 ; IRQB Mode Interrupt Priority Level (low)
+275       000004         m_ibl1    EQU     4                                 ; IRQB Mode Interrupt Priority Level (high)
+276       000005         m_ibl2    EQU     5                                 ; IRQB Mode Trigger Mode
+277       000C00         m_hpl     EQU     $C00                              ; Host Interrupt Priority Level Mask
+278       00000A         m_hpl0    EQU     10                                ; Host Interrupt Priority Level Mask (low)
+279       00000B         m_hpl1    EQU     11                                ; Host Interrupt Priority Level Mask (high)
+280       003000         m_ssl     EQU     $3000                             ; SSI Interrupt Priority Level Mask
+
+
+
+
+
+
+Motorola DSP56000 Assembler  Version 3.1.11.1  93-11-19  08:19:23  ../../include/ioequlc.asm  Page 6
+
+
+
+281       00000C         m_ssl0    EQU     12                                ; SSI Interrupt Priority Level Mask (low)
+282       00000D         m_ssl1    EQU     13                                ; SSI Interrupt Priority Level Mask (high)
+283       00C000         m_scl     EQU     $C000                             ; SCI Interrupt Priority Level Mask
+284       00000E         m_scl0    EQU     14                                ; SCI Interrupt Priority Level Mask (low)
+285       00000F         m_scl1    EQU     15                                ; SCI Interrupt Priority Level Mask (high)
+286    
+287                      ;
+288                      ;  This file contains the definitions for the DSP/Host common mailbox area.
+289                      ;  It is automatically (with CPP) derived from "dsp.h"
+290                      ;
+291                                include "dsp.asm"
+292    
+293    
+294    
+295    
+296    
+297    
+298    
+299    
+300    
+301    
+302    
+303    
+304    
+305    
+306    
+307    
+308    
+309    
+310    
+311    
+312    
+313    
+314    
+315    
+316    
+317    
+318    
+319    
+320    
+321    
+322    
+323    
+324    
+325    
+326    
+327    
+328    
+329    
+330    
+331    
+332    
+333    
+334    
+335    
+336    
+
+
+
+
+
+
+Motorola DSP56000 Assembler  Version 3.1.11.1  93-11-19  08:19:23  dsp.asm  Page 7
+
+
+
+337    
+338    
+339    
+340    
+341    
+342    
+343    
+344    
+345    
+346    
+347    
+348    
+349    
+350    
+351    
+352    
+353    
+354    
+355    
+356    
+357    
+358    
+359    
+360    
+361    
+362    
+363    
+364    
+365    
+366    
+367    
+368    
+369    
+370    
+371    
+372    
+373    
+374    
+375    
+376    
+377    
+378    
+379    
+380    
+381    
+382    
+383    
+384    
+385    
+386    
+387    
+388    
+389    
+390    
+391    
+392    
+
+
+
+
+
+
+Motorola DSP56000 Assembler  Version 3.1.11.1  93-11-19  08:19:23  dsp.asm  Page 8
+
+
+
+393    
+394    
+395    
+396    
+397    
+398    
+399    
+400    
+401    
+402    
+403    
+404    
+405    
+406    
+407    
+408    
+409    
+410    
+411    
+412    
+413    
+414    
+415    
+416       000200         mbx_start equ     $200
+417       000201         codec_time equ    $200+1
+418    
+419                      codec_start0
+420       000202                   equ     $200+2
+421       000203         codec_len0 equ    $200+3
+422       000204         codec_ofs0 equ    $200+4
+423    
+424                      codec_start1
+425       000205                   equ     $200+5
+426       000206         codec_len1 equ    $200+6
+427       000207         codec_ofs1 equ    $200+7
+428    
+429       000208         hifi_time equ     $200+8
+430    
+431                      hifi_start0
+432       000209                   equ     $200+9
+433       00020A         hifi_len0 equ     $200+10
+434       00020B         hifi_ofs0 equ     $200+11
+435    
+436                      hifi_start1
+437       00020C                   equ     $200+12
+438       00020D         hifi_len1 equ     $200+13
+439       00020E         hifi_ofs1 equ     $200+14
+440    
+441       00020F         portc_bits equ    $200+15
+442    
+443       000210         dsp_cra   equ     $200+16
+444       000211         dsp_crb   equ     $200+17
+445    
+446       000212         dsp_lctl  equ     $200+18
+447       000213         dsp_rctl  equ     $200+19
+448       000214         dsp_maski equ     $200+20
+
+
+
+
+
+
+Motorola DSP56000 Assembler  Version 3.1.11.1  93-11-19  08:19:23  dsp.asm  Page 9
+
+
+
+449       000215         dsp_masko equ     $200+21
+450       000216         dsp_lstat equ     $200+22
+451       000217         dsp_rstat equ     $200+23
+452    
+453    
+454    
+455    
+456    
+457    
+458    
+459                      ;------------------------------------------------------------------------------
+460                      ;
+461                      ;  Local (on-chip) RAM
+462                      ;
+463                      ;    Some variables are shadowed here to minimize the number of accesses to
+464                      ;    shared, off-chip RAM.
+465                      ;
+466    
+467                                section local_ram
+468                                global  local_hifi_time
+469                                global  local_codec_time
+470       X:0000                   org     x:$0
+471    
+472                      local_hifi_time
+473       X:0000                   dc      $0
+474                      local_codec_time
+475       X:0001                   dc      $0
+476    
+477                                endsec
+478    
+479                      ;------------------------------------------------------------------------------
+480                      ;
+481                      ;  This reset code resides in "high" memory at 0xe000 and is used
+482                      ;  exactly once (at reset/startup).
+483                      ;
+484                                section hw_reset
+485       P:E000                   org     p:$e000
+486       P:E000 0501BB            movec             #1,sp                   ;init stack pointer
+487       P:E001 0500B9            movec             #0,sr                   ;clear loop flag/interrupt mask bits
+488    
+489       P:E002 0500BA            movec             #$0,omr                 ; mode 0
+490       P:E003 000000            nop
+491    
+492                      ;
+493                      ; Copy program into on-chip program memory (512 words).  (Takes advantage of
+494                      ; the fact that the 32K word shared memory is mapped to 0x0000 and 0x8000)
+495                      ;
+496    
+497       P:E004 310000            move              #$0,r1
+498       P:E005 390100            move              #$1,n1
+499       P:E006 60F400            move              #$8000,r0
+                 008000
+500       P:E008 380100            move              #$1,n0
+501       P:E009 060082            do      #$200,end2
+                 00E00C
+502       P:E00B 07D888            move              p:(r0)+,a0
+
+
+
+
+
+
+Motorola DSP56000 Assembler  Version 3.1.11.1  93-11-19  08:19:23  main.asm  Page 10
+
+
+
+503       P:E00C 075988            move              a0,p:(r1)+
+504                      end2
+505    
+506       P:E00D 300000            move              #0,r0                   ; zero x and y internal memory
+507       P:E00E 380100            move              #1,n0
+508       P:E00F 280000            move              #0,a0
+509       P:E010 060082            do      #$200,end3
+                 00E014
+510       P:E012 506000            move              a0,x:(r0)
+511       P:E013 585800            move                          a0,y:(r0)+
+512       P:E014 000000            nop
+513                      end3
+514       P:E015 0AF080            jmp     start
+                 000013
+515    
+516                                endsec
+517    
+518                      ;------------------------------------------------------------------------------
+519                      ;
+520                      ;  Exception vectors (gets loaded into low memory)
+521                      ;
+522    
+523    
+524                                section reset
+525    
+526       P:0008                   org     p:I_IRQA
+527       P:0008 0D005D            jsr     <codec_isr                        ; CODEC interrupt
+528    
+529       P:0010                   org     p:I_SSITD
+530       P:0010 0D0048            jsr     <ssi_int                          ; SSI tx data
+531    
+532       P:0012                   org     p:I_SSITDE
+533       P:0012 0D0048            jsr     <ssi_int                          ; SSI tx data w/ error
+534    
+535    
+536                      ;------------------------------------------------------------------------------
+537                      ;
+538                      ;  The remaining code resides in the on-chip program memory.
+539                      ;
+540    
+541                                global  start
+542                      start
+543    
+544       P:0013 00F3B8            and     #$f3,mr
+545       P:0014 00BFB9            and     #$bf,ccr
+546    
+547       P:0015 08F4BF            movep             #$0,x:m_ipr             ; all disabled.
+                 000000
+548       P:0017 08F4BE            movep             #$6,x:m_bcr             ; 0 wait in memory, 6 in Y:IO
+                 000006
+549       P:0019 08F4A0            movep             #$1,x:m_pbc             ; Enable port B as Host port.
+                 000001
+550    
+551       P:001B 0AA822            bset    #2,x:$ffe8                        ; enable host commands
+552    
+553                      ;
+
+
+
+
+
+
+Motorola DSP56000 Assembler  Version 3.1.11.1  93-11-19  08:19:23  main.asm  Page 11
+
+
+
+554                      ;   Configure the DSP port
+555                      ;       CRA and CRB set the DSP port configuration.  The values come from
+556                      ;       x:dsp_cra, and x:dsp_crb, which are set by the host before startup.
+557                      ;
+558    
+559       P:001C 08F0AC            movep             x:dsp_cra,x:<<m_cra
+                 000210
+560       P:001E 08F0AD            movep             x:dsp_crb,x:<<m_crb
+                 000211
+561    
+562                      ;  Intialize the SSI port (Port C)
+563                      ;       For many DSP port devices, these bits set the sample rate.  The
+564                      ;       value comes from x:portc_bits, and is set by the host before
+565                      ;       startup.
+566                      ;
+567       P:0020 08F4A1            movep             #$0001f8,x:m_pcc        ; set up SCI pins as parallel port
+                 0001F8
+568       P:0022 08F4A3            movep             #$7,x:m_pcddr           ; output bits
+                 000007
+569    
+570       P:0024 08F0A5            movep             x:portc_bits,x:m_pcd    ; set the port C bits
+                 00020F
+571    
+572       P:0026 08F4AF            movep             #$0,x:<<m_tx            ; init SSI
+                 000000
+573    
+574                      ;
+575                      ;  Initialize the buffer address registers.  The values are read from the
+576                      ;  shared memory area and are assumed to be initialized by the host before
+577                      ;  the DSP is let out of reset.
+578                      ;
+579       P:0028 60F000            move              x:codec_start0,r0
+                 000202
+580       P:002A 05F020            move              x:codec_len0,m0
+                 000203
+581       P:002C 70F000            move              x:codec_ofs0,n0
+                 000204
+582    
+583       P:002E 61F000            move              x:codec_start1,r1
+                 000205
+584       P:0030 05F021            move              x:codec_len1,m1
+                 000206
+585       P:0032 71F000            move              x:codec_ofs1,n1
+                 000207
+586    
+587       P:0034 62F000            move              x:hifi_start0,r2
+                 000209
+588       P:0036 05F022            move              x:hifi_len0,m2
+                 00020A
+589       P:0038 72F000            move              x:hifi_ofs0,n2
+                 00020B
+590    
+591       P:003A 63F000            move              x:hifi_start1,r3
+                 00020C
+592       P:003C 05F023            move              x:hifi_len1,m3
+                 00020D
+
+
+
+
+
+
+Motorola DSP56000 Assembler  Version 3.1.11.1  93-11-19  08:19:23  main.asm  Page 12
+
+
+
+593       P:003E 73F000            move              x:hifi_ofs1,n3
+                 00020E
+594    
+595                      ;
+596                      ;    Set the host flags to tell the host we are here.
+597                      ;
+598       P:0040 0AA823            bset    #3,x:m_hcr                        ; set host flag #2 (HF2)
+599       P:0041 0AA824            bset    #4,x:m_hcr                        ; set host flag #3 (HF3)
+600    
+601       P:0042 44F400            move              #>1,x0                  ; always 1
+                 000001
+602       P:0044 08F4BF            movep             #$3401,x:m_ipr          ; set IPLs:
+                 003401
+603                                                                          ;     CODEC = 1, Host = 1, SSI = 2
+604    
+605       P:0046 00FCB8            and     #$fc,mr                           ; enable all IPLs
+606    
+607                      wait
+608       P:0047 0C0047            jmp     wait                              ; spin loop
+609    
+610                      ;------------------------------------------------------------------------------
+611                      ;
+612                      ;  SSI Interrupt handler
+613                      ;
+614                      ;    This routine gets called for each WORD.  The transmit frame
+615                      ;    sync (TFS) bit in the SSI status register (SR) is used to differentiate
+616                      ;    between channels.  If the TFS bit is set, then the word is the first
+617                      ;    in the frame (channel A).  If it is clear, then the word is for Channel
+618                      ;    B.
+619                      ;
+620                      ;  **NOTE:  this routine assumes exclusive use of the A register
+621                      ;
+622                                global  ssi_int
+623                      ssi_int
+624       P:0048 0AAE82            jclr    #m_tfs,x:<<m_sr,ssi_rx_b          ; which channel?
+                 000051
+625    
+626                      ; Channel 0 (A)
+627       P:004A 0AAD01            bclr    #1,x:<<m_crb                      ; toggle OF1 (SC1)
+628    
+629       P:004B 0862AF            movep             x:m_rx,x:(r2)           ; get receive data to buffer
+630    
+631       P:004C 08EAAF            movep             x:(r2+n2),x:m_tx        ; transmit data, send it
+632       P:004D 2C0000            move              #0,a1
+633       P:004E 546A00            move              a1,x:(r2+n2)            ; backfill silence
+634    
+635       P:004F 045A12            lua     (r2)+,r2                          ; increment
+636       P:0050 000004            rti
+637    
+638                      ; Channel 1 (B)
+639    
+640                      ssi_rx_b
+641       P:0051 0AAD21            bset    #1,x:<<m_crb
+642       P:0052 0863AF            movep             x:m_rx,x:(r3)           ; get receive data to buffer
+643    
+644       P:0053 08EBAF            movep             x:(r3+n3),x:m_tx        ; transmit data, send it
+
+
+
+
+
+
+Motorola DSP56000 Assembler  Version 3.1.11.1  93-11-19  08:19:23  main.asm  Page 13
+
+
+
+645       P:0054 2C0000            move              #0,a1
+646       P:0055 546B00            move              a1,x:(r3+n3)            ; backfill silence
+647    
+648       P:0056 045B13            lua     (r3)+,r3                          ; increment
+649    
+650                      ;  Increment and update the hifi clock
+651       P:0057 56F000            move              x:hifi_time,a
+                 000208
+652       P:0059 200040            add     x0,a                              ; x0 should always be 1
+653       P:005A 547000            move              a1,x:hifi_time
+                 000208
+654    
+655       P:005C 000004            rti
+656    
+657    
+658                      ;------------------------------------------------------------------------------
+659                      ;
+660                      ;  CODEC Interrupt Handler (IRQA)
+661                      ;
+662                      ;
+663                      ;  **NOTE:  this routine assumes exclusive use of the B register
+664                      ;
+665                                global  codec_isr
+666    
+667                      codec_isr
+668    
+669                      ; Clear interrupt by reading CODEC 0's IR
+670       P:005D 290000            move              #CIR,b0
+671       P:005E 597000            move                          b0,y:ACSR
+                 00E800
+672       P:0060 094930            movep             y:<<ACODEC0,b0          ; do read
+673    
+674       P:0061 51F400            move              #CBb,b0
+                 050000
+675       P:0063 597000            move                          b0,y:ACSR   ; point to B channel buffer
+                 00E800
+676    
+677                      ; Fetch and write outgoing data (backfill with silence)
+678    
+679       P:0065 55F400            move              #$ffffff,b1             ; silence
+                 FFFFFF
+680       P:0067 09E8B0            movep             x:(r0+n0),y:<<ACODEC0   ; send it
+681       P:0068 556800            move              b1,x:(r0+n0)
+682       P:0069 09E9B8            movep             x:(r1+n1),y:<<ACODEC1   ; send it
+683       P:006A 556900            move              b1,x:(r1+n1)
+684    
+685                      ; Read and store incoming data
+686    
+687       P:006B 0958B0            movep             y:<<ACODEC0,x:(r0)+     ; store and increment
+688       P:006C 0959B8            movep             y:<<ACODEC1,x:(r1)+     ; store and increment
+689    
+690                      ;  Increment and update the codec clock
+691       P:006D 57F000            move              x:codec_time,b
+                 000201
+692       P:006F 200048            add     x0,b                              ; x0 should always be 1
+693       P:0070 557000            move              b1,x:codec_time
+
+
+
+
+
+
+Motorola DSP56000 Assembler  Version 3.1.11.1  93-11-19  08:19:23  main.asm  Page 14
+
+
+
+                 000201
+694    
+695       P:0072 000004            rti
+696    
+697                                endsec
+
+0    Errors
+0    Warnings

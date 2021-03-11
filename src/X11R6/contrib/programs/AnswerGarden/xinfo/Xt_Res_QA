@@ -1,0 +1,568 @@
+@begin(header)
+author: ackerman@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+expiration_date: 07/03/93
+last_modifier: ackerman@ics.uci.edu
+last_mod_date: 07/03/91
+mod_num: 1
+@end(header)
+@begin(M)
+Date: Fri, 23 Dec 88 12:34:48 EST
+From: Chris D. Peterson 
+
+Using Argument Lists: IMPORTANT - toolkit programmers please read.
+
+Understanding how argument lists work is fundamental to X toolkit programming,
+an you must understand them of you are going to have any success with the 
+X toolkit.  Agrument lists consist of name-value pairs, and while the names
+are well defined and easy enough to come up with, people have trouble with the
+values, so let me state it once again, in the hope that I do not need
+to repeat it again 10 times over the next year.
+
+Values passed into a widget through its argument list or set via
+XtSetValues(), are not passed through a string converter, this means
+that you have to specify the actual value of the item that the widget is
+expecting for this resource.  Integers must be passed as integers 
+( 3 not "3" ),  Pixel values must be passed as pixel values ( Pixel that
+corrosponds to black not the string "black"). Just to keep things
+from being dull, if the size of the item that you are passing is larger than
+(XtArgVal) then you must pass the item by reference (read: pass its pointer),
+Otherwise just pass its value.
+
+A word of caution: When using XtGetValues() the argument lists it expects are 
+name "address" pairs, rather than name-value pairs.
+
+Some Examples:
+
+Right:  XtSetArg(arglist[num_args], XtNwidth, 45); num_args++;
+Wrong:  XtSetArg(arglist[num_args], XtNwidth, "45"); num_args++;
+
+Right:  XtSetArg(arglist[num_args], XtNcolor, BlackPixel(display, scr_num));
+        num_args++;
+Wrong:  XtSetArg(arglist[num_args], XtNcolor, "black");
+	num_args++;
+
+On to the Specific question at hand:
+
+> Question:  Given the following text translation table and arguments 
+> to an AsciiStringWidget, why do I get the *default* Text translation
+> table? 
+
+[ Table deleted.  ]
+
+> static Arg roll_arg[] = {{XtNheight,(XtArgVal)50},
+>				.
+>				.
+>				.
+>			{XtNtranslations, (XtArgVal) roll_translations},
+>
+> roll_box=XtCreateManagedWidget("roll_input",asciiStringWidgetClass,
+> 		box,roll_arg,XtNumber(roll_arg));
+
+roll_box=XtCreateManagedWidget("roll_input",asciiStringWidgetClass,
+				box, NULL, 0);
+
+XtOverrideTranslations(roll_box, XtParseTranslations(roll_translations));
+
+This will leave all the current translations in the text widget, and
+override only those that you have specified with new values.  The X11R3 Client
+"xman" does some overriding of translations if you would like to look at a
+real example.  If you really want to specify an entirely new translation
+table then have your argument list look like this:
+
+XtSetArg(arglist[num_args], XtNtranslations, 
+	 XtParseTranslationTable(roll_translations));
+@end(M)
+
+@begin(M)
+Date: 11 Jan 89 01:55:38 GMT
+From: Paul Asente
+Organization: DEC Western Software Lab
+Subject: Re: XtNforeground & XtNbackground
+
+
+>Can one use XtGetValues to retrieve the values of XtNforeground
+>and XtNbackground of a realized widget?
+
+Absolutely.  You can even get them for an unrealized widget the same way.
+
+>And what are the values of XtDefaultForeground and XtDefaultBackground?
+
+>From section 9.6.1 of the R3 manual, XtDefaultForeground is the BlackPixel
+of the screen, nad XtDefaultBackground is the WhitePixel of the screen.
+Note that these may not be black and white, depending upon how the server
+was initialized, and that setting reverse video for the application
+results in the sense of these being exchanged.
+@end(M)
+
+@begin(M)
+Subject: Re: XtNx, XtNy for widgets 
+Date: Wed, 11 Jan 89 19:09:13 EST
+From: Chris D. Peterson 
+
+
+> 	Aren't XtNx, XtNy used as offset for a widget from the
+> top-left corner of its parent widget?
+
+Yes, but as with all communication between parent and child, everything
+that the child says may be overridden by the parent.  This is what you
+are probabally seeing.  The Viewport, for instance, insists that its children
+be in the upper-left corner, and take up at least all the visable space on
+the screen.
+@end(M)
+
+@begin(Q)
+Date: 20 Apr 89 09:58:09 GMT
+Subject: XtNreverseVideo --again--
+
+I've mentioned this before and had little response, but hopefully this
+time I will phrase things better so that someone can answer this question.
+
+The question is: what exactly is supposed to happen when the -rv option
+is specified on the command line (or the reverseVideo resource is set to
+"on")?
+
+Normally, one would expect the foreground and background colors to be
+reversed.  yet this isn't quite that simple.  What -are- the foreground
+and background colors?  My Initialize function is getting called and the
+background color (because it's stored in the "core" part of the widget)
+has already been reversed by the higher class.  But I am responsible for
+reversing my foreground color.
+
+Consider an entry in my resource table:
+
+    ...
+    { XtNforeground, XtCForeground, XtRPixel, sizeof(Pixel),
+      XtOffset(widget.foreground), XtRString, XtDefaultForeground},
+    ...
+
+I have no idea what the foreground color defaults to -- in R2, I would say
+"black" and I'd know what to set it to.  here, it's not quite so easy to
+tell.  I'm tempted to specify in my Initialize function:
+
+    if (widget.reverseVideo)
+	widget.foreground = !widget->core.background_pixel;
+
+This is the only way I'm guaranteed that the two colors will be
+different and that it'll work on both color and monochrome (altho the
+results will probably be incorrect for color servers).
+
+Now, let's complicate things a little...
+
+My app-defaults file says:
+
+*foreground: green
+*background: blue
+
+Yet the user invokes the program with the -rv flag expecting his
+foreground to be blue and background to be green.  What happens now?
+there's no way for the Initialize function to know what color is what
+at this point.  The background will have been reversed to some color
+and the foreground will still be "green" but I know that the reverseVideo
+resource is supposed to be on.  What color do I make the foreground?  I
+have no access to the color of the background before it got reversed.  If
+I did, I could just set the foreground color to be that color.
+@end(Q)
+
+@begin(A)
+Subject: Re: XtNreverseVideo --again-- 
+Date: Thu, 20 Apr 89 11:07:51 EDT
+From: Chris D. Peterson 
+
+> Normally, one would expect the foreground and background colors to be
+> reversed.  yet this isn't quite that simple.
+
+Nope, but it is pretty close.  If reverse video is specified by the user
+the the values of XtDefaultForground and XtDefaultBackground are swapped.
+Thus anything that uses these as their default colores will effectively
+have the foreground and background colors swapped.
+
+Without reverse video specified:
+
+XtDefaultForeground = "white"
+XtDefaultBackground = "black"
+
+With reverse video specified:
+
+XtDefaultForeground = "black"
+XtDefaultBackground = "white"
+
+
+>     { XtNforeground, XtCForeground, XtRPixel, sizeof(Pixel),
+>       XtOffset(widget.foreground), XtRString, XtDefaultForeground},
+>     ...
+> 
+> I have no idea what the foreground color defaults to...
+
+It defaults to "white: when -rv is specified, otherwise to "black".  The use
+can override by specifying something like:
+
+test*foreground: blue
+
+
+>     if (widget.reverseVideo)
+> 	widget.foreground = !widget->core.background_pixel;
+
+> This is the only way I'm guaranteed that the two colors will be
+> different and that it'll work on both color and monochrome (altho the
+> results will probably be incorrect for color servers).
+
+Gaak.  This is really gross.  Don't do this you will get random colors on
+a color workstation.
+
+
+> Now, let's complicate things a little...
+
+> My app-defaults file says:
+>
+> *foreground: green
+> *background: blue
+
+> Yet the user invokes the program with the -rv flag expecting his
+> foreground to be blue and background to be green.  What happens now?
+
+you should actually use:
+
+*Foreground: green
+*Background: blue
+
+There are programs that set colors that are not named foreground and background
+but have class Foreground or Background.  The color of the hands on xclock is a
+good example.
+
+Anyway in answer to your initial question.  The user will get the color
+green for all resources named foreground and blue for all resources named
+background.  This will happen reguardless of whether reverse video is
+specified.  The attitude that the toolkit has taken is that reverse video 
+is overrided by explict color specifications.  So if you specify colors then
+reverse video ceases to have any meaning.
+
+@end(A)
+
+@begin(A)
+Date: 20 Apr 89 16:47:20 GMT
+From: Paul Asente
+Organization: DEC Western Software Lab
+Subject: Re: XtNreverseVideo --again--
+
+
+>The question is: what exactly is supposed to happen when the -rv option
+>is specified on the command line (or the reverseVideo resource is set to
+>"on")?
+
+In the toolkit, specifying reverse video means that the pixel values for
+XtDefaultForeground and XtDefaultBackground are swapped.  No more, no less.
+
+>My app-defaults file says:
+>
+>*foreground: green
+>*background: blue
+>
+>Yet the user invokes the program with the -rv flag expecting his
+>foreground to be blue and background to be green.  What happens now?
+
+Things aren't quite that simple.  While the toolkit knows about
+backgrounds, it has no notion of foreground (many widgets don't even have
+a foreground).  This may have been a mistake, but we're stuck with it now.
+A widget may have more than one "foreground" color (say, if it draws both
+text and graphics) and it may have none.  If you've specified foreground
+and background like you did there, it might make sense to swap them, but
+what if the colors are different for each widget?  I use five different
+colors in my mail handling window; what does it mean to specify reverse
+video for it?
+
+-rv is supposed to be a simple convenience for people who don't specify
+colors explicitly.  If you want to achieve the kind of effect you
+specified, you can change the screen's BlackPixel and WhitePixel at server
+invocation time (and maybe later -- SGN implies on page thirteen that they
+can be set but provides no method for actually doing it).
+@end(A)
+
+@begin(Q)
+Date: 20 Apr 89 17:49:59 GMT
+Subject: Possible problem in XtGetApplicationResources
+
+
+   X11R3 Sun 3/50 SunOS 3.5, purdue speedups
+      I have an application in which I am creating an XtResourceList
+   dynamically. The number of resources in the list is determined
+   at run time by a different resource. When I call
+   XtGetApplicationResources with this new resource list, the fields
+   of the resource list are being overwritten by XrmCompileResourceList.
+
+      Ordinarily, this won't cause problems, but in my case, it overwrote
+   (in each resource's resource_name) my only pointer to the heap
+   storage that contained the name of the resource. I consequently run
+   into problems when I try to free that string. I've worked around
+   it by keeping a copy of the pointer but my question is:
+
+   Is this behavior documented anywhere?
+   I get the same behavior in both R2 and R3, and have checked
+   the Resource Management documentation more than once and haven't
+   found a reference.
+   I haven't seen any other applications that build an XtResourceList
+   at runtime. Is it something that just wasn't anticipated, or is it
+   not supposed to be allowed.
+@end(Q)
+
+@begin(A)
+Date: 21 Apr 89 06:18:42 GMT
+From: Paul Asente
+Organization: DEC Western Software Lab
+Subject: Re: Possible problem in XtGetApplicationResources
+
+Summary:  when you use a resource list it gets compiled and the original
+string pointers are overwritten.
+
+This should be documented in the spec (and will be).  We didn't consider
+that people might be using dynamic resource lists with other than constant
+strings in them.
+@end(A)
+
+
+@begin(M)
+From: Chris D. Peterson
+Date: Thu, 17 Aug 89 13:05:00 -0400
+
+> When do the resources specified in the default
+> resources of a widget class get converted to their actual value.
+
+At widget creation time, before the widget's initialize routine
+is called.
+
+> Is the string converted to an actual cursor object (using 
+> XCreateFontCursor just once (at class initialization time?),
+> or every time a widget is created, or something else.
+
+It is converted for each widget, but the converters cache this information.
+@end(M)
+
+@begin(M)
+From: Chris D. Peterson
+Subject: Re: X Toolkit color problem
+Date: Thu, 17 Aug 89 16:32:39 -0400
+
+[Editor's note:  This is true in R3.]
+
+> In article [...] Chris Peterson writes:
+
+> >static Pixel
+> >ConvertColor(w, color_name)
+> >Widget w;
+> >char * color_name;
+> >{
+> >  XrmValue from, to;
+> >
+> >  from.size = sizeof(color_name);  
+> >  from.addr = color_name;
+> >
+> >  XtConvert(w, XtRString, (XrmValuePtr) &from, XtRPixel, (XrmValuePtr) &to);
+> >  if (to.addr == NULL) exit(1);
+> >
+> >  return( (Pixel) *(to.addr) );
+           ^^^^^^^^^^^^^^^^^^^
+
+> Are you sure this is right? ... My understanding is that *(to.addr) returns
+> only 1 byte, since to.addr is a caddr_t. 
+
+> I think the correct solution is to return ( * ((Pixel *) to.addr) ).
+
+I think that you're right, I would definitely suggest that people code it
+with your solution.  It is better to be safe than sorry.
+@end(M)
+
+@begin(M)
+From: Chris D. Peterson
+Subject: Re: How can I set a Pixmap in a Resource file? 
+Date: Fri, 18 Aug 89 11:29:06 -0400
+
+> I want to specify a background pixmap for a widget in a resource
+> file.
+
+You can't, the intrinsics do no define a StringToPixmap converter.  Unless
+the widget or application specifically defines this converter then you are
+out of luck.
+@end(M)
+
+@begin(M)
+Date: 1 Nov 89 17:45:22 GMT
+From: Philip Schneider
+Organization: DEC Advanced Technology Development, Palo Alto, CA
+Subject: Re: Help with double-click recognition.
+
+
+	As I was the original poster of the request for double-click
+recognition help, I feel it is my duty :-) :-) :-) to post a follow-up to
+all the follow-ups (is that grammatical?).
+
+  	Some of you may recall that I wanted to find a way to get an
+Athena widget to recognize double clicks.  My "solution" at the time
+was to have my ButtonPress callback routine do a call to select with
+a timeout corresponding to the desired double-click interval, but it 
+wasn't quite working as I wanted, for no apparent reason.  I had used this
+technique relatively successfully in the past, in non-toolkit X programs, and
+was wondering what the problem was.
+
+	A number of well-intended folks responded with things like "it
+isn't possible", "what about processes being swapped out", "problems with
+network latency", etc.  This is b.s., as far as I'm concerned.  I routinely
+work across an ethernet that is usually "maxed-out", and often using machines
+that are VERY heavily loaded.  I've NEVER seen this to interfere with
+my double-click-recognition routine.  Let's face it -- your basic human
+finger is a LOT slower than most computers and networks.  In a heavily-loaded
+compute environment, one could just increase the threshhold interval.
+
+	For all you know-it-alls out there, here's the problem -- I naively
+thought that the toolkit would make correct calls to XSelectInput for the
+window in question, only allowing events through that were specified in the
+various tables, etc.  So, when I called "select", it would immediately 
+return when that first up-click (i.e., ButtonRelease event) ocurred.  Since
+the second ButtonPress would NOT be able to get into the queue by the time
+my routine checked it (maybe I'm slow, but MY finger can't move as fast as
+the CPU on my machine), the double-click was not recognized.  There are
+several possible solutions to this -- for example, one could explicitly
+call XSelectInput on the window, and disallow ButtonRelease events, or
+make the recognition routine more sophisticated so that it dealt correctly
+with other sorts of events, etc.  In fact, one could write a custom widget 
+that would do this for you!  Amazing, ain't it ???  I've recently been 
+informed that the DECWindows toolkit does seem to correctly implement 
+double-click recognition, so I don't think this is all my imagination.
+
+- Philip Schneider
+@end(M)
+
+@begin(M)
+Subject: Re: Help with double-click recognition. 
+Date: Wed, 01 Nov 89 16:07:09 EST
+From: Ralph R. Swick 
+
+> I naively
+> thought that the toolkit would make correct calls to XSelectInput for the
+> window in question, only allowing events through that were specified in the
+> various tables, etc.
+
+Nothing naive about that at all.
+
+> So, when I called "select", it would immediately 
+> return when that first up-click (i.e., ButtonRelease event) ocurred.
+
+This assumption, on the other hand, will get you into big trouble.
+
+> There are
+> several possible solutions to this
+
+yep and here's one that doesn't take any new code in Xt.   The trick
+with R3 is to find some syntax that will fool the translation manager
+into accepting both a single-click and a multi-click specification.
+I beg off all religious discussions; my job is just to make things
+possible. :-)
+
+Apply the following diff to /R3/x/examples/Xaw/xcommand.c and then try
+the resource
+
+    *Command.translations: \
+	<Btn1Down>,<Btn1Up>:	MyAction("single click") \n\
+	<Btn1Up>(2):		MyAction("double click")
+
+*** /R3/x/examples/Xaw/xcommand.c
+--- test.c
+***************
+*** 23,28 ****
+--- 26,49 ----
+  }
+
+
++ /* ARGSUSED */
++ void MyAction(w, event, params, num_params)
++     Widget w;
++     XEvent *event;
++     String *params;
++     Cardinal *num_params;
++ {
++     int i;
++     printf( "MyAction(" );
++     for (i = *num_params; i > 1; i--) printf( "%s,", *params++ );
++     if (i) printf( "%s", *params );
++     printf( ") invoked.\n" );
++ }
++
++ static XtActionsRec actions[] = {
++     { "MyAction", MyAction }
++ };
++
+  void main(argc, argv)
+      unsigned int argc;
+      char **argv;
+***************
+*** 41,46 ****
+--- 62,70 ----
+                             &argc, argv );
+
+      if (argc != 1) Syntax(argv[0]);
++
++     XtAppAddActions( XtWidgetToApplicationContext(toplevel),
++                    actions, XtNumber(actions) );
+
+      XtCreateManagedWidget( "command", commandWidgetClass, toplevel,
+                           args, XtNumber(args) );
+@end(M)
+
+@begin(M)
+Subject: Re: More about "Composite widgets and translations" 
+Date: Tue, 29 May 90 09:12:26 -0400
+From: Bob Scheifler
+
+    It would appear to be the case that, for a child of a composite widget, you
+    can either setup translations from the applications fallback_resources or
+    you can have translations in your .Xdefaults but not both!
+
+It isn't specific to a child of a composite widget.  For any widget, and
+any resource for that widget, at most one entry from the multitude of
+possible resource files (and pseudo-files like the server property and
+the fallback resources) will be applied to that resource.  You need to
+think of it this way: all of those resource files first get merged together
+(newer additions replacing older entries), and then lookups are made.
+Now, in the case of translation tables, with #override/#augment specifiers,
+it would seem reasonable that the resource entries should "cascade" in some
+way, rather than just "newest wins".  But the resource manager doesn't
+know anything about translation tables; at the resource database level
+they're just strings, like any other strings.
+
+This is one of several deficiencies that we've identified with resource
+management in X.  We (MIT) have some proposed solutions to these problems,
+including a solution to cascading translation tables, but we're a ways from
+having working prototypes or having the solutions formally reviewed and
+blessed by the X Consortium.
+@end(M)
+
+@begin(M)
+Subject: Re: Text widget question #3862195 
+Date: Wed, 22 Feb 89 14:13:01 EST
+From: Ralph R Swick
+
+     I don't understand why it is possible to set the ``edit type''
+     resource of an AsciiDisk or AsciiString widget (i.e. by passing an
+     argument with the name XtNeditType to XtCreateWidget()).
+
+Look at XtSetSubvalues() and Core.set_values_hook
+
+     Neither the AsciiDisk (or AsciiString) nor the Text widget class
+     declares such a resource, nor does a call to XtGetResourceList()
+     return an ``edit type'' resource.
+
+Correct.
+
+     It is obviously possible to set resources for a widget that are
+     neither defined in the widget's class nor in a super class nor
+     by the parent widget's constraints.
+
+Yes, the hooks are put there for many purposes, not all of them benign.
+
+     Is there a way for the
+     application programmer to obtain a list of these resources similar
+     to XtGetResourceList() for ``normal'' resources?
+
+No, not in general.  Such resources are effectively hidden from
+the Intrinsics and unless the widget class itself exports a way to
+retrieve the list of extra resources, you're out of luck.

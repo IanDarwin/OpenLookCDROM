@@ -1,0 +1,819 @@
+#!/bin/csh -f
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+#
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+#
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+
+%include pobbconfig.defs
+#
+%ifdef pobb_RunMachines
+#
+# FIRST, SET UP SOME DEFAULT VARIABLES
+#
+set nonomatch
+%ifdef pobb_AutoPost
+set CUIPROG=?[BigLocalDir]/cuin
+if ( ! -x $${CUIPROG} ) then
+	if ( $${??ANDREWDIR} != 0 ) then
+		set CUIPROG=$${ANDREWDIR}/bin/cuin
+	endif
+endif
+if ( ! -x $${CUIPROG} ) then
+	set CUIPROG=?[POBBAndrewDir]/bin/cuin
+endif
+if ( ! -x $${CUIPROG} ) set CUIPROG=cuin
+%endif pobb_AutoPost
+%ifdef pobbenv_AFS
+set FSPROG=?[BigLocalDir]/fs
+if ( ! -x $${FSPROG} ) then
+	if ( $${??ANDREWDIR} != 0 ) then
+		set FSPROG=$${ANDREWDIR}/bin/fs
+	endif
+endif
+if ( ! -x $${FSPROG} ) then
+	set FSPROG=?[POBBAndrewDir]/bin/fs
+endif
+if ( ! -x $${FSPROG} ) set FSPROG=fs
+%endif pobbenv_AFS
+#
+# NOW PROCESS ARGUMENTS
+#
+if ($$#argv == 0) then
+    echo "use 'BBD -x' for help"
+    exit (0)
+endif
+set XXX=""
+if ( "$$1" == "N") then
+%ifdef pobb_AutoPost
+	set XXX="$${XXX} sublist nightstat nightpurge reindex";
+%endif pobb_AutoPost
+%ifdef pobbenv_AFS
+	set XXX="bbquota $${XXX}";
+%endif pobbenv_AFS
+%ifdef pobb_RunAMSDelivery
+%ifndef pobb_WPInteractive
+	set XXX="fwdcheck $${XXX}";
+%endif pobb_WPInteractive
+	set XXX="sqcheck pocheck $${XXX}";
+%endif pobb_RunAMSDelivery
+%ifdef pobb_WPUpdate
+	set XXX="pwcheck $${XXX}";
+%endif pobb_WPUpdate
+%ifdef pobb_NNTPIn
+	set XXX="nntpstat $${XXX}";
+%endif pobb_NNTPIn
+%ifdef pobb_CaptureAddresses
+	set XXX="$${XXX} capturenew";
+%endif pobb_CaptureAddresses
+endif
+if ( "$$1" == "W") then
+%ifdef pobb_AutoPost
+	set XXX="$${XXX} weekstat weekpurge";
+%endif pobb_AutoPost
+%ifdef pobb_TakeHelpStats
+	set XXX="$${XXX} helpstat"
+%endif pobb_TakeHelpStats
+endif
+if ( "$$1" == "BW") then
+%ifdef pobb_AutoPost
+	set XXX="$${XXX} biweekpurge";
+%endif pobb_AutoPost
+endif
+if ( "$$1" == "M") then
+%ifdef pobb_AutoPost
+	set XXX="$${XXX} monthstat monthpurge"
+%endif pobb_AutoPost
+endif
+if ( "$$1" == "S") then
+%ifdef pobb_AutoPost
+	set XXX="$${XXX} semi-annualstat semi-annualpurge"
+%endif pobb_AutoPost
+endif
+if ( "$${XXX}" != "" ) then
+	set OurArgs=`echo $${XXX}`
+else
+	set OurArgs=`echo $$argv`
+endif
+#
+# IF NO ARGUMENT GIVEN, DON'T RUN
+#
+if ($$#OurArgs == 0) then
+    echo "use 'BBD -x' for help"
+    exit (0)
+endif
+#
+# HERE WE GOOOOOOOOOOOOOOOOOOO
+#
+if ( -d ?[DaemonLog] ) then
+	set TMPLOGDIR=?[DaemonLog]
+else
+	set TMPLOGDIR=/usr/tmp
+endif
+while ( $$#OurArgs > 0 )
+	set MAILTO="?[DaemonBB]@?[ThisDomain]"
+	switch ($$OurArgs[1])
+%ifdef pobb_AutoPost
+	    case "sublist":
+		set OLDLIST=?[BBDaemonDir]/.OldList
+		set SUBJECT="Subscription List Changes"
+		set TO="?[DaemonBB].bbmaint@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].bbmaint@?[ThisDomain]"
+		breaksw
+%endif pobb_AutoPost
+%ifdef pobb_NNTPIn
+	    case "nntpstat":
+		set NEWLIST=?[DaemonLog]/nntppoll.log
+		while (1)
+			set FC=`/bin/ls -f ?[NetDatabaseRoot]/ReadyBox | wc -l`
+			set FCH=0
+			pushd ?[NetDatabaseRoot]/Hold
+			    foreach Dir (*)
+			      if ( -e $${Dir} ) then
+			       set mumble=`/bin/ls -f $${Dir} | wc -l`
+			       if ($${mumble} > 1) then
+				@ mumble -= 2
+				set FCH=`expr $${FCH} + $${mumble}`
+			       endif
+			      endif
+			    end
+			popd
+			set FC2=`/bin/ls -f ?[NetDatabaseRoot]/ReadyBox | wc -l`
+			if ( $$FC2 <= $$FC ) break;
+		end
+		@ FC -= 2
+		set FCT=`expr $${FC} + $${FCH}`
+		set SUBJECT="($${FC}+$${FCH}=$${FCT}) nntppoll statistics"
+		set TO="?[DaemonBB].nntppoll@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].nntppoll@?[ThisDomain]"
+		breaksw
+%endif pobb_NNTPIn
+%ifdef pobb_AutoPost
+	    case "nightstat":
+		set NEWLIST=?[DaemonLog]/cuilog
+		set NEXTLOG=?[DaemonLog]/weeklog
+		set NEXTLOG2=?[CUIDatabase]/weeklog
+		set SUBJECT="Nightly Bboard statistics"
+		set TO="?[DaemonBB].bbstat@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].bbstat@?[ThisDomain]"
+		breaksw
+	    case "weekstat":
+		set NEWLIST=?[DaemonLog]/weeklog
+		set NEXTLOG=?[DaemonLog]/monthlog
+		set NEXTLOG2=?[CUIDatabase]/monthlog
+		set SUBJECT="Weekly Bboard statistics"
+		set TO="?[DaemonBB].bbstat@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].bbstat@?[ThisDomain]"
+		breaksw
+	    case "monthstat":
+		set NEWLIST=?[DaemonLog]/monthlog
+		set NEXTLOG=?[DaemonLog]/yearlog
+		set NEXTLOG2=?[CUIDatabase]/yearlog
+		set SUBJECT="Monthly Bboard statistics"
+%ifdef pobb_RunAMSDelivery
+		set TO="?[DaemonBB].bbstat@?[ThisDomain], ?[StatsDistList], ?[PostmasterName]+monthly-stats@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].bbstat@?[ThisDomain] ?[StatsDistList] ?[PostmasterName]+monthly-stats@?[ThisDomain]"
+%else pobb_RunAMSDelivery
+		set TO="?[DaemonBB].bbstat@?[ThisDomain], ?[PostmasterName]+monthly-stats@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].bbstat@?[ThisDomain] ?[PostmasterName]+monthly-stats@?[ThisDomain]"
+%endif pobb_RunAMSDelivery
+		breaksw
+	    case "semi-annualstat":
+		set NEWLIST=?[DaemonLog]/yearlog
+		set SUBJECT="Semi-Annual Bboard statistics"
+%ifdef pobb_RunAMSDelivery
+		set TO="?[DaemonBB].bbstat@?[ThisDomain], ?[StatsDistList], ?[PostmasterName]+monthly-stats@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].bbstat@?[ThisDomain] ?[StatsDistList] ?[PostmasterName]+monthly-stats@?[ThisDomain]"
+%else pobb_RunAMSDelivery
+		set TO="?[DaemonBB].bbstat@?[ThisDomain], ?[PostmasterName]+monthly-stats@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].bbstat@?[ThisDomain] ?[PostmasterName]+monthly-stats@?[ThisDomain]"
+%endif pobb_RunAMSDelivery
+		breaksw
+%endif pobb_AutoPost
+%ifdef pobb_TakeHelpStats
+	    case "helpstat":
+		set SUBJECT="Help statistics"
+		set TO="?[DaemonBB].help@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].help@?[ThisDomain]"
+		breaksw
+%endif pobb_TakeHelpStats
+%ifdef pobb_AutoPost
+	    case "nightpurge":
+		set SUBJECT="Nightly Purge of Bboards"
+		set TO="?[DaemonBB].bbpurge@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].bbpurge@?[ThisDomain]"
+		breaksw
+	    case "weekpurge":
+		set SUBJECT="Weekly Purge of Bboards"
+		set TO="?[DaemonBB].bbpurge@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].bbpurge@?[ThisDomain]"
+		breaksw
+	    case "biweekpurge":
+		set SUBJECT="Bi-Weekly Purge of Bboards"
+		set TO="?[DaemonBB].bbpurge@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].bbpurge@?[ThisDomain]"
+		breaksw
+	    case "monthpurge":
+		set SUBJECT="Monthly Purge of Bboards"
+		set TO="?[DaemonBB].bbpurge@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].bbpurge@?[ThisDomain]"
+		breaksw
+	    case "semi-annualpurge":
+		set SUBJECT="Semi-Annual Purge of Bboards"
+		set TO="?[DaemonBB].bbpurge@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].bbpurge@?[ThisDomain]"
+		breaksw
+%endif pobb_AutoPost
+%ifdef pobbenv_AFS
+	    case "bbquota":
+		set SUBJECT="Quota Check of Bboard Volumes"
+		set TO="?[DaemonBB].bbquota@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].bbquota@?[ThisDomain]"
+		breaksw
+%endif pobbenv_AFS
+%ifdef pobb_AutoPost
+	    case "reindex":
+		set SUBJECT="Rebuilding master update files"
+		set TO="?[DaemonBB].reindex@?[ThisDomain]"
+		set MAILTO="?[DaemonBB].reindex@?[ThisDomain]"
+		breaksw
+%endif pobb_AutoPost
+%ifdef pobb_WPUpdate
+	    case "pwcheck":
+		set SUBJECT="Passwd-file Check"
+		set TO="?[PostmasterName]+pwcheck@?[ThisDomain]"
+		set MAILTO="?[PostmasterName]+pwcheck@?[ThisDomain]"
+		breaksw
+%endif pobb_WPUpdate
+%ifdef pobb_RunAMSDelivery
+	    case "sqcheck":
+		set SUBJECT="Undeliverable Mail Check"
+		set TO="?[PostmasterName]+sqcheck@?[ThisDomain]"
+		set MAILTO="?[PostmasterName]+sqcheck@?[ThisDomain]"
+		breaksw
+	    case "pocheck":
+		set SUBJECT="PO-Machine Keep-alive Check";
+		set TO="?[PostmasterName]+pocheck@?[ThisDomain]"
+		set MAILTO="?[PostmasterName]+pocheck@?[ThisDomain]"
+		breaksw
+	    case "fwdcheck":
+		set SUBJECT="Check for Bad Forwarding Addresses";
+		set TO="?[PostmasterName]+fwdcheck@?[ThisDomain]"
+		set MAILTO="?[PostmasterName]+fwdcheck@?[ThisDomain]"
+		breaksw
+%endif pobb_RunAMSDelivery
+%ifdef pobb_CaptureAddresses
+	    case "capturenew":
+		set SUBJECT="Incorporate New Addresses";
+		set TO="?[PostmasterName]+capturenew@?[ThisDomain]"
+		set MAILTO="?[PostmasterName]+capturenew@?[ThisDomain]"
+		breaksw
+%endif pobb_CaptureAddresses
+	    default:
+		echo "\
+One of the following flags must be given\
+	N\
+%ifdef pobb_AutoPost
+	-	sublist\
+%endif pobb_AutoPost
+%ifdef pobb_NNTPIn
+	-	nntpstat\
+%endif pobb_NNTPIn
+%ifdef pobb_AutoPost
+	-	nightstat\
+	-	nightpurge\
+%endif pobb_AutoPost
+%ifdef pobbenv_AFS
+	-	bbquota\
+%endif pobbenv_AFS
+%ifdef pobb_AutoPost
+	-	reindex\
+%endif pobb_AutoPost
+%ifdef pobb_WPUpdate
+	-	pwcheck\
+%endif pobb_WPUpdate
+%ifdef pobb_RunAMSDelivery
+	-	sqcheck\
+	-	pocheck\
+	-	fwdcheck\
+%endif pobb_RunAMSDelivery
+%ifdef pobb_CaptureAddresses
+	-	capturenew\
+%endif pobb_CaptureAddresses
+	W\
+%ifdef pobb_AutoPost
+	-	weekstat\
+%endif pobb_AutoPost
+%ifdef pobb_TakeHelpStats
+	-	helpstat\
+%endif pobb_TakeHelpStats
+%ifdef pobb_AutoPost
+	-	weekpurge\
+%endif pobb_AutoPost
+	BW\
+%ifdef pobb_AutoPost
+	-	biweekpurge\
+%endif pobb_AutoPost
+	M\
+%ifdef pobb_AutoPost
+	-	monthstat\
+	-	monthpurge\
+%endif pobb_AutoPost
+%ifdef pobb_AutoPost
+	S\
+	-	semi-annualstat\
+	-	semi-annualpurge"
+%endif pobb_AutoPost
+	    exit (0)
+	endsw
+
+################ NOW LETS SETUP THE TEMPORARY FILES ################
+set POST=$${TMPLOGDIR}/POST$$$$
+set TMPLOG1=$${TMPLOGDIR}/TMPLOG1$$$$
+set TMPLOG2=$${TMPLOGDIR}/TMPLOG2$$$$
+set TMPLOG3=$${TMPLOGDIR}/TMPLOG3$$$$
+set AWKTMP=$${TMPLOGDIR}/AWKTMP$$$$
+echo "BBD: $$OurArgs[1] starting NOW" >& /dev/console
+echo "Date: `?[arpadatepgm]`" >& $$POST
+echo "From: BBD daemon <?[PostmasterName]+@?[WorkstationCell]>" >>& $$POST
+echo "Subject: $$SUBJECT" >>& $$POST
+echo '?[BBDFormatHeader]' >>& $$POST
+echo "To: $$TO" >>& $$POST
+echo "" >>& $$POST
+echo '?[arrlist(BBDBeginBody, "\\\n")]' >>& $$POST
+echo "\center{===================================}" >>& $$POST
+
+################ NOW PERFORM EACH TASK ASSIGNED ################
+switch ($$OurArgs[1])
+#### SUBSCRIPTION LIST CHANGES ####
+%ifdef pobb_AutoPost
+	case "sublist":
+		rm -f $$TMPLOG2
+		foreach foo ( `echo '?[DEFAULTSEARCHPATHTEMPLATE]' | tr ':' ' '` ?[LOCALSEARCHPATHTEMPLATE] ?[OFFICIALSEARCHPATHTEMPLATE] ?[EXTERNALSEARCHPATHTEMPLATE] )
+			if ( "$$foo" =~ */* ) cat $$foo/.SubscriptionMap >> $$TMPLOG2
+		end
+		sort -u $$TMPLOG2 >>& $$TMPLOG1
+		echo "\majorheading{Subscriptions that have been Removed}" >>& $$POST
+		echo "\center{===================================}" >>& $$POST
+		comm -23 $$OLDLIST $$TMPLOG1 >>& $$POST
+		echo "" >> $$POST
+		echo "\majorheading{Subscriptions that have been Added}" >>& $$POST
+		echo "\center{===================================}" >>& $$POST
+		comm -13 $$OLDLIST $$TMPLOG1  >>& $$POST
+		mv $$TMPLOG1 $$OLDLIST
+		rm -f $$TMPLOG2
+		breaksw
+%endif pobb_AutoPost
+%ifdef pobb_NNTPIn
+#### NNTPPOLL STATISTICS ####
+	    case "nntpstat":
+		mv $$NEWLIST $$TMPLOG1
+		echo "\majorheading{Summary of nntppoll activity}" >>& $$POST
+		sed -e "s;<warning:nntppoll>;# ;g" \
+			-e "s/(/ /g"\
+			-e "s/)/ /g" \
+			-e "s/d:/d /g" \
+			-e "s/,/ /g" $$TMPLOG1 \
+			| tr "a-z" "A-Z" >>& $$TMPLOG2
+		
+		echo "\typewriter{" >>& $$POST
+		cat > $$AWKTMP << XXeofXX
+(\$$1 == "#" && \$$2 == "NUMBER"){ pro += \$$6}
+(\$$1 == "#" && \$$2 == "TRANSFER"){  new += \$$4; dup += \$$6; err += \$$8}
+(\$$1 == "#" && \$$2 == "STARTING"){ starts += 1}
+END{
+	printf "Number of startings: %7d\n", starts;
+	printf "Number processed:    %7d\n", pro;
+	printf "New: %6d\nDup: %6d\nErr: %6d\n", new, dup, err;
+	printf "=========================\n"
+}
+XXeofXX
+		awk -f $$AWKTMP $$TMPLOG2 >>& $$POST
+		rm -f $$AWKTMP
+		echo "}" >>& $$POST
+		
+		set critical=`egrep -c critical $$TMPLOG1`
+		if ($$critical) then
+		    echo "\majorheading{*** CRITICAL ERROR SUMMARY ***}" >>& $$POST
+		    egrep critical $$TMPLOG1 \
+			| sed -e 's;<[0-9A-Za-z\.\*\-:&\!\%\^@#=_\[\]]*>;;g' \
+			-e 's; rename[ /a-z\.0-9A-Z]*; rename ;g'\
+			| sort | uniq -c | sort -nr  >>& $$POST
+		endif
+#		cp $$TMPLOG1 ?[DaemonLog]/nntp.log.old
+		breaksw
+%endif pobb_NNTPIn
+%ifdef pobb_AutoPost
+#### NIGHTLY BBOARD STATISTICS ####
+	    case "nightstat":
+		foreach i (?[ViceCUILogsDir]/cuilog.*)
+		    if ( -e $$i ) then
+			mv $$i ?[ViceCUILogsDir]/foo
+			cat ?[ViceCUILogsDir]/foo >> $$NEWLIST
+			rm -f ?[ViceCUILogsDir]/foo
+		    endif
+		end
+#		cp $$NEWLIST ?[DaemonLog]/cuilog.old
+		mv $$NEWLIST $$TMPLOG1
+		echo "\majorheading{Summary of bboard posting}" >>& $$POST
+		echo "" >>& $$POST
+		sed -e 's/<cui:warning>/# /g' \
+			-e 's/(/ /g' \
+			-e 's/)/ /g' \
+			-e 's/d:/d /g'  \
+			-e 's/message.*read in from //g' \
+%ifdef pobb_NNTPIn
+			-e 's;?[NetDatabaseRoot]/ReadyBox.;?[NetnewsRootName](in);' \
+			-e 's;?[NetDatabaseRoot];?[NetnewsRootName](in);' \
+%endif pobb_NNTPIn
+			-e 's;~/?[MailboxName].;?[PostmasterName];g' \
+			-e 's;/.*/\([^/]*\)/[MR][A-Za-z0-9]*ox\.;\1;' \
+			-e 's;?[InternetUser];?[InternetRootName](lists-in);' \
+%ifdef pobb_UnDigest
+			-e 's;?[UnDigestUser];?[InternetRootName](digests-in);' \
+%endif pobb_UnDigest
+%ifdef pobb_NNTPOut
+			-e 's;?[OutnewsID];?[NetnewsRootName](out);' \
+%endif pobb_NNTPOut
+			-e 's;[0-9]*:[0-9]*:[0-9]* [AP]M;;g' $$TMPLOG1 >& $$TMPLOG3
+		cat > $$AWKTMP << XXeofXX
+(\$$1 == "#"){baz=substr(\$$2,1,1); if (baz >= "0" && baz <= "9") {sum[\$$3] += \$$2;}}
+END{
+	for (i in sum) printf "%s %6d\n", i, sum[i];
+}
+XXeofXX
+		awk -f $$AWKTMP $$TMPLOG3 >& $$TMPLOG2
+		rm -f $$AWKTMP
+		cat > $$AWKTMP << XXeofXX
+{if (\$$2 != 0) {printf "%21s %6d\n",\$$1,\$$2; total += \$$2}}
+END{
+	printf "%s\n%21s %6d\n", "------------------------", "Total processed", total;
+}
+XXeofXX
+		sed -e 's;^ *;;' $$TMPLOG2 | sort -d -f | awk -f $$AWKTMP >& $$TMPLOG3
+		rm -f $$AWKTMP
+		cat $$TMPLOG3 >> $$NEXTLOG
+		cp $$NEXTLOG $$NEXTLOG2
+		echo "\typewriter{ \smaller{" >>& $$POST
+		cat $$TMPLOG3 >>& $$POST
+		echo "} }" >>& $$POST
+		set critical=0
+		set critical=`egrep -c critical $$TMPLOG1`
+		if ($$critical)then
+		    echo "\majorheading{*** CRITICAL ERROR SUMMARY ***}" >>& $$POST
+		    egrep critical $$TMPLOG1 \
+			| sed -e 's;([0-9]*:[0-9][0-9]:[0-9][0-9] [AP]M);;g' \
+			-e 's;Messages in;;g' \
+			-e 's;could not be.*progress).*-;: ;g' \
+			| sort | uniq -c | sort -nr >>& $$POST
+		endif
+		breaksw
+#### WEEKLY BBOARD STATISTICS ####
+	    case "weekstat":
+		echo "\majorheading{Volume of postings for the week}" >> $$POST
+		echo "\typewriter{ \smaller{" >> $$POST
+		mv $$NEWLIST $$TMPLOG1
+		sed -e 's;@\*;;g' $$TMPLOG1 >> $$TMPLOG2
+		cat > $$AWKTMP << XXeofXX
+((\$$1 != "Total") && (\$$1 != "------------------------") && (\$$1 != "") && (\$$1 != "Number") && (\$$1 != "Average") && (\$$1 != "Seconds")){if (\$$2 != 0) sum[\$$1] += \$$2;}
+(\$$1 == "------------------------") {print \$$1;}
+END{
+	for (i in sum) printf "%s %6d\n", i, sum[i];
+}
+XXeofXX
+		awk -f $$AWKTMP $$TMPLOG2 >& $$TMPLOG1
+		cat > $$AWKTMP << XXeofXX
+(\$$1 != "------------------------"){if (\$$2 != 0) {printf "%21s %6d\n", \$$1, \$$2; total += \$$2;}}
+(\$$1 == "------------------------") {days++;}
+END{
+	printf"%s\n%21s %6d  [%d days]  (%d average per day)\n","------------------------","Total processed", total, days, total/days;
+}
+XXeofXX
+		sed -e 's;^ *;;' $$TMPLOG1 | sort -d -f | awk -f $$AWKTMP > $$TMPLOG2
+		rm -f $$AWKTMP
+		cat $$TMPLOG2 >> $$NEXTLOG
+		cp $$NEXTLOG $$NEXTLOG2
+		cat $$TMPLOG2 >> $$POST
+		echo "} }" >> $$POST
+		breaksw
+#### MONTHLY BBOARD STATISTICS ####
+	    case "monthstat":
+		echo "\majorheading{Summary of bboard posting}" >>& $$POST
+		echo "" >>& $$POST
+		mv $$NEWLIST $$TMPLOG1
+		cat $$TMPLOG1 | sed -e 's;@\*;;g' > $$TMPLOG2
+		cat > $$AWKTMP << XXeofXX
+((\$$1 != "Total") && (\$$1 != "------------------------") && (\$$1 != "") && (\$$1 != "Number") && (\$$1 != "Average") && (\$$1 != "Seconds")){if (\$$2 != 0) sum[\$$1] += \$$2;}
+(\$$1 == "------------------------") {print \$$1;}
+END{
+	for (i in sum) printf "%s %6d\n", i, sum[i];
+}
+XXeofXX
+		awk -f $$AWKTMP $$TMPLOG2 > $$TMPLOG1
+		cat > $$AWKTMP << XXeofXX
+(\$$1 != "------------------------") {if (\$$2 != 0) {printf "%21s %6d\n", \$$1, \$$2; total += \$$2;}}
+(\$$1 == "------------------------") {weeks++;}
+END{
+	printf "%s\n%21s %6d\n", "------------------------", "Total processed", total;
+	printf "\nNumber of weeks = %d\n", weeks;
+	printf "Average per week = %d\n\n", total/weeks;
+	printf "Average per day = %d\n\n", total/(weeks * 7);
+	printf "Average per hour = %d\n", total/(weeks * 7 * 24);
+	printf "Seconds per message = %d\n", (weeks * 7 * 24 * 60 * 60) / total;
+}
+XXeofXX
+		sed -e 's;^ *;;' $$TMPLOG1 | sort -d -f | awk -f $$AWKTMP > $$TMPLOG2
+		rm -f $$AWKTMP
+		cat $$TMPLOG2 >> $$NEXTLOG
+		cp $$NEXTLOG $$NEXTLOG2
+		echo "\typewriter{ \smaller{" >>& $$POST
+		cat $$TMPLOG2 >> $$POST
+		echo "} }" >>& $$POST
+		breaksw
+#### SEMI-ANNUAL BBOARD STATISTICS ####
+	    case "semi-annualstat":
+		echo "\majorheading{Summary of bboard posting for the Year}" >>& $$POST
+		echo "" >>& $$POST
+		mv $$NEWLIST $$TMPLOG1
+		cat $$TMPLOG1 | sed -e 's;@\*;;g' > $$TMPLOG2
+		cat > $$AWKTMP << XXeofXX
+((\$$1 != "Total") && (\$$1 != "------------------------") && (\$$1 != "") && (\$$1 != "Number") && (\$$1 != "Average") && (\$$1 != "Seconds")){if (\$$2 != 0) {sum[\$$1] += \$$2;}}
+(\$$1 == "------------------------") {print \$$1;}
+END{
+	for (i in sum) printf "%s %6d\n", i, sum[i];
+}
+XXeofXX
+		awk -f $$AWKTMP $$TMPLOG2 > $$TMPLOG1
+		cat > $$AWKTMP << XXeofXX
+(\$$1 != "------------------------") {if (\$$2 != 0) {printf "%21s %6d\n", \$$1, \$$2; total += \$$2;}}
+(\$$1 == "------------------------") {months++;}
+END{
+	printf "%s\n%21s %6d\n", "------------------------", "Total processed", total;
+	printf "\nNumber of months = %d\n", months;
+	printf "Average per month = %d\n", total/months;
+	printf "Number of weeks = %d\n", (months * 4.35);
+	printf "Average per week = %d\n", total/(months * 4.35);
+	printf "Average per day = %d\n\n", total/(months * 30.44);
+	printf "Average per hour = %d\n", total/(months * 30.44 * 24);
+	printf "Seconds per message = %d\n", (months * 30.44 * 24 * 60 * 60) / total;
+}
+XXeofXX
+		sed -e 's;^ *;;' $$TMPLOG1 | sort -d -f | awk -f $$AWKTMP > $$TMPLOG2
+		rm -f $$AWKTMP
+		echo "\typewriter{ \smaller{" >>& $$POST
+		cat $$TMPLOG2 >> $$POST
+		echo "} }" >>& $$POST
+		breaksw
+%endif pobb_AutoPost
+%ifdef pobb_TakeHelpStats
+#### HELP SYSTEM STATISTICS ####
+	    case "helpstat":
+		echo "Report of weekly help system daemon:" >> $$POST
+		echo "" >> $$POST
+		foreach DIRECTORY (?[BBDHelpPrefix]/?[BBDHelpSuffix])
+		  if ( -e $$DIRECTORY ) then
+		    cd $$DIRECTORY
+		    echo "Checking help in $$DIRECTORY" >> $$POST
+		    echo " " >> $$POST
+		    echo "Missing Help:" >> $$POST
+		    echo " " >>$$POST
+		    ls | grep Missing | sort -t. -f -r +2 >> $$POST
+		    rm -rf $$DIRECTORY
+		  endif
+		end
+		echo "End of weekly help system status report" >> $$POST
+		breaksw
+%endif pobb_TakeHelpStats
+%ifdef pobb_AutoPost
+#### NIGHTLY BBOARD PURGING ####
+	    case "nightpurge":
+		$$CUIPROG >>& $$POST <<!
+		set level wizard 
+		set script on 
+		set term 0 500
+		set whatmeworry on
+# Stupid pobbconf has no decent way of dealing with zero-size arrays.
+%ifdef pobb_DowJonesIn
+		echo ++Epoching ?[arrlist(PurgingCommandsNightly, "++\n\t\tepoch \2\n\t\techo ++Epoching ")]++
+		epoch ?[LastArrlist]
+%endif pobb_DowJonesIn
+!
+		breaksw
+#### WEEKLY BBOARD PURGING ####
+	    case "weekpurge":
+		$$CUIPROG >>& $$TMPLOG1 <<!
+		set level wizard
+		set script on
+		set term 0 500
+		set whatmeworry on
+		echo ++Epoching ?[arrlist(PurgingCommandsWeekly, "++\n\t\tepoch \2\n\t\techo ++Epoching ")]++
+		epoch ?[LastArrlist]
+!
+		cat > $$AWKTMP << XXeofXX
+BEGIN{deleted = 0;}
+(\$$1 == "Deleted"){deleted += \$$2;}
+END{
+	printf "Total deleted: %d\n", deleted;
+}
+XXeofXX
+		sed -e 's;<warning:ms-[0-9]*>;;g' $$TMPLOG1 | awk -f $$AWKTMP >>& $$POST
+		rm -f $$AWKTMP
+		echo "	\
+			\
+			BREAKDOWN:" >>& $$POST
+		cat $$TMPLOG1 >>& $$POST
+		breaksw
+#### BIWEEKLY BBOARD PURGING ####
+	    case "biweekpurge":
+		$$CUIPROG >>& $$TMPLOG1 <<!
+		set level wizard
+		set script on
+		set term 0 500
+		set whatmeworry on
+		echo ++Epoching ?[arrlist(PurgingCommandsBiWeekly, "++\n\t\tepoch \2\n\t\techo ++Epoching ")]++
+		epoch ?[LastArrlist]
+!
+		cat > $$AWKTMP << XXeofXX
+BEGIN{deleted = 0;}
+(\$$1 == "Deleted"){deleted += \$$2;}
+END{
+	printf "Total deleted: %d\n", deleted;
+}
+XXeofXX
+		sed -e 's;<warning:ms-[0-9]*>;;g' $$TMPLOG1 | awk -f $$AWKTMP >>& $$POST
+		rm -f $$AWKTMP
+		echo "	\
+			\
+			BREAKDOWN:" >>& $$POST
+		cat $$TMPLOG1 >>& $$POST
+		breaksw
+#### MONTHLY BBOARD PURGING ####
+	    case "monthpurge":
+		$$CUIPROG >>& $$TMPLOG1 <<!
+		set level wizard
+		set script on
+		set term 0 500
+		set whatmeworry on
+		echo ++Epoching ?[arrlist(PurgingCommandsMonthly, "++\n\t\tepoch \2\n\t\techo ++Epoching ")]++
+		epoch ?[LastArrlist]
+!
+		cat > $$AWKTMP << XXeofXX
+BEGIN{deleted = 0;}
+(\$$1 == "Deleted"){deleted += \$$2;}
+END{
+	printf "Total deleted: %d\n", deleted;
+}
+XXeofXX
+		sed -e 's;<warning:ms-[0-9]*>;;g' $$TMPLOG1 | awk -f $$AWKTMP >>& $$POST
+		rm -f $$AWKTMP
+		echo "	\
+			\
+			BREAKDOWN:" >>& $$POST
+		cat $$TMPLOG1 >>& $$POST
+		breaksw
+#### SEMI-ANNUAL BBOARD PURGING ####
+	    case "semi-annualpurge":
+		$$CUIPROG >>& $$TMPLOG1 <<!
+		set level wizard
+		set script on
+		set term 0 500
+		set whatmeworry on
+		echo ++Epoching ?[arrlist(PurgingCommandsSemiAnnually, "++\n\t\tepoch \2\n\t\techo ++Epoching ")]++
+		epoch ?[LastArrlist]
+!
+		cat > $$AWKTMP << XXeofXX
+BEGIN{deleted = 0;}
+(\$$1 == "Deleted"){deleted += \$$2;}
+END{
+	printf "Total deleted: %d\n", deleted;
+}
+XXeofXX
+		sed -e 's;<warning:ms-[0-9]*>;;g' $$TMPLOG1 | awk -f $$AWKTMP >>& $$POST
+		echo "	\
+			\
+			BREAKDOWN:" >>& $$POST
+		rm -f $$AWKTMP
+		cat $$TMPLOG1 >>& $$POST
+		breaksw
+%endif pobb_AutoPost
+%ifdef pobbenv_AFS
+####  BBOARD VOLUME QUOTA CHECKING ####
+	    case "bbquota":
+		echo "\typewriter{ .">>& $$POST
+		echo "Volume Name          Quota  Used   % Used  Partition " >>& $$POST
+		$${FSPROG} listquota ?[arrlist(BBDMonitorVolumePaths, " \\\n\t\t\t")] \
+			|& sort -u | sort +3nr -5 +0r -1  >>& $$POST
+		echo "}">>& $$POST
+		breaksw
+%endif pobbenv_AFS
+%ifdef pobb_AutoPost
+#### REINDEX MASTER UPDATE FILES ####
+	    case "reindex":
+		echo "Before: checking Update files:" >>& $$POST
+		foreach Dir ( `echo '?[DEFAULTSEARCHPATHTEMPLATE]' | tr ':' ' '` ?[LOCALSEARCHPATHTEMPLATE] ?[OFFICIALSEARCHPATHTEMPLATE] ?[EXTERNALSEARCHPATHTEMPLATE] )
+		  if ( "$$Dir" =~ */* ) then
+		    echo "$${Dir}:" >>& $$POST
+		    ls -l $${Dir}/{.SubscriptionMap,.MS.Master/Update*} >>& $$POST
+		  endif
+		end
+		$$CUIPROG set level wizard \; set term 0 500\; take all \; quit >>& $$POST
+		foreach Dir ( `echo '?[DEFAULTSEARCHPATHTEMPLATE]' | tr ':' ' '` ?[LOCALSEARCHPATHTEMPLATE] ?[OFFICIALSEARCHPATHTEMPLATE] ?[EXTERNALSEARCHPATHTEMPLATE] )
+		  if ( "$$Dir" =~ */* ) then
+		    cat $${Dir}/{.SubscriptionMap,.MS.Master/Update} > /dev/null
+		  endif
+		end
+		$$CUIPROG set level wizard \; set term 0 500\; rebuild \; reindex \; take all \; quit >>& $$POST
+		echo "After: checking Update files:" >>& $$POST
+		foreach Dir ( `echo '?[DEFAULTSEARCHPATHTEMPLATE]' | tr ':' ' '` ?[LOCALSEARCHPATHTEMPLATE] ?[OFFICIALSEARCHPATHTEMPLATE] ?[EXTERNALSEARCHPATHTEMPLATE] )
+		  if ( "$$Dir" =~ */* ) then
+		    echo "$${Dir}:" >>& $$POST
+		    ls -l $${Dir}/{.SubscriptionMap,.MS.Master/Update*} >>& $$POST
+		  endif
+		end
+		breaksw
+%endif pobb_AutoPost
+%ifdef pobb_WPUpdate
+#### CHECK PASSWD-FILE UPDATING ####
+	    case "pwcheck":
+		echo 'Password files:' >>& $$POST
+		set someDir=?[WPAffilSrc]
+		if ( "$$someDir" == "" ) set someDir=/etc/passwd
+		ls -lrt $${someDir:h}/passwd* ?[WPPasswdFileName] /etc/passwd ?[wpbuildDir]/hist/lastpass* ?[wpbuildDir]/hist/Snapshot.PW >>& $$POST
+		breaksw
+%endif pobb_WPUpdate
+%ifdef pobb_RunAMSDelivery
+#### CHECK FOR UNDELIVERABLE MAIL ####
+	    case "sqcheck":
+		echo 'Problems encountered in delivering mail:' >> $$POST
+		pushd ?[CellCommonPrefix]?[WorkstationCell]?[CellCommonSuffix]?[CellCommonMailQueueDirSuffix]
+		(cat ?[SlowQueueNamePrefix]*/S* | egrep '^#To' | egrep -v 'Disc quota') |& sort -u >> $$POST
+		breaksw
+#### CHECK FOR DEAD POST-OFFICE MACHINES ####
+	    case "pocheck":
+		echo "(Files should be dated within an hour or so of `date`.)" >>& $$POST
+		echo "Post office queue files:" >>& $$POST
+		ls -l ?[POQueues] >>& $$POST
+		breaksw
+#### CHECK FOR BAD FORWARDING ADDRESSES ####
+	    case "fwdcheck":
+		echo "Possibly-bad forwarding addresses:" >>& $$POST
+		?[genacctspgm] | awk -F: '{numfoo=split($$3, foo, ","); \
+	for (k=1; k <= numfoo; ++k) { \
+		while (substr(foo[k], 1, 1) == " ") foo[k] = substr(foo[k], 2); \
+		print $$1 ":" $$2 ":" foo[k]; \
+	} \
+}' | egrep '@' | egrep -v '@[^, ]*\.[Ee][Dd][Uu]$$|@[^, ]*\.[Nn][Ee][Tt]$$|@[^, ]*\.[Cc][Oo][Mm]$$|@[^, ]*\.[Gg][Oo][Vv]$$|@[^, ]*\.[Mm][Ii][Ll]$$|@[^, ]*\.[Uu][Ss]$$|@[^, ]*\.[Bb][Ii][Tt][Nn][Ee][Tt]$$|@[^, ]*\.[Oo][Rr][Gg]$$' >>& $$POST
+		breaksw
+%endif pobb_RunAMSDelivery
+%ifdef pobb_CaptureAddresses
+#### INCORPORATE NEWLY-CAPTURED ADDRESSES ####
+	    case "capturenew":
+		pushd ?[AFSCaptureProcess]/Addrs
+		echo "Before processing (date `date`):" >>& $$POST
+		ls -l Addrs Expiring >>& $$POST
+		./newaddr.csh >>& $$POST
+		echo "After processing (date `date`):" >>& $$POST
+		ls -l Addrs Expiring >>& $$POST
+		popd
+		breaksw
+%endif pobb_CaptureAddresses
+	endsw
+################ TIE UP THE PACKAGE AND SEND IT AWAY ################
+	echo "\center{===================================" >>& $$POST
+	echo "Run ended: `?[arpadatepgm]`" >>& $$POST
+	echo "}" >>& $$POST
+	echo '?[BBDEndBodyLine]' >>& $$POST
+%ifdef pobb_RunAMSDelivery
+	?[queuemail] -f $$POST -a $$MAILTO
+%else pobb_RunAMSDelivery
+	?[oldsendmailpgm] $$MAILTO < $$POST
+%endif pobb_RunAMSDelivery
+################ CLEAN UP TEMPORARY FILES ################
+	rm -f $$POST $$TMPLOG1 $$TMPLOG2 $$TMPLOG3
+	echo "BBD Daemon: $$OurArgs[1] - ending NOW" > /dev/console
+################ SHIFT ARGUMENTS AND START AGAIN ################
+	shift OurArgs
+end
+
+%endif pobb_RunMachines

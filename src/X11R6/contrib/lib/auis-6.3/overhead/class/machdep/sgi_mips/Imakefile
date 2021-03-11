@@ -1,0 +1,75 @@
+ /* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+ *        For full copyright information see:'andrew/config/COPYRITE'     *
+\* ********************************************************************** */
+
+/*
+	$Disclaimer: 
+*Permission to use, copy, modify, and distribute this software and its 
+*documentation for any purpose is hereby granted without fee, 
+*provided that the above copyright notice appear in all copies and that 
+*both that copyright notice, this permission notice, and the following 
+*disclaimer appear in supporting documentation, and that the names of 
+*IBM, Carnegie Mellon University, and other copyright holders, not be 
+*used in advertising or publicity pertaining to distribution of the software 
+*without specific, written prior permission.
+*
+*IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+*DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+*ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+*SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+*BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+*DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+*WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+*ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+*OF THIS SOFTWARE.
+* $
+*/
+
+DependTarget()
+
+NormalObjectRule()
+NormalAsmPPRule()
+
+all:: globals.o entry.o doload.o
+
+globals.o: globalrefs._h
+
+entry.o: entry.s
+	cc -c -I. entry.s
+
+globalrefs._h:	libc.eplist
+		$(AWK) '{printf "\tglobalref(%s)\n", $$2}' libc.eplist \
+		| sed -e '/\./d' >,globalrefs._h
+		$(MV) ,globalrefs._h globalrefs._h
+
+libc.eplist:	$(CLIB) $(CRT0PATH) getlist.awk
+		$(RM) /tmp/libhack.a
+		$(AR) /tmp/libhack.a $(CRT0PATH)
+		$(NM) -Bgo $(CLIB) /tmp/libhack.a | $(TR) ":" " " | \
+			$(AWK) -f getlist.awk >,libc.eplist
+		$(MV) ,libc.eplist libc.eplist
+
+InstallLibrary(libcx.a, $(DESTDIR)/lib)
+InstallCshScript(makedo.csh, $(DESTDIR)/bin/makedo)
+InstallShScript(mksdpool, $(DESTDIR)/etc/mksdpool)
+
+all::		libcx.a
+
+DelList._:	libc.eplist
+		$(AWK) '{print $$1}' libc.eplist | $(SORT) -u \
+		| sed -e '/^crt.\.o/d' > ,DelList._
+		$(MV) ,DelList._ DelList._
+
+libcx.a:	$(CLIB) DelList._
+		$(CP) $(CLIB) ,libcx.a
+		$(CHMODW) ,libcx.a
+		-ar d ,libcx.a `cat DelList._`
+		$(RANLIB) ,libcx.a
+		$(MV) ,libcx.a libcx.a
+
+ProgramTarget(dofix,dofix.o,,)
+InstallProgram(dofix,$(DESTDIR)/bin)
+
+clean::
+	$(RM) DelList._ libc.eplist globalrefs._h ,* libcx.a

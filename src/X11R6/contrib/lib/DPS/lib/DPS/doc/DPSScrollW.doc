@@ -1,0 +1,1062 @@
+============================
+  THE DPS SCROLLING WIDGET
+============================
+
+ * (c) Copyright 1994 Adobe Systems Incorporated.
+ * All rights reserved.
+ * 
+ * Permission to use, copy, modify, distribute, and sublicense this software
+ * and its documentation for any purpose and without fee is hereby granted,
+ * provided that the above copyright notices appear in all copies and that
+ * both those copyright notices and this permission notice appear in
+ * supporting documentation and that the name of Adobe Systems Incorporated
+ * not be used in advertising or publicity pertaining to distribution of the
+ * software without specific, written prior permission.  No trademark license
+ * to use the Adobe trademarks is hereby granted.  If the Adobe trademark
+ * "Display PostScript"(tm) is used to describe this software, its
+ * functionality or for any other purpose, such use shall be limited to a
+ * statement that this software works in conjunction with the Display
+ * PostScript system.  Proper trademark attribution to reflect Adobe's
+ * ownership of the trademark shall be given whenever any such reference to
+ * the Display PostScript system is made.
+ * 
+ * ADOBE MAKES NO REPRESENTATIONS ABOUT THE SUITABILITY OF THE SOFTWARE FOR
+ * ANY PURPOSE.  IT IS PROVIDED "AS IS" WITHOUT EXPRESS OR IMPLIED WARRANTY.
+ * ADOBE DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL
+ * IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NON- INFRINGEMENT OF THIRD PARTY RIGHTS.  IN NO EVENT SHALL ADOBE BE LIABLE
+ * TO YOU OR ANY OTHER PARTY FOR ANY SPECIAL, INDIRECT, OR CONSEQUENTIAL
+ * DAMAGES OR ANY DAMAGES WHATSOEVER WHETHER IN AN ACTION OF CONTRACT,
+ * NEGLIGENCE, STRICT LIABILITY OR ANY OTHER ACTION ARISING OUT OF OR IN
+ * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.  ADOBE WILL NOT
+ * PROVIDE ANY TRAINING OR OTHER SUPPORT FOR THE SOFTWARE.
+ * 
+ * Adobe, PostScript, and Display PostScript are trademarks of Adobe Systems
+ * Incorporated which may be registered in certain jurisdictions
+
+===========================
+
+The DPS Scrolling widget is a Motif widget that supports scrolling in an
+application that uses the Display PostScript system.  It contains a Motif
+DrawingArea widget within a Motif ScrolledWindow widget.  The standard
+ScrolledWindow functionality is augmented in several ways:
+
+- The DPS Scrolling widget optionally provides a backing pixmap and a user
+feedback pixmap.  If there is a backing pixmap, the widget automatically
+handles window exposures by copying from the pixmap.  The application is only
+invoked when some new area of the pixmap is required because of a scroll or
+zoom.
+
+- The widget maintains graphics state handles for the window, the backing
+pixmap, and the user feedback pixmap.
+
+- The client does everything in user space, not X space.  The widget handles
+all conversions between user space and X space.
+
+- The widget collects exposure events and invokes the application only
+when the chain of exposure events is complete.
+
+- Exposure callbacks include a minimal list of exposed areas.
+
+- The widget handles drawing through work procedures
+
+- If there is no backing or feedback pixmap (either because the client did
+not request the pixmap, or because the pixmap could not be allocated) the
+widget automatically falls back to window drawing.  The client never has to
+be concerned with these failures; it just draws into whatever drawable is
+passed to its callback procedures.  The resulting display may be slower to
+redisplay after an exposure, or may flash more during feedback drawing,
+but the end result is always the same.
+
+The following information lets you use the widget:
+
+- The header file is <DPS/DPSScrollW.h>.
+
+- The class pointer is dpsScrolledWindowWidgetClass.
+
+- The class name is DPSScrolledWindowWidget.
+
+- The DPSScrolledWindowWidget widget is a subclass of XmManager.
+
+Note:  Unless otherwise specified, all coordinates and rectangles are in user
+  space.  All lists of rectangles are represented as float arrays.   Each
+  rectangle is stored in four entries as [x, y, width, height].  The count
+  associated with the list gives the number of rectangles, not the number of
+  entries in the array.
+
+==========================
+Scrolling Widget Resources
+==========================
+
+Name		Class		Default		Type		Access
+XtNabsolutePixmapLimit		0		XtRInt		CSG
+		XtCAbsolutePixmapLimit
+XtNapplicationScrolling		False		XtRBoolean	CSG
+		XtCApplicationScrolling
+XtNareaHeight	XtCAreaHeight	792		XtRInt		CSG
+XtNareaWidth	XtCAreaWidth	612		XtRInt		CSG
+XtNbackingGState		dynamic		XtRDPSGState	G
+		XtCBackingGState
+XtNbackingPixmap		dynamic		XtRPixmap	G
+		XtCBackingPixmap
+XtNcontext	XtCContext	NULL		XtRDPSContext	CSG
+XtNctm		XtCCtm		dynamic		XtRFloatArray	G
+XtNdirtyAreas	XtCDirtyAreas	See description	XtRFloatArray	SG
+XtNdocumentSizePixmap		False		XtRBoolean	CSG
+		XtCDocumentSizePixmap
+XtNfeedbackGState		dynamic		XtRDPSGState	G
+		XtCFeedbackGState
+XtNfeedbackPixmap		dynamic		XtRPixmap	G
+		XtCFeedbackPixmap
+XtNinvCtm	XtCInvCtm	dynamic		XtRFloatArray	G
+XtNminimalDrawing		False		XtRBoolean	CSG
+		XtCMinimalDrawing
+XtNnumDirtyAreas		1		XtRShort	SG
+		XtCNumDirtyAreas
+XtNpixmapLimit	XtCPixmapLimit	-1		XtRInt		CSG
+XtNscale	XtCScale	1.0		XtRFloat	CSG
+XtNuseBackingPixmap		True		XtRBoolean	CSG
+		XtCUseBackingPixmap
+XtNuseFeedbackPixmap		True		XtRBoolean	CSG
+		XtCUseFeedbackPixmap
+XtNwatchProgress		False		XtRBoolean	CSG
+		XtCWatchProgress
+XtNwatchProgressDelay		1000		XtRInt		CSG
+		XtCWatchProgressDelay
+XtNwindowGState	XtCWindowGState	dynamic		XtRDPSGState	G
+
+XtNabsolutePixmapLimit
+	Gives the absolute limit on size of pixmaps to allocate, in
+kilobytes.  Zero means no limit.  If a document-sized pixmap would be larger
+than this value, the widget falls back to a window-sized pixmap.  If a
+window-sized pixmap would be larger than this value, the widget falls back to
+drawing directly to the window.  See also the XtNpixmapLimit resource, which
+provides an alternative way to limit the size of pixmaps.  Default is 0.
+
+XtNapplicationScrolling
+	If True the widget scrolls only in response to the application
+directing scrolling.  If False, scrolls in response to scrollbar changes.
+See the section "Application Scrolling".  Default is False.
+
+XtNareaHeight
+	Gives the height of the logical drawing area, in PostScript units
+(1/72 inch).  Default is 792 (11 inches).
+
+XtNareaWidth
+	Gives the width of the logical drawing area, in PostScript units
+(1/72 inch).  Default is 612 (8.5 inches).
+
+XtNbackingGState
+	Provides a handle for graphic state that is set for drawing into the
+backing pixmap, if there is a backing pixmap.  Passing this handle to
+XDPSSetContextGState or XDPSPushContextGState sets the context to render into
+the backing pixmap.  If there is no backing pixmap, this resource has the
+value 0.  Clients cannot change this resource.
+
+XtNbackingPixmap
+	The pixmap used to retain the drawing so that the window can be
+refreshed more quickly.  If there is no backing pixmap, this resource has the
+value None.  Clients cannot change this resource.
+
+XtNcontext
+	The Display PostScript execution context used for drawing into the
+window or the pixmaps.  If the context is NULL, the scrolling widget uses the
+shared context for the display.  Default is NULL.
+
+XtNctm
+	Provides the current transformation matrix being used by the widget.
+The resource value is a pointer to 6 float values.  Clients cannot change
+this resource.
+
+XtNdirtyAreas
+	Provides a list of rectangles of the drawing that are "dirty," or not
+up to date.  Clients request a redraw of part of the drawing by adding the
+area to be drawn to the list of dirty areas.  The initial dirty area is a
+single rectangle comprising the whole drawing.  The recommended way to
+change this resource is with the DSWAddToDirtyArea procedure, which adds a
+list of rectangles to the current dirty area.
+
+XtNdocumentSizePixmap
+	If True, the widget tries to use a backing pixmap that is the size of
+the document; if False, it tries to use a backing pixmap that is the size of
+the window.  If the allocation of a document-sized pixmap fails, the widget
+automatically falls back to using a window-sized pixmap.  Document-sized
+pixmaps allow for faster scrolling, but use more server resources.  Default
+is False.
+
+XtNfeedbackGState
+	Provides a handle for graphic state that is set for drawing into the
+feedback pixmap, if there is a feedback pixmap.  Passing this handle to
+XDPSSetContextGState or XDPSPushContextGState sets the context to render into
+the feedback pixmap.  If there is no feedback pixmap, this resource has the
+value 0.  Clients cannot change this resource.
+
+XtNfeedbackPixmap
+	The pixmap used during user interface feedback to reduce the
+flashiness of the display; see the section "Feedback Drawing".  If there is
+no feedback pixmap, this resource has the value None.  The scrolling widget
+does not create a feedback pixmap until the first time the application starts
+feedback drawing.  Clients cannot change this resource.
+
+XtNinvCtm
+	Provides the inverse of the current transformation matrix being used
+by the widget.  The resource value is a pointer to 6 float values.  Clients
+cannot change this resource.
+
+XtNminimalDrawing (Boolean)
+	This resource's value is only relevant when there is a backing
+pixmap, when the backing pixmap is larger than the window, and when watch
+progress is off.  If True, the widget first asks the application to draw
+areas of the backing pixmap that are visible in the window and then asks the
+application to any draw areas that are not visible.  If False, the widget
+asks the application to draw all dirty areas of the backing pixmap at once.
+Setting minimal drawing can make the visible portion of the drawing appear
+more quickly at the cost of a somewhat longer total drawing time.  Default is
+False.
+
+XtNnumDirtyAreas
+	Provides a count for the number of rectangles in the XtNdirtyAreas
+resource.  Default is 1.
+
+XtNpixmapLimit
+	Provides a limit on size of pixmaps to allocate, in pixels (width *
+height of the pixmap).  Zero means no limit.  -1 means one window full, or
+one page full at 100% scale, whichever is larger.  Default is -1.
+
+XtNscale
+	Provides the scale, or zoom, factor for the drawing.  A value of two
+means that the drawing appears twice as large as it appears with a value of
+one.  Since this resource is a floating point number, it is difficult to set
+using XtSetValues interfaces.  The recommended way to set the resource is with
+the DSWSetScale or the DSWSetScaleAndScroll procedure.  Default is 1.0.
+
+XtNuseBackingPixmap
+	Controls whether the widget uses a backing pixmap to hold a copy of
+the drawing.  Default is True.
+
+XtNuseFeedbackPixmap
+	Controls whether the widget uses a feedback pixmap to reduce flashing
+during user interaction drawing.  The widget always delays creating a
+feedback pixmap until the application initiates feedback drawing.  Default is
+True.
+
+XtNwatchProgress
+	This resource's value is only relevant when there is a backing
+pixmap.  If False, the widget draws to the backing pixmap and copies the
+completed result to the window.  If True, the widget draws to the window,
+copies the completed result to the pixmap, and then fills in any areas of the
+pixmap that were unavailable because of window clipping.  Watch progress
+only works with contexts that use use pass-through event dispatching.  If
+pass-through event dispatching is not enabled, watch progress cannot be
+set.  Default is False.
+
+XtNwatchProgressDelay
+	Provides a delay before abandoning watch progress drawing.  The
+scrolling widget initiates watch progress drawing by clearing all dirty areas
+of the window, collecting the resulting exposure events, and using the areas
+described in the events for the area to draw.  If the watch progress delay
+passes without the arrival of any exposure events, the widget assumes that no
+parts of the window are visible, and starts drawing into the backing pixmap.
+Setting the delay to 0 means that drawing will always be postponed until an
+area is exposed.  Default is 1000.
+
+XtNwindowGState
+	Provides a handle for graphic state that is set for drawing into the
+drawing area window.  Passing this handle to XDPSSetContextGState or
+XDPSPushContextGState sets the context to render into the window.  Clients
+cannot change this resource.
+
+================================
+Children of the Scrolling Widget
+================================
+
+The children of the scrolling widget have the following names:
+
+drawingArea
+horizontalScrollBar
+scrolledWindow
+verticalScrollBar
+
+===================
+Callback Procedures
+===================
+
+The following sections contain information about callback procedures
+available for working with the scrolling widget.
+
+Name				Class		Default	Type		Access
+XtNbackgroundCallback		XtCCallback	NULL	XtCallbackList	C
+XtNexposeCallback		XtCCallback	NULL	XtCallbackList	C
+XtNfeedbackCallback		XtCCallback	NULL	XtCallbackList	C
+XtNresizeCallback		XtCCallback	NULL	XtCallbackList	C
+XtNsetupCallback		XtCCallback	NULL	XtCallbackList	C
+
+XtNbackgroundCallback
+	If the area of the drawing as defined by the XtNareaWidth,
+XtNareaHeight, and XtNscale resources is either narrower or shorter than the
+current window size, the scrolling widget calls the XtNbackgroundCallback to
+tell the application to paint the areas of the window that are not filled by
+the drawing.  This callback passes a DSWExposeCallbackRec as call data.  In
+the record, the directions field is always DSWFinish and the background
+fields is True.  The list of rectangles describes the area of the window not
+filled by the drawing.  The widget sets a view clip to this background area
+before calling the XtNbackgroundCallback, so all Display PostScript drawing
+done in the XtNbackgroundCallback will be clipped to the area.  In all other
+aspects the XtNbackgroundCallback is like the XtNexposeCallback.
+
+XtNexposeCallback
+	This is the primary callback that the widget uses to ask the
+application to draw part of the drawing.  This callback passes a
+DSWExposeCallbackRec as call data.  See the section "Handling Exposures" for
+a complete description.
+
+XtNfeedbackCallback
+	This callback is used to do user interface feedback, and passes a
+DSWFeedbackCallbackRec as call data.  See the section "Feedback Drawing".
+
+XtNsetupCallback
+	This callback is called once per context handle any initial context
+setup that might be necessary.  The most common use is downloading PostScript
+language procedures that the application will be using to display the
+drawing.  The initial call does not occur until the scrolling widget is
+realized.  This callback passes a DSWSetupCallbackRec as call data.
+
+XtNresizeCallback
+	This callback informs the application of a window resize, and passes
+a DSWResizeCallbackRec as call data.  The procedure can set the x and y
+fields in the call data to give a new window position for the point in the
+drawing that was in the upper left corner before the resize.
+
+==========
+Data Types
+==========
+
+This section provides the definitions of the data types and structures used
+by the scrolling widget.
+
+DSWDirections
+	typedef enum {DSWDrawSome, DSWAbort, DSWFinish,
+        	      DSWAbortOrFinish} DSWDirections;
+
+The DSWDirections enumeration lists the possible directions the scrolling
+widget can give the application in the XtNexposeCallback.  See the section
+"Handling Exposures" for a complete description.  The meanings of the values
+are as follows:
+
+  DSWDrawSome - Draw some of the drawing.
+  DSWAbort - Abort the drawing.
+  DSWFinish - Finish the drawing.
+  DSWAbortOrFinish - Either abort the drawing or finish the drawing, as
+	is most appropriate.
+
+DSWDrawableType
+	typedef enum {DSWWindow, DSWBackingPixmap,
+		      DSWFeedbackPixmap} DSWDrawableType;
+
+The DSWDrawableType enumeration lists the possible things that the scrolling
+widget can be asking the application to draw into.
+
+DSWExposeCallbackRec
+	typedef struct {
+	    DSWDrawableType type;
+	    DSWDirections directions;
+	    DSWResults results;
+	    Boolean first;
+	    Boolean background;
+	    Drawable drawable;
+	    DPSGState gstate;
+	    DPSContext context;
+	    float *rects;
+	    int rect_count;
+	} DSWExposeCallbackRec;	
+
+The DSWExposeCallbackRec is used as call data in the XtNbackgroundCallback
+and XtNexposeCallback.   See "Handling Exposures" for more information.
+
+type is one of DSWWindow, DSWBackingPixmap, or DSWFeedbackPixmap, and tells
+the callback procedure what drawable it is being asked to draw into.
+
+directions is one of DSWDrawSome, DSWAbort, DSWFinish, or DSWAbortOrFinish,
+and tells the callback procedure what it needs to do.
+
+results is filled in by the callback procedure to tell the widget what was
+done.  Possible values are DSWCallAgain, DSWAborted, and DSWFinished.
+
+first is True if this call is the first invocation of the callback with this
+exposed area.  It is False on follow-up calls to the callback with the same
+area (i.e. the widget called with directions DSWDrawSome, the widget
+responded with DSWCallAgain, and this call is the follow-up call).
+
+background is True if the callback is XtNbackgroundCallback and False if the
+callback is XtNexposeCallback.
+
+drawable is the window or pixmap that the callback procedure should draw
+into.
+
+gstate is the graphics state handle corresponding to the drawable.  The
+widget installs this gstate as the current gstate before invoking the
+callback procedure, so any drawing done by the callback will go to the
+correct drawable.
+
+context is a copy of the XtNcontext resource.
+
+rects is a list of rectangles that describes in user space the area that the
+callback should draw.  The widget sets the view clip to this area before
+invoking the callback, so all drawing done by the callback will be clipped to
+this area.  This list is most useful for determining which elements of the
+drawing intersect the drawing area and which elements can be skipped.  The
+rectangles in the list might overlap.
+
+rect_count gives the number of rectangles in the rects field.
+
+DSWFeedbackCallbackRec
+	typedef struct {
+	    XtPointer start_feedback_data;
+	    XtPointer continue_feedback_data;
+	    DSWDrawableType type;
+	    Drawable drawable;
+	    DPSGState gstate;
+	    DPSContext context;
+	    float *dirty_rects;
+	    int dirty_count;
+	} DSWFeedbackCallbackRec;
+
+The DSWFeedbackCallbackRec is used as call data in the XtNfeedbackCallback.
+See "Feedback Drawing" for more information.
+
+start_feedback_data is the start feedback data as passed to
+DSWStartFeedbackDrawing.
+
+continue_feedback_data is the continue feedback data as passed to
+DSWSetFeedbackDirtyArea.
+
+All other fields are the same as those in DSWExposeCallbackRec.
+
+DSWResizeCallbackRec
+	typedef struct {
+	    Dimension oldw, oldh;
+	    Dimension neww, newh;
+	    Position x, y;
+	} DSWResizeCallbackRec;
+
+The DSWResizeCallbackRec is used as call data in the XtNresizeCallback.
+
+oldw and oldh give the old size of the drawing area.
+
+neww and newh give the new size of the drawing area.
+
+x and y are initially 0 and 0.  The callback procedure can set these to some
+other values to give a new position in X coordinates for the point in the
+drawing that was previously in the upper left corner of the window.
+
+DSWResults
+	typedef enum {DSWUndefined, DSWCallAgain, DSWAborted,
+		      DSWFinished} DSWResults;
+
+The DSWResults enumeration lists the return values that the expose and
+background callback procedures can store in the results field of the callback
+record.  The meanings of the values are as follows:
+
+  DSWUndefined - This is the initial value; the callback procedure should
+	always change it to something else.  It is an error to return from
+	the callback procedure with this value.
+  DSWCallAgain - The callback procedure has drawn some of the drawing and
+	needs to be called again to finish.
+  DSWAborted - The callback procedure has decided to discontinue drawing, and
+	the widget should return the area currently being worked on to the
+	dirty area.
+  DSWFinished - The callback procedure has finished drawing the area.
+
+DSWSetupCallbackRec
+	typedef struct {
+	    DPSContext context;
+	} DSWSetupCallbackRec;
+
+The DSWSetupCallbackRec is used as the call data for the XtNsetupCallback.
+
+==========
+Procedures
+==========
+
+Many of these procedures scroll the drawing.  They will never scroll past the
+drawing's edge.  If a requested scrolling action would cause the scrolling to
+go past the edge, scrolling stops at the drawing's edge.
+
+DSWAbortPendingDrawing
+	void DSWAbortPendingDrawing(w)
+		Widget w;
+
+This procedure tells the widget to abort any pending drawing.
+
+DSWAddToDirtyArea
+	void DSWAddToDirtyArea(w, rect, n)
+		Widget w;
+		float *rect;
+		int n;
+
+This procedure adds some rectangles to the dirty list.  n is the number of
+rectangles; each rectangle is represented as [x, y, width, height].  The
+special values (0, 0, -1, -1) represent the whole page.
+
+DSWConvertPSToX
+	void DSWConvertPSToX(w, psX, psY, xX, xY)
+		Widget w;
+		float psX, psY;
+		int *xX, *xY;
+
+This procedure converts a point in user space into X coordinates.
+
+DSWConvertXToPS
+	void DSWConvertXToPS(w, xX, xY, psX, psY)
+		Widget w;
+		int xX, xY;
+		float *psX, *psY;
+
+This procedure converts a point in X coordinates into user space.
+
+DSWEndFeedbackDrawing
+	void DSWEndFeedbackDrawing(w, restore_window)
+		Widget w;
+		Boolean restore_window;
+
+This procedure tells the widget that the application is done with feedback
+drawing.  If restore_window is True, the window contents are restored from
+the backing pixmap (if available) or by calling the expose callback for the
+areas made dirty by the feedback drawing.  If restore_window is False, the
+window contents remain what they were at the end of feedback drawing.
+
+DSWFinishPendingDrawing
+	void DSWFinishPendingDrawing(w)
+		Widget w;
+
+This procedure forces the widget to finish all pending drawing and
+synchronize with the server.
+
+DSWGetDrawingInfo
+	void DSWGetDrawingInfo(w, type, drawable, gstate, context)
+		Widget w;
+		DSWDrawableType *type;
+		Drawable *drawable;
+		DPSGState *gstate;
+		DPSContext *context;
+
+This procedure returns the information necessary to do drawing into either
+the window or backing pixmap.  If there is a backing pixmap,
+DSWGetDrawingInfo sets drawable to the pixmap.  If there is no backing
+pixmap, DSWGetDrawingInfo sets drawable to the widget's window.  In either
+case type and gstate are set to match the drawable.
+
+DSWGetScrollInfo
+	void DSWGetScrollInfo(w, h_value, h_size, h_max,
+			         v_value, v_size, v_max)
+		Widget w;
+		int *h_value, *h_size, *h_max, *v_value, *v_size, *v_max;
+
+This procedure returns the logical scrollbar information associated with
+the widget.  The values are valid only after the scrolling widget is first 
+realized.
+
+For each scrollbar, _max is the scaled size of the drawing, in pixels.
+_size is the size of the window, in pixels.  _value depends upon the
+current position of the window.
+
+See the section "Application Scrolling" for more information.
+
+DSWGiveFeedbackPixmap
+	Boolean DSWGiveFeedbackPixmap(w, p, width, height, depth, screen)
+		Widget w;
+		Pixmap p;
+		int width, height, depth;
+		Screen *screen;
+
+This procedure gives a pixmap to widget w to use as a feedback pixmap.  After
+calling DSWGiveFeedbackPixmap, the application no longer owns the pixmap.  If
+the pixmap is not suitable for use as the feedback pixmap because of a depth
+or screen mismatch, or if the widget already has a feedback pixmap,
+DSWGiveFeedbackPixmap returns False and the application still owns the
+pixmap; otherwise it returns True and widget w now owns the pixmap.
+
+DSWScrollBy
+	void DSWScrollBy(w, dx, dy)
+		Widget w;
+		int dx, dy;
+
+This procedure scrolls by dx pixels in the x direction and dy pixels in the y
+direction.
+
+DSWScrollPoint
+	void DSWScrollPoint(w, psX, psY, xX, xY)
+		Widget w;
+		float psX, psY;
+		int xX, xY;
+
+This procedure scrolls the drawing so that the point (psX, psY) in user space
+is at window location (xX, xY).
+
+DSWScrollTo
+	void DSWScrollTo(w, x, y)
+		Widget w;
+		int x, y;
+
+This procedure sets the horizontal scrollbar to x and the vertical scrollbar
+to y.
+
+DSWSetFeedbackDirtyArea
+	void DSWSetFeedbackDirtyArea(w, rects, count, continue_feedback_data)
+		Widget w;
+		float *rects;
+		int count;
+		XtPointer continue_feedback_data;
+
+This procedure adds the rectangles described by rects to the feedback dirty
+area.  The value passed in continue_feedback_data will be passed to the
+feedback callback as the continue_feedback_data field of the
+DSWFeedbackCallbackRec.
+
+DSWSetScale
+	void DSWSetScale(w, scale, fixedX, fixedY)
+		Widget w;
+		float scale;
+		int fixedX, fixedY;
+
+This procedure sets the scale factor and scrolls the drawing so that the
+point of the drawing that is at window location (fixedX, fixedY) remains in
+the same place after the scroll.
+
+DSWSetScaleAndScroll
+	void DSWSetScaleAndScroll(w, scale, psX, psY, xX, xY)
+		Widget w;
+		float scale, psX, psY;
+		int xX, xY;
+
+This procedure sets the scale factor and scrolls the drawing so that the
+point (psX, psY) in user space is at window location (xX, xY).
+
+DSWStartFeedbackDrawing
+	void DSWStartFeedbackDrawing(w, start_feedback_data)
+		Widget w;
+		XtPointer start_feedback_data;
+
+This procedure tells the widget that the application is about to start
+feedback drawing.  The value passed in start_feedback_data will be passed to
+the feedback callback as the start_feedback_data field of the
+DSWFeedbackCallbackRec.
+
+DSWTakeFeedbackPixmap
+	Boolean DSWTakeFeedbackPixmap(w, p, width, height, depth, screen)
+		Widget w;
+		Pixmap *p;
+		int *width, *height, *depth;
+		Screen **screen;
+
+This procedure takes the feedback pixmap away from widget w.  After calling
+DSWTakeFeedbackPixmap, the application becomes responsible for freeing the
+pixmap, if necessary.  If the widget is currently involved in feedback
+drawing, its feedback pixmap cannot be taken away and DSWTakeFeedbackPixmap
+returns False; otherwise it returns True.  If the widget w currently has no
+feedback pixmap, p is set to None.  width, height, depth, and screen return
+the size and screen of the feedback pixmap.
+
+DSWUpdateDrawing
+	void DSWUpdateDrawing(w, rects, count)
+		Widget w;
+		float *rects;
+		int count;
+
+This procedure updates the window by copying the described areas of the
+backing pixmap or by calling the expose callback if there is no backing
+pixmap.
+
+==================
+Handling Exposures
+==================
+
+Whenever the scrolling widget needs to update a part of the window or of a
+pixmap it calls the expose callback.  In general, this callback doesn't need
+to check or care whether it's drawing into the window, the backing pixmap, or
+the feedback pixmap.  The callback should just check to see which elements of
+the drawing intersect the expose area and draw those elements.  The execution
+context will have already been set to render to the appropriate drawable, and
+the view clip will have already been set to limit drawing to the rectangles
+described in the call data.
+
+The application has control over how much drawing gets done on each call to
+the expose callback.  It can draw a single element of the drawing or the
+entire thing.  If the application choses not to draw everything, the widget
+will call the expose procedure repeatedly as an X Toolkit work procedure
+until the drawing is completed.  This adds some overhead to the drawing
+process, but it allows partial drawing to be interrupted and abandoned if the
+widget notices that further drawing is unnecessary (for example, because the
+area being drawn has been scrolled off the page, because the scale factor
+has changed, or because the user has clicked a "next page" button in the user
+interface).
+
+The directions field of the DSWExposeCallbackRec tell the callback procedure
+what it should do
+
+  DSWDrawSome
+	Draw some of the contents; the callback decides how much.  This is
+	the value of directions for normal drawing.  The callback sets the
+	results field to tell the widget what the callback has done:
+	  DSWCallAgain - the area requires further drawing.
+	  DSWAborted - for some reason the widget should abandon drawing
+		the area and return the area to the dirty area.
+	  DSWFinished - the callback has finished drawing the area.
+
+  DSWAbort
+	Stop drawing the contents.  This is called if the scale factor
+	changes while there is partially completed drawing, if the
+	application calls DSWAbortPendingDrawing, or in other similar
+	situations.  The only legal return value for results is DSWAborted.
+
+  DSWFinish
+	Finish drawing the contents.  This is called prior to feedback
+	drawing, if the application calls DSWFinishPendingDrawing, or in
+	other similar situations.  The only legal return value for results
+	is DSWFinished.
+
+  DSWAbortOrFinish
+	Either stop drawing the contents or finish drawing the contents;
+	the callback procedure gets to decide which.  This is called if
+	the window scrolls while there is partially completed drawing so
+	as to force the drawing to a consistent state.  The possible return
+	values are
+	  DSWAborted - the callback decided to abort drawing, and the area
+		is returned to the dirty area.
+	  DSWFinished - the callback finished drawing the area
+
+If this is the first time the expose callback is being called for an area,
+the first field of the callback record will be True.
+
+The widget sets the results field to DSWUndefined before calling the
+callback; the callback must set it to some other return value to indicate
+what the widget should do after the callback returns.
+
+The widget calls the callback procedure with directions set to DSWDrawSome
+for normal drawing; the callback can choose how much of its drawing to do.
+If it draws everything visible in the exposed area, the callback should set
+the results to DSWFinished.  If it only draws part of the drawing, the
+callback should set the results to DSWCallAgain.  It is the responsibility of
+the application to keep track of the progress of the drawing, normally by
+storing information in the client data.  The callback can tell the widget to
+abort the current drawing and start again by setting results to DSWAborted.
+
+The application should normally base its decision of how much to draw upon
+what it is drawing.  It is best to execute potentially lengthy operations
+like images by themselves.  Simple, fast drawing like user path operations
+should be grouped together to lessen the overhead of repeatedly calling the
+expose callback.  Experimentation with a particular type of drawing may be
+necessary to determine the best point for balancing interactivity and
+callback overhead.
+
+The scrolling widget calls the callback procedure with directions set to
+DSWAbort when it has detected that the current drawing is no longer valid
+(for example, when the scale factor changes), with DSWFinish when it needs
+the application to finish the drawing (for example, before doing feedback
+drawing), and DSWAbortOrFinish during scrolling.  In the latter case the
+application can decide that it would rather throw away any partially
+completed drawing (by returning DSWAborted) or can finish the partially
+completed drawing (and return DSWFinished).
+
+The callback procedure should normally base the abort or finish decision upon
+the type of drawing that has already been done and that is yet to be done.
+If the drawing is only just started, it's best to abort the drawing.  This
+allows the scrolling widget to merge the current dirty area with the new
+dirty area and only call the expose procedure once.  If the drawing is almost
+complete, it's best to finish the drawing so that the drawing already done
+does not need to be repeated.  The effect of drawing images is always
+important since they are usually slow compared to other drawing operations.
+It is rarely a good idea to abort if an image has already been drawn in the
+area being updated.  Conversely, it can be a good idea to abort an
+almost-complete area if the elements yet to be drawn include an image.  The
+time saved by merging the dirty areas and only drawing the image once can be
+substantial.
+
+=====================
+Application Scrolling
+=====================
+
+The scrolling widget allows an application to take complete control of how
+the widget scrolls by setting the XtNapplicationScrolling resource to True.
+This mode allows the application to use the scrollbars to implement scrolling
+in a multiple page document.  The application could even unmanage the
+scrollbars and have scrolling controlled by some other type of user interface
+widget like a panner.
+
+If the XtNapplicationScrolling resource is False, the widget scrolls in
+response to the scrollbars and updates the scrollbars to reflect any changes
+in scale or position.  The application can completely ignore the presence of
+the scrollbars.
+
+When XtNapplicationScrolling is True, the widget does not respond to changes
+in the scrollbars and does not update the scrollbars to reflect any changes
+in scale or position.  The application is responsible for adding scrollbar
+callback procedures, which normally call one of the the DSWScroll...
+procedures supplied by the scrolling widget.  The application is also
+responsible for updating the scrollbars if it changes scale or position
+in response to something other than a scrollbar action.
+
+The application can find out the virtual scrolling information by calling
+DSWGetScrollInfo.  The returned numbers are what the scrollbar maximum,
+slider size, and value would be if the scrollbars were being controlled by
+the widget.  The numbers are based upon the size of the drawing, the size of
+the window, and the position of the visible part of the drawing within the
+window.  This information allows the application to mimic the normal
+scrolling behavior when appropriate.
+
+The normal scrolling behavior is as if the application had supplied the
+following callback procedures for the horizontal and vertical scrollbars:
+
+void HorizontalCallback(w, client_data, call_data)
+	Widget w;
+	XtPointer client_data, call_data;
+{
+	int h_scroll, v_scroll;
+
+	h_scroll = ((XmScrollBarCallbackStruct *) call_data)->value;
+	DSWGetScrollInfo(scrollWidget, NULL, NULL, NULL,
+			 &v_scroll, NULL, NULL);
+	DSWScrollTo(scrollWidget, h_scroll, v_scroll);
+}
+
+void VerticalCallback(w, client_data, call_data)
+	Widget w;
+	XtPointer client_data, call_data;
+{
+	int h_scroll, v_scroll;
+
+	v_scroll = ((XmScrollBarCallbackStruct *) call_data)->value;
+	DSWGetScrollInfo(scrollWidget, &h_scroll, NULL, NULL,
+			 NULL, NULL, NULL);
+	DSWScrollTo(scrollWidget, h_scroll, v_scroll);
+}
+
+One common user interface design is to have the vertical scrollbar scroll
+through the pages of the document and to have the horizontal scrollbar scroll
+only within the current page.  The application can implement this by having
+code similar to the above in its scrollbar callbacks, giving the horizontal
+scrollbar its normal behavior.
+
+======================
+Doing Feedback Drawing
+======================
+
+The scrolling widget provides smooth, flicker-free user interaction by using
+a feedback pixmap.  This provides double buffered interaction.  At each step
+of the interaction:
+
+- The widget copies the original drawing from the backing pixmap into the
+  feedback pixmap.
+- The application draws the appropriate feedback into the feedback pixmap
+  on top of the original drawing.
+- The widget updates the window with the feedback pixmap.
+
+As with normal drawing, the widget gracefully handles not having a feedback
+pixmap by automatically falling back to window drawing.  If the application
+did not request a feedback pixmap, or if the pixmap allocation failed, the
+interaction steps are
+
+- The widget copies the original drawing from the backing pixmap into the
+  window.
+- The application draws the feedback into the window.
+
+Similar fallback occurs if no backing pixmap exists.  In all cases the widget
+maintains feedback dirty area to limit the copies and updates to the smallest
+possible area.
+
+Here is the basic fallback drawing algorithm.  Paragraphs included in
+brackets explain what the scrolling widget is doing between steps;
+you do not need to understand these steps in order to use the feedback
+drawing features.
+
+1) The application receives some event that initiates feedback drawing
+   (usually a ButtonPress event).
+
+2) The application calls DSWStartFeedbackDrawing to start feedback drawing.
+   It passes start_feedback_data to DSWStartFeedbackDrawing.  This is often
+   a structure containing the initial mouse position and the object being
+   manipulated.
+
+       [The widget forces completion of all pending drawing, and
+	synchronizes with the server.
+	The widget copies the drawing to the feedback pixmap.]
+
+3) The application calls DSWSetFeedbackDirtyArea to describe the area of the
+   drawing that will be made dirty by the current feedback drawing.  It
+   passes continue_feedback_data to DSWSetFeedbackDirtyArea.  This is
+   often the address of a structure containing the current mouse position.
+
+       [The widget copies the union of the previous dirty area and the new
+	dirty area into the feedback pixmap.
+	The widget calls the feedback callback.]
+
+4) When the feedback callback is called, the application draws appropriate
+   feedback into the drawable passed to it.
+
+       [The widget synchronizes with the server and copies the union of the
+	previous dirty area and the new dirty area to the window.
+	The widget saves the new dirty area as the previous dirty area.]
+
+4) The application returns to event loop.
+
+5) The application receives a new event.
+
+6) If this event requires the drawing to scroll (for example, if the user
+   drags the mouse out of the drawing area), the application calls
+   DSWScrollBy or DSWScrollTo to scroll the pixmap.
+
+       [The widget may call the application to update drawing as a result of
+	the scroll.
+	The widget scrolls the feedback pixmap.
+	The widget adds newly exposed area to the previous dirty area.]
+
+7) If this event continues the feedback process, go to step 3
+
+8) If this event concludes the feedback process, the application calls
+   DSWEndFeedbackDrawing.
+
+In all cases, if there is no backing pixmap the widget calls the
+application's expose callback to draw into the feedback pixmap.
+
+In all cases, if there is no feedback pixmap the feedback drawing occurs
+directly in the window.
+
+This process sounds more complex than it actually is.  Here is a simple
+example to drag a rectangle from the mouse-down position of a drawing to the
+mouse-up position:
+
+typedef struct {
+	float x, y;
+} Point
+
+/* This is a callback procedure for a button down event in the drawing area */
+
+static void ButtonDown(w, clientData, callData)
+    Widget w;
+    XtPointer clientData, callData;
+{
+    XmDrawingAreaCallbackStruct *dac =
+	(XmDrawingAreaCallbackStruct *) callData;
+    XButtonEvent *be = (XButtonEvent *) dac->event;
+    static Point p1;
+    Point p2;
+    float rect[4];
+
+    if (be->type != ButtonPress) return;
+
+    /* Convert mouse point to user space */
+    DSWConvertXToPS(scrollWidget, be->x, be->y, &p1.x, &p1.y);
+
+    /* The initial rectangle will be 1 unit */
+    p2.x = p1.x + 1;
+    p2.y = p1.y + 1;
+
+    /* Add event handler for mouse motion and button release */
+    XtAddEventHandler(drawingArea, PointerMotionMask | ButtonReleaseMask,
+		      False, MouseMoved, (XtPointer) &p1);
+
+    /* Start feedback drawing */
+    DSWStartFeedbackDrawing(scrollWidget, (XtPointer) &p1);
+
+    /* Create bounding box */
+    rect[0] = p1.x;
+    rect[1] = p1.y;
+    rect[2] = p2.x - p1.x;
+    rect[3] = p2.y - p1.y;
+
+    /* Mark bounding box as dirty for feedback */
+    DSWSetFeedbackDirtyArea(scrollWidget, rect, 1, (XtPointer) &p2);
+}
+
+/* Event handler for mouse motion and button release */
+
+static void MouseMoved(w, clientData, event, goon)
+    Widget w;
+    XtPointer clientData;
+    XEvent *event;
+    Boolean *goon;
+{
+    XMotionEvent *m = (XMotionEvent *) event;
+    Point *p1 = (Point *) clientData;    
+    Point p2;
+    float rect[4];
+
+    /* Convert mouse point to user space */
+    DSWConvertXToPS(scrollWidget, m->x, m->y, &p2.x, &p2.y);
+
+    /* Create bounding box */
+    rect[0] = p1->x;
+    rect[1] = p1->y;
+    rect[2] = p2.x - p1->x;
+    rect[3] = p2.y - p1->y;
+
+    /* Mark bounding box as dirty for feedback */
+    DSWSetFeedbackDirtyArea(scrollWidget, rect, 1, (XtPointer) NULL);
+
+    if (event->type == ButtonRelease) {
+	DSWEndFeedbackDrawing(scrollWidget, True);
+    }
+}
+
+/* XtNfeedbackCallback procedure for the scrolling widget. */
+
+static void Feedback(w, clientData, callData)
+    Widget w;
+    XtPointer clientData, callData;
+{
+    DSWFeedbackCallbackRec *f = (DSWFeedbackCallbackRec *) callData;
+    Point *p1 = (Point *) f->start_feedback_data;
+    Point *p2 = (Point *) f->continue_feedback_data;
+
+    PSrectstroke(p1->x, p1->y, p2->x - p1->x, p2->y - p1->y);
+}
+
+The application has several options after feedback drawing is complete; these
+depend upon the nature of the drawing and the nature of the feedback.
+
+1) After the feedback, the window looks like the updated drawing will look.
+   This might be the case if the feedback was for adding a new item to a
+   drawing, if the feedback consisted of drawing the actual object being
+   added and not a bounding box, and if the new object was on top of all
+   existing objects.
+
+   In this case the application should pass False to DSWEndFeedbackDrawing so
+   that the widget leaves the window correct, and then call DSWGetDrawingInfo
+   to get the current drawable.  If the drawable is the backing pixmap, draw
+   the new item into the pixmap.
+
+2) After the feedback, the window does not look like the updated drawing will
+   look.  This might be the case if the feedback consisted of drawing the
+   outline of an object being added instead of the object itself.  The
+   changes to the drawing go on top of existing drawing elements.
+
+   In this case the application should pass True to DSWEndFeedbackDrawing so
+   that the widget restores the window, and then call DSWGetDrawingInfo
+   to get the current drawable.  The application then draws the new item 
+   into the current drawable, and if the current drawable is the backing
+   pixmap calls DSWUpdateDrawing to make the widget copy the appropriate
+   area from the pixmap to the window.
+
+3) After the feedback, the window does not look like the updated drawing will
+   look, and the changes to the drawing do not go on top of existing drawing
+   elements.
+
+   This is the simplest case of the three.  The application should pass True
+   to DSWEndFeedbackDrawing so that the widget restores the window, and then
+   call DSWAddToDirtyArea to add the affected area of the drawing to the
+   dirty area.  The widget will handle the update by calling the expose
+   callback.
+
+When doing feedback the following resources cannot be changed:
+	XtNareaWidth
+	XtNareaHeight
+	XtNscale
+
+DSWTakeFeedbackPixmap and DSWGiveFeedbackPixmap allow an application to share
+the feedback pixmap among several instances of the scrolling widget.  In most
+cases only one widget is involved in user feedback at a time, so switching
+the feedback pixmap among windows can save server resources.  The application
+does not need to worry about the size of the feedback pixmap.  If a scrolling
+widget discovers that the feedback pixmap it was given is too small, the
+widget replaces it with a new larger pixmap.  If the pixmap is too large, the
+widget only uses part of the pixmap.

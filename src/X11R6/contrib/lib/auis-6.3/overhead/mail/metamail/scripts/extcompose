@@ -1,0 +1,101 @@
+#!/bin/csh -f
+
+if ($#argv < 1) then
+    echo "Usage:  extcompose output-file-name"
+    exit 1
+endif
+set OUTFNAME=$1
+
+chooseaccesstype:
+echo ""
+echo "Where is the external data that you want this mail message to reference?"
+echo "    1 -- In a local file"
+echo "    2 -- In an AFS file"
+echo "    3 -- In an anonymous FTP directory on the Internet"
+echo "    4 -- In an Internet FTP directory that requires a valid login"
+echo "    5 -- Under the control of a mail server that will send the data on request"
+echo ""
+echo -n "Please enter a number from 1 to 5: "
+set ans=$<
+if ($ans == 1)  then
+    set accesstype=local-file
+else if ($ans == 2) then
+    set accesstype=afs
+else if ($ans == 3) then
+    set accesstype=anon-ftp
+else if ($ans == 4) then
+    set accesstype=ftp
+else if ($ans == 5) then
+    set accesstype=mail-server
+else
+    echo "That is NOT one of your choices."
+    goto chooseaccesstype
+endif
+if ($accesstype == "ftp" || $accesstype == "anon-ftp") then
+    echo -n "Enter the full Internet domain name of the FTP site: "
+    set site=$<
+    echo -n "Enter the name of the directory containing the file (RETURN for top-level): "
+    set directory=$<
+    echo -n "Enter the name of the file itself: "
+    set name = $<
+    echo -n "Enter the transfer mode (type 'image' for binary data, RETURN otherwise): "
+    set mode = $<
+    if ($mode == "") set mode=ascii
+    echo "Content-type: message/external-body; access-type=$accesstype; name="\"$name\"\; > $OUTFNAME
+    echo -n "    site="\"$site\" >> $OUTFNAME
+    if ($directory != "") echo -n "; directory="\"$directory\">> $OUTFNAME
+    if ($mode != "") echo -n "; mode="\"$mode\">> $OUTFNAME
+    echo "">> $OUTFNAME
+else if ($accesstype == "local-file" || $accesstype == "afs") then
+fname:
+    echo -n "Enter the full path name for the file: "
+    set name = $<
+    if (! -e $name) then
+	echo "The file $name does not seem to exist."
+	goto fname
+    endif
+    echo "Content-type: message/external-body; access-type=$accesstype; name="\"$name\"> $OUTFNAME
+else if ($accesstype == "mail-server") then
+    echo -n "Enter the full email address for the mailserver: "
+    set server=$<
+    echo "Content-type: message/external-body; access-type=$accesstype; server="\"$server\"> $OUTFNAME
+else
+    echo accesstype $accesstype not yet implemented
+    goto chooseaccesstype
+endif
+
+echo -n "Please enter the MIME content-type for the externally referenced data: "
+set ctype = $<
+getcenc:
+echo "Is this data already encoded for email transport?"
+echo "  1 -- No, it is not encoded"
+echo "  2 -- Yes, it is encoded in base64"
+echo "  3 -- Yes, it is encoded in quoted-printable"
+echo "  4 -- Yes, it is encoded using uuencode"
+set encode=$<
+switch ("$encode")
+    case 1:
+        set cenc=""
+        breaksw
+    case 2:
+        set cenc="base64"
+        breaksw
+    case 3:
+        set cenc="quoted-printable"
+        breaksw
+    case 4:
+        set cenc="x-uue"
+        breaksw
+    default:
+        echo "That is not one of your choices."
+        goto getcenc
+endsw
+echo "" >> $OUTFNAME
+echo "Content-type: " $ctype >> $OUTFNAME
+if ($cenc != "") echo "Content-transfer-encoding: " $cenc >> $OUTFNAME
+echo "" >> $OUTFNAME
+if ($accesstype == "mail-server") then
+    echo "Please enter all the data to be sent to the mailserver in the message body, "
+    echo "ending with ^D or your usual end-of-data character:"
+    cat >> $OUTFNAME
+endif

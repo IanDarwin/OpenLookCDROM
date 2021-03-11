@@ -1,0 +1,1619 @@
+\begindata{text,538527048}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\define{programexample
+}
+\define{itemize
+}
+\define{enumerate
+}
+\chapter{Programming Environment}
+
+
+This document describes the Andrew Toolkit programming environment, 
+including its conventions for modules, method definition and use, the 
+Andrew class mechanism, and debugging techniques.   Parts of this document 
+are incomplete -- there are no short-term plans for completing this 
+document, however.
+
+
+
+\section{Modules and Header Files}\indexi{Header files}
+
+
+You are probably already familiar with the C convention for creating a 
+module:  when you create a module, you locate all the exported data types 
+and procedures in a \italic{header} or \italic{.h} file; then  anyone who 
+wants to use the module can import it cleanly and easily by a 
+\italic{#include} of the \italic{.h} file.  Also by convention, the code 
+for the module goes in a corresponding \italic{.c} file.  For example, if 
+you were creating a module for a data type named \italic{stack}, you would 
+put all the external data structures and procedures for the \italic{stack} 
+in a header file named \italic{stack.h} and the code for the module would 
+go in the file \italic{stack.c}. \
+
+
+
+The class language that the Andrew Toolkit is built upon follows a similar 
+convention for classes.  For each class you are creating, you should 
+declare the class in a \italic{.ch} file with the same name as the class. 
+ For example, if you are creating a class named \italic{stack}, you should 
+declare it in a file named \italic{stack.ch}.  Note that the file extension 
+is \italic{ch}, not \italic{h}.  In addition to the class definition 
+itself, you can include any other statements that you might normally put in 
+a conventional C \italic{.h} file for a module.  Likewise, the code for the 
+class methods and  procedures goes in the file \italic{stack.c}. \
+
+
+
+There is a class preprocessor, \italic{class}, that takes a \italic{.ch} 
+ file as input and generates two conventional C \italic{header} files as 
+output:  a \italic{.ih, }or \italic{import header}  file, and a 
+\italic{.eh,} or \italic{export header} file.  For example, if you were 
+creating a class named \italic{stack} and had declared it in 
+\italic{stack.H}, then the following command: \
+
+
+
+\bold{\leftindent{class stack.H}}
+
+
+produces \italic{stack.ih} and \italic{stack.eh.} \
+
+
+
+The class preprocessor converts the class definitions written to a series 
+of C \italic{structs} and \italic{#define} statements suitable for the C 
+preprocessor.  The \italic{.eh} file contains the same information as the 
+\italic{.ih} file and in addition, contains information that allows the 
+module to access the methods of the class' superclass.  In general, you do 
+not need to know details about what the class preprocessor generates;  the 
+exception is during debugging. \
+
+
+
+\subsection{Imports}\indexi{Imports}
+
+
+Anyone who wants to use a class can import it by a \italic{#include} of the 
+\italic{.ih} file.  For example, anyone who wanted to use the class 
+\italic{stack} could import it by a \italic{#include stack.ih} at the start 
+of the module in which it is to be used. \
+
+
+
+\subsection{Exports}\indexi{Exports}
+
+
+In the module defining the class methods and procedures, you must (1) 
+include \italic{class.h} and (2) export the new class by a \italic{#include} 
+of the \italic{.eh} file.  For example, in the \italic{stack.c} file 
+defining the class \italic{stack}, you must (1) \italic{#include} 
+\italic{class.h} as an import and (2) export the new class \italic{stack} 
+by a \italic{#include} the \italic{stack.eh} file. \
+
+
+
+\subsection{Dynamic loading}\indexi{Dynamic loading}
+
+
+Classes in ATK are usually loaded dynamically.  When ATK encounters an 
+unloaded class, it searches for the corresponding files along a dynamic 
+class path \smaller{CLASSPATH}., taken from the user's \italic{.cshrc} 
+file.  The following is the recommended class path for inclusion in a 
+\italic{.cshrc}.: \
+
+
+
+\programexample{
+if (! $?SYS) setenv SYS `/usr/andrew/bin/sys`
+
+setenv CLASSPATH .:"$SYS":$HOME/lib/do/"$SYS":/usr/andrew/dlib/atk
+
+}
+
+Or, if you are running the Andrew Toolkit on top of the X11 window manager, 
+type the following from your Xterm window: \
+
+
+
+\programexample{
+setenv BE2WM x11
+
+}
+
+With this class path, the Andrew Toolkit dynamic object search will look in 
+the \italic{current directory}, in \italic{/usr/andrew/bin/sys}, in the 
+user's \italic{home directory} under \italic{lib/do} and in 
+\italic{/usr/andrew/dlib/atk}. \
+
+
+
+If you do not have a class path defined in your \italic{.cshrc}, you will 
+probably want to define one.  The class path defaults to 
+\italic{/usr/andrew/dlib/atk}.  \indexi{Class path++Default}
+
+
+To see whether a given class is on your class path, \indexi{Class path} in 
+the \bold{Typescript }(or other command window), type: \
+
+
+
+\leftindent{\bold{whichdo \italic{<your class name>}}}
+
+
+The command \italic{whichdo} \indexi{ \italic{whichdo}} (\italic{which} 
+\italic{d}ynamic \italic{o}bject) is analogous to the \italic{Unix 4.2 BSD} 
+command \italic{which}  (see \bold{help which} for more information); it 
+takes a list of class names and looks for the files which the Andrew 
+Toolkit  would dynamically load in response to the names.  Each argument is 
+expanded if it is aliased, and searched for along the dynamic class path, 
+\smaller{CLASSPATH}. \
+
+
+
+\section{Defining versus using methods} \indexi{Defining methods} 
+ \indexi{Using methods}  \indexi{Methods}
+
+
+Note that when you \italic{define} class procedures or methods, you must 
+use a double underscore; when you \italic{use}, or call, the procedures or 
+methods, you only use a single underscore.   For example, if you are 
+creating the class \italic{stackview} and defining a \italic{FullUpdate} 
+method, you use the double underscore, and write 
+ \italic{stackview__FullUpdate} as above.  If you were to call stackview's 
+\italic{FullUpdate} method, you would use a single underscore, i.e., 
+ \italic{stackview_FullUpdate}.  If you look in the source code for the 
+Toolkit classes (see /usr/andrew/src/atk), all the class procedures and 
+methods are defined with the double underscore, although when you, the 
+application programmer, call the class procedures or methods, you only type 
+one underscore. \
+
+
+
+\section{Calling conventions for superclass methods}\indexi{Superclass}
+
+
+A class inherits methods from its superclasses.  But when you use a method 
+defined in a superclass class, you should call it with the class name of 
+its first actual parameter, not the class name of the method itself.  This 
+is because an intervening class may have redefined the method or may 
+redefine the method in the future.  For example, you call 
+\italic{stackview_GetVisualBounds}, not \italic{graphic_GetVisualBounds}, 
+since the first parameter to the method is a view, even though the method 
+\italic{GetVisualBounds} is defined in \italic{graphic}. \
+
+
+
+In general, for any object \italic{x} in \italic{classx}, (\italic{i.e.}, 
+\italic{struct classx *x)}, you call \italic{classx_methodname (x, <other 
+parameters>)} in order to call either a method for object x or a method for 
+any of \italic{x}'s superclasses.  Thus, for object \italic{stck} in the 
+class \italic{stackview}, you write \italic{stackview_GetVisualBounds 
+(stck, <other parameters>)} to call the graphic method 
+\italic{GetVisualBounds}. \
+
+
+
+\section{The Class system} \indexi{Class system}
+
+
+This section describes the Andrew Class system (to be referred to as Class) 
+that has been used to build Andrew Toolkit.  Class provides an 
+object-oriented environment for building programs using the C programming 
+language.  Using a simple preprocessor which is run only on header files, 
+the Andrew Class system allows you to create classes using single 
+inheritance model.  Class also provides a mechanism for dynamic linking of 
+code into a running C program. \
+
+
+
+\subsection{Encapsulation of Data and Operations} \indexi{Data 
+encapsulation}
+
+
+Object-oriented programming provides a facility to encapsulate both data 
+and operations on that data into a single unit.  In plain C, you define a 
+structure which contains data and then define a set of routines that 
+operate on instances of that structure.  The data and routines are only 
+connected because one of the parameters to the routine is an instance of 
+the structure.  In an object-oriented model, you define a class which is 
+the combination of both data and methods (the routines associated with the 
+class).  The data and methods are tightly coupled, in that you need to have 
+an instance of a class to be able to call one of its methods.  The instance 
+of a class actually contains a pointer to the set of methods that operate 
+on the data. \
+
+
+
+For example, the following structure, using normal C, defines a  structure 
+that can be used to build a simple family tree: \
+
+
+
+\example{
+struct person  \{
+
+    struct person *mother;
+
+    struct person *father;
+
+    struct person *sibling;
+
+    struct person *children;
+
+\};} \
+
+
+
+and a routine that determines if y is an ancestor of x: \
+
+
+\example{
+
+boolean IsAncestor(x, y)
+
+    struct person *x;
+
+    struct person *y;
+
+\{
+
+    if (x->mother == y || x->father == y)
+
+        return TRUE;
+
+    if (x->mother != NULL && IsAncestor(x->mother, y))
+
+        return TRUE;
+
+    if (x->father != NULL && IsAncestor(x->father, y))
+
+        return TRUE;
+
+    return FALSE;
+
+\}}
+
+
+This routine needs to be called with pointers to two instances of the 
+person structure, but it could be called with any random memory locations. 
+ The use of the type boolean is a convention that we have used to provide 
+more type information than is allowed using normal C types. \
+
+
+
+Using Class the same definition is written as follows: \
+
+
+\example{
+
+class person \{
+
+    methods:
+
+        IsAncestor(struct thisobject *y) returns boolean;
+
+    data:
+
+        struct person *mother;
+
+        struct person *father;
+
+        struct person *sibling;
+
+        struct person *children;
+
+\};
+
+}
+
+and  the method definition: \
+
+
+\example{
+
+boolean person__IsAncestor(self, y)
+
+    struct person *self;
+
+    struct person *y;
+
+\{
+
+    if (self->mother == y || self->father == y)
+
+        return TRUE;
+
+    if (self->mother != NULL && person_IsAncestor(self->mother, y))
+
+        return TRUE;
+
+    if (self->father != NULL && person_IsAncestor(self->father, y))
+
+        return TRUE;
+
+    return FALSE;
+
+\}}
+
+
+The class definition contains the same data as the example structure 
+definition but also includes the list of methods that operate on an 
+instance of the class.  In this example there is only one method (there 
+would normally be more for a full implementation of a family tree).  Note 
+that the declaration of the method only contains one parameter.  The 
+initial parameter, is automatically assumed since you will need to have 
+that parameter in order to call the method.  The type of the second 
+parameter utilizes a special keyword, thisobject, which is replaced by the 
+type of the class.  This is used for handling type-checking when inheriting 
+methods (described below). \
+
+
+
+The method definition also is similar to the earlier example except the 
+name of the actual method (person__IsAncestor) is different than the call 
+to the method (person_IsAncestor).  The name of the actual method contains 
+two underscores separating the class type and the method name while the 
+call to the method contains only a single underscore.  The call to the 
+method is actually an indirect call via the list of methods attached to an 
+instance of the class.  If you tried calling person_IsAncestor without an 
+instance of the class person, the program would not call person__IsAncestor 
+since that parameter would not contain the list of methods pointing to 
+person__IsAncestor. \
+
+
+
+\subsection{Inheritance} \indexi{Class inheritance}  \indexi{Inheritance} 
+\indexi{Superclass}  \indexi{Subclass}
+
+
+Inheritance provides a mechanism for building complex objects out of 
+simpler objects.  Class provides single-level inheritance.  In this case, a 
+class can be defined to be a subclass of one other class.  When a class is 
+a subclass of  another class (its superclass) it inherits both the data and 
+methods associated with its superclass.  The subclass can override any of 
+the methods associated with the superclass.  If the subclass does not 
+override a method the superclass method provides is used.  In other words 
+the superclass provides a set of default methods that are used by the 
+subclass.  Further because a subclass inherits both the data and the 
+methods associated with its superclass, an instance of the subclass can be 
+used wherever an instance of the superclass can be used. \
+
+
+
+The following class definition provides a simple list of elements: \
+
+
+\example{
+
+class list \{
+
+    methods:
+
+        NumberOfElements() returns long;
+
+        NextElement() returns struct thisobject *;
+
+        PreviousElement() returns struct thisobject *;
+
+        AddElement(struct thisobject *newElement);
+
+        RemoveElement();
+
+    data:
+
+        struct list *next;
+
+        struct list *head;
+
+\};} \
+
+
+
+This class contains these methods: \
+
+
+\description{
+NumberOfElements --  returns the number of elements following an entry in 
+the list. \
+
+
+
+NextElement --  returns the element following an entry in the list. \
+
+
+
+
+PreviousElement  --  returns the element preceding an entry in the list.
+
+
+AddElement  --  Adds in an entry into the list. \
+
+
+
+RemoveElement  --  Removes an entry from the list. \
+
+
+
+}
+and  two data elements: \
+
+
+
+\description{
+next  --  a pointer to the next entry in the list. \
+
+
+
+head  --  a pointer to the head of the list.  This is necessary for being 
+able to both find the previous entry in the list as well as being able to 
+delete elements from the list. }\
+
+
+
+Now let us define the class dlist (a doubly-linked list) that is a subclass 
+of list: \
+
+
+\example{
+
+class dlist : list \{
+
+    overrides:
+
+        PreviousElement() returns struct thisobject *;
+
+        AddElement(struct thisobject *newElement);
+
+        RemoveElement();
+
+    data:
+
+        struct dlist *prev;
+
+\};} \
+
+
+
+
+The beginning of the class definition declares dlist to be a subclass of 
+list.  This class contains the same set of methods as list but has chosen 
+to override three of the methods.  The PreviousElement method for list must 
+start at the beginning of the list in order find the element preceding the 
+given entry while the PreviousElement method for dlist need only look at 
+the prev data entry.  The same is true for the RemoveElement method.  The 
+AddElement  must also be overridden so that the prev field for dlist is 
+filled in.   The other two methods need not be overridden since they can 
+still be computed in the same fashion. \
+
+
+
+Now let us examine actual implementations of the list and dlist AddElement 
+methods: \
+
+
+\example{
+void list__AddElement(self, newElement)
+
+    struct list *self;
+
+    struct list *newElement;
+
+\{
+
+    newElement->next = self->next;
+
+    newElement->head = self->head;
+
+    self->next = newElement;
+
+\}
+
+
+void dlist__AddElement(self, newElement)
+
+    struct dlist *self;
+
+    struct dlist *newElement;
+
+\{
+
+    newElement->prev = self;
+
+    super_AddElement(self, newElement);
+
+\}}
+
+
+
+The dlist method first sets the prev field for the newElement and then 
+invokes the AddElement method for its superclass (the call 
+super_AddElement) in order to complete the operation.  In this case it will 
+call list__AddElement.  This ability for a method to invoke the method 
+associated with its superclass allows you to build methods that add to the 
+code provided by the superclass without replicating that code. \
+
+
+
+Now examine implementations of the list and dlist RemoveElement methods: \
+
+
+\example{
+
+void list__RemoveElement(self)
+
+    struct list *self;
+
+\{
+
+    struct list prevElement;
+
+
+    prevElement = list_PreviousElement(self);
+
+    if (prevElement != NULL)
+
+        prevElement->next = self->next;
+
+    else  \{
+
+        /*
+
+        Deleting head of the list, adjust head field
+
+        in the remainder of the list.
+
+        */
+
+
+        for (nextPtr = self->next; nextPtr != NULL;
+
+          nextPtr = nextPtr->next)
+
+            nextPtr->head = self->next;
+
+    \}
+
+
+    self->next = NULL;
+
+    self->head = self;
+
+\}
+
+
+void dlist__RemoveElement(self)
+
+    struct dlist *self;
+
+\{
+
+    if (self->next != NULL)
+
+        self->next->prev = self->prev;
+
+    super_RemoveElement(self);
+
+\}}
+
+
+
+As with the earlier example the dlist method calls the list method to do 
+most of the work required to remove an element from the list.  In the 
+subsequent invocation of the PreviousElement method the 
+dlist__PreviousElement routine is called and not the list__PreviousElement 
+routine.  Method invocations are not calls directly to a routine but is a 
+call to the routine associated with the object.  Since dlist overrode the 
+PreviousElement method when list_PreviousElement is called on an instance 
+of a dlist the dlist__PreviousElement routine is called. \
+
+
+
+So far our example does not allow us to have any data associated with 
+either of the two types of lists.  We can now provide a new definition of 
+the person class that builds upon the dlist class for maintaining the list 
+of siblings: \
+
+
+\example{
+
+class person : dlist  \{
+
+    methods:
+
+        IsAncestor(struct thisobject *y) returns boolean;
+
+    data:
+
+        struct person *mother;
+
+        struct person *father;
+
+        struct person *children;
+
+\};} \
+
+
+
+Person inherits all the list manipulation methods provided by dlist and 
+adds on the IsAncestor method. \
+
+
+
+\subsection{Modules} \indexi{Modules}
+
+
+Due to the dynamic loading feature of the Class system classes are 
+implemented by creating a module per class.   The module contains all the 
+code associated with the class and any data associated with the class. 
+ Direct references between modules are not permitted.  The Class 
+preprocessor provides ways to call the code without containing direct 
+references.  References to data contained in other modules are not allowed. 
+ In this way a module is a self contained unit that can quickly be 
+dynamically loaded into a running program. \
+
+
+
+A module can be created by using separately compiled C files and interfile 
+reference to data may occur between those files. \
+
+
+
+\subsection{Creating an Instance of a Class} \indexi{Creating a 
+class}\indexi{Class++Creating}
+
+
+The Class preprocessor automatically creates a number of procedures.  Two 
+of these procedures are New and Initialize.  To create an instance of a 
+normal C structure a call is either made to malloc with the size of the 
+structure passed in as its parameter, the structure is statically 
+allocated, or the structure automatically allocated on the stack.  These 
+methods do not suffice for creating instances of a class since they can not 
+properly associate the methods with the data. \
+
+
+
+The New procedure is used as the substitute for the call to malloc.  To 
+create an instance of the person class a call to person_New() is made. 
+ Unlike the call to malloc this call also initializes the data associated 
+with the class (via a procedure person__InitializeObject that you provide). 
+ The choice to return initialized data was made in an attempt to reduce the 
+number of uninitialized data errors that occurred.  The New procedure is 
+the preferred way to create an instance of an object. \
+
+
+
+There is no direct substitute for allocating an instance of the structure 
+either statically or automatically on the stack.  In order to do that you 
+must first allocate the abject in that same way as in normal C (struct 
+person anyone) and then call the Initialize procedure associated with the 
+class (person_Initialize(&anyone)).  This will both associate the methods 
+with the data and initialize the data. \
+
+
+
+In the case of a statically allocated instance of a class, it must be 
+initialized before it is used.  This is more difficult to do than the case 
+where the instance is automatically allocated on the stack.  In the latter 
+case the first statement following the declarations can be a call to 
+Initialize.  A way to handle this case will be described later when we 
+discuss initializing the entire class. \
+
+
+
+\subsection{Initializing the Data of an Instance of a 
+Class}\indexi{Class++Initializing data}
+
+
+As stated above the New and Initialize procedures call the InitializeObject 
+procedure.  This is a procedure that you provide.  It is a required 
+procedure (except in the case where the class has no data associated with 
+it).  Whenever an instance of a class is created, the data associated with 
+its superclass is initialized followed by a call to InitializeObject for 
+the class to initialize that data directly associated with the class. \
+
+
+
+For example, during a call to person_New, a call would first be made to 
+list_InitializeObject, then to dlist_InitializeObject and finally to 
+person_InitializeObject. \
+
+
+
+\subsection{Deleting an Instance of a Class}\indexi{Class++Deleting}
+
+
+Two more procedures created by the Class preprocessor are used for deleting 
+an instance of a class.  These two procedures are Destroy and Finalize. 
+ Destroy is used when deleting an instance of a class that has been created 
+using the New procedure.  Finalize is used on either an instance of a class 
+that has either been statically allocated (and you are no longer going to 
+use it) or an instance of a class that has been automatically allocated on 
+the stack.  In the latter case it must  be called prior to leaving the 
+block in which the instance was allocated. \
+
+
+
+Any data that is pointed to by the instance of the class that is being 
+deleted may be deleted in the process of deleting the instance of the 
+class.   You can determine which data will be deleted by providing a 
+FinalizeObject procedure.  This procedure will normally undo the operations 
+done by the InitializeObject procedure. \
+
+
+
+\subsection{Class Procedures}\indexi{Class procedures}
+
+
+In the previous section we have been describing a set of procedures that 
+are not methods associated with an instance of a class.  These procedures 
+are considered to be acting on the class itself, thus the name class 
+procedures.  These are almost equivalent to procedures from normal C.  The 
+difference is due to the desire to dynamic load code within the Class 
+system. \
+
+
+
+Class procedures differ from methods in several ways. A class procedure can 
+be called without having an instance of the class.  A class procedure may 
+require an instance of a class as one of its parameters (just as a 
+procedure in normal C will take an instance of a structure). The New 
+procedure can not possibly be called with an instance of a class.  Class 
+procedures are not inherited by a subclasses.  Class procedures can not be 
+overridden by a subclass. Finally, the actual definition of the class 
+procedure requires an initial dummy parameter (again due to the dynamic 
+loading nature of Class). \
+
+
+
+Other than class procedures used by the Class system, you should rarely 
+need to define your own class procedures.  One exception to this arises if 
+you want to have a procedure that creates an instance of an object with a 
+set of initial values provided as parameters to the procedure.  Another 
+exception is when the class is acting as a database of all instances of the 
+class. \
+
+
+
+The following extends the person example from above: \
+
+
+\example{
+
+class person : dlist  \{
+
+    methods:
+
+        IsAncestor(struct thisobject *y) returns boolean;
+
+    classprocedures:
+
+        Create(char *name, struct person *mother,
+
+            struct person *father) returns struct person *;
+
+        Lookup(char *name) returns struct person *;
+
+    data:
+
+        struct person *mother;
+
+        struct person *father;
+
+        struct person *children;
+
+        char *name;
+
+\};} \
+
+
+
+The Create procedure creates a new instance of person with the name, mother 
+and father fields initialized appropriately.  It will also add the name and 
+a pointer to the instance into a database being maintained by the the 
+class.  The Lookup procedure will look in that database and locate the 
+instance associated with the name provided. \
+
+
+
+A call to a class procedure looks like a normal C call except that the 
+class name is prepended in front of the procedure name, separated by a 
+single underscore (i.e. person_Locate("Andrew J. Palay")).  The definition 
+of the class procedure is slightly different as it takes an initial dummy 
+parameter.  The Class preprocessor adds in that parameter automatically. 
+ Thus the definition of Locate looks like: \
+
+
+\example{
+
+struct person *person__Locate(classID, name)
+
+    struct classheader *classID;
+
+    char *name;
+
+\{
+
+    /* The code for Locate */
+
+\}}
+
+
+
+As with methods the actual definition has a name separated by two 
+underscores,while the call has only a single underscore. \
+
+
+
+Class procedures such as InitializeObject and FinalizeObject are written in 
+the same fashion, although they are never called directly only as a result 
+of calling the class procedures provided by Class (New, Initialize, Destroy 
+and Finalize).  Thus the InitializeObject procedure for list would look 
+like: \
+
+
+\example{
+
+void list__InitializeObject(classID, self)
+
+    struct classheader *classID;
+
+    struct list *self;
+
+\{
+
+    self->next = NULL;
+
+    self->head = self;
+
+\}}
+
+
+
+\subsection{Initializing the Class}\indexi{Class++Initializing}
+
+
+There is often data associated with a class.  The database described above 
+is one such example.  Another example is when all instances of a class want 
+to share some piece of data that needs to be created or initialized (i.e. 
+an instance of another class).  To handle this case, you can include an 
+InitializeClass declaration as one of the class procedures in the class 
+declaration.  The InitializeClass procedure will be called before any other 
+class procedure or method for the class is called. \
+
+
+
+The InitializeClass procedure is used to initialize an instance of a 
+another class that has been allocated statically within the module 
+associated with the class that is being initialized.  The InitializeClass 
+procedure would call Initialize on the instance of the other class. 
+ Another way to handle this same case is to only statically allocate a 
+pointer to the other class and in the InitializeClass procedure call the 
+New procedure for the other class. \
+
+
+
+\section{How to Use the Class System}\indexi{Class++Using}
+
+
+Class has been designed to be a very simple environment that supports 
+object-oriented programming with single-level inheritance.  It has been 
+designed around a preprocessor that only processes header files (normally 
+with the extension of .H).  A class header file looks very much like a 
+normal C header file except that it will contain a class (or possible a 
+package (described below)) declaration.  When the preprocessor runs it 
+generates two files: an .ih file which is used when you want to import 
+(use) a class in another module and an .eh file that is used to export the 
+class to the outside world.  The .eh file is included in the module that is 
+defining the class.  There can only be one class declaration within a .H 
+file and only one class defined within a module. \
+
+
+
+In processing the .H file the preprocessor directly copies all the contents 
+of the .H file except for the class declaration.  It uses that declaration 
+to create the appropriate structure for class and a large set of macros 
+that are used for calling both the methods and class procedures associated 
+with the class.   It also generates code, that is placed into the .eh file, 
+defining the New, Initialize, Destroy and Finalize class procedures as well 
+as several procedures required by the Class run time system.  The remainder 
+of this section describes the format of the class declaration and how to 
+use an instance of a class in a program. \
+
+
+
+\subsection{Defining and Using a Simple Class}\indexi{Class++Defining}
+
+
+The list class definition presented earlier is an example of how to define 
+a simple class (a class that is not a subclass of another class).  Again 
+the definition is: \
+
+
+\example{
+class list \{
+
+    methods:
+
+        NumberOfElements() returns long;
+
+        NextElement() returns struct thisobject *;
+
+        PreviousElement() returns struct thisobject *;
+
+        AddElement(struct thisobject *newElement);
+
+        RemoveElement();
+
+    data:
+
+        struct list *next;
+
+        struct list *head;
+
+\};} \
+
+
+
+Class in a reserved word to the preprocessor.  It signifies what follows 
+will be a well formed class definition.  Immediately following the word 
+class is the name of the class (in this case list).  If that is followed by 
+a colon it states that the class is a subclass of another class.  For a 
+simple class the name will be followed by an open brace.  After the open 
+brace comes a set of categories: methods, macromethods, classprocedures, 
+macros.  These may occur in any order but we have normally used the above 
+order.  Following that set of categories comes the data category.  The data 
+category is terminated by the closing brace.  The category marker is the 
+name of the category followed by a colon. \
+
+
+
+\paragraph{Methods}\indexi{Methods}
+
+
+Method declarations take the form of the name of the method followed by the 
+list of parameters, separated by commas, to the method within parentheses. 
+ This is followed by an optional returns element and the type that the 
+method returns.  You may declare a method to return a pointer to a 
+procedure however you will need to either just say "returns procedure" 
+where procedure is a typedef to a pointer to a procedure that returns an 
+integer or create your own typedef for a pointer to a procedure that 
+returns the appropriate type.  A method that does not have a returns 
+statement will be declared to be of type void.  Finally the declaration is 
+terminated by a semi-colon. \
+
+
+
+The parameter list associated with a method contains optional type 
+information.  The type information is currently ignored, but has been made 
+available as a quick reference and with the hope that we can later provide 
+a system that does more type checking than currently available.  The 
+parameter list is required to have the correct number of parameters and 
+that the parameters have unique names. \
+
+
+
+Thisobject is a special keyword that is used in the type information.  When 
+the preprocessor sees that type it substitutes the name of the class for 
+thisobject.  Thisobject has been provided to handle subclassing.  In the 
+earlier list/dlist example the NextElement method will return a pointer to 
+an instance of a list when handed a pointer to an instance of a list and 
+will return a pointer to an instance of a dlist when handed a pointer to an 
+instance of a dlist. \
+
+
+
+To call a method you must first have an instance of the class.  The 
+following code cycles though all the elements of a list headed initially by 
+the element ptr: \
+
+
+\example{
+
+while (ptr != NULL)
+
+    ptr = list_NextElement(ptr);} \
+
+
+
+
+Calls to methods always have as their first parameter a pointer to the 
+instance of the class that is to be acted upon and then the other 
+parameters listed in the declaration.  The type of the first parameter is 
+also added prior to the name of the method, separated by a single 
+underscore. \
+
+
+
+Since you need to have pointer to an instance of a class to call one of its 
+methods all tests to see whether the pointer is NULL must be done prior to 
+the method invocation.  Having the first line of a method test to see if 
+the first parameter is NULL is useless since in order to call the method 
+the parameter could not have been NULL. \
+
+
+
+To actually define a macro, you write what appears to be a normal procedure 
+declaration except that the name of the procedure is the name of the class 
+followed by two underscores and the method name. \
+
+
+
+\paragraph{Macromethods}\indexi{Macromethods}
+
+
+Macromethods are an attempt to combine to concept of macros and methods. 
+ Just as it is often the case that it is more reasonable to use macros 
+instead of routines in normal C, it is sometimes more reasonable to use 
+macromethods instead of methods when using Class. \
+
+
+
+A macromethod declaration begins just like a method declaration through its 
+list of parameters.  At that point the macro definition of the code begins. 
+ The macro definition is written in the same fashion as a define using the 
+C preprocessor, with one exception.  There will be one additional parameter 
+to the actual macromethod call that being "self".  Just as there is one 
+additional parameter to methods there is also an additional initial 
+parameter to a macromethod call. \
+
+
+
+In the list example the NextElement method could have been declared to be a 
+macromethod in which case the list declaration would have looked like: \
+
+
+
+\example{
+
+class list \{
+
+    methods:
+
+        NumberOfElements() returns long;
+
+        PreviousElement() returns struct thisobject *;
+
+        AddElement(struct thisobject *newElement);
+
+        RemoveElement();
+
+    macromethods:
+
+        NextElement() (self->next)
+
+    data:
+
+        struct list *next;
+
+        struct list *head;
+
+\};} \
+
+
+
+
+A call to a macromethod looks exactly like a method, but since it is indeed 
+a macro it is necessary to be careful about using parameters that have side 
+effects (i.e. i++), since that parameter might be instantiated multiple 
+times during the expansion of the macromethod. \
+
+
+
+\paragraph{Classprocedures}
+
+
+The class procedure category contains a similar list of declarations to the 
+methods category.  The form of the declaration of a class procedure is 
+identical to the form for a method: the class procedure name, followed by 
+the list of parameters, optionally followed by a returns section and 
+terminated by a semi-colon.  Class procedures are also called in a similar 
+fashion as methods: the name of the class, underscore, the name of the 
+class procedure and then the list of parameters.  Unlike a method there is 
+no additional initial parameter to the class procedure. \
+
+
+
+As stated earlier the definition of the class procedure looks like a normal 
+C procedure except that it contains a dummy first parameter. \
+
+
+
+There are a set of special class procedures that are used by the Class 
+system.  As stated earlier the Class preprocessor creates four special 
+class procedures: New, Initialize, Destroy and Finalize.  Class also 
+requires you to provide an InitializeObject class procedure.  If you 
+include a FinalizeObject class procedure, it will be called whenever an 
+instance of the object is Destroyed.  If you provide an InitializeClass 
+procedure it will be called prior to any call to another class procedure or 
+method for that class.  Finally, you can provide Allocate and Deallocate 
+class procedures.  Normally when the New procedure is called it calls 
+malloc to get the storage for the new instance of the class.  When the 
+Destroy procedure is called, the storage is normally returned via a call to 
+free.  If you provide Allocate and Deallocate procedures then New will call 
+Allocate to get storage and Destroy will call Deallocate to return the 
+storage. \
+
+
+
+\paragraph{Macros} \indexi{Macros}
+
+
+Macros are equivalent to classprocedures that are expanded inline in the 
+code.  They are defined in the same fashion as macromethods except there is 
+no extra parameter self to be used in the actual definition of the macro. 
+ The invocation of a macro is identical to the invocation of a 
+classprocedure.  As with macromethods, you must be careful not to pass 
+parameters with side effects to a macro. \
+
+
+
+\paragraph{Data}\indexi{Data}
+
+
+When processing a simple class, the preprocessor creates a structure that 
+contains the fields provided in the data category along with an initial 
+first entry that points to the set of methods associated with the class. 
+ Accessing an field in the class is done in the identical fashion as a 
+normal C structure. \
+
+
+
+For example the structure created for the class list is: \
+
+
+\example{
+
+struct list  \{
+
+    struct \{
+
+        struct basicobject_methods list_methods;
+
+    \} header;
+
+    struct list *next;
+
+    struct list *head;
+
+\};} \
+
+
+
+
+\subheading{Defining and Using a SubClass}\indexi{Subclass}
+
+
+The dlist example presented earlier shows how to define a subclass.  The 
+two additional categories that are added in this case are overrides and 
+macrooverrides.  \
+
+
+
+\paragraph{Overrides}\indexi{Overrides}
+
+
+The overrides declarations are identical in form to the method 
+declarations.  The separation between overrides and methods has only been 
+made to catch typing errors.  If you override a method that does not exist 
+in the superclass, the preprocessor will generate an error.  Similarly, if 
+you declare a method that exists in the superclass, the preprocessor will 
+again generate an error message. \
+
+
+
+\paragraph{Macrooverrides}\indexi{Macro overrides}
+
+
+The macrooverrides section is used to override macromethods.  They are 
+expressed in the same form as macromethods.  This category has been 
+provided to catch typing errors. \
+
+
+
+\paragraph{Data}\indexi{Data}
+
+
+When processing a subclass, the preprocessor creates a structure that 
+contains the fields provided in the data category appended to a structure 
+containing the data associated with the superclass. \
+
+
+
+For example the structure created for the class dlist is: \
+
+
+\example{
+
+struct dlist  \{
+
+    union \{
+
+        struct basicobject_methods dlist_methods;
+
+	      struct list list;
+
+    \} header;
+
+    struct dlist *prev;
+
+\};} \
+
+
+
+
+Accessing a field defined in the subclass is done in the identical fashion 
+as in a normal C structure.  To access a field defined in the superclass is 
+done by dereferencing through header.  So to access the next field given a 
+pointer to a dlist you write: ptr->header.list.next.  Note that you should 
+use an access method to reference fields when one is defined, rather than 
+dereferencing, to avoid implementation dependencies. \
+
+
+
+\subsection{Packages}\indexi{Packages}
+
+
+Class also provides a mechanism for defining a package of routines.  A 
+package is equivalent to a simple class that contains only class procedures 
+and macros.  It is defined in a similar fashion except that the word 
+package replaces the word class and only classprocedures and macros 
+categories are allowed. \
+
+
+
+Packages are provided by the Class system to allow you to create a set of 
+routines that will be dynamically loaded into a running program.  A math 
+library would be one example of a package that could be dynamically loaded 
+but is not associated with a class. \
+
+
+
+\formatnote{\section{Compiling and running ATK programs}}
+
+
+\section{Debugging}\indexi{Debugging}
+
+
+This section assumes you are familiar with general debugging techniques 
+\formatnote{< Note:  If you are unfamiliar with general software testing 
+and debugging techniques, there a several good books on the subject.  For 
+example, Myers, G. J. (1979) \italic{The art of software testing}, John 
+Wiley & Sons, NY, has a good treatment.>} and discusses debugging issues 
+specific to ATK including common problems and their symptoms and debugging 
+tools. \
+
+
+
+\subsection{Common problems and symptoms}
+
+
+Experienced ATK programmers can usually find problems relatively quickly 
+because they are aware of the most common problems and their symptoms.  The 
+following list is intended to make the accumulation of experience less 
+time-consuming: \
+
+
+
+\itemize{
+\italic{Null pointers.}  One  common problem that occurs in ATK programs is 
+calling a method with a \smaller{NULL} first parameter.  ATK methods are 
+optimized for speed, so very few check that the parameters passed to them 
+have reasonable values.  Depending on the machine, a \smaller{NULL} first 
+parameter will generally dump core.  On some machines the program will die 
+immediately upon trying to access the methods associated with the 
+\smaller{NULL} instance.  On other machines, the program will try executing 
+code at a random location and die there. \
+
+
+
+\formatnote{
+\italic{Incompatible versions of a class.}  If a module exports one version 
+of a class and another module imports a different version, then it is 
+possible for a method invocation to call the wrong method.  This will occur 
+when the second module is not recompiled after the class has been changed 
+and its module recreated.  Symptoms can include any of the following:
+
+\itemize{
+\leftindent{\italic{Incompatible version message.}  You get the message 
+\italic{incompatible version of <class>  requested}.
+
+
+\italic{Unexpected stack trace.}  The stack trace given by the debugger is 
+drastically different from the set of calls you expect to see.
+
+
+\italic{Random core dumps.}  You get core dumps that seem to happen 
+randomly.
+
+}}
+
+If you get any of these symptoms, check the dependencies in the 
+\italic{Makefile} for omissions and fix any, then recompile.  If you don't 
+find any omissions but still suspect there are some, your suspicians can be 
+confirmed if a \italic{make clean} followed by a new \italic{make} fixes 
+the symptoms.  Note that \italic{make clean} followed by a \italic{make} 
+only fixes the symptoms; you must still locate the missing dependencies in 
+the \italic{Makefile} and fix them.
+
+}
+\italic{Missing method declaration.}  If you think an override method 
+should be getting called but it isn't, you may have forgotten to declare it 
+in the \italic{.H} file.  Since the object will inherit its parent method, 
+the only symptom is that the method does not get called. \
+
+
+
+\italic{Out of memory.}  This problem is not confined to ATK 
+applications--any time you allocate memory, the attempt can fail for lack 
+of memory.  Nevertheless, because of its architecture, ATK will definitely 
+involve you in memory allocation.  If an out of memory failure is a serious 
+error in your application (e.g., your application manages user-entered 
+dynamic data), you may want to test your application for any inadvertant 
+omissions of checks for failure to allocate memory.  One time-honored 
+technique, volume testing, involves forcing out of memory conditions by 
+allocating a large block during testing. \
+
+
+}
+
+\subsection{Techniques for tracking down problems}
+
+
+There are two approaches commonly used approaches to tracking down problems 
+in ATK programs:  the print statement and a modified \italic{gdb} debugger. 
+
+
+\paragraph{The print statement}
+
+
+The \italic{print statement} is a debugging technique in which you place 
+print statements within your code that print out the values of variables or 
+give you information about its flow of control.  Print statements have the 
+advantage that you do not need to acquire or learn any additional debugging 
+tools in order to use the technique.  Print statements, however, have the 
+following disadvantages: \
+
+
+\itemize{
+\italic{Time consuming.}  The program must be recompiled each time you add 
+a print statement.  Since ATK programs tend to be small and can be 
+dynamically loaded, this disadvantage is not as great as it is for 
+traditional C programs.  In fact, you can sometimes recompile an ATK 
+program more quickly then you can start up a debugger on a large binary. \
+
+
+
+\italic{Overwhelming amount of output}  If you are not careful, print 
+statements can generate an overwhelming amount of output.  If you rely on 
+print statements for debugging, you will probably want to develop a way to 
+turn debugging print statements on and off (through a special command-line 
+invocation, preference menu, or keystroke sequence) and to select "levels" 
+or "areas" of debugging.  This is especially important if you are 
+developing an large application that would benefit from permanent debugging 
+code. \
+
+
+
+\italic{Interactions with the program.}  Sometimes print statements 
+interact with the program and either mask the error or introduce new 
+errors.  If the problem is likely to involve some sort of critical 
+time-dependency, then print statements are proably a bad idea. \
+
+
+}
+
+The usual place for print statement output is the \bold{typescript }(or 
+other command window).  The default size of the scrollback buffer for 
+\bold{typescript} is 10000 characters. This can be changed by setting 
+\italic{typescript.maxsize} in your \italic{preference} file: \
+
+
+\example{
+typescript.maxsize: <integer>
+
+}
+
+\paragraph{Debuggers}
+
+
+There are two alternatives for using debuggers when programming ATK:  (1) 
+use a debugger that understands dynamically loaded code or (2) compile a 
+version that statically loads your code and then use a standard C debugger. 
+ Since the second option results in long delays for compilation/linking, 
+you will probably find the first option preferable.  Although it is not 
+distributed with ATK, there is a debugger available that understands 
+dynamic loading, a modified version of the GNU debugger, \italic{gdb}. \
+
+
+
+In setting breakpoints, you must remember that a call to a method such as 
+\italic{list_AddElement} will not necessarily call the the method 
+associated with the class name of the method (i.e. 
+\italic{list__AddElement}).  The actual method that gets called is the one 
+associated with the first parameter.  Thus if \italic{list_AddElement} is 
+called with an instance of \italic{dlist}, then the routine that is called 
+is \italic{dlist__AddElement}. \
+
+
+
+
+
+Also, in setting breakpoints, you must remember to include two underscores 
+instead of a single underscore. \
+
+
+
+Finally, when one module first calls a class procedure from another module, 
+a special piece of code is executed.  Some debuggers have problems stepping 
+over this piece of code and stop in an unknown location.  Setting a 
+breakpoint either at the start of the class procedure that will eventually 
+get called or at the statement following the class procedure invocation 
+will resynchronize the debugger. \
+
+
+
+\formatnote{\formatnote{
+1.  Get the ATK debugger.
+
+
+2.  Check with your local site administrator for ATK to see whether you 
+have the ATK debugger.  If you need a copy of the ATK debugger:
+
+
+3.  \enumerate{Get a copy of GNU.  The GNU debugger is available from 
+anyone who has a copy of it, since the GNU Foundation permits copying, or 
+from the GNU Foundation directly.
+
+
+1.  Get a copy of the ATK modifications to GNU.  ATK developers modifed the 
+GNU debugger to deal with dynamically-loaded code.  You can obtain the 
+modifications by sending mail to info-andrew@andrew.cmu.edu.
+
+}
+2}.  \formatnote{Get a version of \italic{runapp} with a symbol table.
+
+
+When you are debugging, you need a version of \italic{runapp} that still 
+has its symbol table.  To get a version of \italic{runapp}:
+
+\enumerate{
+Check with your site administrator for ATK to see whether a version is 
+available.
+
+
+If not, recompile \italic{runapp} with the -g option.
+
+}
+
+3}.  \formatnote{Generate dynamic objects with symbol tables.
+
+
+To use the debugger, your dynamic object files must have symbol tables.  To 
+generate dynamic object files with symbol tables from your object files, 
+use the make dynamic object command, \italic{makedo} with a \italic{-g} 
+option:
+
+
+\indent{makedo -g <object files>}
+
+
+The \italic{-g} option produces two dynamic object files for each object 
+file:  a \italic{.do} file that does not have symbol table information and 
+a \italic{dog} file that \italic{does} have symbol table information.
+
+}\formatnote{
+
+4.  Run the ATK debugger.
+
+
+Assuming the ATK debugger at your site is named \italic{gdb}, to run it, 
+type
+
+
+\programexample{gdb <runapp with symbol table> [optional name of a core 
+file}
+
+]
+
+
+For example, if the version of \italic{runapp} with a symbol table is in 
+/usr/andrew/src, and there is no core file, you type
+
+\example{
+gdb /usr/andrew/src/runapp
+
+}
+}
+If you are examining a core file, your code has already been loaded so skip 
+to \italic{Step 7.   Load your symbols}; otherwise, you need to do 
+\italic{Step 5.  Load your code }and \italic{Step 6.  Interrupt runapp.}
+
+
+\formatnote{
+5.  Load your code
+
+
+Assuming that you have been using \italic{ezapp} to load your object, you 
+can load your code by typing:
+
+
+\example{
+run -d ezapp -d <file that loads your dynamic object>
+
+}
+
+The \italic{-d} switch to \italic{runapp} causes \italic{runapp} to print 
+out the hexadecimal addresses of all objects it dynamically loads.  This is 
+useful for debugging (see below), but not required.  On the other hand, the 
+second \italic{-d} switch--to \italic{ezapp}--is required.  The \italic{-d} 
+switch to \italic{ezapp} specifies that \italic{runapp} should \italic{not} 
+fork the application (see \italic{fork (3)}).  Normally, \italic{runapp} 
+does fork, because a fork frees the shell that invoked it for further 
+commands.  However, forking interferes with debugging.  Thus, when you are 
+debugging, you must prevent forking.
+
+
+If you are using an application other than \italic{ezapp} to load your 
+object, you need to find out the appropriate switch to prevent forking. 
+ Most applications use \italic{-d} for this purpose.
+
+}
+\formatnote{
+6.  Interrupt runapp.  \
+
+
+}\formatnote{
+7.  Load the symbol table for your code.
+
+}}
+
+\begindata{bp,538559232}
+\enddata{bp,538559232}
+\view{bpv,538559232,1,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,538527048}

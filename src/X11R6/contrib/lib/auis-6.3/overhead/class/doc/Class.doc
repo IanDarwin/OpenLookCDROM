@@ -1,0 +1,1252 @@
+\begindata{text,539466040}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+
+
+
+\majorheading{The Andrew Class System}
+
+
+\center{Paul G. Crumley
+
+Information Technology Center
+
+Applications Group
+
+
+March 13, 1989
+
+
+\italic{DRAFT ONLY, DO NOT QUOTE
+
+Comments to pgc@andrew.cmu.edu}}
+
+
+
+\italic{This document is a draft proposal for the specification of the Andrew 
+Class System.  The staff of the ITC make no guarantees that any of the parts 
+of this specification will be implemented or will be implemented in the ways 
+described by this document.  The best way to influence the future of the 
+Andrew Class System is to make specific proposals for changes in the 
+specifications set forth herein.  Please include as much rationale for 
+proposed alterations and indicate the expected effect such changes will have 
+on existing code along with a migration path if possible.
+
+
+Thank you for you comments on this document.  Please direct any comment to 
+pgc@andrew.cmu.edu.  Regular mail is received when addressed to Paul G. 
+Crumley, Carnegie Mellon University, Information Technology Center, 
+Pittsburgh, PA  15213.  
+
+}
+
+\heading{Introduction:}
+
+
+The Andrew system is constructed using object oriented programming techniques. 
+ A portable class system is distributed with Andrew to make the construction 
+of Andrew possible.  This class system consists of a number of  parts 
+including the class preprocessor, a library of functions that provide runtime 
+support for dynamically loaded objects, and utilities to help create and index 
+the dynamically loadable objects.
+
+
+
+\heading{Audience:}
+
+
+This document is targetted to system developers that have a good understanding 
+of object oriented programming, the use of the C programming language, and the 
+Unix(tm) operating system's commands and utilities.  A casual Andrew user does 
+not need to understand the concepts in this document to successfully use the 
+Andrew system.
+
+
+
+\heading{Preprocessor:}
+
+
+The preprocessor, called class, accepts a class description file in a grammar 
+defined below and produces two files.  One file is included in the C program 
+that implements the object and the other file is included in C programs that 
+desires to use the objects.
+
+
+
+\subheading{What it does:}
+
+
+The characteristics of a class of objects that is to be used in the Andrew 
+system is described in a class definition file.  These files have an extention 
+of .ch indicating such a file is a class header file.  When the class command 
+successfully processes a file, such as foo.ch, the preprocessor produces two 
+new files.  These files are called foo.eh and foo.ih.  
+
+
+The .ih and .eh files are used to allow programs written in C to easily use 
+the class runtime system by creating a series of macros that allow access to 
+the instance methods and class procedures for a given class, generating data 
+structures that are used by the class runtime system, and generating small 
+functions that are used by the class runtime system to dynamically load a 
+class.
+
+
+The .eh file is included in the C program that is implementing the instance 
+methods and class procedures and the .ih file is included in the C program 
+that is using this class of objects.
+
+
+
+\subheading{Running the class preprocessor:}
+
+
+To use the class preprocessor to create object.ih and object.eh from the file 
+object.ch use the following command:
+
+
+\indent{class object.ch
+
+}
+The preprocessor will examine the contents of object.ch and the contents of 
+all the classes object is based on, process that information, and if no errors 
+are found, create object.ih and object.eh.  Some informational messages are 
+emitted as class executes.  These messages can be turned of using command line 
+switches.
+
+
+The full syntax of the class command is:
+
+
+\indent{class \{-\bold{h}\} \{-i\} \{-\bold{I searchpath}\} \{\bold{-M}\} 
+\{\bold{-s}\} \{\bold{-q}\} \{\bold{-Q}\} \bold{file}
+
+}
+where
+
+\indent{
+\bold{-h }causes a short help message to be printed.  Other arguments are 
+ignored.
+
+\bold{-I searchpath }adds a directory to the list of places to look for the 
+.ch files referenced by this class.
+
+\bold{-i }removes the current directory from its place at the front of the 
+search path list.
+
+\bold{file }is the file containing the class definition.
+
+\bold{-M }print a list of the classes dependencies to stdout.  Suppresses the 
+generation of .ih and .eh files.  (sets \bold{-B})
+
+\bold{-s }suppress strict checking that causes exit codes > 0.  (this lets 
+some old, questionable code, work) (sets \bold{-B})
+
+\bold{-q }suppresses warning messages.
+
+\bold{-Q }suppresses all messages that are not caused by errors.
+
+\bold{-d depfile} places dependency info in depfile instead of STDOUT
+
+
+
+\{\} indicate zero or more uses of the enclosed text.
+
+
+Please note that the use of \bold{-i} without any \bold{-I} arguments will not 
+work and causes an error.
+
+
+Please note that only one file can be processed at a time using the class 
+preprocessor.
+
+
+Please note that the .ih and .eh files are always created in the current 
+working directory.
+
+
+Arguments to the class command are processed left to right.  This allows you 
+to define the order in which the search paths will be used.  The current 
+directory is searched first.  If the required file is not found the given 
+paths are searched in the order they are defined left to right.
+
+}
+The class preprocessor returns various exit codes that can be used to 
+determine what happened.
+
+
+0  successful competion.
+
+1  the \bold{-h} switch or a command line error.
+
+2  warnings without the \bold{-s} switch.
+
+3  files could not be accessed.
+
+4  error in the definition file.
+
+5  this class has no superclass.
+
+6  attempt to subclass a package.
+
+7  killed by a caught signal.
+
+8  limited resources (failed malloc, etc.), try running it again.
+
+9  program error (table overflowed, etc.), don't bother trying again unless 
+something is changed.
+
+
+Exit code 9 usually means a bug has been exposed in the class preproprocessor 
+or a configurable limit has been exceeded.  Usually these conditions should be 
+reported to a system administrator.  Please keep a copy of the files that 
+caused this error as such information will be an aid in correcting the 
+problem.
+
+
+The \bold{-s} switch disables the following class definition tests:	/* %%%% */
+
+\indent{-- Checks to make sure the file name of the .ch file is consistent 
+with the class name and the class name key defined in the definition file.
+
+-- Checks to make sure a class has a superclass.
+
+-- Checks to see that a FinalizeObject method exists if an InitializeObject 
+method is declared and vice-versa.
+
+-- Checks to see that an Allocate class procedure exists if a Deallocate class 
+procedure is declared and vice-versa.
+
+}
+
+\subheading{Class definition grammer:}
+
+
+The class preprocessor understands a simple grammar that is used to describe 
+the the characterists of a class of objects or a package of routines.  A class 
+definition file can be divided into two parts: the actual definition of the 
+class or package, and everything else.  The definition file is of the form:
+
+
+----------
+
+
+/* comments  and */
+
+#define s can be 
+
+/* used freely in this area. */
+
+
+/* 
+
+ * Anything before the first occurence of "class" or "package" is 
+
+ * simply copied to both the .ih and .eh files.  Long comments
+
+ * may be trucated. but defines are always copied correctly.
+
+ */
+
+ 
+
+class child [childkey]  : parent [parent] \{
+
+
+/* if this was a package, the ": parent [parentkey]"
+
+ * would not be used and it's use would be an error.
+
+ */
+
+
+Methods:		/* METHODS, CLASSPROCEDURES, ETC. */
+
+Macromethods:
+
+Overrides:
+
+Macrooverrides:
+
+
+Classprocedures:	/* comments in the definition area are discarded */
+
+Macros:
+
+
+/* 
+
+ * any #define s in this area are not permitted and will
+
+ * cause errors.
+
+ */.
+
+
+Data:		/* Data: must be the last section */
+
+
+
+\};	/* note the ; is required */
+
+
+/* Other comments and defines */
+
+/* in this area will also be copied */
+
+/* to the .ih and .eh files. */
+
+
+----------
+
+
+The actual definition of the class is more structured.  There are three main 
+parts to the definition: the class or package header, the description of 
+methods, class procedures and data, and the  closing "\};".  The header will 
+be discussed first.
+
+
+Here is an example class header:
+
+
+"class" ThisChild [ "[" thischld "]" ] [ ":" ThisParent [ "[" thisprnt "]" ] ] 
+"\{"
+
+
+The definition header starts with the keyword "class" or "package".  Packages 
+are special cases of classes.  Packages contain only classprocedures and have 
+no data.  These are meant to be used as dynamically loaded subroutine 
+packages.  The next element is the name of the class represented as 
+"ThisChild" in the above example.  This name is the name which will be used to 
+create the names to be used to access the methods and classprocedures for the 
+instances of this class.  As an example, names such as "ThisChild_New()" would 
+be used.  The next item is an optional name embedded in []'s which gives the 
+base name to be used to when storing or retrieving various pieces of this 
+class from a filesystem or other storage mechanism.  As an example, 
+information about the class ThisChild will be stored in a UNIX(tm) file system 
+as thischld.ch, thischld.ih, thischld.eh, and thischld.do for the class 
+definition header file, the class import header file, the class export header 
+file, and the dynamically loadable object file respectively.  If a package is 
+being defined, the rest of the header up to the "\{" is omitted.  If this is a 
+class, the ":" indicates a parent class is being described in a manner such as 
+that used for the child class.  All classes should have a superclass.  If no 
+superclass is specified a warning message is emitted and the class "class" is 
+used as the superclass.
+
+
+
+The definition of the methods, classprocedures, and data are defined between 
+the \{\}'s.  
+
+
+
+--- Please see other docs ---
+
+
+
+Finally, the class definition is closed with "\};".  Please note the ";" is 
+required.
+
+
+
+
+\subheading{What *.eh expects from the *.c file:}
+
+
+
+The module that implements a class of objects must have one entry for each 
+class procedure and instance method declared in the class definition file.  In 
+addition to the routines needed to implement those declared in the class 
+definition file there are some routines that must be provided by any 
+implementation.  These routines include:
+
+
+foo_InitializeObject()
+
+foo_FinalizeObject()
+
+foo_Initialize()
+
+foo_Finalize()
+
+
+
+
+\subheading{What *.ih expects from the *.c file:}
+
+
+
+To be completed.
+
+
+
+
+\heading{Runtime:}
+
+
+If your program is going to use any classes or packages used by the Andrew 
+class system you must include the .ih files for these elements in your 
+program.  In addition, you will have to link you program with 
+/usr/andrew/lib/libclass.a to obtain the runtime system.  Anytime you include 
+a .ih file, you will have access to the header file for the class runtime 
+system.  This file defines various constants and declares interfaces for 
+functions that the class system uses.
+
+
+\subheading{Defined Constants:}
+
+
+TRUE
+
+FALSE
+
+NULL
+
+
+
+\subheading{Types:}
+
+
+/*
+
+ * Constants for class_DebugLevelType.
+
+ * These may be ORed together and should give the expected behaviour.
+
+ */
+
+#define class_DebugOff		((unsigned long) 0)
+
+#define class_DebugTracing		((unsigned long) 1)
+
+#define class_DebugDumpOnSignal	((unsigned long) 2)
+
+#define class_DebugDumpOnError	((unsigned long) 4)
+
+#define class_DebugDumpOnError	((unsigned long) 8)
+
+
+enum class_ErrorEnum \{class_ERRORNOERROR, class_ERRORBADVALUE\};
+
+
+typedef short boolean;
+
+
+typedef void class_VoidType;
+
+typedef boolean class_Booleantype;
+
+typedef unsigned long class_DebugLevelType;
+
+typedef enum class_ErrorEnum class_ErrorType;
+
+typedef struct classinfo * class_InfoType;
+
+typedef struct basicobject * class_BasicObjectType;
+
+typedef unsigned long class_VersionNumberType;
+
+typedef char * class_NameType;
+
+typedef char * class_PathType;
+
+
+
+
+\subheading{Debugging:}
+
+
+The runtime system is capable of behaving in a number of ways that can help in 
+diagnosing problems with the system.  In normal operation, all debugging is 
+turned off (class_DebugOff).  There are currently three levels of debugging 
+support that may be enabled at any time.  These are described below.  The 
+debug features can be combined in hopefully obvious ways by ORing the 
+class_Debug* values together.
+
+
+class_DebugOff:
+
+
+This disables all the class runtime system's debugging capabilities.
+
+
+class_DebugTracing:
+
+
+This option causes a short message to be sent to STDERR each time a class is 
+initialized.  Both statically loaded and dynamically loaded class objects are 
+reported.
+
+
+class_ DebugDumpOnSignal:
+
+
+This option causes a list of all the currently available objects to be written 
+to STERR when the process is sent a SIGUSR1 signal.  This can be used to see 
+what classes a running process is using without having to restart it or cause 
+it to dump core then dig through the resulting core file.
+
+
+class_ DebugDumpOnError:
+
+
+This option causes a list of all the currently available objects to be written 
+to STERR when the class runtime system detects an unrecoverable error.  This 
+can be used to see what classes a process was using before it hit the ground. 
+ The use of this option does not adversely effect the performance of the 
+system so a site may wish to have all programs always run using 
+class_DebugDumpOnError thus helping to determine "what went wrong" when 
+programs have problems.
+
+
+class_ DebugDumpOnProblem:
+
+
+This option is very much like the class_DebugDumpOnError option but it print 
+warnings and dump the class information when it detects recoverable 
+conditions.  The process continues to run unless an uncorrectable error 
+occurs.  This option turns on class_DebugDumpOnError internally but the bit in 
+the DebugLevel is not set to indicate class_DebugDumpOnError.
+
+
+
+
+\subheading{Functions:}
+
+
+These functions are provided by the class "class".  They are catagorized as 
+class procedures and instance methods.  No distinction is made between which 
+class procedures are macros and which are real functions at this level.  The 
+implementation is free to move a particular class procedure between macros and 
+functions at any time.  All the instance methods are real functions so they 
+can be easily overridden by subclasses if required.
+
+
+Please note that the class procedure class_Init() has a special side effect. 
+ This class procedure is used to make sure the "class" object is statically 
+loaded.  The class "class" has a special property in not being able to be 
+statically loaded using the class_StaticLoad() class procedure.  This prevents 
+the requirement of loading the "class" object in each object that statically 
+loads anything.  There is no need to statically load "class" since, being the 
+most base element in the current process, a copy of the object "class" must be 
+available in order to use any of the other parts of the class system.  
+
+
+
+\subheading{class procedures:}
+
+
+\typewriter{class_ErrorType
+
+class_Init(void)
+
+}
+\indent{This procedure will force the class system to be statically loaded 
+into the caller.  The procedure will also cause the class system to be 
+initialized.  As part of the initialization process, the process's environment 
+will be searched for the variable CLASSPATH.  If this environment variable is 
+found, this path will be used to search for dynamically loadable objects.  If 
+CLASSPATH is not define, a site dependent path is used.  If CLASSPATH is not a 
+well-formed path, the results may be unpredictable.  If the initialization is 
+successful, 0 is returned.  A non-zero return indicates an error occured.
+
+
+There are other class procedures to call to manipulate the operation of the 
+class runtime system.  Please see class_SetDebugLevel(), class_GetDebugLevel, 
+class_SetPath() and class_GetPath().
+
+}
+\typewriter{class_ErrorType
+
+class_SetClassPath(path)
+
+	class_PathType path;
+
+}
+\indent{This function will set the list of places to look to dynamically 
+loaded class objects will be set to "path".  "path" can contain a number of 
+colon terminated paths.  If "path" is NULL or an empty string the list of 
+places to look is set to a site dependent path.  The paths contained in "path" 
+are not checked for validity.  If "path" is not a well-formed string, the 
+results are unpredictable.  If a detectable error is found this class 
+procedure will return something other than class_ERRORNOERROR.
+
+}
+\typewriter{class_DebugLevelType
+
+class_GetDebugLevel(void)
+
+}
+\indent{This function returns the debugging level for the class system. 
+ Current values as defined above.
+
+}
+\typewriter{class_ErrorType
+
+class_SetDebugLevel(level)
+
+	class_DebugLevelType level;
+
+}
+\indent{This function sets the debugging level for the class system to 
+newLevel.  The values of newLevel are defined above.  If newLevel is not a 
+legal value, class_SetDebugLevel returns FALSE and the debugging level is not 
+altered.  If newLevel is a legal value, the debugging level is set and 
+class_SetDebugLevel returns class_ERRORBADVALUE.
+
+}
+\typewriter{class_VersionNumberType
+
+class_GetVersion(name)
+
+	class_NameType name;
+
+}
+\indent{This function will return the version of the dynamically loaded object 
+that will be used to implement this class "name".
+
+}
+\typewriter{class_InfoType
+
+class_MapClassToInfo(name)
+
+	class_NameType name;}
+
+
+\indent{This function will return a class_InfoType object for the class named 
+"name".  If the class is not resident in memory, it will be loaded.  If the 
+class is not resident and can not be loaded NULL is returned.
+
+
+The returned value is a pointer to storage that is owned by the class system. 
+ Do not write to this area or call free() with the returned value.
+
+}
+\typewriter{class_NameType
+
+class_MapClassToKey(name)
+
+	class_NameType name;}
+
+
+\indent{This function will return the name key for the class named "name".  If 
+the class is not resident in memory, it will be loaded.  If the class is not 
+resident and can not be loaded NULL is returned.
+
+
+The returned value is a pointer to storage that is owned by the class system. 
+ Do not write to this area or call free() with the returned value.
+
+}
+\typewriter{class_NameType
+
+class_MapKeyToClass(name)
+
+	class_NameType name;}
+
+
+\indent{This function will return the name of the class which has the name key 
+of "name".  If the class is not resident in memory, it will be loaded.  If the 
+class is not resident and can not be loaded NULL is returned.
+
+
+The returned value is a pointer to storage that is owned by the class system. 
+ Do not write to this area or call free() with the returned value.
+
+}
+\typewriter{class_NameType
+
+class_MapClassInfoToName(thisclass)
+
+	class_InfoType thisclass;}
+
+
+\indent{This function will return the name of the passed class.  If thisclass 
+is not a valid class_InfoType the returned value is unpredicable.
+
+
+The returned value is a pointer to storage that is owned by the class system. 
+ Do not write to this area or call free() with the returned value.
+
+}
+\typewriter{class_NameType
+
+class_GetSuperClass(thisclass)
+
+	class_NameType thisclass;}
+
+
+\indent{This function will return the name of the passed class's superclass. 
+ If the passed class is "class" or a package (these have no superclass) an 
+empty string will be returned.  If thisclass can not be found or loaded NULL 
+is returned.
+
+
+The returned value is a pointer to storage that is owned by the class system. 
+ Do not write to this area or call free() with the returned value.
+
+}
+\typewriter{class_InfoType
+
+class_Load(name)
+
+	class_NameType name;
+
+}
+\indent{This function will cause the code associated with the dynamically 
+loaded object for class "name" to be loaded into the system.  If the class was 
+statically loaded or has already been loaded the class is left unaltered and a 
+pointer to the classinfo structure is simply returned.  If the class has not 
+already been loaded and can not be loaded NULL is returned.  In general, this 
+call should not be needed, use class_NewObject instead.
+
+
+The returned value is a pointer to storage that is owned by the class system. 
+ Do not write to this area or call free() with the returned value.
+
+}
+\typewriter{class_InfoType
+
+class_LoadByKey(name)
+
+	class_NameType name;
+
+}
+\indent{This function will cause the code associated with the dynamically 
+loaded object for class that corrosponds to key name "name" to be loaded into 
+the system.  If the class was statically loaded or has already been loaded the 
+class is left unaltered and a pointer to the classinfo structure is simply 
+returned.  If the class has not already been loaded and can not be loaded NULL 
+is returned.
+
+
+Only very specialized utilities should ever have to use this class procedure. 
+ The reason this class procedure exists is so a process can load an 
+dynamically loadable class object when all it has is the name key.  In many 
+systems, the name key is simply the file name.  This class procedure allows 
+one to load a arbitrary file and, if the load is successful, get information 
+about the object such as it's class name and version, etc.
+
+
+The returned value is a pointer to storage that is owned by the class system. 
+ Do not write to this area or call free() with the returned value.
+
+}
+\typewriter{class_BasicObjectType
+
+class_NewObject(name)
+
+	class_NameType name;
+
+}
+\indent{This function returns an instance of the objects described by the 
+class called name.  If necessary, the code for class name will be loaded into 
+memory.  If the class can not be loaded or the the instance of the class can 
+not be made NULL is returned.
+
+
+Please note the returned value may have to be cast to a suitable type before 
+it assigned.
+
+
+The returned value is a pointer to storage that is allocated by the class 
+system for the caller.  The responsibility for freeing this storage it passed 
+to the caller.  Use class_Destroy to free the returned object when it is no 
+longer needed.
+
+}
+\typewriter{class_BooleanType
+
+class_IsLoaded(name)
+
+	class_NameType name;
+
+}
+\indent{This function tests to see if the class "name" is currently loaded. 
+ TRUE is returned if the class has been loaded, FALSE if not.}
+
+
+The following class procedures are created by the class preprocessor for each 
+class.
+
+
+\typewriter{class_ErrorType
+
+foo_StaticLoad(void)
+
+}
+\indent{This function will cause the code for class foo and the code for all 
+superclasses of foo to be statically loaded into the module in which 
+foo_StaticLoad() appears.  The use of this class procedure can reduce the 
+startup time for a routine at the expense of making the size of the routine's 
+dynamically loadable object grow.
+
+}
+
+\typewriter{class_ErrorType
+
+foo_StaticLoadOnlyThisClass(void)
+
+}
+\indent{This function will cause the code for class foo to be statically 
+loaded into the module in which foo_StaticLoadOnlyThisClass() appears.  The 
+use of this class procedure can reduce the startup time for a routine at the 
+expense of making the size of the routine's dynamically loadable object grow.
+
+}
+
+The following class procedures are used by the profiling object in the 
+interaction manager (im).  There are no guarentees about these funtions being 
+available from one release to another.  In addition, these class procedures 
+are highly system dependent.
+
+
+\typewriter{void *
+
+class_GetEText(void)
+
+}
+\indent{This function is used to get a pointer to a special symbol defined by 
+the UNIX(tm) system loader.  This symbol is a pointer to the first location 
+after the text segment of the program.  Though this function is not closely 
+associated with the functions provided by the class runtime, this function is 
+provided here because the class runtime system is always loaded into storage 
+at the program's startup.  }
+
+
+\typewriter{void *
+
+class_GetTextBase(thisclass)
+
+	class_InfoType thisclass;
+
+}
+\indent{This function will return the starting address of the text section of 
+the class described by the passed classinfo structure.
+
+}
+\typewriter{unsigned long
+
+class_GetTextLength(thisclass)
+
+	class_InfoType thisclass;
+
+}
+\indent{This function will return the size of the text section of the class 
+described by the passed classinfo structure.
+
+}
+The following class procedure is used by the class runtime system.  This 
+interface is described only for the purpose of completeness.  This class 
+procedure will be removed in future versions of the system.
+
+
+\typewriter{int
+
+class_Lookup(header, index)
+
+	struct ClassHeader * header;
+
+	int index;
+
+}
+\leftindent{This function is used by internally for communication between the 
+dynamic loader and the class system.  Unfortunately, it must be declared in a 
+manner that makes it externally visible.  Kids, don't try to use this function 
+at home, ...}
+
+
+The following class procedures are only supported to allow old source code to 
+operate.  These functions have been replaced by the instance methods 
+class_IsKindOf() & class_IsMemberOf() and the class procedure 
+class_StaticLoad().  These calls will most likely be removed in future 
+versions of the system so please convert to the new forms of these functions.
+
+
+\typewriter{foo_StaticEntry}
+
+
+\indent{This is a macro that used to be used to cause the code for a class to 
+be statically loaded in the module in which the macro was places.  It has been 
+replaced by foo_StaticLoad().  (see above)  For now it is defined as a macro 
+that calls foo_StaticLoad() and casts the result to (void).
+
+}
+\typewriter{class_BooleanType
+
+class_IsType(thisobject, testobject)
+
+	basicobjettype thisobject;
+
+	class_BasicObjectType testobject;
+
+}
+\indent{This function will return TRUE if thisobject is the of the same class 
+as testclass, or thisobject is an instance of a class that is a subclass of 
+the class of testobject.
+
+}
+\typewriter{class_BooleanType
+
+class_IsTypeByName(thisname, testname)
+
+	class_NameType thisname;
+
+	class_NameType testname;
+
+}
+\indent{This function will return TRUE if thisname is the same as testname, or 
+thisname is the name of a class that is a subclass of the class which has the 
+name testname.
+
+}
+
+
+\subheading{instance methods:}
+
+
+\typewriter{class_Booleantype
+
+class_IsKindOf(self, testclass)
+
+	class_BasicObjectType self;
+
+	class_NameType testclass;
+
+}
+\indent{This function will return TRUE if testclass is the class of or a 
+superclass of the class of which self is an instance.
+
+}
+\typewriter{class_BooleanType
+
+class_IsMemberOf(self, testclass)
+
+	class_BasicObjectType self;
+
+	class_NameType testclass;
+
+}
+\indent{This function will TRUE if testclass is the class of which self is an 
+instance.
+
+}
+\typewriter{class_InfoType
+
+class_GetType(self)
+
+	class_BasicObjectType self;
+
+}
+\indent{This function takes a pointer to an object created using the class 
+system and returns a pointer to a structure of type classinfo describing that 
+object.
+
+
+The returned value is a pointer to storage that is owned by the class system. 
+ Do not write to this area or call free() with the returned value.
+
+}
+\typewriter{class_NameType
+
+class_Class(self)
+
+	class_BasicObjectType self;
+
+}
+\indent{This function takes a pointer to an object created using the class 
+system and returns a pointer to a NULL terminated ASCII string that is the 
+name of object's class.
+
+
+The returned value is a pointer to storage that is owned by the class system. 
+ Do not write to this area or call free() with the returned value.
+
+}
+\typewriter{class_NameType
+
+class_Superclass(self)
+
+	class_BasicObjectType self;
+
+}
+\indent{This function takes a pointer to an object created using the class 
+system and returns a pointer to a NULL terminated ASCII string that is the 
+name of object's superclass.  If this an instance of the class "class", which 
+has no superclass, NULL is returned.
+
+
+The returned value is a pointer to storage that is owned by the class system. 
+ Do not write to this area or call free() with the returned value.
+
+}
+\typewriter{class_VoidType
+
+class_Destroy(self)
+
+	class_BasicObjectType self;
+
+}
+\indent{This is the generic destroy object function.  The default action is to 
+simply free the instance's data structure.
+
+}
+\typewriter{class_BasicObjectType
+
+class_Copy(self)
+
+	class_BasicObjectType self;
+
+}
+\indent{This function will make a copy of the passed object.  This copy is of 
+the form most appropriate for the class of the passed object.  The default is 
+to call the ShallowCopy method.
+
+
+Please note the returned value may have to be cast to a suitable type before 
+it assigned.
+
+
+
+The returned value is a pointer to storage that is allocated by the class 
+system for the caller.  The responsibility for freeing this storage it passed 
+to the caller.  Use class_Destroy to free the returned object when it is no 
+longer needed.
+
+}
+\typewriter{class_BasicObjectType
+
+class_ShallowCopy(self)
+
+	class_BasicObjectType self;
+
+}
+\indent{This function will will return a shallow copy of the passed object. 
+ The default action it to simply copy the data structure of the passed 
+instance.
+
+
+Please note the returned value may have to be cast to a suitable type before 
+it assigned.
+
+
+The returned value is a pointer to storage that is allocated by the class 
+system for the caller.  The responsibility for freeing this storage it passed 
+to the caller.  Use class_Destroy to free the returned object when it is no 
+longer needed.
+
+}
+\typewriter{class_BasicObjectType
+
+class_DeepCopy(self)
+
+	class_BasicObjectType self;
+
+}
+\indent{This function will return a deep copy of the passed object.  The 
+default is to call the ShallowCopy method.
+
+
+Please note the returned value may have to be cast to a suitable type before 
+it assigned.
+
+
+The returned value is a pointer to storage that is allocated by the class 
+system for the caller.  The responsibility for freeing this storage it passed 
+to the caller.  Use class_Destroy to free the returned object when it is no 
+longer needed.
+
+}
+\typewriter{class_BooleanType
+
+class_IsEqual(self, testobject)
+
+	class_BasicObjectType self;
+
+	class_BasicObjectType testobject;
+
+}
+\indent{This function will return TRUE if the two passed objects are the same 
+value even if they are not the identical objects.  By default, this is the 
+same as the *_IsSame() instance method.}
+
+
+\typewriter{class_BooleanType
+
+class_IsSame(self, testobject)
+
+	class_BasicObjectType self;
+
+	class_BasicObjectType testobject;
+
+}
+\indent{This function will return TRUE if the two passed objects are the same 
+object.}
+
+
+These functions are aliases for other instance methods.  These aliases are 
+only provided to support existing code.  These instance methods should not be 
+used in new code as they could be removed at any time.
+
+
+\typewriter{class_NameType
+
+class_GetTypeName(self)
+
+	class_BasicObjectType self;
+
+}
+\indent{This function is an alias for class_Class() in order to provide 
+compatibilty with older programs.
+
+
+The returned value is a pointer to storage that is owned by the class system. 
+ Do not write to this area or call free() with the returned value.}
+
+
+\heading{Known Bugs and Defiencies:}
+
+
+These are known problems and places where the current class system falls short 
+of the ideal.  If you have problems other than these or other ideas for 
+improvement please contact the ITC staff.
+
+
+\subheading{Error checking:}
+
+
+The current system only looks at the *.ch files and ignores the *.c files that 
+implement the classes.  This can cause problems that are not detected until 
+link or even run time when routines such as foo_InitializeObject() are not 
+defined where they are needed.
+
+
+\subheading{Aliases:}
+
+
+There are a few functions than have two names.  These are in place to allow 
+old code to operate correctly at this time.
+
+
+\subheading{Inheritance:}
+
+
+Depending on who is asked, class procedure either should, or should not be 
+passed on to subclasses.  This implementation does not cause class procedures 
+to be passed on to subclasses.
+
+
+\subheading{Class definition file syntax:}
+
+
+The syntax of the class definition files is not very well designed and has 
+some inconsistencies and flaws.  Most of the problems are restrictions so 
+fixing things in the future should not be a problem for existing code.
+
+
+\subheading{What does StaticEntriesOnly really mean?:}
+
+
+The files produces by the class preprocessor creates a very large number of 
+identifiers that are specified using the #define statement of the C 
+preprocessor.  If your compiler can not handle enough identifiers to compile 
+the sources "as is," you can define "StaticEntriesOnly" before including any 
+of the *.ih files to save the space.  You should never need to define 
+"StaticEntriesOnly."  It is unfortunate that the name of this special 
+identifier is so misleading.  Unfortunately, historical reasons led to this 
+use of StaticEntriesOnly and it is only needed for weak compilers so it 
+doesn't seem to be worth changing it when it will break old code.
+
+
+\subheading{AUXMODULE:}
+
+
+There is a special identifier, AUXMODULE, that can be defined in order to 
+allow the C code that implements a particular class to be split into a number 
+of files that can be individually compiled and linked together to form a 
+dynamically loadable object file.  It this option is used one, and only one, 
+of the C files must not define AUXMODULE.  This is a clunky mechanism but it 
+works so until a better procedure for this capability is suggested it will 
+remain in place.
+
+
+
+
+\heading{Statement of Direction:}
+
+
+The Andrew System is not a static environment.  The ITC is working to make the 
+Andrew environment an effective system for application development.  As part 
+of this effort, some changes to the environment will inevitably be required. 
+ This section is intended to give developers an idea of what is ahead.  This 
+statement of direction is important to both external developers and the ITC as 
+it gives us a starting point for a dialog which lets the ITC know what types 
+of features are important and what changes are not required or will simply be 
+more trouble than they are worth.
+
+
+Here are some directions we would like take with the class sytem:
+
+\indent{
+Packages will be eliminated.  There is no big win in having a package instead 
+of a class so just use classes instead.
+
+
+All classes will be subclasses of a class called "class".  This class has 
+classprocedures that do the work of the the currently undocumented class_* 
+routines and will also have some methods that all objects need like 
+class_Destroy(), class_IsTypeByName(), class_GetName(), etc.
+
+
+Version numbering must be improved to allow objects to be able to better 
+determine if they can operate properly with older objects.
+
+}
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1773,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,539466040}

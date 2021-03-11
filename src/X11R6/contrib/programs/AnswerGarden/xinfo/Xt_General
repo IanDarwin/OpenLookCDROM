@@ -1,0 +1,492 @@
+@begin(header)
+author: ackerman@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+expiration_date: 06/25/93
+last_modifier: ackerman@ics.uci.edu
+last_mod_date: 07/02/91
+mod_num: 2
+@end(header)
+@begin(Q)
+Subject: XSendEvent to a Widget
+
+I have hit the proverbial wall with XSendEvent().  I have a widget
+that I am writing that I would like to receive an aperiodic
+ClientMessage event from another program.  I have the following
+defaultTranslations[] and actionsList[] at the beginning of my widget:
+
+static void ReceiveMessage();
+static char defaultTranslations[] =
+        "<ClientMessage>:       clientmessage()         ";
+static XtActionsRec actionsList[] =  {
+        {"clientmessage",       ReceiveMessage},
+};
+
+And my ReceiveMessage is pretty simple:
+
+/* ARGSUSED */
+static void ReceiveMessage(w,event,params,num_params)
+    Widget w;
+    XEvent *event;
+    String *params;		/* unused */
+    Cardinal *num_params;	/* unused */
+{
+    GaugeWidget gw = (GaugeWidget)w;
+    fprintf (stderr, "WIDGET RECEIVED MESSAGE\n");
+}
+
+I have a client program similar to xwininfo that prints a cursor on
+the display.  I get the Window ID of the widget and fire off a XSendEvent
+to the Window ID.  XSendEvent returns a BadRequest.  I make sure the
+widget is partially obscured and do an XRaiseWindow on the Window ID 
+to make sure I have the correct Window before I do the XSendEvent. 
+
+    XEvent ClientEvent;
+
+    status = XRaiseWindow (dpy, win);
+    XSync (dpy, False);
+
+    ClientEvent.type = ClientMessage;
+    ClientEvent.xclient.message_type = NULL;
+    ClientEvent.xclient.format = 32;
+
+    status = XSendEvent (dpy, win, False, 0, &ClientEvent);
+
+Has anyone using the X Window System, Version 11 run into this?
+@end(Q)
+
+@begin(A)
+From: Bob Scheifler
+Subject: Re: XSendEvent to a Widget 
+
+        "<ClientMessage>:       clientmessage()         ";
+
+The correct name of the event type is <Message>, not <ClientMessage>.
+I tried adding such a translation to an xterm, and it seemed to work
+just fine.
+
+    I get the Window ID of the widget and fire off a XSendEvent
+    to the Window ID.  XSendEvent returns a BadRequest.
+
+Nope.  XSendEvent returns Status, not a protocol error code.
+The 1 that is being returned indicates success.
+@end(A)
+
+@begin(Q)
+I have a stupid question and there is probably something simple that I 
+am overlooking.
+
+Objective:	Create a scrollable window on which we can place widgets 
+		and do simple graphics (i.e. boxes and lines).
+
+	+-----------------------+ \
+	|	 _______	|  \
+	|	[_______]	|   \
+	|	 ___|___	|    \  Viewport
+	|	[_______]	|    /
+	|	 ___|___	|   /
+	|	[_______]	|  /
+	+-----------------------+ /
+		 ___|___		
+		[_______]
+		 ___|___		
+		[_______]
+	    	    |
+
+Problem:	Placing widgets works as advertised, but the graphics
+		doesn't stay around. If you do graphics in the viewport 
+		and then scroll around, you lose the graphics that have
+		been done. You also can't do graphics off of the displayed 
+		viewport (almost a necessity).
+
+Solution:	?
+
+
+Is there anybody out there in X11land that can break the news to me that
+it's really simple and "any good C programmer can write useful X applications
+in a very short period of time"?
+@end(Q)
+
+@begin(A)
+From: Bob Scheifler
+Subject: graphics in a viewport
+
+	If you do graphics in the viewport 
+	and then scroll around, you lose the graphics that have
+	been done. You also can't do graphics off of the displayed 
+	viewport (almost a necessity).
+
+If you want the graphics to be retained, you need to enable backing-store
+for the widget (and any inferiors, sorry) that you place inside the viewport
+that you want the graphics retained for.  Alternatively, you can try
+enabling save-unders on just the viewport window, but some implementations of
+save-unders may discard graphics to save-undered regions.
+
+You also need to have a server that support backing-store or
+save-unders.
+@end(A)
+
+@begin(A)
+You can either do the graphics in the viewport, or create another widget (like
+a box) and do the graphics there.  What you need to be sure to do however, is
+redraw the graphics on exposure.  What that means is an event handler for your
+graphics window.  What I typically do is keep the graphics in a pixmap and
+upon exposure simply copy the pixmap to the exposed window.  
+@end(A)
+
+
+@begin(M)
+Date: Mon, 05 Dec 88 09:49:58 EST
+From: Ralph R. Swick 
+
+     I have a Label widget I'm using as a graphics canvas, ...
+     I'd like to get a <Configure> event before the very
+     first <Expose> event the way raw Xlib programs do,
+
+??? ConfigureNotify events are generated only when the server actually
+changes the size of a window in response to a ConfigureWindow request
+from some client.  There is no guarantee that the first Exposure event
+will be preceeded by a ConfigureNotify for _any_ program.
+
+     I've checked the Label's event mask at various times.  After creating it
+     with XtCreateManagedWidget (with the new translations in the arg list),
+     only the ExposureMask is on.  Not until after XtRealizeWidget(toplevel) is
+     the StructureNotifyMask on.
+
+Since the window doesn't actually exist until the widget is realized,
+the R3 Xt implementation does lazy evaluation of the translation table
+event mask.  This is a bug, as the spec doesn't say that XtBuildEventMask
+may return a bad value for an unrealized widget.
+
+However, this won't change your problem, which is a more conceptual one
+(or architectural, depending on your P.O.V. :-).  By design, the initial
+geometry of all widgets is established _before_ any windows are created
+(modulo any changes imposed by user interaction via the window manger).
+Thus, any initial size changes to children are not accomplished by
+ConfigureWindow requests (and corresponding ConfigureNotify events).
+
+The proper way to keep track of size changes is to attach to the widget
+Resize method.  This is guaranteed to work both before and after the
+widget is realized and doesn't require the server to generate extra
+events.  Since the resize method is owned by the widget class, you may
+need to write your own widget subclass (see 'X Toolkit Athena Widgets',
+section 3.12) to export the resize method as an instance callback.
+
+As a quick hack, you could use a translation for <Map> in the Label
+widget as a hook to know when the window has actually been created
+and then retrieve the initial size.
+@end(M)
+
+@begin(M)
+From: Ralph R. Swick, updated by Mark Ackerman
+
+     could someone elucidate the specific problems in using widgets from
+     different sets?
+
+     Assuming any 2 sets are built around the Xt Intrinsics, which sets are
+     incompatible and why?
+
+Any widget set is free to define additional mechanisms in which all
+widgets of the family are expected to participate.  Mixing in other
+widgets that do not play the game is likely to create side-effects.
+The HP or Motif keyboard traversal procedures are an example of this;
+a widget (such as an Athena widget) that doesn't understand the
+additional keyboard traversal methods defined by HP or Motif will
+break the uniform traversal interface, even if the widget itself
+continues to work properly.
+@end(M)
+
+@begin(M)
+Subject: Re: question on XtCreateManagedWidget 
+From: Chris D. Peterson
+
+
+> I have a couple a questions about the Xt toolkit that I hope someone can
+> answer. First, what is the difference/advantage between using the 
+> combination XtCreateWidget, XtManageChild and simply using 
+> XtCreateManagedWidget?
+
+Before realize time there is absolutely not difference, there is one call
+to the parent's ChangeManaged Proccedure at realize time for all widgets that
+have been managed prior to that time.
+
+After realize time it is much more efficient to use XtCreateWidget() and then
+make a call to XtManageChildren() for all children of the same parent that 
+you want to manage.  This causes the parent to only relayout its children 
+once.
+
+@begin(M)
+Subject: Re: XtReparentWidget 
+Date: Fri, 31 Mar 89 11:44:19 EST
+From: Chris D. Peterson 
+
+
+> 	So I would like to have a function some thing like
+> XtReparentWidget to move the text widget from one diagram drawing
+> widget to another.
+> 	Has anyone written that function already?
+
+Nope, and there are no plans to add this functionality to Xt.
+
+> 	If I want to writing my own function for that, what are
+> the short cuts, cautions and advises that I should know ?
+
+Caution: it is very hard, and also breaks the resource model.
+How do you specify resources for a widget that has no fixed location
+in the widget hierarchy?
+
+>	How messy would that be to write such a function ?
+
+Very, I wouldn't want to do it.
+
+I would strongly advise against it, the design of Xt does not
+really permit this, so you will end up breaking the Xt model, and
+causing more problems than you will solve.
+
+Alternate solution:
+
+Why not use a popup text widget to get text input?  This way you can
+popup the text widget whenever you need input, and this widget is
+not directly tied to any of you drawing surfaces.
+@end(M)
+
+
+
+@begin(M)
+Date: 31 Mar 89 15:09:37 GMT
+From: Miles O'Neal
+Organization: Sales Technologies Inc., Atlanta, GA
+Subject: Re: XtReparentWidget
+
+In article [...] writes:
+>Hi there,
+>	So I would like to have a function some thing like
+>XtReparentWidget to move the text widget from one diagram drawing
+>widget to another.
+>	Has anyone written that function already?
+>	If I want to writing my own function for that, what are
+>the short cuts, cautions and advises that I should know ?
+>	How messy would that be to write such a function ?
+>	Thanks in advance for your suggestions, advises, and answers!
+
+Wouldn't we all like this one! But, alas, "they" say it's major-league
+non-trivial. A suggestion (proven in real-life use by actual X11
+programmers!):
+
+1) You create the TW (textWidget) as a child of root, pointed to by a global
+   variable.
+2) Unmap it.
+3) Invocation:
+   a) create/map/whatever the new "pseudo-parent" (PP).
+   b) convert the PP-relative (x,y) for the TW to root-relative (x,y).
+   c) using XtSetValues (), stuff the result of (b) into the TW Args.
+   d) add a callback to or override the actions/translations of the TW with
+      a routine specific to the PP that will perform the necessary
+      processing (the TW ptr being in the Widget field of the callback
+      or action routine).
+   e) if you use a callback, be sure that each PP tells the widget to
+      forget the old callback before adding its own.
+   f) map the TW.
+4) the code to unmap/destroy/etc the PP needs to also unmap the TW. You
+   might want to perform (3e) at this point as well.
+
+Yes, it's a little hackish, but it works, is very flexible, and should
+work through all versions of X11 until someone does write a reparenter
+(probably after some serious reworking of Xt widget-instantiation).
+
+If you have problems getting the TW to show above the parent, play
+around with Raising the PW. You may (at least under X11R2, have to
+also do XFlush's, clear the event queue, etc, before Raising the TW,
+to assure that some other event (such as MapRaise the PP) doesn't
+happen after the Map of the TW in such a way as to interfere.
+
+@end(M)
+
+@begin(M)
+From: Benjamin Ellsworth
+Organization: Hewlett-Packard Co., Corvallis, OR, USA
+Subject: Re: Constraint Class Question
+
+
+> ...But calling XtSetValues() may be the easiest way for a widget 
+> class to override default values specified by its superclasses. ...
+
+Nope.  The easiest way is to override the defaults in the default list.
+For example, to override XtNborderWidth add the default to your 
+resource list:
+
+	{ XtNborderWidth,
+	  XtCBorderWidth,
+	  XtRDimension,
+	  sizeof(Dimension),
+	  XtOffset(MyWidgetClass, core.border_width),
+	  XtRImmediate,
+	  (caddr_t) 25,
+	},
+
+You can do that other stuff if you're careful, but I can't take the
+time to explain all of the gory details right now, and with the above
+solution, why bother?
+@end(M)
+
+begin(M)
+Date: 6 Apr 89 05:34:04 GMT
+From: John Diamant
+Organization: HP SESD, Fort Collins, CO
+Subject: Re: Re: XtReparentWidget (How about XtCopyWidget)
+
+> I was wondering if anybody already had some
+> sort of general XtCopyWidget routine which could copy an arbitrary
+> widget.  Any ideas on what this would involve.  Does the Toolkit contain
+> enough information in itself about each widget?  This would be a simple
+> solution to the reparent problem.
+
+The Toolkit does contain enough information.  The size of a widget w can
+be obtained as follows:
+
+    XtClass(w)->core_class.widget_size;
+
+With that, you can malloc up a suitable sized chunk of memory and do a raw
+memory copy using bcopy to the new location.  Examples of this appear in
+the Toolkit code already (in Resources.c).  So, a general XtCopyWidget
+routine, would in fact, be very easy to write (about 4 lines of code).
+In fact, here it is (untested):
+
+Widget XtCopyWidget(w)
+Widget w;
+{
+	int widgetSize = XtClass(w)->core_class.widget_size;
+	Widget new = (Widget) XtMalloc(widgetSize);
+
+	bcopy((char *) w, (char *) new, widgetSize);
+	return new;
+}
+@end(M)
+
+@begin(M)
+From: Paul Asente
+Organization: DEC Western Software Lab
+Subject: Re: breaking out of XtMainLoop()
+
+In article [...] writes:
+>Someone else must have wanted to do this, so pleeeease give me a clue
+>because at the moment I am without one!  I am trying to keep at the X
+>Toolkit level, without trying to rewrite a main loop or use too many
+>Xlib routines.
+
+Don't be afraid to write your own main loop!  XtAppMainLoop is just intended
+as a convenience.  Here's the code:
+
+void XtAppMainLoop(app)
+        XtAppContext app;
+{
+    XEvent event;
+
+    for (;;) {
+        XtAppNextEvent(app, &event);
+        XtDispatchEvent(&event);
+    }
+}
+
+As you can see, it only uses public interfaces.  You can use XtNextEvent
+instead of XtAppNextEvent if you are using the default application context.
+@end(M)
+
+@begin(M)
+Subject: Re: XtAppCreateShell. What am I doing wrong? 
+From: Chris D. Peterson
+
+XtOpenDisplay() can return NULL if it is not able to open the display, if you
+try to pass NULL to XtAppCreateShell() it will probabally seg. fault.  You
+need to check this value to make sure that a non-NULL display is returned.
+@end(M)
+
+@begin(M)
+Subject: Re: Xt geometry question 
+From: Chris D. Peterson 
+
+
+> I want to position a widget in the middle of the screen.
+>   I create a form widget as child of the toplevel widget. How do I get
+> the size of the form widget for calculating the postition of the
+> toplevel widget before realizing the toplevel widget.
+
+Can't be done, but you can get the information before the widget is mapped.
+If you set mapped_when_managed to FALSE on a shell widget. I will not be 
+mapped when it is realized.  This way you have relize the widget, get its size,
+relocated it, and then map it.  This is a bit ugly, but it looks like it will
+do what you desire.
+@end(M)
+
+@begin(M)
+Subject: Re: X intrinsics 
+From: Ralph R. Swick 
+
+> Could someone give me a good set of definitions concerning the difference
+> between 'intrinsics' and widgets?
+
+Fundamentally, widgets are those things which draw on a screen and
+accept user input; that is, they have a look and feel, and intrinsics
+are those things behind the scenes which bind widgets together and
+provide common mechanisms for them to interact with each other and
+with applications; that is, they have no direct look and feel.
+
+Formally, "the Intrinsics", or "the Xt Intrinsics" are an X Consortium
+specification for a library of low-level programming interfaces and
+conventions for building user-interface primitives (i.e. widgets) and
+also for writing applications which combine and connect to those
+primitives in a uniform manner.  It is usually convenient to talk in
+terms of layering; at the lowest layer is the X Protocol, specifying
+inter-connectibility between X servers and X applications of arbitrary
+ancestry.  Above the Protocol is Xlib, specifying a portable
+programming base to the Protocol for libraries and applications
+written in C and other languages.  At the highest level (for the
+present discussion) are widget sets, specifying portability of users
+across applications; i.e. a common appearance and behaviour across the
+user interfaces of multiple applications.  In between Xlib and the
+widget sets is Xt.  Xt is trying to be large enough to accomodate the
+greatest variety of widget set policies and conventions and yet small
+enough to minimize the effort required to convert an application to a
+different widget set that the one with which it was originally built.
+
+Like all X Consortium specifications, the intent of the Xt
+specification is to describe the programming interfaces in sufficient
+detail that compatible implementations can be constructed without
+reference to common code.  There is certainly no requirement that
+anyone building a widget library on top of the Xt interfaces use the
+Xt implementation provided by MIT.  In all honesty, though, the
+specification and sample implementation have pretty much grown up
+together and though things are improving, there likely exists some
+unspecified behaviour upon which widgets and/or applications are
+relying, conciously or otherwise.
+@end(M)
+
+@begin(M)
+From: Chris D. Peterson
+Subject: Re: XtMainLoop 
+Date: Tue, 19 Jun 90 09:45:37 -0400
+
+> I need to be able to check for data on a socket as well as
+> handle X events. 
+
+Take a look at section 7.1.1 in the R4 intrinsics spec.  The function
+XtAppAddInput may do exactly what you want, w/o having to modify
+XtAppMainLoop().
+
+In any case:
+
+>  XEvent *event;
+>  while ( 1 ) {
+>    XtNextEvent( event );
+>    XtDispatchEvent( event );
+>  }
+
+This should read:
+
+  XEvent event;
+  while ( 1 ) {
+    XtNextEvent( &event );
+    XtDispatchEvent( &event );
+  }
+
+Someone has to allocate storage for the event structure.

@@ -1,0 +1,93 @@
+#!/bin/csh -f
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+#
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+
+
+%include pobbconfig.defs
+%ifdef pobb_WPUpdate
+
+set nonomatch
+
+cd ?[wpbuildDir]
+
+rm -f WP[0-9]* WPLOG[0-9]*
+echo "A night run began:" `date` >& WP$$$$
+echo 'Date:' `?[arpadatepgm]` >& WPLOG$$$$
+echo "From: ?[wpbuildUser]+@?[WorkstationCell]" >>& WPLOG$$$$
+echo "Subject: White Pages build log" >>& WPLOG$$$$
+echo "To: ?[DaemonBB].wp@?[WorkstationCell]" >>& WPLOG$$$$
+echo '' >>& WPLOG$$$$
+
+set WPSrcDir=?[CellCommonPrefix]?[WorkstationCell]?[CellCommonSuffix]?[CellCommonWPDirSuffix]
+set WPDestDir=?[CellCommonPrefix].?[WorkstationCell]?[CellCommonSuffix]?[CellCommonWPDirSuffix]
+echo 'Status of released WP volumes:' >>& WPLOG$$$$
+( ls -lrt $${WPSrcDir} | tail -3l ) >>& WPLOG$$$$
+echo 'Status of written WP volumes:' >>& WPLOG$$$$
+( ls -lrt $${WPDestDir} | tail -3l ) >>& WPLOG$$$$
+echo '' >>& WPLOG$$$$
+?[wpbuildDir]/runmakeboth >>& WPLOG$$$$
+set RSTAT=$${status}
+echo '' >>& WPLOG$$$$
+echo 'Rebuild completed at' `date` >>& WPLOG$$$$
+if ( $${RSTAT} ) then
+    ?[queuemail] -f WPLOG$$$$ -a ?[DaemonBB].wp
+    exit (1)
+endif
+
+set LogF=/tmp/LOGF$$$$
+echo 'Date:' `?[arpadatepgm]` >& $${LogF}
+echo "From: ?[wpbuildUser]+@?[WorkstationCell]" >>& $${LogF}
+echo "Subject: White Pages rebuild log" >>& $${LogF}
+echo "To: ?[LogBB].wp@?[WorkstationCell]" >>& $${LogF}
+if ( ! -z LastMakebothErr ) then
+    ( print LastMakebothErr ) >>& WPLOG$$$$
+    echo '' >>& $${LogF}
+    echo '** MAKEBOTH ERROR OUTPUT:' >>& $${LogF}
+    cat LastMakebothErr >>& $${LogF}
+endif
+echo '' >>& $${LogF}
+echo 'Makeboth output:' >>& $${LogF}
+cat LastMakebothOut >>& $${LogF}
+?[queuemail] -f $${LogF} -a ?[LogBB].wp >>& WPLOG$$$$
+rm -f $${LogF} >>& WPLOG$$$$
+echo 'Run ended at' `date` >>& WPLOG$$$$
+echo '' >>& WPLOG$$$$
+
+%ifdef pobb_PublishAccounts
+echo 'Now building the publishable table of our accounts.' >>& WPLOG$$$$
+( ?[genacctspgm] > ?[AndrewAcctDir]/wp.cs.NEW ) >>& WPLOG$$$$
+if ( $${status} == 0 ) then
+	echo 'Exited OK--publishing new wp.cs file.' >>& WPLOG$$$$
+	mv ?[AndrewAcctDir]/wp.cs ?[AndrewAcctDir]/wp.cs.BAK >>& WPLOG$$$$
+	mv ?[AndrewAcctDir]/wp.cs.NEW ?[AndrewAcctDir]/wp.cs >>& WPLOG$$$$
+endif
+echo '' >>& WPLOG$$$$
+%endif pobb_PublishAccounts
+
+echo 'Rebuild ended at' `date` >>& WPLOG$$$$
+?[queuemail] -f WPLOG$$$$ -a ?[DaemonBB].wp >>& WPLOG$$$$
+
+%endif pobb_WPUpdate

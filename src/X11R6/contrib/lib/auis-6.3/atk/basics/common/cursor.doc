@@ -1,0 +1,376 @@
+\begindata{text,538369524}
+\textdsversion{12}
+\template{be2guide}
+\define{global
+}
+\define{underline
+menu:[Font~1,Underline~41]
+attr:[Flags Underline Int Set]}
+\define{index
+menu:[Title,Index~91]
+attr:[FontFace Italic Int Set]}
+\define{indexi
+menu:[Title,InvisibleIndex~92]
+attr:[Script PreviousScriptMovement Point -2]
+attr:[Flags Hidden Int Set]
+attr:[FontFace Italic Int Set]}
+\define{fixedtext
+menu:[Region~4,Fixedtext]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{fixedindent
+menu:[Region~4,Fixedindent]
+attr:[LeftMargin LeftMargin Cm 83230]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{paramname
+menu:[Font~1,Paramname]
+attr:[FontFace Italic Int Set]}
+\formatnote{\chapter{Cursor}}
+
+
+The cursor package provides methods by which views may specify the look of the 
+mouse position indicator as it passes over sections of the screen. 
+
+
+
+\section{Quick reference list for Cursor}
+
+
+
+\fixedtext{void \bold{cursor_}ChangeShape }\fixedindent{(struct cursor 
+*\paramname{cursor});} 
+
+\fixedtext{struct cursor *\bold{cursor_}Create }\fixedindent{(struct view 
+*\paramname{v});} 
+
+\fixedtext{void \bold{cursor_}FinalizeObject }\fixedindent{(struct cursor 
+*\paramname{self});} 
+
+\fixedtext{boolean \bold{cursor_}InitializeObject }\fixedindent{(struct cursor 
+*\paramname{self});} 
+
+\fixedtext{\bold{cursor_}IsPosted }\fixedindent{(struct cursor 
+*\paramname{cursor});} 
+
+\fixedtext{\bold{cursor_}IsProcessCursor }\fixedindent{(struct cursor 
+*\paramname{cursor});} 
+
+\fixedtext{\bold{cursor_}IsWindowCursor }\fixedindent{(struct cursor 
+*\paramname{cursor});} 
+
+\fixedtext{void \bold{cursor_}SetGlyph }\fixedindent{(struct cursor 
+*\paramname{cursor}, struct fontdesc *\paramname{fd}, short \paramname{ch});} 
+
+\fixedtext{void \bold{cursor_}SetStandard }\fixedindent{(struct cursor 
+*\paramname{cursor}, short \paramname{ch});} 
+
+
+
+\section{Overview of cursor}\indexi{Cursor}
+
+
+There are three basic types of cursors:  \italic{window cursors}, which are 
+cursors that are assigned to an entire window, \italic{view cursors}, which 
+are assigned to views and sub-rectangles thereof , and \italic{process 
+cursors}, which are displayed in all windows associated with a process.  A 
+mouse cursor that is constant in an entire window would be a window cursor, 
+and cursors that change shape depending on its position in the window would be 
+view cursor. Cursors not associated with a particular view may \italic{only} 
+be used as window or process cursors; a view cursor is bound to its view. 
+Process cursors override all other cursors. Window cursors override view 
+cursors. 
+
+\indexi{Cursor++Types of} 
+
+
+Only one window cursor and one process cursor is allowed per window.  Views 
+that use either of these kinds of cursors should make sure to retract them 
+when their input focus is lost.  Parent views should call 
+\italic{view_RetractViewCursors} on their children before calling their 
+child's \italic{FullUpdate} routine, but view cursors are automatically 
+retracted (but not destroyed) during a \italic{FullUpdate}.  It is up to the 
+view's FullUpdate method to repost view cursors if necessary.  If a cursor is 
+destroyed, however, then it is automatically retracted, and a call to a 
+retract method is not necessary.  When cursors are created, they are posted up 
+to the interaction manager which keeps a list of the cursors. 
+
+\indexi{Cursor++Posting} 
+
+\indexi{Cursor++Retracting} 
+
+
+Process cursors are set by the interaction manager with a call to 
+\italic{im_SetProcessCursor}, window cursors are posted by a call to 
+\italic{im_SetWindowCursor}, and view cursors are posted with a call to 
+\italic{view_PostCursor}.  Cursor posts are time dependent, and the last post 
+made will always have precedence over previous posts.  However, reposting an 
+already posted cursor will not affect it's precedence. To give a reposted 
+cursor priority over other cursors, you  first call \italic{view_RetractCursor} 
+ to take the cursor out completely, then repost it.  
+
+
+If a posted cursor requests a rectangle that completely obscures a previously 
+posted cursor, the previous cursor is \italic{not} automatically retracted. 
+ Thus, a post followed by a retraction will leave the cursors in the same 
+original state.  Posts and retractions filter up the tree, so it is possible 
+for parents to filter their children's posts.  Cursor posts made when the 
+window or process cursor is already set are noted but not activated until the 
+window or process cursor is reset. 
+
+\begindata{bp,538928520}
+\enddata{bp,538928520}
+\view{bpv,538928520,1322,0,0}
+\subsection{Creating cursors}
+
+
+\paragraph{Creating an instance of a cursor} \indexi{ \italic{cursor_Create}}
+
+\indexi{Cursor++Creating} 
+
+\example{cursor_Create (view)
+
+struct view *view;} 
+
+
+\leftindent{\bold{Class procedure description.} \italic{cursor_Create} creates 
+a new cursor associated with \italic{view}. 
+
+
+\bold{Return value.}  Returns a pointer to the newly created instance of the 
+cursor; \smaller{NULL} on failure. 
+
+
+\bold{Usage.}  You would call this procedure to create the cursor, and use the 
+methods below to set its shape, then use one of \italic{im_SetProcessCursor}, 
+\italic{im_SetWindowCursor}, or \italic{view_PostCursor} to post it. 
+
+}
+\begindata{bp,538928456}
+\enddata{bp,538928456}
+\view{bpv,538928456,1323,0,0}
+\subsection{Setting the shape of a cursor}
+
+
+\paragraph{Setting a cursor shape to a known standard} 
+\indexi{ \italic{cursor_SetStandard}}
+
+\indexi{Cursor++Standard shapes} 
+
+\example{cursor_SetStandard (cursor, CursorShape)
+
+struct cursor *cursor;
+
+short CursorShape;} 
+
+
+\leftindent{\bold{Method description.  }\italic{cursor_SetStandard}  sets the 
+shape of the cursor to one of the standard cursors recognized by the 
+underlying window system. This is the preferred method to use for writing 
+portable applications. 
+
+
+\bold{Usage.}     The following cursors are currently supported under 
+\italic{wm}
+
+and X window managers. 
+
+
+\leftindent{
+Cursor_Arrow
+
+Cursor_Gunsight 
+
+Cursor_Cross 
+
+Cursor_Wait 
+
+Cursor_HorizontalBars  
+
+Cursor_LowerRightCorner 
+
+Cursor_UpperLeftCorner 
+
+Cursor_VerticalBars 
+
+Cursor_DangerousBend 
+
+Cursor_Caret 
+
+Cursor_VerticalArrows 
+
+Cursor_HorizontalArrows 
+
+Cursor_Octagon 
+
+Cursor_LeftPointer
+
+Cursor_RightPointer
+
+Cursor_CrossHairs
+
+Cursor_DownPointer
+
+Cursor_UpPointer
+
+Cursor_Cutter
+
+Cursor_LargeUpArrow
+
+Cursor_LargeDownArrow
+
+Cursor_EnclosedDot
+
+Cursor_SmallCross
+
+Cursor_SmallLeftPointer
+
+Cursor_SmallRightPointer
+
+}
+If you are calling this method to change the shape of an already posted 
+cursor, it is not necessary to repost the cursor.  Note that these names do 
+not conform to the conventions of the rest of the Andrew Toolkit:  the 'c' in 
+'Cursor_' is capitalized. 
+
+
+\bold{Example.}   The following creates an arrow shaped cursor. 
+
+\example{
+struct view *self;
+
+struct cursor *cp;
+
+cp = cursor_Create(self);
+
+cursor_SetStandard(cp,Cursor_Arrow);
+
+}
+}
+
+
+
+\begindata{bp,538269640}
+\enddata{bp,538269640}
+\view{bpv,538269640,1324,0,0}
+\paragraph{Setting the cursor shape to a font character} 
+\indexi{ \italic{cursor_SetGlyph}}
+
+\indexi{Cursor++Shape} 
+
+\example{cursor_SetGlyph (cursor, font, char)
+
+struct cursor *cursor;
+
+struct fontdesc *font;
+
+short char;
+
+}
+\leftindent{\bold{Method description.  }\italic{cursor_SetGlyph}  sets the 
+shape of the cursor to a font character.  The origin information of the 
+character is used to determine the cursor's 'hot spot.'
+
+
+\bold{Usage.}     Again, if you are changing an already posted cursor, you do 
+not need to repost.
+
+ 
+
+\bold{Example.}  The following creates a c shaped cursor. 
+
+\example{
+struct view *self;
+
+struct cursor *cp;
+
+static struct fontdesc *fd;
+
+fd = fontdesc_Create("andy",0,12);
+
+cp = cursor_Create(self);
+
+cursor_SetGlyph(cp,fd,'C');
+
+}
+}
+
+
+\subsection{Related routines}
+
+\indexi{Cursor++Posting} 
+
+\indexi{Cursor++Retracting} 
+
+The following routines are used to post cursors. See the documentation on 
+Views and Im for details and examples. 
+
+
+\example{void \bold{view_PostCursor}(view, rect, cursor)
+
+}
+\example{void \bold{view_RetractCursor}(view, cursor)
+
+}
+\example{void \bold{view_RetractViewCursors}(view, requestor)
+
+}
+\example{im_\bold{SetWindowCursor} (im, cursor)
+
+}
+\example{im_\bold{SetProcessCursor} (cursor)
+
+}
+
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1326,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,538369524}

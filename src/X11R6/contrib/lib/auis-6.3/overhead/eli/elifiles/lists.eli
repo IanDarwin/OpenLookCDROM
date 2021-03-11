@@ -1,0 +1,202 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;                                                                   ;;;;
+;;;;       Copyright IBM Corporation 1988,1991 - All Rights Reserved   ;;;;
+;;;;      For full copyright information see:'andrew/config/COPYRITE'  ;;;;
+;;;;                                                                   ;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; $Disclaimer: 
+; Permission to use, copy, modify, and distribute this software and its 
+; documentation for any purpose is hereby granted without fee, 
+; provided that the above copyright notice appear in all copies and that 
+; both that copyright notice, this permission notice, and the following 
+; disclaimer appear in supporting documentation, and that the names of 
+; IBM, Carnegie Mellon University, and other copyright holders, not be 
+; used in advertising or publicity pertaining to distribution of the software 
+; without specific, written prior permission.
+; 
+; IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+; DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+; ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+; SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+; BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+; DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+; WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+; ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+; OF THIS SOFTWARE.
+;  $
+
+; applies the function fn
+; to each one of the elements in the list args
+; individually.  Returns a list of the results
+; of the evaluations.
+(defun mapcar (fn args)
+  (reverse (do ((a args (cdr a))
+                (result nil (cons (eval (list fn (cons 'quote (list (car a)))))
+                                  result)))
+               ((null a) result))))
+
+; Returns the number of elements in the list.
+; NIL has length 0.
+(defun length (list)
+  (do ((l list (cdr l))
+       (result 0 (+ result 1)))
+      ((null l) result)))
+
+; Reverses the top level of the list, so that
+; (a b c d) becomes (d c b a) [for example].
+(defun reverse (list)
+  (do ((l list (cdr l))
+       (result nil (cons (car l) result)))
+      ((null l) result)))
+
+; Returns the nth element in a list.
+; the first element is 0.  Returns that item,
+; or NIL if n is out of range.
+(defun nth (n list)
+  (do ((l list (cdr l))
+       (num n (- num 1)))
+      ((eq num 0) (car l))))
+
+; X is a function, Y is an argument list.  Applies x to y.
+(defun apply (func args)
+  (eval (cons func
+              (mapcar '(lambda (x) (list 'quote x))
+                      args))))
+
+; Removes duplicate top-level elements from the list x.
+(defun remove-duplicates (x)
+  (reverse (do ((list x (cdr list))
+                (result nil (cond ((member (car list)
+                                           (cdr list))
+                                   result)
+                                  (T (cons (car list) result)))))
+               ((null list) result))))
+
+; Returns the union of lists x and y, with overlaps removed.
+(defun union (x y)
+  (remove-duplicates (append x y)))
+
+; If elt is a member of list lis, returns that sublist of
+; lis that begins at elt, else returns NIL
+(defun member (elt lis)
+  (do ((l lis (cdr l)))
+      ((or (null l) (equal elt (car l))) l)))
+
+; Returns the intersection of lists x and y.
+(defun intersect (x y)
+  (do ((list x (cdr list))
+       (result nil (cond ((member (car list) y)
+                          (cons (car list) result))
+                         (t result))))
+      ((null list) result)))
+
+; does a cons at the end of a list
+(defun snoc (x y)
+  (reverse (cons x (reverse y))))
+
+;;;
+;;; cxxxxr's -- see CLtL
+;;;
+
+(defun caar (x) (car (car x)))
+(defun cadr (x) (car (cdr x)))
+(defun cdar (x) (cdr (car x)))
+(defun cddr (x) (cdr (cdr x)))
+
+(defun caaar (x) (car (caar x)))
+(defun caadr (x) (car (cadr x)))
+(defun cadar (x) (car (cdar x)))
+(defun caddr (x) (car (cddr x)))
+(defun cdaar (x) (cdr (caar x)))
+(defun cdadr (x) (cdr (cadr x)))
+(defun cddar (x) (cdr (cdar x)))
+(defun cdddr (x) (cdr (cddr x)))
+
+(defun caaaar (x) (car (caaar x)))
+(defun caaadr (x) (car (caadr x)))
+(defun caadar (x) (car (cadar x)))
+(defun caaddr (x) (car (caddr x)))
+(defun cadaar (x) (car (cdaar x)))
+(defun cadadr (x) (car (cdadr x)))
+(defun caddar (x) (car (cddar x)))
+(defun cadddr (x) (car (cdddr x)))
+(defun cdaaar (x) (cdr (caaar x)))
+(defun cdaadr (x) (cdr (caadr x)))
+(defun cdadar (x) (cdr (cadar x)))
+(defun cdaddr (x) (cdr (caddr x)))
+(defun cddaar (x) (cdr (cdaar x)))
+(defun cddadr (x) (cdr (cdadr x)))
+(defun cdddar (x) (cdr (cddar x)))
+(defun cddddr (x) (cdr (cdddr x)))
+
+
+;;;
+;;; looping constructs (as in CLtL)
+;;;
+
+;;
+;; DOLIST (var listform [resultform]) body
+;;   symbol var -- the variable to bind to successive car's of listform
+;;   sexpr listform -- the list to iterate var over
+;;   sexpr resultform -- the optional expression to evaluate and return at 
+;;                       the end of the loop
+;;   sexpr body -- the expression to evaluate each time through the loop
+;; returns the value of resultform, or nil
+;;
+(defunq dolist (*dolist-bindinglist* *dolist-body*) ; should be a MACRO
+  (let ((*dolist-cdr* (gensym))
+	(*dolist-var* (car *dolist-bindinglist*))
+	(*dolist-listform* (cadr *dolist-bindinglist*))
+	(*dolist-resultform* (caddr *dolist-bindinglist*)))
+    (eval (cons 'do*
+	   (cons 
+	    (list			; variables section
+	     (list *dolist-cdr*		; list holder
+		   *dolist-listform*
+		   (list 'cdr *dolist-cdr*))
+	     (list *dolist-var*
+		   (list 'car *dolist-cdr*) 
+		   (list 'car *dolist-cdr*)))
+	    (list
+	     (list			; test section
+	      (list 'null *dolist-cdr*)	; end of list?
+	      *dolist-resultform*)
+	     *dolist-body*))))))
+
+
+;;;
+;;; The Common Lisp 'case' construct, in Eli.
+;;;
+;;; case keyform { ( { ( {key}* ) | key } {form}* ) } *
+;;; 
+;;; Example use:
+;;; (case (car '(this is a test))
+;;;       (this (+ 2 3) (list 'a 'b))
+;;;       ((is was) "verb")
+;;;       (otherwise "radical"))
+;;; ==> (A B)
+;;;
+(defunvq case (*case-arglist)
+  (let ((*case-test (gensym)))
+    (eval
+     (list
+      'let
+      (list (list *case-test (car *case-arglist)))
+      (append
+       (list 'cond)
+       (mapcar '(lambda (keylist-consq)
+		  (let ((keylist (car keylist-consq))
+			(consq (cdr keylist-consq)))
+		    (list
+		     (cond ((or (equal keylist 'otherwise)
+				(equal keylist 't))
+			    t)
+			   ((atom keylist) 
+			    (list 'equal *case-test (list 'quote keylist)))
+			   (t (list 'member *case-test (list 'quote keylist))))
+		     (append
+		      (list 'progn)
+		      consq))))
+	       (cdr *case-arglist)))))))
+

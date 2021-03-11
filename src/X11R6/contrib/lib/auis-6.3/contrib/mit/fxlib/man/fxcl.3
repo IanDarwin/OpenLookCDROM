@@ -1,0 +1,530 @@
+.\" $Author: susan $
+.\" $Source: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/contrib/mit/fxlib/man/RCS/fxcl.3,v $
+.\" $Header: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/contrib/mit/fxlib/man/RCS/fxcl.3,v 1.1 1993/05/17 17:16:33 susan Exp $
+.\" Copyright (c) 1989, Massachusetts Institute of Technology
+
+.TH FXCL 3 "March 12, 1990"
+.UC 4
+.SH NAME
+fx_open, fx_close, fx_create, fx_acl_add, fx_acl_del,
+fx_acl_list, fx_acl_list_destroy,
+fx_list, fx_list_destroy, paper_copy, fx_move, fx_copy,
+fx_delete \- File Exchange Client Library
+
+.SH SYNOPSIS
+.nf
+.nj
+.ft B
+#include <fxcl.h>
+.PP
+.ft B
+FX *fx_open(s, codep)
+     char *s;
+     long *codep;
+.PP
+.ft B
+void fx_close(fxp)
+     FX *fxp;
+.PP
+.ft B
+long fx_create(fxp, name)
+     FX *fxp;
+     char *name;
+.PP
+.ft B
+long fx_acl_add(fxp, aclname, person)
+     FX *fxp;
+     char *aclname, *person;
+.PP
+.ft B
+long fx_acl_del(fxp, aclname, person)
+     FX *fxp;
+     char *aclname, *person;
+.PP
+.ft B
+typedef struct stringnode *stringlist;
+.PP
+.ft B
+struct stringnode {
+        char *s;
+        stringlist next;
+};
+.PP
+.ft B
+typedef struct stringnode stringnode;
+.PP
+.ft B
+struct stringlist_res {
+        long errno;
+        union {
+                stringlist list;
+        } stringlist_res_u;
+};
+.PP
+.ft B
+typedef struct stringlist_res stringlist_res;
+.PP
+.ft B
+long fx_acl_list(fxp, aclname, ret)
+     FX *fxp;
+     char *aclname;
+     stringlist_res **ret;
+.PP
+.ft B
+void fx_acl_list_destroy(list)
+     stringlist_res **list;
+.PP
+.ft B
+typedef struct PaperNode *Paperlist;
+.PP
+.ft B
+struct PaperNode {
+        Paper p;
+        Paperlist next;
+};
+.PP
+.ft B
+typedef struct PaperNode PaperNode;
+.PP
+.ft B
+struct Paperlist_res {
+        long errno;
+        union {
+                Paperlist list;
+        } Paperlist_res_u;
+};
+.PP
+.ft B
+typedef struct Paperlist_res Paperlist_res;
+.PP
+.ft B
+long fx_list(fxp, pp, ret)
+     FX *fxp;
+     Paper *pp;
+     Paperlist_res **ret;
+.PP
+.ft B
+void fx_list_destroy(plist)
+     Paperlist_res **plist;
+.PP
+.ft B
+paper_copy(src, dest)
+     Paper *src, *dest;
+.PP
+.ft B
+long fx_move(fxp, src, dest)
+     FX *fxp;
+     Paper *src, *dest;
+.PP
+.ft B
+long fx_copy(fxp, src, dest)
+     FX *fxp;
+     Paper *src, *dest;
+.PP
+.ft B
+long fx_delete(fxp, p)
+     FX *fxp;
+     Paper *p;
+.PP
+.fi
+.ft R
+.SH DESCRIPTION
+The File Exchange Client Library helps C programmers write
+applications which imitate the paper handling done in a classroom.  A
+variety of paper types is supported.
+.PP
+.TP 10n
+.B EXCHANGE
+papers can be removed by its author or by any grader.
+.br
+.ns
+.TP
+.B TURNEDIN
+papers can be written
+by anyone but can be read only by graders and the papers' authors.  The
+various types distinguish the stages in grading.
+.br
+.ns
+.TP
+.B TAKEN
+is the paper type to which papers are moved when a grader
+decides to grade them.  This avoids a condition of more than one grader
+taking the same paper at the same time.  Any grader can also move a
+paper back to type TURNEDIN upon deciding that it was taken by mistake,
+or that the grader who took it will never grade it.
+.br
+.ns
+.TP
+.B GRADED
+papers are written by graders.  (Usually they are papers
+previously turned in by someone else, which the grader has modified to
+add comments and possibly a grade).  A graded paper can be read by
+graders and by the paper's author.
+.br
+.ns
+.TP
+.B PICKEDUP
+is the paper type to which the orignal author moves a
+GRADED paper to show that it's now ok for a grader to remove the paper
+from the server (assuming the grader doesn't want to keep it for
+archival purposes.)
+.br
+.ns
+.TP
+.B HANDOUT
+papers can be written by graders and read by anyone.
+.br
+.ns
+.TP
+.B TEACHERS_ARCHIVE and TEACHERS_HANDOUT
+papers can be written
+and read only by graders.
+.PP
+This document describes the library functions needed to handle these
+papers by communicating with the file exchange server.
+.PP
+.I fx_open
+takes the name of the file exchange, and a pointer which, if
+non-null, will be filled in with an error code.  If successful,
+It returns a pointer to an open course.
+.PP
+There are three
+possibilities for the error status:
+.PP
+A non-null pointer is returned and *codep is zero,
+meaning no error was encountered.
+.PP
+A non-null pointer is returned and *codep is non-zero,
+meaning some error was encountered that may limit access to the file
+exchange.
+.PP
+A null pointer is returned and *codep is non-zero,
+meaning the file exchange could not be opened.
+.PP
+Normally, a file exchange should not be held open while waiting for
+user input, because each open file exchange uses up at least one file
+descriptor at the server.  If more than fifty users might be using a
+server at the same time, it is imperative that the client program open
+the file exchange, do what needs to be done, and close the file
+exchange immediately.
+.PP
+Normally, 
+.I fx_open
+uses hesiod information to find
+which server machines it should try to contact.  A user can
+override this by setting the environment variable FXPATH to
+host1:host2:etc.
+.PP
+.I fx_close
+takes a pointer to an open course and closes the connection to it.
+.PP
+NOTE: On some systems, closing a file exchange twice may cause
+subsequent calls to 
+.I malloc
+not to function correctly.  To be
+sure this doesn't happen, follow this convention:
+.nf
+.nj
+.PP
+.ft B
+	if (fxp) { fx_close(fxp); fxp = NULL; }
+.ft R
+.fi
+.SH "Error Handling"
+The
+.I fx_open
+function may have to try several servers before it
+can actually connect to one.  In the worst case, several timeouts may
+occur, so that the user does not know why a program is taking so long.
+To combat this situation,
+.I fx_open
+, when it fails to connect
+to a host, will print an error message if there are still hosts to try
+to contact. This behavior can be modified by changing
+.I fx_open_error_hook .
+.PP
+.nf
+.nj
+.ft B
+void (*fx_open_error_hook)() = fx_open_perror;
+.PP
+.ft B
+void fx_open_perror(fxp, code)
+     FX *fxp;
+     long code;
+{
+  if (code)
+    com_err(fxp->host, code, "(%s)", fxp->name);
+}
+.fi
+.PP
+Client programs may use alternate error reporting routines with the
+same parameters as
+.IR fx_open_perror .
+Such routines may make
+use of fxp->host, the machine for which the error occurred, and
+fxp->name, the file exchange for which the error occurred.  For
+details on com_err, see the MIT Student Information Processing
+Board's document, 
+.ft I
+A Common Error Description Library for
+.R
+.IR UNIX .
+.PP
+.I fx_create
+takes a file exchange already opened for
+authentication, and the name of the file exchange to be
+created.  The error code returned can be diagnosed by
+.IR com_err .
+.PP
+Not all users can create file exchanges, only those in the server's
+global access-control list.  One authenticates to the server upon
+opening a file exchange.  A nameless file exchange ("") can always be
+opened for the purpose of authentication before creating new file
+exchanges.
+.PP
+The first thing to do after creating a file exchange is to adjust the
+access control lists 
+.BR ACL_TURNIN ,
+.BR ACL_GRADER ,
+and
+.BR ACL_MAINT .
+.PP
+Initially only the creator of the course is in
+each of these lists.  Everyone connected with the file exchange should
+be in the turnin list.  Add "*" if all authenticated users in
+your kerberos realm should have access.  (To give access to users in,
+say, the LCS.MIT.EDU, add \verb+"*@LCS.MIT.EDU"+.)  Graders get the
+privileges described in the overview.  Users in the maint list are
+allowed to change the access control lists.
+.PP
+.I fx_acl_add
+and
+.I fx_acl_del
+take the file exchange whose access control lists are to
+be changed, the aclname is one of 
+.BR ACL_TURNIN ,
+.BR ACL_GRADER ,
+or
+.BR ACL_MAINT ,
+and person is a username or kerberos principal.
+.PP
+.I fx_acl_list
+retrievs the contents of the access control lists from
+server into a
+.I stringlist_res
+structure, which should be
+destroyed after use to free allocated memory.
+.PP
+Client programs are only concerned with the stringlist_res_u.list
+member of the structure, since errno will be returned by the
+.I fx_acl_list
+function.  It may seem awkward to have to deal
+with a pointer to such an unwieldy structure rather than just a simple
+stringlist, but this is the best way to allow the entire structure
+returned by the server to be destroyed at the discretion of the
+client program.
+.PP
+The structure is retrieved by 
+.IR fx_acl_list ,
+which returns
+error status, and destroyed by 
+.IR fx_acl_list_destroy ,
+which
+always succeeds.
+.PP
+The strings returned are the usernames of members of the access control
+list if those users are in the same kerberos realm as the user who
+retrieves the ACL.  If there are members of the list from other realms,
+the full kerberos principal will be returned.
+.SH "Sending a Paper"
+Here is a Simple Example using
+.IR paper_clear ,
+.IR fx_send_file ,
+and
+.IR fx_send :
+.PP
+The following program sends a file called ``essay.dvi'' to the file
+exchange given on the command line, and then sends a corresponding
+``essay.PS'' without actually creating the file locally.  It serves as
+an example of how easy it is to  send files.
+.nf
+.nj
+.ft B
+#include <stdio.h>
+#include <fxcl.h>
+
+main(argc, argv)
+     int argc;
+     char *argv[];
+{
+  FX *fxp;
+  long code;
+  Paper p;
+  FILE *pipe;
+
+  if (argc != 2) {
+    fprintf(stderr, "Usage: %s <exchange>\n", argv[0]);
+    exit(1);
+  }
+  fxp = fx_open(argv[1], &code);
+  if (!fxp) {
+    com_err(argv[0], code, "while opening %s", argv[1]);
+    exit(1);
+  }
+  /* Send the essay.dvi file */
+  paper_clear(&p);
+  code = fx_send_file(fxp, &p, "essay.dvi");
+  if (code) {
+    com_err(argv[0], code, "while sending essay.dvi");
+    exit(1);
+  }
+  pipe = popen("dvi2ps -r essay.dvi", "r");
+  if (!pipe) {
+    fprintf(stderr, "%s: Could not run dvi2ps\n", argv[0]);
+    exit(1);
+  }
+  /* Send the essay.PS file */
+  p.filename = "essay.PS";
+  code = fx_send(fxp, &p, pipe);
+  if (code) {
+    com_err(argv[0], code, "while sending essay.PS");
+    exit(1);
+  }
+  fx_close(fxp);
+  (void) pclose(pipe);
+  exit(0);
+}
+.ft R
+.fi
+.PP
+Notice that in the preceding example the programmer was not obligated
+to specify the paper type; it defaults to EXCHANGE.  Assignment
+defaults to 1.  Filename defaults to the name of the local file for
+.I fx_send_file
+and to ``x'' for
+.IR fx_send .
+Author
+defaults to the sender, but a grader may attribute the authorship of a
+paper to someone else.  (The file exchange server will set authorship
+to the sender for everyone else.)  In summary, the preceding program
+could have set
+.br
+.ns
+.TP 10n
+.B p.assignment
+to an integer, the assignment number.
+.br
+.ns
+.TP
+.B p.type
+to any PaperType listed in the overview of this
+document.
+.br
+.ns
+.TP
+.B p.filename
+to any valid Unix base filename.
+.br
+.ns
+.TP
+.B p.author
+to any string (preferably username or kerberos
+principal).
+.PP
+.I fx_list
+retrieves lists of papers from the
+server into a Paperlist_res structure, which should be
+destroyed after use to free allocated memory by using
+.I fx_list_destroy
+(which always succeeds.)
+.PP
+Client programs are only concerned with the Paperlist_res_u.list
+member of the structure, since errno will be returned by the
+.I fx_list
+function.  It may seem awkward to have to deal
+with a pointer to such an unwieldy structure rather than just a simple
+Paperlist, but this is the best way to allow the entire structure
+returned by the server to be destroyed at the discretion of the
+client program.
+.PP
+The paper pointer, pp, passed to
+.I fx_list
+should first be
+cleared with
+.I paper_clear
+(see the example program in a previous
+section), and then filled in with criteria for the list.  For example,
+if you were only searching for papers associated with 
+assignment 2, you would
+.br
+set pp->assignment = 2.
+.PP
+A user who is not in the grader list will not be able to list papers by
+other authors except for types EXCHANGE and HANDOUT.
+.PP
+Modifying the contents of a paper in the list returned by
+.I fx_list
+may cause problems when you later destroy that list,
+it is better to copy into a new paper first using
+.IR paper_copy .
+.PP
+Do not destroy the list until you are done with all Papers copied from
+nodes of the list.
+.PP
+.I fx_retrieve_file
+and
+.I
+fx_retrieve
+take the same types of parameters as
+.I fx_send_file
+and
+.IR fx_send ,
+but the paper pointer
+passed must be taken from the list returned by
+.IR fx_list .
+.PP
+When using
+.I fx_copy
+and
+.IR fx_move ,
+src should come from the list returned by
+.IR fx_list ,
+and dest should be a modified copy of src.
+.PP
+The most frequent use of
+.I fx_move
+is to change the PaperType
+during grading.  A TURNEDIN file should be changed to TAKEN before a
+grader retrieves it for annotating.  The annotated version should be
+sent with type GRADED.  After retrieving the file, a student should
+change the status to PICKEDUP.
+.PP
+One possible use of 
+.I fx_copy
+would be to use a TURNEDIN file
+as an example for the whole class to look at, changing it to type
+HANDOUT.
+.PP
+When using
+.IR fx_delete ,
+p should come from the list returned by
+.IR fx_list .
+.SH "IMPORTANT BUILD NOTES"
+We build with a particular version of the Sun Remote Procedure
+Call library which we know works for fxcl.
+.PP
+Compilation requires the right additional include directory:
+.PP
+.ft B
+ -I/usr/lib/athena/fx
+.PP
+Linking requires the remote procedure call library.  Link with
+the additional flags:
+.PP
+.ft B
+-L/usr/athena/lib -lfxcl -lfxrpc
+.PP
+Share and enjoy
+.SH AUTHORS
+Bruce R. Lewis, Bill Cattey

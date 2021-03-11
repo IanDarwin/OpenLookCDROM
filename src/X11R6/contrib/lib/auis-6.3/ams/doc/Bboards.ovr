@@ -1,0 +1,794 @@
+\begindata{text,539047252}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\chapter{Maintaining and Administrating
+
+an AMS Bulletin Board System}
+
+
+Nathaniel S. Borenstein
+
+
+\section{Introduction}
+
+
+The Andrew Message System is designed to support a number of different types 
+of message directories.  The most common of these are directories for personal 
+mail and for public bulletin boards, but there is room for a number of 
+intermediate protection statuses in between those two extremes.  This document 
+explains what the options are, and what tools are available to support the 
+maintenance of public and private message directories.  This documented is 
+intended, therefore, to be of use both to the maintainers of the primary 
+public bulletin board system and to individuals wishing to maintain private or 
+semi-private bulletin boards.
+
+
+\section{Basic Concepts}
+
+
+There are no generally-understood terms to describe the different kinds of 
+message directories that are possible with the Andrew Message System, so this 
+section defines some terminology.
+
+
+\subsection{Messages}
+
+
+In the message system, the basic unit is a \italic{message}.   Messages are 
+subdivided into smaller units, including \italic{headers}, \italic{snapshots}, 
+\italic{captions}, \italic{attributes}, \italic{id's}, and \italic{dates}, but 
+those terms are not defined here; see the programmer documentation for 
+definitions of those terms.
+
+
+\subsection{Message directories}
+
+
+Messages are grouped together in \italic{message directories}.  A message 
+directory is simply a set of messages, as organized and maintained by the 
+message server.  Message directories are uniquely identified by a full path 
+name of a UNIX directory; when users type a shorthand name, such as 
+"andrew.gripes", the full path name is derived after a path search (using the 
+user's mspath value, as modified by his *.mspath preference).
+
+
+\subsection{Message domains}
+
+
+Message directories are grouped together in \italic{message domains}.  A 
+message domain is simply a tree of message directories.  The tree starts at a 
+root UNIX directory, beneath which everything is assumed to be a message 
+directory.   While it is possible, using the file system, to assign different 
+protection to different directories in the same domain, the message system is 
+built on the fundamental assumption that this will not be done; that is, the 
+message domain is assumed to be the fundamental unit of protection in the 
+message system, and you are assumed to have the same access for all message 
+directories and messages within that domain.  (This assumption allows certain 
+operations to proceed much faster; if it is violated, users may get 
+"permission denied" errors at various points in the execution of the message 
+system programs.)  A message domain must be rooted in a directory the name of 
+which starts with ".MESSAGES".  It need not be \italic{precisely} ".MESSAGES", 
+but should begin with that phrase; for example, one might have a ".MESSAGES" 
+directory in one's home directory for private mail, and a ".MESSAGES_PUBLIC" 
+directory, also in one's home directory, for a private or semi-private bboard 
+that is shared with (at least read by) other users.
+
+
+\subsection{Mailboxes}
+
+
+When mail is delivered by the AMS delivery system, it is deposited as an 
+individual file in a \italic{Mailbox} directory.  It is possible, through 
+Flames (the Filtering Language of the Andrew Message System), to tell the 
+system how to determine what to do with such incoming mail -- that is, in 
+which message directory or directories to insert the mail.  While such 
+mechanisms are inherently very general, there is an assumption made that the 
+relevant mailbox for a given domain can be found in a subdirectory of the 
+parent of the domain, called simply "Mailbox" (although this can be 
+re-specified via AndrewSetup).  That is, if a message domain lives in 
+/cmu/itc/nsb/.MESSAGES, the relevant mailbox is found in /cmu/itc/nsb/Mailbox. 
+ This is a weak assumption; if it is violated, that means only that viewing 
+updates for a message directory within that domain will \italic{not} 
+automatically process new mail from the relevant mailbox.  Ordinarily, the 
+system might or might not do this, depending on the relevant protections, as 
+described below.
+
+
+\subsection{Types of Message Domains}
+
+
+Especially given the rich protection mechanism provided by the Andrew file 
+system, it is possible to create innumerable permutations on the possible 
+protection of a message domain.  Unfortunately, most of these permutations are 
+useless.  There are five protection domains that are potentially useful; these 
+are described below.  \italic{It cannot be overstressed that most other 
+possible protections are garbage, and will lead to very poor results.  In 
+particular, taking away the "System:AnyUser" rights on a Mailbox directory is 
+a big mistake, and if administrators discover you have done this they will put 
+the rights back whether you want them there or not.   }In what follows, two 
+types of protections are described for each type of message directory, the 
+Mailbox protection and the domain protection.  The protection given as 
+"domain" should apply to every directory within the message domain, from the 
+root (".MESSAGES...") on down.  Also, in the message system, unlike most other 
+applications, the "k" protection for file locking is very important; if you 
+ignore it, things will not work right.  Although this is all specified in 
+terms of AFS access, you can get essentially the same effects (given a 
+reasonably small user community) using the UNIX groups mechanism.
+
+
+\paragraph{Private mail domain}
+
+In a private mail domain, only one user has read or write access to the 
+directories in the domain, and he also has full access to the Mailbox 
+directories.  In AFS, the relevant protections are:
+
+
+\leftindent{\typewriter{Mailbox: 
+
+System:AnyUser 	lik
+
+owner		rlidka
+
+
+domain: 
+
+owner 		rlidwka}}
+
+
+\paragraph{Public bboard domain}
+
+Public bboards are readable by everyone, but writable only by the postman and 
+a few maintainers.  This means that messages are not directly postable by the 
+senders; once mail is deposited in the mailbox, it must be processed by 
+someone who is authenticated as the postman or a maintainer.  Typically, this 
+is done by a bboard daemon job running cui and and a reauthentication daemon. 
+ See the Bulletin Board installation document for details on setting up 
+deamons.  The protections are as follows:
+
+
+\leftindent{\typewriter{Mailbox: 
+
+System:AnyUser lik
+
+postman        rlidka
+
+maintainers    rlidka
+
+
+domain:  
+
+maintainers		rlidwka
+
+System:AnyUser 	rl}}
+
+
+
+\paragraph{Shared mail domain}
+
+A shared mail domain is used when there is a special account set up for some 
+purpose that has its own mailbox, and you wish for a set of users to all share 
+complete read and write access to the messages sent to that account.  For 
+example, the "postman" account at CMU is set up so that all of the members of 
+the message system group have both read and write access to all parts of it. 
+ Since everyone has complete access, everyone has the ability to process mail 
+from the mailbox; hence, as in private mail domains, no daemon is necessary to 
+move mail out of the mailboxes.  The protections are:
+
+
+\leftindent{\typewriter{Mailbox: 
+
+System:AnyUser lik
+
+sharers        rlidka
+
+
+domain:
+
+sharers        rlidwka}}
+
+
+\paragraph{Private bboard domain}
+
+A private bboard is one which is maintained by one or a few individuals, but 
+made readable by a larger set (a set of people not all of whom have write 
+access).  In a private bboard, either a daemon must be set up to run as one of 
+the authorized maintainers, or new messages will not show up until the 
+maintainer next logs in and processes new messages.  In either event, the 
+protection is as follows:
+
+
+\leftindent{\typewriter{Mailbox: 
+
+System:AnyUser lik
+
+maintainers    rlidka
+
+
+domain:  
+
+maintainers    rlidwka
+
+readers        rl
+
+}}
+
+\paragraph{Semi-public bboard domain}
+
+A semi-public bboard is just like a private bboard, except its existence is 
+public knowledge and the postman is given certain rights on it.  Because the 
+postman is given rights, it can be set up so that the normal daemon that 
+processes the public bboard messages can also process incoming messages for 
+the semi-public bboards.  It can also (by request) be set up to be 
+automatically and regularly purged of messages older than a specified 
+life-span.  The price you pay for these conveniences, as opposed to private 
+bboards, is that you have to give the postman various rights, you have to make 
+the existence of the domain public knowledge (there will eventually be a way 
+to peruse the semi-public bboards without directly hacking at your mspath 
+variable), and the postman may occasionally delete messages that pose problems 
+of legality, e.g. military secrets or stolen credit card numbers.  The 
+protection is as follows:
+
+\leftindent{\typewriter{
+Mailbox: 
+
+System:AnyUser lik
+
+maintainers    rlidka
+
+
+domain:  
+
+maintainers    rlidwka
+
+readers        rl}}
+
+
+\section{Creation and maintenance of domains & directories}
+
+
+The creation of a new domain is a fairly straightforward matter.  Simply 
+create the root via a standard mkdir command, e.g. 'mkdir ~/.MESSAGES_PUBLIC' 
+and give it the appropriate protection.  (It is nice to give it the right 
+protection at this stage, as all protection information will then be inherited 
+automatically by the directories you create within the domain.)  Add the 
+domain to your mspath variable, and you're ready to go.  
+
+
+To create directories within the domain, simply use the "create" command in 
+cui.  (Or, reclassify messages into new directories, answering "yes" to the 
+"Do you want to create..." question, in messages.  Note that you can use full 
+path names ('~/.MESSAGES_PUBLIC/newdirname') to create new top-level 
+directories not in your own private mail domain.
+
+
+Most other maintenance chores can be performed using cui.  The rmdir, merge, 
+dirinfo, and epoch commands are particularly relevant to maintainers, as they 
+respectively delete directories, merge two directories, provide information 
+about directories, and purge old messages from directories.
+
+
+\section{Enabling Direct Posting to Bboards: .MS.DirectPost files}
+
+
+When you specify a local recipient name without a plus sign or hash mark mark 
+in it (i.e. you haven't asserted that what you've typed includes a literal 
+user id), the system checks to see if it is the name of a message directory on 
+your path or the name of a plausibly creatable child of a directory on your 
+path.  If it is, then the system tries to decide whether and how you can post 
+to it.
+
+
+What it does is to look for a file called ".MS.DirectPost".  It looks first in 
+the directory you specified, then (if it didn't find one) in the parent of 
+that directory, and so on, until it gets to the root of the message domain.
+
+
+If it never found a .MS.DirectPost file, the address is invalid, and the user 
+will get a "No Direct Posting" error.
+
+
+If it found a .MS.DirectPost file, that file will be read and parsed.  The 
+file should contain two lines.  
+
+
+\subsection{The first line}
+
+
+The first line is a 1 or a 0, depending on whether or not random users can or 
+cannot create sub-directories, followed by a sequence of flag words.   If the 
+name did not match an existing directory, but merely matched a plausible name 
+for a child of an existing directory, he will be asked "Do you want to create 
+XXX?" if the first line of the .MS.DirectPost file was 1; if it was 0, he will 
+be given an error message.  The remainder of the line is a sequence of flag 
+words, drawn from the set \{scan, noscan, post, nopost, createsub, 
+nocreatesub\}.  These flag words control how this .MS.DirectPost file is 
+processed.  The ``createsub'' or ``nocreatesub'' words, if present, override 
+the leading 0 or 1 on the line in controlling whether directory creation will 
+be offered.  The ``nopost'' word specifies that users may not submit posts to 
+this bboard; address validation results in an error message.  The ``scan'' and 
+``noscan'' words control whether this .MS.DirectPost file is to be used if it 
+is encountered in a parent directory, as explained in the next paragraph.
+
+
+\subsection{The second line}
+
+
+The second line specifies the mailing address to which the message should be 
+sent.  It should be a literal and valid mailing address, except that an 
+asterisk will be replaced by the portion of the directory name that lives 
+below the .MS.DirectPost file.  For example, at CMU, if the message directory 
+"ext.nn.comp.sys.ibmpc" lives in the UNIX directory 
+"/afs/andrew.cmu.edu/usr0/netbb/.MESSAGES/ext/nn/comp/sys/ibmpc".  If there is 
+no .MS.DirectPost file in that directory, or its parent (sys), or its 
+grandparent (comp), but there is such a file in the great-grandparent (nn), 
+then that file is used.  If its second line says, for example, 
+"outnews+*@andrew.cmu.edu", then the user who types "ext.nn.comp.sys.ibmpc" as 
+an address will have it rewritten as "outnews+comp.sys.ibmpc@andrew.cmu.edu". 
+ This happens because the .MS.DirectPost file was found in the "nn" directory, 
+so "*" was replaced with the portion of the path beneath that directory -- 
+namely, "comp.sys.ibmpc".  If there had been an .MS.DirectPost file in the 
+parent directory (/afs/andrew.cmu.edu/usr0/netbb/.MESSAGES/ext/nn/comp/sys), 
+that file would have been used instead, unless its first line had contained 
+the ``noscan'' flag word, in which case the search for .MS.DirectPost files 
+would have continued.  Essentially, the ``scan'' flag word says that the given 
+address may be used even if it is encountered in the .MS.DirectPost file in a 
+parent directory, and the ``noscan'' flag word says that the .MS.DirectPost 
+file is to be ignored when scanning a sequence of parent directories, and thus 
+the given address is to be used as the submission address for messages to be 
+posted only to the message directory in which the .MS.DirectPost file is 
+found.  If neither the ``scan'' or ``noscan'' flag words is specified in a 
+.MS.DirectPost file, the message server will check whether there is an 
+asterisk in the given address.  If there is an asterisk there (that is to be 
+replaced by the portion of the directory name that lives below the 
+.MS.DirectPost file), then ``scan'' is assumed; otherwise, ``noscan'' behavior 
+is assumed, because the address does not specify any way to handle the names 
+of the subdirectories.
+
+
+One final bit of information is relevant in determining how bboard names are 
+mapped to mail addresses.  One element of the mspath is defined as $EXTERNAL. 
+  (For information on which one, see "Site Configuration", below.)  Before the 
+system will go through the normal procedure of looking for .MS.DirectPost for 
+directories in the EXTERNAL domain, it will perform two additional checks:
+
+
+\paragraph{Global enabling file}
+
+
+It will make sure that the user has access to a global enabling file.  This 
+file is found in the parent of the external directory, in the file 
+extenable/ext.enable.  (For example, if $EXTERNAL is /cmu/itc/netbb/.MESSAGES, 
+the enabling file is /cmu/itc/netbb/extenable/ext.enable.  The extra level of 
+directory is necessary to allow fine-control of the AFS access lists.)  If the 
+user does not have read access to that file, he cannot post externally.  This 
+can be used to place controls on the set of people who can post externally, 
+and specifically to deal with users who have abused the network bulletin 
+boards.
+
+
+\paragraph{Individual enabling file}
+
+
+It will also make sure that the user has a file in his home directory called 
+".TurnOnExternalPosting".  By default, such a file should not exist; when it 
+doesn't, the user will be referred to a help file ("externalbb.help") that 
+tells him how to get access to external bboards.  This file explains the 
+policies, procedures, and etiquette for external bboards, and then tells a 
+user to create the .TurnOnExternalPosting file in his home directory.  The 
+point of this mechanism is simply to make sure that people who post on 
+external bboards understand what they're doing and that their messages may be 
+spanning the globe.
+
+
+\section{Explanations of Message Directories}
+
+
+By convention, an explanation of the purpose of a message directory can/should 
+be placed in that directory in a file named ".MS_intro.txt".  By common 
+convention, the first message on a bboard should contain the same information.
+
+
+\section{The Master Update File Mechanism
+
+}
+Although it is possible to just operate bboards the way you operate mail 
+folders, this can become painfully slow in certain cases.  In particular, if 
+there are a large number of bboards, and particularly if those bboards reside 
+on a distributed network file system, then answering the question "which 
+bboards have new messages?" can become very slow.  The most obvious result of 
+this is an extremely long startup time for the Messages program.
+
+
+In order to ameliorate this problem, the AMS provides a mechanism known as the 
+Master Update File.  When a Master Update File exists, it contains one line 
+for each folder in a .MESSAGES tree.  That line tells when the most recent 
+post for a bboard occurred.  Thus, the question "what bboards have new 
+messages" can be answered relatively quickly.
+
+
+By default, a message tree does NOT have a master update file.  Creating one 
+is easy, but should not be done unless the appropriate system daemons are also 
+created.  This is because of some technical aspects of how master update files 
+work, which will be explained briefly below.
+
+
+\subsection{Creating a Master Update File for a Message Tree}
+
+
+If you want to create a Master Update File (MUF) for the tree rooted in 
+~bb/.MESSAGES, all you have to do is:
+
+
+\example{mkdir ~bb/.MESSAGES/.MS.Master
+
+touch ~bb/.MESSAGES/.MS.Master/Update
+
+cuin reindex ~bb/.MESSAGES \\; takehints \\; quit}
+
+
+If the .MS.Master directory has the same protection as its parent, that should 
+be fine.
+
+
+\subheading{Running the System Daemons for a Master Update File}
+
+
+Once you have a master update file, you must make sure that you have daemons 
+running the "takehints" command.   You need one change to your main daemons, 
+and one additional nightly daemon.  This can be done via the pobbconf 
+mechanism, explained in the installation document.
+
+
+\paragraph{The Main Bboard Daemon}
+
+
+Basically, each of your main bboard daemon will probably already be running a 
+loop something like
+
+
+\example{loop -1 60 mycommand}
+
+
+where 'mycommand' was defined as an alias to process your bboard mailboxes, 
+e.g.
+
+
+\example{alias mycommand ch ~bb/Mailbox \\; ch ~bb/AuxBox
+
+}
+Now, if the bboard tree into which this mailbox feeds is using the MUF 
+mechanism, you will need to add one more component to your daemon's loop:
+
+
+\example{alias mycommand ch ~bb/Mailbox \\; ch ~bb/AuxBox \\; takehints}
+
+
+It is also recommended, if you have more than one bboard-processing machine in 
+a network file system environment, that you create a subdirectory of 
+.MS.Master for the use of the daemons on each machine.   If one of your bboard 
+machines is called "foo.bar.edu", you probably want to do the following:
+
+
+\example{mkdir ~bb/.MESSAGES/.MS.Master/foo.bar.edu}
+
+
+\paragraph{The Nightly Reindex Daemon}
+
+
+Using cron (and, if you're using AFS, making sure to authenticate the cron job 
+properly), you will need to set up one additional nightly daemon.  It should 
+run CUI with the following commands:
+
+
+\example{takehints all
+
+reindex
+
+takehints all
+
+}
+It is recommended that, with all such daemons, you redirect the output in such 
+a way that it ends up showing up on a bboard that you can monitor, to make 
+sure it is, in general, working properly.
+
+
+\section{What Is All This Hint Stuff, Anyway?}
+
+
+When a new message is posted on a bboard, it might seem obvious that the MUF 
+should be updated at that time.  Unfortunately, this turns the MUF into a 
+scarce resource with enormous contention, especially in an environment where 
+there are multiple bboard server machines fighting for access to a MUF that 
+lives in a network file system.  Instead, therefore, the MUF is not updated 
+directly.  Rather, a HINT_ file is left in the .MS.Master directory, which 
+says, in effect, that the MUF entry for a given folder needs to be rewritten. 
+ Such hints are only actually "taken" and incorporated into the MUF by the CUI 
+"takehints" command.
+
+
+The takehints command, with no argument, tries to ignore hints left by 
+processes on other machines; this is another hack to reduce contention in a 
+network file system environment.  If you say "takehints all", however, all 
+hints will be taken, regardless of their machine of origin.
+
+
+The nightly reindex daemon, described above, serves two purposes.  First, it 
+picks up any stray changes that might not have made it into the MUF via the 
+hint mechanism.   (That's what "reindex" does.  There should not be any such 
+stray changes, but the MUF has not exactly proven itself to be the most 
+reliable part of the AMS.)  Second, the "takehints all" command ensures that 
+all hints that have been left will eventually be taken, regardless of what 
+machine left them.  This is repeated twice simply to reduce the number of 
+apparent flaws found by reindex -- you take all the hints before running 
+reindex, and then you takehints afterward to pick up the hints left by 
+reindex.  
+
+
+The reindex command will tell you about any flawed MUF entries it finds, and 
+how long they have been out of date.  If it says that an entry has been out of 
+date for just a few seconds, there was almost certainly no problem, but the 
+hint was left after the reindex started.  If it finds entries that have been 
+out of date for longer than it has taken to run the reindex command itself, 
+there is probably something going wrong, but the nightly reindex daemon will 
+completely correct any damage.  The worst that can happen is that some people 
+might not see new messages on the affected bboard until the reindex daemon 
+next runs.
+
+
+\section{FLAMES: filing messages in the right place}
+
+
+The Flames language is a Lisp-like language used to process mail as it is read 
+out of a Mailbox and place it into an appropriate folder.  It is thus the 
+counterpart of .MS.DirectPost in that the DirectPost file tells messages 
+addressed to a bboard name what address to use, and Flames files have to make 
+sure that messages addressed to a bboard are filed into the folder that is 
+that bboard.
+
+
+There is on-line help about Flames, as well as a programmer's document in 
+/usr/andrew/doc/ams/Flames.pgr.
+
+
+\subheading{Setting up daemons}
+
+
+Setting up a daemon to process mail from a mailbox is complicated by AFS 
+authentication.  If you're not on an AFS system, you can just have a cron 
+entry or setuid shell script that automatically runs and checks the mailbox at 
+specified intervals.  On AFS, however, you also need to set up a 
+reauthentication daemon.  This should be started up at reboot time, before the 
+cui daemon, with the command "/usr/andrew/etc/reauth <n> <user> <password>", 
+where n is the number of seconds that the program should sleep before 
+reauthenticating you.  The password needs to be clear text, and is 
+conventionally stored in the local disk on a secure machine.  Typically, you 
+might start this as "/usr/andrew/etc/reauth 43200 postman `cat 
+/PostmanPassword`".  Of course, you better turn off telnet and rsh access to 
+the machine that has the password on its local disk.
+
+
+In addition to the reauth daemon, you should set up a cui daemon to actually 
+process the messages.  You'll probably want to use the cui's "loop" and "fork" 
+commands.  A typical startup command might be "/usr/andrew/bin/cui set level 
+wizard \\; fork \\; set terminal 0 \\; loop -1 60 check <mailboxname>".  If 
+you want to know what all that means, read the cui documentation.
+
+
+\section{Automatic purging}
+
+
+Purging is generally done via a cron entry that runs cui and the "epoch" 
+command.  If you have a semi-public message directory, to which postman has 
+access, you can have it purged along with the public bboards; otherwise you'll 
+need to set up your on cron entry.  See the help on cron and on the cui epoch 
+command for further details.  At CMU, we have cron run a script which runs CUI 
+and posts the results automatically to a bboard; you will probably want to do 
+something similar.
+
+
+One important thing to note about purging is that purging works on whole 
+trees, but can be made NOT to recurse into subtrees by putting a magic file 
+called AMS_PurgingCutoff in the top of the subtree that should not be purged. 
+ The only way to purge such a subtree is to start the purge with that subtree 
+as the root.
+
+
+\section{Site configuration}
+
+
+There are a few parameters which are semi-hard wired into the message system 
+code.  These include the mailing address for the local site, and the path 
+names for the various parts of the default mspath.  These can be found in the 
+messages system sources, in the file "mailconfig.c" (part of the itc/libmail 
+directory).  However, you won't, in general, need to change those values and 
+recompile the message system in order to customize it for a new site. 
+ Instead, you can override all of these values using the "AndrewSetup" file, 
+documented elsewhere.
+
+
+\section{Magic Headers}
+
+
+There are several headers used in the Andrew Message System that are not 
+standard.  These all begin with the "X-" prefix, as per RFC822.  Further, they 
+are all followed by "Andrew-" to differentiate them from other experimental 
+headers at other sites.  Here are the special headers currently used:
+
+
+Content-Type, If-Type-Unsupported: These headers are used to control the 
+multi-media message type, and will be explained in a forthcoming RFC.
+
+
+Enclosure,  Ack-To, Ack, Ack-Type, Vote-Request, Vote-To, Vote-Choices:  These 
+headers support the "enclosure" (parcel-post), "acknowledgement" 
+(return-receipt), and "vote" features, and will be explained in a forthcoming 
+RFC.
+
+
+X-Andrew-WideReply:  This header overrides the usual calculations for the 
+"reply to recipients" function with its contents.
+
+
+X-Andrew-AllReply:  This header overrides the usual calculations for the 
+"reply to all" function with its contents.  If it doesn't exist, but the 
+X-Andrew-WideReply does, then the "reply to all" will be the 
+X-Andrew-WideReply field plus the sender.
+
+
+X-Andrew-Authenticated-as:  This is used to keep track of the authenticated 
+user id when mail is queued in mail queues by the postman.  It should not be 
+believed unless the file as delivered was stored to AFS by the postman, or by 
+the current user.
+
+
+X-Andrew-DirectoryCreation:  This is used to announce the creation of a new 
+message directory.  Most interfaces (cui and messages, for sure) will notice 
+this header and ask the user if he wants to subscribe to the new directory. 
+ (Actually, the message server notices the header and sets an attribute bit; 
+the client interface notices the attribute bit and requests the header from 
+the server.)
+
+
+X-Andrew-ScribeFormat:  now obsolete, replaced by Content-Type
+
+
+X-Andrew-Message-Size:  This header provides some special information used 
+only in the construction of the "size" portion of message captions.
+
+
+\section{Moving Bboards}
+
+
+Sometimes, fate decrees that the name of a bboard must be changed.  This is a 
+pain, but there are AMS features that help support it.
+
+
+\subsection{The Easy Way}
+
+
+As of Release 4.0 of the Messageserver program (Messages 6.0), you may be able 
+to get away with simply renaming a whole tree of bboards.  This will only work 
+if the rename does not have to go across UNIX devices or AFS Volumes.
+
+
+If the person doing the rename has write access to the ChangedSubscriptions 
+file (see below), then the rename will automatically change that file, and no 
+other action should be necessary.
+
+
+\subsection{The Hard Way}
+
+
+If the move is across devices or volumes, you'll need to go to a bit more 
+trouble, to say the least.
+
+
+First of all, there is a file (specified in siteconfig.c; at cmu, it is 
+~postman/ChangedSubscriptions) in which the old and new names of such bboards 
+are specified.  The format of the file is
+
+
+\typewriter{\smaller{/old/full/path/name /new/full/path/name 
+any-random-garbage that you like}}
+
+
+That is, a full path name, a space, another full path name, another space, and 
+any comment you want until the end of the line.  (Comments are useful for 
+noting when the rename happened, so that you can clean up this file 
+periodically.)
+
+
+By putting the appropriate entries in this file, you make life easier for your 
+users; when the bboard is moved, they get appropriate questions about changing 
+their subscription to match it.
+
+
+When you actually move the bboards, you have to do the following things:
+
+
+\leftindent{\description{1.  Put the entry in the ChangedSubscriptions file.
+
+
+2.  Kill off any daemon that handles requests for this bboard, to avoid timing 
+problems.
+
+
+3.  update the new bboard, e.g. 
+
+\leftindent{\typewriter{up -v ~itcbb/.MESSAGES/itcbb ~bb/.MESSAGES/org/itc}}
+
+
+4.  Fix (if necessary) the .MS.spec file for the appropriate mailbox.
+
+
+5.  Fix (if necessary) the relevant .MS.DirectPost files.
+
+
+6.  Get rid of the old bboards, using rm or by moving them to a less visible 
+location.
+
+
+7.  Rebuild the subscription maps.  You use "rebuild" in cui, or you can speed 
+it up by editing the appropriate .SubscriptionMap files by hand, or you can 
+temporarily change your mspath so that you rebuild the minimum set of 
+subscription maps that you need.
+
+
+8.  Reindex the master update file, by typing "reindex <appropriate tree 
+root>; takehints all" in CUI.
+
+
+9.  Restart the daemon.
+
+
+10.  Pray.}}
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1466,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,539047252}

@@ -1,0 +1,1106 @@
+%{/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+	$Disclaimer: 
+Permission to use, copy, modify, and distribute this software and its 
+documentation for any purpose is hereby granted without fee, 
+provided that the above copyright notice appear in all copies and that 
+both that copyright notice, this permission notice, and the following 
+disclaimer appear in supporting documentation, and that the names of 
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+used in advertising or publicity pertaining to distribution of the software 
+without specific, written prior permission.
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+OF THIS SOFTWARE.
+ $
+\* ********************************************************************** */
+
+#ifndef NORCSID
+	static char *rcsid = "$Header: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/atk/ness/type/RCS/parse.gra,v 1.10 1994/01/06 15:37:50 wjh Exp $";
+#endif /* NORCSID */
+
+
+/* parse.gra
+
+	Grammar for the parsing C declarations and .ch files
+*/
+
+#include "class.h"
+#include <andrewos.h>
+#include "sym.ih"
+#include "toksym.ih"
+#include "tlex.ih"
+#include "type.ih"
+#include "text.ih"
+#include "type.h"
+#include "parse.h"
+
+#include "stdio.h"
+
+static long size;
+
+static boolean typedefFlag;		/* true if we're in a typedef */
+
+#define print(pos, str) (pos += strlen(strcpy(pos, str)))
+
+static struct type *stack[40], **stackPtr;
+static operation opStack[40], *opStackPtr;
+
+boolean debug = 0;
+
+operation op;		/* used by Class extension */
+boolean overrideFlag;
+
+/* precedence levels to handle redeclaration of C's brain damaged typedefs */
+
+%}
+
+%token <tok> setID
+%token <tok> setSTRINGCON
+%token <tok> setINTCON
+%token <tok> setREALCON
+%token <type> setTNAME
+
+%token tokAUTO
+%token tokREGISTER
+%token tokSTATIC
+%token tokEXTERN
+%token tokTYPEDEF
+
+%token tokVOID
+
+%token tokCHAR
+%token tokSHORT
+%token tokINT
+%token tokLONG
+%token tokFLOAT
+%token tokDOUBLE
+%token tokSIGNED
+%token tokUNSIGNED
+
+%token tokCONST
+%token tokVOLATILE
+
+%token tokSTRUCT
+%token tokUNION
+
+%token tokENUM
+%token tokSIZEOF
+
+%type <type> declaration_specifiers
+%type <type> struct_or_union_specifier enum_specifier
+%type <type> struct_declaration_list
+%type <type> init_declarator declarator declarator_ 
+%type <type> direct_declarator direct_declarator_paren
+%type <type> struct_or_union struct_or_union_specifier
+%type <type> specifier_qualifier_list
+%type <num> pointer
+
+%type <type> init_declarator_list
+
+/* types for constant expression evaluation productions */
+%type <num> constant_expression conditional_expression constant_expression
+%type <num> logical_OR_expression logical_AND_expression inclusive_OR_expression
+%type <num> exclusive_OR_expression equality_expression relational_expression shift_expression
+%type <num> additive_expression multiplicitive_expression cast_expression unary_expression
+%type <num> constant AND_expression postfix_expression unary_operator primary_expression
+
+/* Class extensions */
+
+%token tokCLASS
+%token tokPACKAGE
+%token tokRETURNS
+%token tokERRVAL
+%token tokNULL
+%token tokEXIT
+
+%token tokOVERRIDES
+%token tokMETHODS
+%token tokCLASSPROCEDURES
+%token tokMACROMETHODS
+%token tokMACROOVERRIDES
+%token tokMACROS
+%token tokDATA
+
+%type <type> data type_name returnval
+%type <op> class_or_package
+%type <str> class_name
+%type <type> type_specifier
+
+%start Cprogram
+
+%%
+
+
+Cprogram
+:	declaration_list
+|	error 
+;
+
+declaration
+:	declaration_specifiers
+		{
+		*++stackPtr = $1;
+		}
+	init_declarator_list ';'
+		{
+		foldtnames = FALSE;
+		--stackPtr;
+		typedefFlag = FALSE;
+		}
+|	declaration_specifiers ';'
+		{
+		foldtnames = FALSE;
+		}
+|	'@' constant_expression
+		{
+		debug = $2;
+		}
+;
+
+declaration_list
+:	declaration_or_class
+|	declaration_list declaration_or_class
+;
+
+declaration_or_class
+:	declaration
+|	class
+;
+
+declaration_specifiers
+:	storage_class_specifier declaration_specifiers 
+		{
+		$$ = $2;
+		}
+|	type_specifier  declaration_specifiers
+		{
+		if ($1 == ctypes.longType && $2 == ctypes.intType)
+			$$ = ctypes.longType;
+		else if ($1 == ctypes.shortType && $2 == ctypes.intType)
+			$$ = ctypes.shortType;
+		else if ($1 == ctypes.intType && $2 == ctypes.intType)
+			$$ = ctypes.intType;
+		else if ($1 == ctypes.longType && $2 == ctypes.floatType)
+			$$ = ctypes.doubleType;
+		else if ($1 == ctypes.uintType)
+			if ($2 == ctypes.charType)
+				$$ = ctypes.ucharType;
+			else if ($2 == ctypes.shortType)
+				$$ = ctypes.ushortType;
+			else if ($2 == ctypes.intType)
+				$$ = ctypes.uintType;
+			else if ($2 == ctypes.longType)
+				$$ = ctypes.ulongType;
+			else
+				return parse_ERROR;
+		else
+			return parse_ERROR;
+		/* !!! only works in one order */
+		}
+|	type_qualifier declaration_specifiers 
+		{
+		$$ = $2;
+		}
+|	storage_class_specifier 
+		{
+		$$ = ctypes.intType;
+		}
+|	type_specifier 
+		{
+		$$ = $1;
+		}
+|	type_qualifier 
+		{
+		$$ = ctypes.intType;
+		}
+;
+
+storage_class_specifier	:	tokAUTO
+			|	tokREGISTER
+			|	tokSTATIC
+			|	tokEXTERN
+			|	tokTYPEDEF
+				{
+					typedefFlag = TRUE;
+				}
+			;
+
+type_specifier
+:	tokVOID
+		{ foldtnames = TRUE; $$ = ctypes.voidType; }
+|	tokCHAR
+		{ foldtnames = TRUE; $$ = ctypes.charType; }
+|	tokSHORT
+		{ foldtnames = TRUE; $$ = ctypes.shortType; }
+|	tokINT	
+		{ foldtnames = TRUE; $$ = ctypes.intType; }
+|	tokLONG
+		{ foldtnames = TRUE; $$ = ctypes.longType; }
+|	tokFLOAT
+		{ foldtnames = TRUE; $$ = ctypes.floatType; }
+|	tokDOUBLE
+		{ foldtnames = TRUE; $$ = ctypes.doubleType; }
+|	tokSIGNED
+		{ foldtnames = TRUE; $$ = ctypes.intType; }
+|	tokUNSIGNED
+		{ foldtnames = TRUE; $$ = ctypes.uintType; }
+|	struct_or_union_specifier
+		{ foldtnames = TRUE; $$ = $1; }
+|	enum_specifier
+		{ foldtnames = TRUE; $$ = $1; }
+|	setTNAME
+		{ foldtnames = TRUE; $$ = $1;}
+;
+
+type_qualifier		:	tokCONST
+			|	tokVOLATILE
+			;
+
+struct_or_union_specifier
+:	struct_or_union setID
+		{
+		*++stackPtr = type_Create($1, toksym_GetName($2), NULL, 					type_GetOps($1)[0]);
+		foldtnames = FALSE;
+		}
+	'{' struct_declaration_list { foldtnames = FALSE; } '}'
+		{
+		$$ = *stackPtr;
+		--stackPtr; 
+		if ($$ != NULL)
+			type_ApplyOp($$, type_lastAdded);
+		}
+|	struct_or_union
+		{
+		*++stackPtr = type_Create($1, "", NULL, type_GetOps($1)[0]);
+		foldtnames = FALSE;
+		}
+	'{' struct_declaration_list { foldtnames = FALSE; } '}'
+		{
+		$$ = *stackPtr;
+		--stackPtr; 
+		if ($$ != NULL)
+			type_ApplyOp($$, type_lastAdded);
+		}
+|	struct_or_union setID
+		{
+		$$ = type_Lookup($1, toksym_GetName($2));
+		if ( $$ == NULL && ($$ = type_Create($1, toksym_GetName($2), NULL, 			type_GetOps($1)[0])) == NULL)
+			return parse_ERROR;
+		}
+;
+
+struct_or_union
+:	tokSTRUCT
+		{ $$ = ctypes.structType; foldtnames = TRUE; }
+|	tokUNION
+		{ $$ = ctypes.unionType; foldtnames = TRUE; }
+;
+
+struct_declaration_list
+:	struct_declaration
+		{
+		$$ = NULL;
+		}
+|	struct_declaration_list struct_declaration
+		{
+		$$ = NULL;
+		}
+;
+
+
+init_declarator_list
+:	init_declarator
+|	init_declarator_list ',' init_declarator
+;
+
+init_declarator
+:	declarator_
+		{
+		$$ = $1;
+		}
+|	declarator_ '=' initializer
+		{
+		$$ = $1;
+		}
+;
+
+struct_declaration
+:	specifier_qualifier_list
+		{
+		*++stackPtr = $1;
+		}
+	struct_declarator_list ';'
+		{
+		foldtnames = FALSE;
+		--stackPtr;
+		}
+;
+
+specifier_qualifier_list	
+:	type_specifier specifier_qualifier_list
+		{
+		if ($1 == ctypes.longType && $2 == ctypes.intType)
+			$$ = ctypes.longType;
+		else if ($1 == ctypes.shortType && $2 == ctypes.intType)
+			$$ = ctypes.shortType;
+		else if ($1 == ctypes.intType && $2 == ctypes.intType)
+			$$ = ctypes.intType;
+		else if ($1 == ctypes.longType && $2 == ctypes.floatType)
+			$$ = ctypes.doubleType;
+		else if ($1 == ctypes.uintType)
+			if ($2 == ctypes.charType)
+				$$ = ctypes.ucharType;
+			else if ($2 == ctypes.shortType)
+				$$ = ctypes.ushortType;
+			else if ($2 == ctypes.intType)
+				$$ = ctypes.uintType;
+			else if ($2 == ctypes.longType)
+				$$ = ctypes.ulongType;
+			else
+				return parse_ERROR;
+		else
+			return parse_ERROR;
+		/* !!! only works in one order */
+		}
+|	type_qualifier specifier_qualifier_list
+		{
+		$$ = $2;
+		}
+|	type_specifier 
+		{
+		$$ = $1;
+		}
+|	type_qualifier 
+		{
+		$$ = ctypes.intType;
+		}
+;
+
+struct_declarator_list	:	struct_declarator
+			|	struct_declarator_list ',' struct_declarator
+			;
+
+struct_declarator		:	declarator_ {}
+			|	declarator_ ':' constant_expression  {}
+			|	':' constant_expression
+			;
+
+enum
+:
+	tokENUM
+		{
+		foldtnames = TRUE;
+		}
+;
+
+enum_specifier
+:	enum setID
+		{
+		*++stackPtr = type_Create(ctypes.enumType, toksym_GetName($2), NULL, 				type_enum);
+		}
+	'{' enumerator_list { foldtnames = FALSE; } '}'
+		{
+		$$ = *stackPtr;
+		--stackPtr;
+		if ($$ != NULL)
+			type_ApplyOp($$, type_lastAdded);
+		}
+|	enum
+		{
+		*++stackPtr = type_Create(ctypes.enumType, "", NULL, type_enum);
+		}
+	'{' enumerator_list { foldtnames = FALSE; } '}'
+		{
+		$$ = *stackPtr;
+		--stackPtr;
+		if ($$ != NULL)
+			type_ApplyOp($$, type_lastAdded);
+		}
+|	enum setID
+		{
+		$$ = type_Lookup(ctypes.enumType, toksym_GetName($2));
+		if ( $$ == NULL &&
+		     ( $$ = type_Create(ctypes.enumType, toksym_GetName($2), NULL, 				type_enum)) == NULL )
+			return parse_ERROR;
+		}	
+;
+
+enumerator_list		:	enumerator_list2
+			|	enumerator_list2 ','
+			;
+
+enumerator_list2		:	enumerator
+			|	enumerator_list2 ',' enumerator
+			;
+
+enumerator		:	setID
+			{
+			type_Create(ctypes.voidType, toksym_GetName($1), stackPtr[0], 					type_const);
+			}
+			|	setID '=' constant_expression
+			{
+			struct type *new;
+
+			new = type_Create(ctypes.voidType, toksym_GetName($1), stackPtr[0],
+					type_const);
+			type_SetVal(new, $3);
+			}
+			|	setTNAME  {}
+			|	setTNAME '=' constant_expression  {}
+			;
+ 
+declarator_:	declarator
+			{
+			applyOpStack($1);
+			$$ = $1;
+			}
+		;
+	
+declarator:	pointer direct_declarator
+		{
+		int i;
+
+		for ( i = 1; i <= $1; ++i)
+			*++opStackPtr = type_ptr;
+		$$ = $2;
+		}
+|	direct_declarator
+		{ $$ = $1; }
+;
+
+
+direct_declarator
+:	setID 
+		{
+		if (stackPtr[-1] != NULL) {
+			operation op = type_GetOps(stackPtr[-1])[0];
+
+			if (op == type_method || op == type_classmethod
+			    || op == type_macro || op == type_classmacro)
+				$$ = type_Create(stackPtr[0], toksym_GetName($1),
+					 stackPtr[-1], type_param);
+			else
+				$$ = type_Create(stackPtr[0], toksym_GetName($1),
+					 stackPtr[-1], type_field);
+
+		} else if (typedefFlag) {
+			$$ = type_Create(stackPtr[0], toksym_GetName($1), NULL,
+					type_typedef);
+		} else
+			$$ = NULL;
+		}
+|	'(' declarator ')'
+		{ $$ = $2; }
+|	direct_declarator '[' constant_expression ']'
+		{
+		*++opStackPtr = (operation) $3;
+		$$ = $1;
+		}
+|	direct_declarator '['  ']'
+		{
+		*++opStackPtr = type_array;
+		$$ = $1;
+		}
+|	direct_declarator_paren	parameter_type_list ')'
+		{
+		*++opStackPtr = type_funcReturning;
+		$$ = $1;
+		}
+|	direct_declarator_paren identifier_list ')'
+		{
+		*++opStackPtr = type_funcReturning;
+		$$ = $1;
+		}
+|	direct_declarator_paren  ')'
+		{
+		*++opStackPtr = type_funcReturning;
+		$$ = $1;
+		}
+;
+
+direct_declarator_paren 
+:	direct_declarator '('
+		{ foldtnames = FALSE;  $$ = $1; }
+;
+
+pointer
+:	'*' type_qualifier_list
+		{ $$ = 1; }
+|	'*' type_qualifier_list pointer
+		{ $$ = $3+1; }
+|	'*'
+		{ $$ = 1; }
+|	'*' pointer
+		{ $$ = $2+1; }
+;
+
+type_qualifier_list		:	type_qualifier
+			|	type_qualifier_list type_qualifier
+			;
+
+parameter_type_list	:	parameter_list
+			|	parameter_list_head "..."
+			;
+
+parameter_list_head	:	parameter_list
+					{ foldtnames = FALSE; }
+				','
+			;
+
+parameter_list		:	parameter_declaration
+			|	parameter_list_head
+				parameter_declaration
+			;
+
+parameter_declaration	:	declaration_specifiers declarator_  {}
+			|	declaration_specifiers abstract_declarator  {}
+			|	declaration_specifiers  {}
+			;
+
+	/* identifier_list is passe (I think)
+	at any rate, the rules here mean that a setTNAME cannot
+	be folded to a setID for the first element of the list */
+identifier_list		:	setID	{}
+			|	identifier_list 
+					{ foldtnames = TRUE; } 
+				',' setID
+			;
+
+initializer			:	constant_expression	/* changed from assignment */
+					{}
+			|	'{' initializer_list '}'
+			|	'{' initializer_list ',' '}'
+			;
+
+initializer_list		:	initializer
+			|	initializer_list ',' initializer
+			;
+
+abstract_declarator
+:	pointer
+		{
+		int i;
+
+		for ( i = 1; i <= $1; ++i)
+			*++opStackPtr = type_ptr;
+		}
+|	pointer direct_abstract_declarator
+		{
+		int i;
+
+		for ( i = 1; i <= $1; ++i)
+			*++opStackPtr = type_ptr;
+		}
+|	direct_abstract_declarator
+;
+
+direct_abstract_declarator
+:	'(' abstract_declarator ')'
+|	direct_abstract_declarator '[' constant_expression ']'
+		{ *++opStackPtr = (operation) $3; }
+|	'[' constant_expression ']'
+		{ *++opStackPtr = (operation) $2; }
+|	direct_abstract_declarator '[' ']'
+		{ *++opStackPtr = type_array; }
+|	'[' ']'
+		{ *++opStackPtr = type_array; }
+|	direct_abstract_declarator '(' parameter_type_list ')'
+		{ *++opStackPtr = type_funcReturning; }
+|	'(' parameter_type_list ')'
+		{ *++opStackPtr = type_funcReturning; }
+|	direct_abstract_declarator '(' ')'
+		{ *++opStackPtr = type_funcReturning; }
+|	'(' ')'
+		{ *++opStackPtr = type_funcReturning; }
+;
+
+
+/*
+ *plain_paren 	:	'('
+ *				{ foldtnames = FALSE; }
+ *		;
+ *plain_bracket	:	'['
+ *				{ foldtnames = TRUE; }
+ *		;
+ *dad_paren	:	direct_abstract_declarator '('
+ *				{ foldtnames = FALSE;  $$ = $1; }
+ *		;
+ *dad_bracket	:	direct_abstract_declarator '['
+ *				{ foldtnames = TRUE;  $$ = $1; }
+ *		;
+ */
+
+conditional_expression	:	logical_OR_expression
+				{ $$ = $1; }
+			|	logical_OR_expression '?' constant_expression ':' 				conditional_expression
+				{ $$ = $1 ? $3 : $5; }
+			;
+
+constant_expression	:	conditional_expression
+				{
+					$$ = $1;
+				}
+			;
+
+logical_OR_expression	:	logical_AND_expression
+				{ $$ = $1; }
+			|	logical_OR_expression "||" logical_AND_expression
+				{ $$ = $1 || $3; }
+			;
+
+logical_AND_expression	:	inclusive_OR_expression
+				{ $$ = $1; }
+			|	logical_AND_expression "&&" inclusive_OR_expression
+				{ $$ = $1 && $3; }
+			;
+
+inclusive_OR_expression	:	exclusive_OR_expression
+				{ $$ = $1; }
+			|	inclusive_OR_expression '|' exclusive_OR_expression
+				{ $$ = $1 | $3; }
+			;
+
+exclusive_OR_expression	:	AND_expression
+				{ $$ = $1; }
+			|	exclusive_OR_expression '^' AND_expression
+				{ $$ = $1 ^ $3; }
+			;
+
+AND_expression		:	equality_expression
+				{ $$ = $1; }
+			|	AND_expression '&' equality_expression
+				{ $$ = $1 & $3; }
+			;
+
+equality_expression	:	relational_expression
+				{ $$ = $1; }
+			|	equality_expression "==" relational_expression
+				{ $$ = $1 == $3; }
+			|	equality_expression "!=" relational_expression
+				{ $$ = $1 != $3; }
+			;
+
+relational_expression	:	shift_expression
+				{ $$ = $1; }
+			|	relational_expression '<' shift_expression
+				{ $$ = $1 < $3; }
+			|	relational_expression '>' shift_expression
+				{ $$ = $1 > $3; }
+			|	relational_expression "<=" shift_expression
+				{ $$ = $1 <= $3; }
+			|	relational_expression ">=" shift_expression
+				{ $$ = $1 >= $3; }
+			;
+
+shift_expression		:	additive_expression
+				{ $$ = $1; }
+			|	shift_expression "<<" additive_expression
+				{ $$ = $1 << $3; }
+			|	shift_expression ">>" additive_expression
+				{ $$ = $1 >> $3; }
+			;
+
+additive_expression	:	multiplicitive_expression
+				{ $$ = $1; }
+			|	additive_expression '+' multiplicitive_expression
+				{ $$ = $1 + $3; }
+			|	additive_expression '-' multiplicitive_expression
+				{ $$ = $1 - $3; }
+			;
+
+multiplicitive_expression	:	cast_expression
+				{ $$ = $1; }
+			|	multiplicitive_expression '*' cast_expression
+				{ $$ = $1 * $3; }
+			|	multiplicitive_expression '/' cast_expression
+				{ $$ = $1 / $3; }
+			|	multiplicitive_expression '%' cast_expression
+				{ $$ = $1 % $3; }
+			;
+
+cast_expression		:	unary_expression
+				{ $$ = $1; }
+			|	'(' type_name ')' cast_expression
+				{ $$ = $4; }
+			;
+
+unary_expression		:	postfix_expression
+				{ $$ = $1; }
+			|	unary_operator cast_expression
+				{
+				switch ($1) {
+					case '+':		$$ = $2;
+							break;
+					case '-':		$$ = -$2;
+							break;
+					case '~':		$$ = ~$2;
+							break;
+					case '!':		$$ = !$2;
+							break;
+					default:		$$ = NULL;
+							break;
+					}
+				} 
+			|	tokSIZEOF unary_expression
+				{ $$ = NULL; }
+			|	tokSIZEOF '(' type_name ')'
+				{ $$ = NULL; }
+			;
+
+unary_operator		:	'&'
+				{ $$ = '&'; }
+			|	'*'
+				{ $$ = '*'; }
+			|	'+'
+				{ $$ = '+'; }
+			|	'-'
+				{ $$ = '-'; }
+			|	'~'
+				{ $$ = '~'; }
+			|	'!'
+				{ $$ = '!'; }
+			;
+
+postfix_expression		:	primary_expression
+				{ $$ = $1; }
+			;
+
+primary_expression	:	constant
+				{ $$ = $1; }
+			|	'(' constant_expression ')'
+				{ $$ = $2; }
+			;
+
+constant			:	setINTCON
+				{ $$ = $1->info.intval; }
+			|	setREALCON
+				{ $$ = NULL; }
+			|	setSTRINGCON
+				{ $$ = NULL; }
+			|	setID
+				{ $$ = NULL; }
+			;
+
+/* CLASS EXTENSIONS */
+
+class
+:	class_or_package class_name ':' class_name 
+		{
+		struct type * super = type_Lookup(ctypes.basicobject, $4);
+
+		if (super == NULL)
+			super = ctypes.basicobject;	
+		*++stackPtr = type_Create(super, $2, NULL, 					$1);
+
+		table_setClass(stackPtr[0]);
+		}
+	'{' class_attributes '}' ';'
+		{
+		table_flush();
+		if (type_GetClassInfo(stackPtr[0], data) != NULL)
+			type_ApplyOp(type_GetClassInfo(stackPtr[0], data), type_lastAdded);
+		type_SetClassInfo(stackPtr[0], data, type_Lookup(ctypes.structType, $2));
+		--stackPtr;
+		}
+|	class_or_package class_name
+		{
+		*++stackPtr = type_Create(ctypes.basicobject, $2, NULL, $1);
+		table_setClass(stackPtr[0]);
+		}
+	 '{' class_attributes '}' ';'
+		{
+		table_flush();
+		if (type_GetClassInfo(stackPtr[0], data) != NULL)
+			type_ApplyOp(type_GetClassInfo(stackPtr[0], data), type_lastAdded);
+		type_SetClassInfo(stackPtr[0], data, type_Lookup(ctypes.structType, $2));
+		--stackPtr;
+		}
+;
+
+class_name
+:	setID
+		{
+		$$ = (char *)toksym_GetName($1);
+		}
+|	setID '[' setID ']'
+		{
+		$$ = (char *)toksym_GetName($1);
+		}
+;
+
+class_or_package
+:	tokCLASS
+	{ $$ = type_class; }
+|	tokPACKAGE
+	{ $$ = type_package; }
+;
+
+class_attributes		:	class_attributes class_attribute
+			|
+			;
+
+class_attribute		:	overrides
+			|	methods
+			|	classprocedures
+			|	macromethods
+			|	macrooverrides
+			|	macros
+			|	data  {}
+			;
+
+overrides			:	tokOVERRIDES ':'
+				{ op = type_method; overrideFlag = TRUE; }
+				functiondefs
+			;
+
+methods			:	tokMETHODS ':'
+				{ op = type_method; overrideFlag = FALSE; }
+				functiondefs
+			;
+
+classprocedures		:	tokCLASSPROCEDURES ':'
+				{ op = type_classmethod; overrideFlag = FALSE; }
+				functiondefs
+			;
+
+macromethods		:	tokMACROMETHODS ':'
+				{ op = type_macro; overrideFlag = FALSE; }
+				macrodefs
+			;
+
+macrooverrides		:	tokMACROOVERRIDES ':'
+				{ op = type_macro; overrideFlag = TRUE; }
+				macrodefs
+			;
+
+macros			: 	tokMACROS ':'
+				{ op = type_classmacro; overrideFlag = FALSE; }
+				macrodefs
+			;
+
+data			
+:	tokDATA ':'
+		{
+		struct type *class = *stackPtr;
+		*++stackPtr = type_GetClassInfo(class, data);
+		}
+	data_declaration_list
+		{
+		$$ = *stackPtr;
+		--stackPtr; 
+		}
+;
+
+data_declaration_list
+:	struct_declaration_list  {}
+|
+;
+
+functiondefs		:	functiondefs functiondef
+			|	
+			;
+
+functiondef
+:	setID
+		{
+		*++stackPtr = type_Create(ctypes.voidType, toksym_GetName($1),
+					 NULL, op);
+		type_SetScope(stackPtr[0], type_GetClassInfo(stackPtr[-1], scope));
+		table_addMethod(stackPtr[0], overrideFlag);
+		}
+	'('  func_args  ')'  returnval  ';'
+		{
+		type_SetSuper(stackPtr[0], $6);
+		applyOpStack(stackPtr[0]);
+		--stackPtr;
+		}
+;
+
+returnval
+:	tokRETURNS type_name
+		{
+		$$ = $2;
+		}
+|	tokERRVAL errval
+		{
+		$$ = ctypes.voidType;
+		}
+|	tokRETURNS type_name ',' tokERRVAL errval
+		{
+		$$ = $2;
+		}
+|	tokERRVAL errval ',' tokRETURNS type_name
+		{
+		$$ = $5;
+		}
+|
+		{
+		$$ = ctypes.voidType;
+		}
+;
+
+errval
+:	setINTCON {}
+|	tokNULL
+|	tokEXIT
+;
+
+type_name
+:	declaration_specifiers abstract_declarator
+		{
+		$$ = $1;
+		foldtnames = FALSE;
+		}
+|	declaration_specifiers
+		{
+		$$ = $1;
+		foldtnames = FALSE;
+		}
+;
+
+func_args		:	func_args ',' func_arg
+			|	func_arg
+			|
+			;
+
+func_arg
+:	declaration_specifiers
+	{
+	*++stackPtr = $1;
+	}
+	declarator_
+	{
+		--stackPtr;
+		foldtnames = FALSE;
+	}
+|	{
+	*++stackPtr = ctypes.voidType;
+	}
+	declarator_
+	{
+		--stackPtr;
+		foldtnames = FALSE;
+	}
+;
+
+macrodefs		:	macrodefs macrodef
+			|	
+			;
+
+macrodef	
+:	setID
+		{
+		*++stackPtr = type_Create(ctypes.voidType, toksym_GetName($1), NULL, op);
+		type_SetScope(stackPtr[0], type_GetClassInfo(stackPtr[-1], scope));
+		table_addMethod(stackPtr[0], overrideFlag);
+		}
+	'(' func_args ')'
+		{
+		char * extractMacrodef();
+		type_SetMacro(stackPtr[0], extractMacrodef());
+		--stackPtr;
+		}
+;
+
+
+%%
+
+/* pop all the operations off of opstack, applying them to self */
+
+applyOpStack(self)
+struct type * self;
+{
+	operation *pos;
+
+	if (self != NULL)
+		for (pos = opStackPtr; pos >= opStack+1; --pos)
+			type_ApplyOp(self, *pos);
+	opStackPtr = opStack;
+}
+
+/* extract macro definition from the text being parsed.  
+   Returns a ptr to a malloced string where the definition is stored.
+   String extends from just after the ')' to 
+	the first newline not preceded by '\'
+*/
+	char *
+extractMacrodef()
+{
+	long len;
+	char *buf;
+
+	tlex_StartToken(lex);
+	while (tlex_CurrChar(lex) != '\n') {
+		if (tlex_CurrChar(lex) == '\\') 
+			tlex_Advance(lex);
+		tlex_Advance(lex);	/* save CurrChar and get next */
+	}
+	tlex_EndToken(lex);
+
+	len = 2 + tlex_GetTokEnd(lex) - tlex_GetTokPos(lex);
+	buf = malloc(len);
+	strcpy(buf, tlex_GetTokenText(lex));
+	return buf;
+}
+
+
+extractSuperClassInfo(nameBuf, filenameBuf)
+char *nameBuf, *filenameBuf;
+{
+	struct toksym *tok;
+	long tokNum;
+	int lbracket = parse_TokenNumberFromName(parser, "[");
+
+	while ((tokNum = tlex_NextToken(lex, &tok)) != tokCLASS
+		&& tokNum != tokPACKAGE
+		&& tokNum != 0)
+		;
+
+	if (tokNum == 0) {		/* EOF */
+		*nameBuf = *filenameBuf = '\0';
+		return;
+	}
+
+	/* skip class name */
+	tlex_NextToken(lex, &tok);
+	tokNum = tlex_NextToken(lex, &tok);
+	if (tokNum == lbracket) {
+		tlex_NextToken(lex, &tok);
+		tlex_NextToken(lex, &tok);
+		tokNum = tlex_NextToken(lex, &tok);
+	}
+
+	if (tokNum == parse_TokenNumberFromName(parser, ":")) {
+		tlex_NextToken(lex, &tok);
+		sprintf(nameBuf, "%s", toksym_GetName(tok));
+		if (strcmp(toksym_GetName(tok), "basicobject") != 0) {
+			sprintf(filenameBuf, "%s", toksym_GetName(tok));
+			if (tlex_NextToken(lex, &tok) == lbracket) {
+				tlex_NextToken(lex, &tok);
+				sprintf(filenameBuf, "%s", toksym_GetName(tok));
+			}
+		} else
+			sprintf(filenameBuf, "");
+	} else {
+		sprintf(nameBuf, "basicobject");
+		sprintf(filenameBuf, "");
+	}
+}
+
+yyparse_init()
+{
+	stackPtr = stack;
+	*stackPtr = NULL;
+	opStackPtr = opStack;
+	*opStackPtr = NULL;
+	typedefFlag = FALSE;
+	foldtnames = FALSE;
+}

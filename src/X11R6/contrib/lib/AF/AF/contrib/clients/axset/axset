@@ -1,0 +1,262 @@
+#!/usr/local/bin/wish -f
+#
+#  axset
+#
+#	A simple control panel for an AudioFile server
+#
+#	Andrew Payne
+#	payne@crl.dec.com
+#
+
+set aset_bin {aset}
+set ahs_bin {ahs}
+
+set device 0
+set type_names(MU255)	"u-law"
+set type_names(LIN16)	"16-bit linear"
+set channel_names(1)	"Mono"
+set channel_names(2)	"Stereo"
+
+#----------------------------------------------------------------------------
+#  Create a frame and pack into its parent.
+#----------------------------------------------------------------------------
+proc mkFrame {w {pack {top expand fill}}} {
+        frame $w
+        pack append [winfo parent $w] $w $pack
+        return $w
+}
+
+#----------------------------------------------------------------------------
+#  Create a trimmed frame and pack into its parent.  Return path of innermost
+#  frame.
+#----------------------------------------------------------------------------
+proc mkTrim {w title {pack {top padx 10 pady 10}}} {
+        frame $w
+        pack append [winfo parent $w] $w $pack
+	pack append $w \
+		[label $w.title -text $title] {top frame w} \
+		[frame $w.frame -relief sunken -borderwidth 1] {top fill}
+
+	pack append $w.frame \
+		[frame $w.frame.frame -relief raised -borderwidth 1] \
+			{top fill}
+	
+        return $w.frame.frame
+}
+
+#----------------------------------------------------------------------------
+#  Create a new menubutton
+#----------------------------------------------------------------------------
+proc mkMenubutton {w label menu {pack left}} {
+        menubutton $w -menu $menu -text $label
+        pack append [winfo parent $w] $w $pack
+        return $w
+}
+
+#----------------------------------------------------------------------------
+#  Create a new checkbutton
+#----------------------------------------------------------------------------
+proc mkCheckbutton {w label var cmd {pack {top fillx pady 5}}} {
+        checkbutton $w -text $label -variable $var -relief flat -command $cmd
+        pack append [winfo parent $w] $w $pack
+        return $w
+}
+
+#-----------------------------------------------------------------------------
+#  Given the device parameters, generate a device description
+#-----------------------------------------------------------------------------
+proc device-desc {type rate channels} {
+	global type_names channel_names
+
+	set tname "(unknown sample type)"
+	catch {set tname $type_names($type)}
+
+	set cname "$channels channels"
+	catch {set cname $channel_names($channels)}
+
+	return "$cname $tname at $rate"
+}
+
+#-----------------------------------------------------------------------------
+#  Update the radio/check buttons with the new input/output masks
+#-----------------------------------------------------------------------------
+proc update-buttons {ret} {
+
+	set d 0
+	for {set i 0} {$i < [llength $ret]} {} {
+		regexp {\([\*\-]+\)} [lindex $ret $i] in
+		set-mask Inputs $d [string trim $in "()"]
+		incr i
+		regexp {\([\*\-]+\)} [lindex $ret $i] out
+		set-mask Outputs $d [string trim $out "()"]
+		incr i
+		incr d
+	}
+}
+
+#-----------------------------------------------------------------------------
+#  Change the input device
+#-----------------------------------------------------------------------------
+proc change-input {text device i} {
+	global Settings aset_bin
+
+	set state [string index "-+" $Settings($text.$device.$i)]
+	case $text {
+		{Outputs}	{set opt "output"}
+		{Inputs}	{set opt "input"}
+	}
+	update-buttons [split [exec $aset_bin -device $device $state$opt $i -b q] "\n"]
+}
+
+#-----------------------------------------------------------------------------
+#  Manipulate the hookswitch
+#-----------------------------------------------------------------------------
+proc hook {device} {
+	global hook$device ahs_bin
+
+	exec $ahs_bin -d $device [set hook$device]
+}
+
+#-----------------------------------------------------------------------------
+#  Manipulate passthrough state
+#-----------------------------------------------------------------------------
+proc pass {device} {
+	global pass$device aset_bin
+
+	if {[set pass$device]} {
+		exec $aset_bin -device $device +pass 0
+	} {
+		exec $aset_bin -device $device -pass 0
+	}
+}
+
+#-----------------------------------------------------------------------------
+#  Make the buttons
+#-----------------------------------------------------------------------------
+proc make-buttons {f n text device} {
+	global Settings
+
+	frame $f
+	pack append $f [label $f.l -text $text -width 8] {left fill frame w}
+	for {set i 0} {$i < $n} {incr i} {
+		pack append $f [checkbutton $f.c$i -width 2 -text " $i " \
+			-variable "Settings($text.$device.$i)" \
+			-command "change-input $text $device $i" -relief flat]\
+				{left}
+	}
+	return $f
+}
+
+#-----------------------------------------------------------------------------
+#  Set a device mask
+#-----------------------------------------------------------------------------
+proc set-mask {text device mask} {
+	global Settings
+
+	set ind 0
+	foreach i [split $mask {}] {
+		if {$i == "*"} {
+			set Settings($text.$device.$ind) 1
+		} {
+			set Settings($text.$device.$ind) 0
+		}
+		incr ind
+	}
+}
+
+#-----------------------------------------------------------------------------
+#  Make a scale
+#-----------------------------------------------------------------------------
+proc make-scale {f min cur max text comm} {
+	pack append [frame $f] \
+		[scale $f.s -orient vertical -from $max -to $min \
+			-background bisque] {top} \
+		[label $f.l -text $text] {top}
+
+	$f.s set $cur
+	bind $f.s <ButtonRelease-1> "$comm \[$f.s get\]"
+
+	return $f
+}
+
+#-----------------------------------------------------------------------------
+#  Make the controls for a single device
+#-----------------------------------------------------------------------------
+proc make-device {p in out} {
+	global device aset_bin ahs_bin
+
+	scan $in "%d %s %d %s %d %s %d %d %d %d %d %s" device junk ninputs \
+		inmask nphonein type inrate inchannels inmin incur inmax pass
+	scan $out "%s %d %s %d %s %d %d %d %d %d" junk noutputs outmask \
+		nphoneout type outrate outchannels outmin outcur outmax
+
+	set-mask Inputs $device [string trim $inmask "()"]
+	set-mask Outputs $device [string trim $outmask "()"]
+
+	set f [mkTrim $p.$device "Device $device: [device-desc $type $inrate $inchannels]"]
+	if {$inmin != $inmax} {
+		pack append $f [make-scale $f.s1 $inmin $incur $inmax "In Gain" \
+			"exec $aset_bin -device $device -ingain"] \
+			{left padx 5 pady 5}
+	}
+	if {$outmin != $outmax} {
+		pack append $f [make-scale $f.s2 $outmin $outcur $outmax "Out Gain" \
+			"exec $aset_bin -device $device -outgain"] \
+			{left padx 5 pady 5}
+	}
+	pack append $f [make-buttons $f.bi $ninputs Inputs $device] \
+		{top frame w pady 6}
+	pack append $f [make-buttons $f.bo $noutputs Outputs $device] \
+		{top frame w pady 6}
+
+	if {$nphonein > 0} {
+		global pass$device hook$device
+
+		mkCheckbutton $f.hook "Hookswitch" hook$device "hook $device"
+		$f.hook config -onvalue off -offvalue on
+		if {[string match "*OnHook*" [exec $ahs_bin -d $device]]} {
+			set hook$device on
+		} {
+			set hook$device off
+		}
+		mkCheckbutton $f.pass "Passthrough" pass$device "pass $device"
+		if {$pass == "on"} {
+			set pass$device 1
+		} {
+			set pass$device 0
+		}
+	}
+	incr device
+}
+
+#----------------------------------------------------------------------------
+#  Shutdown application and edit
+#----------------------------------------------------------------------------
+proc shutdown {} {
+	destroy .
+}
+
+#-----------------------------------------------------------------------------
+#  Create the toplevel window
+#-----------------------------------------------------------------------------
+set f [mkFrame .frame]
+
+set mframe [mkFrame $f.mframe {top fillx frame w}]
+
+mkMenubutton $mframe.file File $mframe.file.m
+set m [menu $mframe.file.m]
+$m add command -label "Exit" -command "shutdown"
+
+set dinfo [split [exec $aset_bin -b q] "\n"]
+set length [llength $dinfo]
+set f [mkFrame $f.dframe]
+
+for {set i 0} {$i < $length} {} {
+	set in [lindex $dinfo $i]
+	incr i
+	set out [lindex $dinfo $i]
+	incr i
+	make-device $f $in $out
+}
+
+wm title . "AudioFile Control Panel"

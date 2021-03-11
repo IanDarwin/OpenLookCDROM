@@ -1,0 +1,394 @@
+\begindata{text,539034680}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\define{footnote
+
+attr:[Flags OverBar Int Set]
+attr:[FontSize PreviousFontSize Point -2]}
+\chapter{1	Building and Installing Snapified Clients and Servers}
+
+
+There are three distinct parts to building and installing snapified AMS 
+interfaces.  The first involves building and installing snap, the simple 
+network access protocol, the messageserver, and guardian, which allows 
+snapified AMS interfaces to communicate with the messageserver.  The second 
+part involves creating the administrative scripts that run guardian and the 
+messageserver.  The third part involves building and installing the snapified 
+AMS interfaces.
+
+
+\section{1.1	Building and Installing Snap, Guardian, and the Messageserver
+
+}
+\subsection{1.1.1	Setting Andrew System Options}
+
+
+Andrew system options determine what parts of the Andrew software will be 
+compiled into the system binaries.  If a system option is defined, then the 
+code related to that option may be built and installed; if  system option is 
+not defined, code that depends on that option will be ignored.  Changes to 
+Andrew system options should be made in  \typewriter{andrew/config/site.h; 
+}they  will be included in the installed version of \typewriter{andyenv.h} the 
+next time the the system is compiled.
+
+
+It should be noted that almost every program in Andrew uses the options 
+defined in \typewriter{andyenv.h}.  Therefore, when changes are made to this 
+file, much of the system will have to be recompiled.
+
+
+The message server requires that the following system options are defined:
+
+
+\indent{\italic{AMS_ENV} - The Andrew Message System Environment.  This option 
+must be on to build any part of the Andrew Message System.
+
+
+\italic{SNAP_ENV }- The Snap Environment.  This option must be on to build the 
+message server.
+
+}
+\subsection{1.1.2	Building and Installing the Snap, Guardian, and the 
+Messageserver}
+
+
+Once \italic{SNAP_ENV} has been defined, you can compile and install the 
+various parts of snap, guardian, and the messageserver.  The messageserver 
+depends on snap, so snap must be built first.  
+
+
+The sources for snap, guardian, and various other related libraries and 
+programs are located in subtrees of \typewriter{andrew/overhead/snap2}.  To 
+build the software in this tree, connect to \typewriter{andrew/overhead/snap2} 
+and type 
+
+\typewriter{
+make Install}
+
+
+Once the programs in\typewriter{ andrew/overhead/snap2} have been successfully 
+built and installed, you can build and install the messageserver.  First, 
+build the messageserver libraries, by connecting to 
+\typewriter{andrew/ams/lib/ms} and typing:
+
+
+\typewriter{make Install}
+
+
+Once you have installed the messageserver libraries, you can build the 
+messageserver.  To do this, connect to \typewriter{andrew/ams/ms} and type:
+
+
+\typewriter{make Install}
+
+
+\section{1.2	Creating a Message Server Machine}
+
+
+Snap, guardian, and the messageserver can be run from any unix machine.  In a 
+distributed computing environment, it is not necessary to dedicate a machine 
+to run as a message server.  In many cases, though, a dedicated message server 
+machine can be useful.  For example, if a large number of users use this 
+facility, a dedicated message server improves performance.  In this case a 
+dedicated message server will be more secure.  This section  assumes that you 
+will set up a single dedicated message server, or a group of dedicated message 
+servers.  However, most of these procedures may be used to set up guardian and 
+messageserver on a non-dedicated machine.
+
+
+\subsection{1.2.1	Files on the Local Disk}
+
+
+There are several files that should be on the local disk of the message server 
+machine.:
+
+
+\indent{1.  All files that were built from the\typewriter{ 
+andrew/overhead/snap2} subtrees.
+
+
+2. A file named \typewriter{guardian.svc} should be located on the\typewriter{ 
+/etc} directory on the local disk.  This file contains a list of valid servers 
+that are started and serviced by the guardian.  Some versions of the AMS 
+clients only communicate with certain versions of the messageserver; the 
+\typewriter{guardian.svc} file is used to match client versions to 
+messageserver versions.
+
+
+3. If you are running AMS delivery, a file called 
+\typewriter{RemoteGuardianRequests} must be stored in the\typewriter{ /} 
+(root) directory.  This file contains a single line of text.  The file is used 
+to set the startup switches that control how guardian is run on the local 
+server.  Please see the chapter\bold{ Administering Non-Unix Clients }for more 
+information about guardian startup switches.
+
+
+4. If you generate guardian daemon logs, and want to store old logs in a 
+location other than the local server disk, you must write a script that moves 
+the files from the local disk to the location where they are to be stored.  At 
+sites that run AMS delivery this script must be called \typewriter{LogToAFS}, 
+and be stored in the \typewriter{/etc} directory. 
+
+
+}\paragraph{1.2.1.1	Creating a Guardian.svc file
+
+
+}The file \typewriter{guardian.svc} is used to by the guardian to start 
+servers that communicate with the client through the guardian.   Each server 
+has a single line in this file that describes how the server process should be 
+run on the server machine.
+
+
+Each line in \typewriter{guardian.svc} contains five fields, each separated by 
+a space:
+
+
+\indent{1. The first field contains the name of the server.  For instance, if 
+you are running only the most recent version of the messageserver, the first 
+field in \typewriter{guardian.svc} for this server would by 
+\typewriter{MESSAGESERVER}.
+
+
+2. The second field defines the type of connections that this server can 
+handle.  Possible values are \typewriter{AUTH_ONLY}, \typewriter{UNAUTH_ONLY}, 
+ and \typewriter{BOTH}.  \typewriter{AUTH_ONLY} specifies that the server can 
+be run only by an  who have AFS authentication.  \typewriter{UNAUTH_ONLY} 
+specifies that the server can be run only by an owner who does not have AFS 
+authentication.  \typewriter{BOTH} specifies that the server can be run by 
+either an authenticated owner, or a non-authenticated owner.
+
+
+3. The third field specifies whether the server process should be run setuid 
+to the user who requested it.  Possible values are \typewriter{TRUE} and 
+\typewriter{FALSE}.  \typewriter{TRUE} specifies that guardian should setuid 
+the server to the user.  \typewriter{FALSE} specifies that the server should 
+run as root.
+
+
+4. The fourth field specifies the maximum number of clients that can be 
+serviced by each server.  When the maximum number of clients is reached, 
+guardian will start a new server to handle the next request.  The  value of 
+this field is an integer greater than 0.
+
+
+5. The fifth field specifies the full path location of the server.  This 
+string will be used by the guardian to start the server.}
+
+
+\subsection{1.2.2	Starting Guardian}
+
+
+The procedure for starting a guardian daemon on the server depends on whether 
+or not your site is running the AMS delivery system.  At sites that run AMS 
+delivery, guardian can be started in the same script that starts the delivery 
+system on the local machine.  At sites that do not run AMS delivery, the 
+command to start guardian must be written into the system startup procedures.
+
+
+\paragraph{1.2.2.1	Starting Guardian at Sites that Run AMS Delivery}
+
+
+At sites that run AMS delivery, guardian is started from 
+\typewriter{/etc/startmailsystem}.  The same script is used to start the 
+queuemail daemon on local machines.  
+
+
+The \typewriter{startmailsystem} script is created via the macro processing 
+scripts in \typewriter{andrew/overhead/pobbconf}.   If you are running AMS 
+delivery, the startmailsystem script will be run at startup time.  This script 
+does two guardian related actions:
+
+
+\indent{Checks to see whether the script\typewriter{ /etc/LogToAFS} exists. 
+ If it does, the script is executed.
+
+
+Checks for the \typewriter{/RemoteGuardianRequests} file, and uses the 
+contents of the file to start the guardian daemon.  If the 
+\typewriter{/RemoteGuardianRequests} file does not exist, a guardian is 
+started that will not accept remote requests.
+
+}
+\paragraph{1.2.2.2	Starting Guardian at Sites that Do Not Run AMS Delivery}
+
+
+If your site does not run AMS delivery, then you will have to add the commands 
+to start the guardian to your system startup procedure.  Consult the chapter 
+\bold{Administering Non-Unix Clients} for information on guardian startup 
+switches.
+
+
+\section{1.3	Building and Installing Snapified Clients 
+
+}
+It is very easy to build snapified clients that run on unix machines. 
+  Snapfied AMS clients are built using almost exactly the same procedure as 
+non-snapified AMS clients. 
+
+
+The sources for \typewriter{cui}, the common user interface, and 
+\typewriter{vui}, the visual user interface, are located in 
+\typewriter{andrew/ams/msclients/cui}, and 
+\typewriter{andrew/ams/msclients/vui} respectively.  The sources for 
+\typewriter{messages}, the ATK-based AMS client, are located in 
+\typewriter{andrew/atkams/messages}\footnote{\
+\begindata{fnote,539314696}
+\textdsversion{12}
+You must build ATK to succesfully build messages\
+\enddata{fnote,539314696}
+\view{fnotev,539314696,1450,0,0}}  .  
+
+
+\subsection{1.3.1	Necessary Andrew System Options}
+
+
+To  build any snapified AMS clients,  you must define the Andrew system 
+options \italic{AMS_ENV}, and \italic{SNAP_ENV}.  If you have built the 
+necessary servers, these options will already be defined.
+
+
+\subsection{1.3.2	Building the CUI Snap Library}
+
+
+Before you can build any snapified AMS clients, you must build the cuisnap 
+library (libcuis.a).  The sources for this library are located in 
+\typewriter{andrew/ams/libs/snap}.  To build cuisnap library, connect to 
+\typewriter{andrew/ams/libs/snap} and type:
+
+
+\typewriter{make install
+
+}
+\subsection{1.3.3	Building  Cui and Vui
+
+
+}There are several commands that can be used to build snapified versions of 
+cui and vui.  The best command to use at your site will depend on the exactly 
+what you want to install.
+
+
+To build and install just \typewriter{cuis}, which is the snapified version of 
+cui, connect to \typewriter{andrew/ams/msclients/cui}, and type
+
+
+\typewriter{make cuis}
+
+
+To build and install both \typewriter{cuis} and \typewriter{cuin}, which is 
+the nonsnapified version of cui, connect to 
+\typewriter{andrew/ams/msclients/cui} and type
+
+
+\typewriter{make all}
+
+
+Similarly, to build and install just \typewriter{vuis}, which is the snapified 
+version of vui, connect to \typewriter{andrew/ams/msclients/vui }and type
+
+
+\typewriter{make vuis}
+
+
+To build and install both \typewriter{vuis} and \typewriter{vuin}, which is 
+the nonsnapified version of vui, connect to 
+\typewriter{andrew/ams/msclients/vui} and type
+
+
+\typewriter{make all}
+
+
+To build and install \typewriter{cuis}, \typewriter{cuin}, \typewriter{vuis}, 
+and\typewriter{ vuin}, connect to \typewriter{andrew/ams/msclients} and type
+
+
+\typewriter{make Install}
+
+
+\subsection{1.3.4	Building  Messages}
+
+
+To build any version of messages, ATK must be built and installed.
+
+
+The first time you build messages, it is easiest to build both 
+\typewriter{messagess}, which is the snapified version of messages, and 
+\typewriter{messagesn}, which is the nonsnapified version of messages.  To do 
+this, connect to \typewriter{andrew/atkams} and type
+
+
+\typewriter{make Install}
+
+
+This command builds and installs all libraries and scripts that are associated 
+with messages, as well as building and installing messagess and messagesn. 
+ After the libraries and scripts are in place, you can build just 
+\typewriter{messagess} by connecting to \typewriter{andrew/atkams/messages/cmd} 
+and typing
+
+
+\typewriter{make messagess}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1452,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,539034680}

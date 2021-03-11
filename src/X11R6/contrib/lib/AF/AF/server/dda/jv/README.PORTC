@@ -1,0 +1,98 @@
+Here's the scoop:
+
+  SC2:  Frame sync. signal (controls the transfer)
+  SC1:  Left/right signal to the D/A 
+  SC0:  Left/right signal from the A/D
+
+Note that the SC1 signal MUST be changed on every transfer (i.e., you can't
+just send the left channel and ignore the right).  There are also CSR bits
+that control the audio - these are roughly the same as for DECAudio (except,
+of course, for the bits that control things that we don't have).  The only
+bits added that weren't in DECAudio are the 3 bits that control the sampling
+rate.
+
+Here's the init sequence, and a simple loop from input to output. 
+
+;
+;  Jvideo hardware definitions
+;
+ACSR          EQU             $E800            ;  Audio CSR
+
+ENABLE_AUDIO  EQU             $210000
+DISABLE_AUDIO EQU             $200000
+
+CLOCK_8_KHZ   EQU             $700000
+CLOCK_16_KHZ  EQU             $710000
+CLOCK_32_KHZ  EQU             $720000
+CLOCK_48_KHZ    EQU           $730000
+
+;
+;-----------------
+;  SSI
+;
+RXTX  EQU     $FFEF           ; SSI recv/xmit register
+SSISR EQU     $FFEE           ; SSI status (read only)
+TSR   EQU     $FFEE           ; SSI time slot (write only)
+CRB   EQU     $FFED           ; SSI control register B
+CRA   EQU     $FFEC           ; SSI control register A
+
+        ORG     PL:$E000
+
+;-----------------------------------------------------------------------
+;
+;  Setup the B port
+;
+        MOVEP   #$1,X:<<$FFE0        ; Enable port B as the host port
+;
+;  Setup the C port
+;
+        MOVEP   #$1F8,X:<<$FFE1      ; Enable all the Sync. serial pins
+        MOVEP   #$0,X:<<$FFE3        ; Make the unused pins inputs
+;
+; Init the SCI port
+;
+;   SCI settings:
+;        0   0   1   1 | 0   0   1   0 | 0   0   0   0 | 1   0   ?   0
+;        R   T   R   T  Mode    sync        msb    f syn        D/A
+;      Int Ena   Enable    Clock     F sync first  input        l/r
+;                         (cont)     length    ext clk
+;
+;   So the proper setting is:  3208  (D/A word right)
+;                              320A  (D/A word left)
+;
+        MOVEP   #$4100,X:<<$ffec     ; SR length = 16, no prescaler
+        MOVEP   #$3208,X:<<$ffed     ; see above...
+;
+;  Set memory to zero wait
+;
+      movep   #$0,X:<<$fffe
+                            
+;
+;-----------------------------------------
+;  Start of real code
+;
+      move    #$1000,r1
+      move    #255,m1                ;  Set up address reg. to be mod 256
+      move    #0,a0
+;
+REPEAT
+;
+;  Wait for word transmission complete
+;
+wt_r1
+      jclr    #6,X:<<SSISR,wt_r1      ;   while (!(rcv data ready))  {}
+      movep   X:<<RXTX,b0             ; b0 <= rcv data (thrown away)
+;
+;  Send the data from memory
+;
+      movep   X:(r1)+,X:<<RXTX        ; Put rcv data in the output reg.
+;
+; Find out what channel it was (from flag 0)
+;
+      jclr    #0,X:<<SSISR,right       ; if (input sample == left)
+      bset    #1,X:<<CRB               ;   set flag 1
+      jmp     REPEAT
+right
+      bclr    #1,X:<<CRB              ; else clear flag 1
+      jmp     REPEAT
+   

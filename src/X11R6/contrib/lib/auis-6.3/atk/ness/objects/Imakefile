@@ -1,0 +1,119 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+ *        For full copyright information see:'andrew/config/COPYRITE'     *
+\* ********************************************************************** */
+
+/*
+	$Disclaimer: 
+*Permission to use, copy, modify, and distribute this software and its 
+*documentation for any purpose is hereby granted without fee, 
+*provided that the above copyright notice appear in all copies and that 
+*both that copyright notice, this permission notice, and the following 
+*disclaimer appear in supporting documentation, and that the names of 
+*IBM, Carnegie Mellon University, and other copyright holders, not be 
+*used in advertising or publicity pertaining to distribution of the software 
+*without specific, written prior permission.
+*
+*IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+*DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+*ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+*SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+*BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+*DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+*WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+*ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+*OF THIS SOFTWARE.
+* $
+*/
+
+
+/* This is a hack to get around a problem with the HPUX8.05 loader.
+It has problems linking shared libraries against other shared libraries and normal
+archive libraries.  This should be removed when the updated kernal is released.
+The MATHLIB macro is NOT set in andrew/config/imake.tmpl for HPUX8.0.
+MATHLIB = -lm for all other platforms.
+GW Keim -- 2/11/92 */
+SYSLIBS = $(MATHLIB)
+
+YFLAGS = -d -v
+
+DEFINES = -DYYDEBUG
+
+INTERPOBJS = interp.o gen.o dump.o search.o  error.o  nevent.o  nevent1.o call.o real.o rexf.o
+NESSOBJS =  ness.o  compile.o   ${INTERPOBJS}
+
+DOBJS = ness.do nessv.do nessmark.do nesssym.do nessruna.do nessm.do nessmv.do
+IHFILES = ness.ih nessv.ih nessmark.ih nesssym.ih nessm.ih nessmv.ih nessruna.ih
+OBJS = ${NESSOBJS} nessv.o nessmark.o  nesssym.o nessruna.o nessm.o nessmv.o
+
+
+#ifdef WM_ENV
+WMLIB = 	${BASEDIR}/lib/libwm.a
+#endif /* WM_ENV */
+
+
+ATKLIBS=	${BASEDIR}/lib/atk/libframe.a  \
+		${BASEDIR}/lib/atk/libsyntax.a  \
+		${BASEDIR}/lib/atk/libtext.a  \
+		${BASEDIR}/lib/atk/libsupport.a  \
+		${BASEDIR}/lib/atk/libsupviews.a \
+		${BASEDIR}/lib/atk/libbasics.a
+LIBS =	${ATKLIBS} \
+		${BASEDIR}/lib/libclass.a  \
+		${BASEDIR}/lib/libshadows.a \
+		${MALLOCLIB} \
+		${BASEDIR}/lib/liberrors.a  \
+		${UTILLIB} \
+		${WMLIB}
+
+.SUFFIXES: .h .hn
+.hn.h:
+	$(RM) $*.h
+	./nodeclass $*.hn
+
+NormalObjectRule()
+NormalATKRule()
+
+all:: init
+init:: call.h nevent.h gen.h compdefs.h
+call.h nevent.h gen.h compdefs.h: nodeclass
+
+ProgramTarget(nodeclass, nodeclss.o, , )
+
+
+InstallClassFiles($(DOBJS),$(IHFILES))
+DynamicMultiObject(ness.do, ${NESSOBJS}, ${BASEDIR}/lib/atk/libbasics.a ${UTILLIB}, ${SYSLIBS} ${BSDLIB})
+DynamicMultiObject(nessv.do, nessv.o, ${BASEDIR}/lib/atk/libbasics.a, ${SYSLIBS})
+
+compile.o: ness.gra.tab.c ness.tlc
+ness.gra.tab.c: ness.gra
+	ExecuteFromDESTDIR (bison -n ness.gra)
+ness.tlc: ness.tlx ness.gra.tab.c
+	ExecuteFromDESTDIR (gentlex ness.tlx ness.gra.tab.c)
+
+LibraryTarget(libness.a, $(OBJS))
+InstallLibrary(libness.a, ${DESTDIR}/lib/atk)
+
+ClassTestProgramTarget(nesst, nesst.o, ${LIBS} /usr/lib/libm.a, ${BSDLIB})
+ClassTestProgramTarget(goodness, goodness.o ${NESSOBJS} nessmark.o  nesssym.o, ${LIBS}, -lm ${BSDLIB})
+ClassTestProgramTarget(nessrun, nessrun.o ${NESSOBJS} nessmark.o  nesssym.o,  ${LIBS}, -lm ${BSDLIB})
+
+/* InstallProgram(nessrun, ${DESTDIR}/bin) */
+InstallLink(runapp, ${DESTDIR}/bin/ness)
+InstallLink(runapp, ${DESTDIR}/bin/nessrun)
+InstallFile(mtmpl.n, ${INSTINCFLAGS}, ${DESTDIR}/lib/ness)
+InstallFile(nesswarn.d, ${INSTMANFLAGS}, ${DESTDIR}/lib/ness)
+InstallFile(error.h, $(INSTINCFLAGS), $(DESTDIR)/include)
+
+CleanTarget(ness.tab.c ness.output ness.act)
+CleanTarget(call.h gen.h compdefs.h nevent.h)
+CleanTarget(nessrun nodeclass goodness nesst)
+
+DependTargetFiles(init ness.gra.tab.c ness.tlc)
+
+/* Do NOT separate these with \'d newlines, it breaks imake when used with gnu cpp at least. -rr2b 12/93 */
+checkin:   Imakefile  ness.gra ness.tlx  nodeclss.c  *.ch  *.hn    call.c  compile.c dump.c  error.c  gen.c  goodness.c  interp.c  interpt.c ness.c  nessmark.c nessmrkt.c nessm.c nessmv.c nessrun.c     nessrun.ci  nessruna.c  nesssym.c  nesst.c  nessv.c   nevent.c  nevent1.c real.c rexf.c    search.c   envt.h  error.h  interp.h  nodeclss.h  nesswarn.d   notes.d  mtmpl.n	
+	aci   -l  $?
+	touch checkin
+
+

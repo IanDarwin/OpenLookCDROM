@@ -1,0 +1,440 @@
+\begindata{text,538323544}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\section{1	Setting up and testing printing}
+
+
+\section{2	Introduction}
+
+
+The underlying ATK printing model is to turn the ATK datastream into (new) 
+troff (and eqn) input, PostScript, or a combination of both.  The textobjects 
+like text, eq and table create troff and eqn, while other insets, like zip, 
+raster, etc., create PostScript.  Thus, if you have multiple objects printing, 
+they will be all combined into one single file. 
+
+
+The program controlling printing is ezprint.  It calls eqn, troff and psdit 
+for you.  It also provides a useful option (-t) to dump the intermediate 
+stream on standard output.  This is very useful to demonstrate what ezprint is 
+actually doing and for debugging purposes.  We will follow what ezprint does 
+by using this option to explain all the steps in transforming an ATK 
+datastream into PostScript and then printing it.  
+
+
+You may want to find "afile" to test the procedure with.  The first file you 
+try should have some ATK formatting in it, but no other objects.  After you 
+can successfully print formatted text, you can try printing a file with a 
+raster or equation in it.
+
+
+\subsection{2.1	ATK to troff}
+
+
+To print a file to the raw intermediate stage, use the following command:
+
+
+\example{ezprint -t afile > raw.file}
+
+
+\subsection{2.2	troff to dvi}
+
+
+The raw.file now contains input for troff (with eqn input if there are any ATK 
+eq objects in the document, and PostScript if there are ATK objects which 
+produce PostScript directly).  So , it has to be processed with at least eqn 
+and troff:
+
+
+\example{eqn | troff < raw.file > raw.dvi     }(\bold{step 1})
+
+
+Note that raw.file begins with a \typewriter{.so} line giving the ATK macros, 
+which is usually ($ANDREWDIR)/lib/tmac/tmac.atk.  This file needs to be in 
+place for printing to work.  
+
+
+Eqn is a standard equation preprocessor for troff.   The only ATK object that 
+uses it is eq.   Thus, if there are no eq objects in the file, you do not need 
+to run eqn before troff.
+
+
+The macros dealing with pushing PostScript unharmed through troff actually 
+look for what troff thinks the current typesetter is (the value of string .T, 
+also given by the -T flag to troff).  Ezprint will not push PostScript through 
+if the typesetter isn't psc according to a test in the style of:
+
+
+\example{.if '\\\\*(.T'psc' \\\{\\
+
+	push postscript through
+
+.\\\}}
+
+
+So if your troff that produces PostScript style output is actual called 
+"laser", you should change the test in the .if statement in tmac.atk as in
+
+
+\example{.if '\\\\*(.T'laser'}
+
+
+The raw.dvi file contains intermediate troff output at a resolution for 
+PostScript printers, and maybe also some raw PostScript which has been pushed 
+through troff.  At this point, you can use preview to check the dvi file.
+
+
+\example{preview raw.dvi
+
+}
+This should display in a window a reasonable facsimile of the final printed 
+output, minus any embedded objects that produce PostScript. The the same 
+result should be achievable with the command \typewriter{ezprint -p afile}.
+
+
+Note that dvi in the filename above has nothing to do with TeX.  It just 
+happens to be a local convention to call intermediate troff output files by 
+the name "dvi"; this is often a source of confusion for people familiar with 
+TeX.
+
+
+\subsection{2.3	dvi to PostScript}
+
+
+Of course, now we need to turns the file into PostScript.  This is done by 
+using psdit:
+
+
+\example{psdit raw.dvi > afile.PS    }\bold{(step 2a)}
+
+
+\subsection{2.4	Printing PostScript}
+
+
+All that is left now is to send the file to your PostScript printer using your 
+favorite spooler program: 
+
+
+\example{lpr afile.PS}.\typewriter{    }\bold{(step 2b)}
+
+
+These programs called within ezprint are actually build into it, but 
+configurable.  For example, PRINTERTYPE controls the default printer used by 
+troff.  The FORMATCOMMAND controls \bold{step 1} above.  The PRINTCOMMAND 
+controls the spooling of the file.  The -n option to ezprint tells the 
+Berkeley spooler to use a new troff filter (see man(1) lpr).  The file raw.dvi 
+will first be spooled and then psdit would be run over it.  Essentially this 
+preference is \bold{step 2a} and \bold{2b} reversed and combined.
+
+
+\subsection{2.5	Summary of Requirements}
+
+
+In summary, these are the components needed to print ATK formatted text:
+
+
+\leftindent{ATK software built successfully.}
+
+\leftindent{A version of the new troff also know as "device independent troff" 
+(ditroff) or the DWB2.0 , available from AT&T and others.
+
+A program to turn your troff output into a form suitable for whatever type of 
+printer you normally put your troff output on, for instance, a Versatec raster 
+plotter.
+
+lpr or some other print spooling program that reads from stdin.
+
+}
+"ATK formatted text" refers to text with formatting or embedded insets.  Plain 
+text created with EZ contains no extraneous formatting information, but may 
+contain long unwrapped lines that some other printing mechanisms may not be 
+able to deal with.
+
+
+In addition, to print raster images, Zip drawings , and some other ATK insets 
+which may be embedded in text, you will also need:
+
+
+\leftindent{A PostScript printer.
+
+The psdit program, part of the Transcript package from Adobe, for printing 
+ditroff output (with embedded PostScript) on PostScript printers. 
+
+
+}Full ATK printing is only supported on PostScript printers with the above 
+software. 
+
+
+With some pain, it is possible to use programs other than those listed above. 
+ There are no guarantees, but these notes may help you use non-standard 
+software.
+
+
+\subsection{2.6	Configuration}
+
+
+There are various site-specific variables that can be customized to meet the 
+printing configuration at your site.  There are two mechanism for 
+configuration that accomplish the same thing.   You may use either one, or a 
+combination of both.
+
+
+1.  You can modify the print_FOO defines in andrew/atk/support/print.c and 
+then rebuild and install the print support directory.
+
+
+2,  After you have built the system, you can configure printing binaries by 
+placing values in your AndrewSetUp file.  This method may be preferred by 
+people who are keeping one set of sources for a variety of machines.   See the 
+on-line documentation on AndrewSetup for more information.
+
+
+User preference options may also override these configurations, but should 
+only be used for testing purposes.  The options, and their defaults, are as 
+follows:
+
+
+PRINTERTYPE "psc" 
+
+\leftindent{This specifies the default printer type string that will be passed 
+to troff.   The printing software looks for a file named ".PrinterType " in 
+the print spooling directory.  If it finds this, it will use it to override 
+the default.
+
+}
+FORMATCOMMAND "eqn -T$PRINTERTYPE /tmp/%s.n | troff -T$PRINTERTYPE - |" 
+
+\leftindent{This string is used as a template to sprintf for the purposes of 
+indicating how the output is to be formatted for printing and previewing. The 
+%s string will be replaced by the base name of the input file, resulting in 
+the proper name for the temporary troff file. Note that the default assumes 
+that ditroff has been linked to the name troff.  The PRINTERTYPE environment 
+will be set in the shell by print.do module as outlined above. 
+
+}
+PRINTCOMMAND "lpr -n"  
+
+\leftindent{The default print command that will receive the output from 
+ditroff, which may contain embedded troff. At CMU we use a print command that 
+takes a -O %s argument, to inform it the name of the file to put on a cover 
+sheet.
+
+}
+PSCPRINTCOMMAND "lpr"
+
+\leftindent{The default print command for pure PostScript.  Not generally 
+used. 
+
+
+}PREVIEWCOMMAND "preview -o %s"  
+
+\leftindent{The default preview  command, that is fed the output of the format 
+command above.  Sites with interactive PostScript previewers may wish to play 
+with this. 
+
+}
+SPOOLPATH "/usr/spool/" 
+
+PRINTER "lpr" 
+
+\leftindent{The default spool path and directory within that spoolpath. If the 
+variable "PRINTER" is defined in the users environment, the software will use 
+this as the PRINTER. This is only used by the ATK print module to determine 
+the PRINTERTYPE, as above. The PRINTCOMMAND  is responsible for the actual 
+spooling. }
+
+
+\section{3	Notes on troff and psdit
+
+}
+The printing code expects to use any ditroff, so it does not matter from which 
+vendor you acquire it.  There is however one catch:
+
+
+Since it is possible to use a lot of different fonts in the data stream, for 
+times Times Roman, (R I B BI), four times Helvetica (H HB HO HD), and four 
+times Courier (C, CO. CB, CD) it is possible to trigger a long standing bug in 
+ditroff. Ditroff might get confused which font will be mounted in the font 
+cache.  To prevent this from happening (if the bug is in your version), you 
+should have all of these font mounted in troff.  You do this (in case you use 
+a PostScript printer and the transcript software) by having in your DESC file 
+the line:
+
+
+\example{font 14 R I B BI H HO HB BD C CO CB CD S SS
+
+}
+before making the DESC.out file for (in this case) devpsc and ditroff.  If you 
+have source for transcript it all boils down to changing one line in the 
+Makefile in the transcript/lib/ditroff.fonts directory.  If you look in this 
+Makefile you will see that the DESC is actually created by this Makefile. 
+ Since the DESC contains the amount of default mounted fonts, just adding the 
+font names will do the trick.
+
+
+If all the fonts are always mounted, there won't be any confusion.
+
+
+\section{4	Hints}
+
+
+If you don't have a new version for troff or psdit, you have a problem. Here 
+are some suggestions you might want to try.
+
+
+\subsection{4.1	What, no ditroff?}
+
+
+If you don't have the rich features of the new troff or have different font 
+names in use, you have to change the Andrew to troff font mapping.
+
+
+The font mapping from Andy, Andy sans,  typewriter, etc., happen in 
+texttroff.c in the next structure:
+
+
+\typewriter{\smaller{static struct \{
+
+    char *fontname;
+
+    char *fontcodes[9];
+
+    /* Fontcodes are in this order:  */
+
+    /*  plain, italic, bold, bolditalic,  fixed-plain, fixed-italic, */
+
+    /* fixed-bold, fixed-bolditalic, shadow. */
+
+    /* All shadowface is bold for now */ 
+
+\} fonttable[] = \{
+
+    \{"timesroman", \{"R", "I", "B", "BI", "C", "CO", "CB", "CD", "B"\}\},
+
+    \{"helvetica", \{"H", "HO", "HB", "HD", "C", "CO", "CB", "CD", "B"\}\},
+
+    \{"andy", \{"R", "I", "B", "BI", "C", "CO", "CB", "CD", "B"\}\},
+
+    \{"andysans", \{"H", "HO", "HB", "HD", "C", "CO", "CB", "CD", "B"\}\},
+
+    \{"andytype", \{"C", "CO", "CB", "CD", "C", "CO", "CB", "CD", "C"\}\},
+
+    \{"gacha", \{"C", "CO", "CB", "CD", "C", "CO", "CB", "CD", "C"\}\},
+
+    \{0, \{"R", "I", "B", "BI", "C", "CO", "CB", "CD", "B"\}\}
+
+    /* default for unknown family */
+
+\};
+
+}
+}It could be that this table as distributed with R3 contains HR instead of H & 
+CR instead of C due to a local convention.
+
+
+You can change the table to something like the following (in case you use good 
+old troff):
+
+
+\typewriter{\smaller{static struct \{
+
+    char *fontname;
+
+    char *fontcodes[9];
+
+    /* Fontcodes are in this order:  */
+
+    /*  plain, italic, bold, bolditalic,  fixed-plain, fixed-italic, */
+
+    /* fixed-bold, fixed-bolditalic, shadow. */
+
+    /* All shadowface is bold for now */ 
+
+\} fonttable[] = \{
+
+    \{"timesroman", \{"R", "I", "B", "B", "R", "I", "B", "B", "B"\}\},
+
+    \{"helvetica", \{"R", "I", etc....
+
+}}
+Then you can use vtroff or whatever version of good old troff works for you at 
+the moment.  Of course you loose a lot of font changes this way, but at least 
+you can print.  Remember to change the `how to print line' in your preferences 
+(or in ezprint) accordingly to make sure you use the proper version of the 
+\{t,v,n\}roff you want to use.
+
+
+Needless to say, the PostScript won't work with old style troff.
+
+
+\subsection{4.2	What, no psdit?
+
+}
+If you don't have psdit but do have ditroff and a PostScript printer you are 
+out of luck with the PostScript producing insets.  Here are some details which 
+might help getting it to work.
+
+
+The included PostScript (as in the file raw.dvi) uses two commands, PB and PE, 
+surrounding the actual code, which aren't defined in the resulting PostScript. 
+The PB and PE  PostScript commands are doing some setup. This is the way psdit 
+program handles inbedded PostScript in the troff stream. This (PostScript) 
+code is copyrighted since psdit and associated PostScript code comes with the 
+TranScript package from Adobe Inc.
+
+
+The code won't do you that much good anyway, since it depends also on the 
+prologue as used by psdit.  However, you can consult your documentation for 
+your ditroff to PostScript conversion program and find out whether there is a 
+way to push raw PostScript through troff.  If so, there are probably some 
+setup commands as well.   You can replace the PB and PE with these setup 
+commands.
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,820,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,538323544}

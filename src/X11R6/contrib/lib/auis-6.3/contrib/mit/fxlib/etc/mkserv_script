@@ -1,0 +1,84 @@
+#!/bin/csh -f
+#
+# $Source: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/contrib/mit/fxlib/etc/RCS/mkserv_script,v $
+# $Author: wdc $
+# $Header: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/contrib/mit/fxlib/etc/RCS/mkserv_script,v 1.1 1992/02/13 20:18:14 wdc R6tape $
+#
+# Set up a machine as a file exchange server
+#
+set newserver = /afs/athena/astaff/project/eosdev/$hosttype/server/fxserver
+set edir = /site/exchange	# should become /site/server/exchange
+set fdir = files
+
+echo -n "Making sure server directories exist..."
+if !(-d $edir) mkdir $edir
+cd $edir
+if !(-d $fdir) mkdir $fdir
+echo done
+
+echo -n "Installing fxserver program..."
+cp -p $newserver $edir/fxserver
+echo done
+
+echo -n "Making sure server.list exists..."
+if !(-e $edir/server.list) then
+	if (`hesinfo turnin sloc | grep -c -i $host`) then
+		hesinfo turnin sloc > $edir/server.list
+	else
+		hostname > $edir/server.list
+	endif
+endif
+echo done
+
+echo -n "Making sure ACL-GOD exists..."
+if !(-e $edir/$fdir/ACL-GOD) then
+	(blanche -u F_L; blanche -u eos)\
+	| awk '{ printf "%s.@ATHENA.MIT.EDU\n", $0 }'\
+	 > $edir/$fdir/ACL-GOD
+endif
+echo done
+
+echo -n "Making sure /etc/rc.conf is ok..."
+if (`egrep -c '^FXSRV=' /etc/rc.conf`) then
+	sed 's/FXSRV=.*export/FXSRV=true;		export/' \
+	< /etc/rc.conf > /tmp/rc.conf
+	mv /tmp/rc.conf /etc/rc.conf
+else
+    echo "FXSRV=true;		export FXSRV		# file exchange server?" >> /etc/rc.conf
+endif
+sed 's/RPC=.*export/RPC=true;		export/' < /etc/rc.conf > /tmp/rc.conf
+mv /tmp/rc.conf /etc/rc.conf
+echo done
+
+if ("`ls -F /etc/portmap`" =~ *@) then
+	echo -n "Making /etc/portmap local..."
+	rm -f /etc/portmap
+	cp -p /srvd/etc/portmap /etc/portmap
+	echo done
+endif
+
+if ("`ls -F /etc/rpcd`" =~ *@) then
+	echo -n "Making /etc/rpcd local..."
+	rm -f /etc/rpcd
+	cp -p /srvd/etc/rpcd /etc/rpcd
+	echo done
+endif
+
+set rc = /etc/rc
+if (-e /etc/rc.local) set rc = ($rc /etc/rc.local)
+grep -s '${FXSRV}' $rc
+if ($status) then
+	echo -n "Fixing /etc/rc.local..."
+	if !(-e /etc/rc.local) then
+		echo '#\!/bin/sh' > /etc/rc.local
+		chmod 755 /etc/rc.local
+	endif
+	echo ''					>> /etc/rc.local
+	echo 'if [ "${FXSRV}" = "true" ]; then'	>> /etc/rc.local
+	echo '	echo -n "fxserver..."'		>> /etc/rc.local
+	echo '	'$edir'/fxserver &'		>> /etc/rc.local
+	echo 'fi'				>> /etc/rc.local
+	echo done
+endif
+
+echo "===> Remember to get an up-to-date srvtab."

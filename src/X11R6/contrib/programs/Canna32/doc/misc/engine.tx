@@ -1,0 +1,141 @@
+エンジン切り替えを組み込むための手順                  1993.4.12  今
+
+『かんな』の cannaserver と Wnn の jserver をアプリケーションプログラ
+ム実行中に切り替えて使えるようにするには以下のようにして libcanna.a あ
+るいは libcanna.so を作成し、アプリケーションプログラムはその libcanna
+をリンクするようにする必要があります。
+
+エンジンの切り替えを行う libcanna の作り方はダイナミックローディングメ
+カニズムを用いる場合とそうでない場合とで異なります。ダイナミックローディ
+ングを用いるとライブラリの大きさが肥大するのを防ぐことができ、必要なエ
+ンジンに関連するコードだけがメモリ上に展開されるようになります。
+
+ダイナミックローディングは具体的には dlopen() などの関数によりサポート
+されています。ダイナミックローディングがサポートされているかどうかは
+dlopen やコンパイラガイドなどにより調べることができます。
+
+《ダイナミックローディングを用いる場合の libcanna の作り方》
+
+ (1) libwnn, jilib.o, jclib.o を作成する。
+
+    Wnn のディストリビューションで配布される libwnn および、kinput2 の
+    ディストリビューションでついてくる jilib.o および jclib.o を
+    shared object として利用できる形式で作成します。これらのオブジェク
+    トは (3) で libRKWnn.so を作成するときに使います。
+
+    shared object として用いるにはポジションインデペンデントコード 
+    (PIC)でなければなりません。PIC の作り方は各 OS/コンパイラごとに異
+    なりますので OS 添付のマニュアルをご参照ください。例えば -pic オプ
+    ションを cc に付け加えなければならないコンパイラがあります。
+
+ (2) libRKC.so を作成する。
+
+    Canna.conf で、DoSharedLib を YES にし、engineSwitch を #define 
+    します。そうしたら、lib/RKC に行って、
+
+     % make Makefile depend clean all
+
+    とやります。
+
+    ここでも PIC を付くらなければならないのですが、imake の環境が整っ
+    ていればこれだけで PIC が作られるはずです。うまく行かない時は *.cf 
+    を確認してください。sun.cf と sunLib.rules が参考になります。
+
+ (3) libRKWnn.so を作成する。
+
+    (2) を行っていれば、lib/RKWnn に行って、
+
+     % make Makefile depend clean all
+
+    とやるだけです。
+
+ (4) libcanna を作成する。
+
+    (2) を行っていれば、lib/canna に行って、
+
+     % make Makefile depend clean all
+
+    とやるだけです。
+
+ (5) それぞれのライブラリをインストールする。
+
+    libRKC.so, libRKWnn.so を適当なパスにインストールします。/usr/lib
+    などが適当ですが、/usr/local/canna/lib などにインストールし、ユー
+    ザの環境変数 LD_LIBRARY_PATH などで、/usr/local/canna/lib などのパ
+    スを設定しても良いでしょう。
+
+(3)〜(5) の代わりにトップディレクトリにて
+
+  % make canna 
+
+をやり直しても良いでしょう。
+
+《ダイナミックローディングを使わない場合の libcanna の作り方》
+
+  ※未筆(今回は見送り)
+
+《エンジン切替えに関係するファイル》
+
+エンジン切替えに当たり以下のファイルがインストールされている必要があり
+ます。
+
+ (1) $(CANNALIBDIR)/engine.cf
+
+  このファイルにはそれぞれのエンジンと DSO との関係が記述されています。
+  デフォルトでは、以下のような記述になります。
+
+cannaserver /usr/lib/libRKC    # Canna engine
+irohaserver /usr/lib/libRKC    # Canna engine (same as above)
+jserver     /usr/lib/libRKWnn  # Wnn4 engine
+
+  このうち、一番最初に記述されている DSO がデフォルトで用いられる DSO 
+  です。
+
+  各エントリはエンジン切替え操作の時に、××@○○ の××とそれに対応す
+  る RK ライブラリの対応表になります。例えば、cannaserver に対しては 
+  /usr/lib/libRKC.so.1 あるいは /usr/lib/libRKC16.so.1 が、jserver に
+  対しては /usr/lib/libRKWnn.so.1 あるいは /usr/lib/libRKWnn16.so.1 が
+  対応することを表しています。
+
+ (2) 各種 DSO (dynamic shared object)
+
+  もちろん、engine.cf に記述されている各 DSO は指定されたディレクトリ
+  に存在しなければなりません。
+
+  engine.cf に新しくエントリを追加することで cannaserver や jserver 以
+  外のエンジンをサポートすることもできます。
+
+  cannaserver や jserver 以外のエンジンを追加する時は、一度 
+  lib/canna/engine.c の dlopen のオプションを RTLD_LAZY を RTLD_NOW に
+  切替えてダイナミックローディングにおけるシンボル解決がすっかり行われ
+  ていることを確認しておくことをお勧めします。実行中にシンボル解決が行
+  われていないことが発見されるとアプリケーションプログラムが core dump 
+  するからです。
+
+以上で準備はすみました。このようにして準備した libcanna とリンクするこ
+とにより、 アプリケーションプログラム実行時にかな漢字変換エンジンを切
+り替えることができるようになります。
+
+($Id: engine.tx,v 1.8 1994/01/27 11:09:57 kuma Exp $)
+
+ Copyright 1994 NEC Corporation, Tokyo, Japan.
+
+ Permission to use, copy, modify, distribute and sell this software
+ and its documentation for any purpose is hereby granted without
+ fee, provided that the above copyright notice appear in all copies
+ and that both that copyright notice and this permission notice
+ appear in supporting documentation, and that the name of NEC
+ Corporation not be used in advertising or publicity pertaining to
+ distribution of the software without specific, written prior
+ permission.  NEC Corporation makes no representations about the
+ suitability of this software for any purpose.  It is provided "as
+ is" without express or implied warranty.
+
+ NEC CORPORATION DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN 
+ NO EVENT SHALL NEC CORPORATION BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF 
+ USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR 
+ OTHER TORTUOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR 
+ PERFORMANCE OF THIS SOFTWARE. 
+

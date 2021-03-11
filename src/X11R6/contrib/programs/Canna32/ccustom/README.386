@@ -1,0 +1,228 @@
+386BSD 0.1 で、ccustom を使うためのメモ
+  
+.canna を書くのは、最初は大変ですので、ccustom が使えたほうが便利です。 
+386BSD 等の BSD 系のcursesライブラリでは、ccustom を動かすには機能不足
+ですが、libcurses のソースが付属している 386BSD では、以下のようにして、
+とりあえず使えるようにできます。
+  
+1.コンパイル
+  
+(1) libcurses のソースを適当なディレクトリにコピーします。
+
+(2) 8bit 文字が扱えるようにするため、comp.unix.bsd に流れていた 8bit
+    curses のパッチをあてます。パッチは、
+
+  From: ache@astral.msk.su (Andrew A. Chernov, Black Mage)
+  Newsgroups: comp.unix.bsd
+  Subject: [386bsd] Patch for curses library, make it clean 8-bit
+  Date: 9 Jan 93 00:06:29 JST
+  Reply-To: ache@astral.msk.su
+  Organization: Ha-oh-lahm Yetzirah
+
+  と、
+
+  Subject: [386bsd] Patch #2 for curses, make it clean 8-bit
+  Subject: [386bsd] Patch #3 for 8-bit curses, useful for standard curses too
+  Subject: [386bsd] Patch #4 for 8-bit curses, for standard curses too!
+
+  の４つを使いました。
+
+(3) このままでは、漢字に対して問題があるので、さらに、このファイルの最
+    後にあるパッチをあてます。これでも、漢字の扱いが完全ではありません
+    が、とりあえず ccustom を使えるようになります。
+ 
+(4) libcurses を makeします。
+
+(5) 新しい curses.h と libcurses.a が使われるように、ccustom の 
+    Makefile を修正し、ccustom を make します。
+
+2.使用上の注意
+
+・カーソルの移動に矢印キーは使えません。vi風に 'h','j','l','k'を使います。
+・キーのカストマイズで、行削除は、'K'(大文字)を使います(小文字の'k'を
+  カーソル移動に割り当ててしまったため)。
+
+*** foo	Mon Feb 22 18:01:05 1993
+--- ./addbytes.c	Mon Feb 22 18:01:58 1993
+***************
+*** 47,52 ****
+  
+  	for (i = 0; i < count; i++) {
+  		c = (unsigned char) *bytes++;
+  		if (_waddbytes(win, &c, 1) == ERR)
+  			return ERR;
+  	}
+--- 47,59 ----
+  
+  	for (i = 0; i < count; i++) {
+  		c = (unsigned char) *bytes++;
++ 		if (c > 0x7f) {
++ 		    i++;
++ 		    c = c | ((unsigned char) *bytes++) << 8;
++ 		    if (_waddbytes(win, &c, 1) == ERR)
++ 			return ERR;
++ 		    c = ((c & 0xff) << 8) | ((c & 0xff00) >> 8);
++ 		}
+  		if (_waddbytes(win, &c, 1) == ERR)
+  			return ERR;
+  	}
+*** foo	Mon Feb 22 18:01:05 1993
+--- ./addstr.c	Mon Feb 22 18:01:58 1993
+***************
+*** 50,59 ****
+  # ifdef DEBUG
+  	fprintf(outf, "WADDSTR(\"%s\")\n", str);
+  # endif
+  	for (s = str; *s;) {
+  		c = (unsigned char) *s++;
+  		if (_waddbytes(win, &c, 1) == ERR)
+  			return ERR;
+  	}
+  	return OK;
+  }
+--- 50,64 ----
+  # ifdef DEBUG
+  	fprintf(outf, "WADDSTR(\"%s\")\n", str);
+  # endif
++ #if 1
++ 	if (waddbytes(win,str,strlen(str)) == ERR)
++ 	    return ERR;
++ #else
+  	for (s = str; *s;) {
+  		c = (unsigned char) *s++;
+  		if (_waddbytes(win, &c, 1) == ERR)
+  			return ERR;
+  	}
++ #endif
+  	return OK;
+  }
+
+*** foo	Mon Feb 22 18:01:05 1993
+--- ./curses.ext	Mon Feb 22 18:01:58 1993
+***************
+*** 49,55 ****
+  
+  extern SGTTY	_tty;
+  
+- char		_putchar();
+  
+  #ifdef DEBUG
+  # define	outf	_outf
+--- 49,55 ----
+  
+  extern SGTTY	_tty;
+  
++ chtype		_putchar();
+  
+  #ifdef DEBUG
+  # define	outf	_outf
+
+*** foo	Mon Feb 22 18:01:05 1993
+--- ./curses.h	Mon Feb 22 18:01:58 1993
+***************
+*** 44,50 ****
+  #define	bool	char
+  #define	reg	register
+  
+- typedef unsigned short chtype;
+  
+  #define	TRUE	(1)
+  #define	FALSE	(0)
+--- 44,51 ----
+  #define	bool	char
+  #define	reg	register
+  
++ /*typedef unsigned short chtype;*/
++ typedef unsigned int chtype;
+  
+  #define	TRUE	(1)
+  #define	FALSE	(0)
+***************
+*** 57,63 ****
+  #define	_FLUSH		010
+  #define	_FULLLINE	020
+  #define	_IDLINE		040
+- #define _STANDOUT       0400
+  #define	_NOCHANGE	-1
+  
+  #define	_puts(s)	tputs(s, 0, _putchar)
+--- 58,65 ----
+  #define	_FLUSH		010
+  #define	_FULLLINE	020
+  #define	_IDLINE		040
++ /*#define _STANDOUT       0400*/
++ #define _STANDOUT       0x10000
+  #define	_NOCHANGE	-1
+  
+  #define	_puts(s)	tputs(s, 0, _putchar)
+***************
+*** 89,95 ****
+  	short		_cury, _curx;
+  	short		_maxy, _maxx;
+  	short		_begy, _begx;
+- 	short		_flags;
+  	short		_ch_off;
+  	bool		_clear;
+  	bool		_leave;
+--- 91,97 ----
+  	short		_cury, _curx;
+  	short		_maxy, _maxx;
+  	short		_begy, _begx;
++ 	int		_flags;
+  	short		_ch_off;
+  	bool		_clear;
+  	bool		_leave;
+
+*** foo	Mon Feb 22 18:01:05 1993
+--- ./putchar.c	Mon Feb 22 18:01:58 1993
+***************
+*** 37,47 ****
+  
+  # include	"curses.ext"
+  
+- char
+  _putchar(c)
+- reg char	c; {
+  
+- 	putchar(c);
+  #ifdef DEBUG
+  	fprintf(outf, "_PUTCHAR(%s)\n", unctrl(c));
+  #endif
+--- 37,47 ----
+  
+  # include	"curses.ext"
+  
++ chtype
+  _putchar(c)
++ reg chtype	c; {
+  
++ 	putchar(c & 0xff);
+  #ifdef DEBUG
+  	fprintf(outf, "_PUTCHAR(%s)\n", unctrl(c));
+  #endif
+
+以上
+
+/* Copyright 1994 NEC Corporation, Tokyo, Japan.
+ *
+ * Permission to use, copy, modify, distribute and sell this software
+ * and its documentation for any purpose is hereby granted without
+ * fee, provided that the above copyright notice appear in all copies
+ * and that both that copyright notice and this permission notice
+ * appear in supporting documentation, and that the name of NEC
+ * Corporation not be used in advertising or publicity pertaining to
+ * distribution of the software without specific, written prior
+ * permission.  NEC Corporation makes no representations about the
+ * suitability of this software for any purpose.  It is provided "as
+ * is" without express or implied warranty.
+ *
+ * NEC CORPORATION DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+ * INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN
+ * NO EVENT SHALL NEC CORPORATION BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+ * CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF
+ * USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+ * OTHER TORTUOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
+
+($Id: README.386,v 1.5 1994/01/27 10:44:41 misao Exp $)

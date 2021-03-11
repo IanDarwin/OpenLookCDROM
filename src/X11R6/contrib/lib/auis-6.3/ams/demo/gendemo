@@ -1,0 +1,106 @@
+#!/bin/csh -f
+## ###################################################################### ##
+##         Copyright IBM Corporation 1988,1991 - All Rights Reserved      ##
+##        For full copyright information see:'andrew/config/COPYRITE'     ##
+## ###################################################################### ##
+# $Disclaimer: 
+# Permission to use, copy, modify, and distribute this software and its 
+# documentation for any purpose is hereby granted without fee, 
+# provided that the above copyright notice appear in all copies and that 
+# both that copyright notice, this permission notice, and the following 
+# disclaimer appear in supporting documentation, and that the names of 
+# IBM, Carnegie Mellon University, and other copyright holders, not be 
+# used in advertising or publicity pertaining to distribution of the software 
+# without specific, written prior permission.
+# 
+# IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+# DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+# SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+# BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+# DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+# WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+# ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+# OF THIS SOFTWARE.
+#  $
+#
+# This script may be used for generating a spiffy demo folder/bboard for the Andrew Message system.
+#
+# It assumes you have run an AMS appliation at least once, to create the .MESSAGES 
+# tree in your home directory or wherever it is you're creating the demo folder.
+#
+# See the imkfile in this directory for further explanations.
+
+set force=0
+if ($#argv > 1 && "$1" == "-force") then
+    set force=1
+    shift
+endif
+if ( $?ANDREWDIR ) then
+    set AndrewDir = "$ANDREWDIR"
+else
+    set AndrewDir = "/usr/andrew"
+endif
+if ($#argv > 2 && "$1" == "-DESTDIR" ) then
+    set AndrewDir=$2
+    shift
+    shift
+endif
+if ($#argv < 1) then
+    echo Usage:  gendemo [-force] [-DESTDIR installed-directory] creatable-folder-name
+    echo Example use: gendemo \~/.MESSAGES/amsdemo
+    exit 1
+endif
+if ($force == 0) then
+    echo -n "Do you want to create a messages demo folder in the directory $1, erasing any previous contents AND ALL SUBDIRECTORIES recursively [no] ? "
+    set ans=$<
+    if ($ans !~ y*) then
+       echo No demo created.
+       exit
+    endif
+endif
+set targetdir=$1
+if (-e $targetdir) then
+	rm -rf $targetdir
+	if ($status != 0) then
+		echo rm failed, aborting.
+		exit
+	endif
+endif
+$AndrewDir/bin/cui set level wizard \; set script on \; set term 0 \; create $targetdir:t \; quit <<!
+$targetdir:h
+
+!
+# sanity check next
+if (! -d $targetdir) then
+	echo $targetdir is not a directory--aborting.
+	exit 1
+endif
+
+set Me=`whoami`
+if (! $?Me) then
+	set Me = `who am i`
+	if(! $?Me) then
+		set Me = $USER
+	endif
+endif
+
+@ i = 1
+while (1)
+	if (! -e d$i.heads) break
+	echo Processing post number $i
+	echo "Date: `$AndrewDir/etc/arpadate`" > /tmp/demotemp
+	echo From: ${Me} >> /tmp/demotemp
+	echo To: AMS Demo Part $i >> /tmp/demotemp
+	echo Content-Type: X-BE2\; 12 >> /tmp/demotemp
+	echo If-Type-Unsupported: send >> /tmp/demotemp
+	cat d$i.heads >> /tmp/demotemp
+	echo "" >> /tmp/demotemp
+	cat d$i >> /tmp/demotemp
+	mv /tmp/demotemp $targetdir/$i.post
+	@ i ++
+end
+$AndrewDir/bin/cui set level wizard \; set script on \; set term 0 \; recon $targetdir\; quit <<!
+
+
+!

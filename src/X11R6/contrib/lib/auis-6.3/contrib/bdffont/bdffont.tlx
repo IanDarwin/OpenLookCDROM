@@ -1,0 +1,267 @@
+-- Copyright 1992 Carnegie Mellon University. All rights reserved.
+-- $Disclaimer: 
+-- Permission to use, copy, modify, and distribute this software and its 
+-- documentation for any purpose is hereby granted without fee, 
+-- provided that the above copyright notice appear in all copies and that 
+-- both that copyright notice, this permission notice, and the following 
+-- disclaimer appear in supporting documentation, and that the names of 
+-- IBM, Carnegie Mellon University, and other copyright holders, not be 
+-- used in advertising or publicity pertaining to distribution of the software 
+-- without specific, written prior permission.
+-- 
+-- IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+-- DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+-- ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+-- SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+-- BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+-- DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+-- WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+-- ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+-- OF THIS SOFTWARE.
+--  $
+
+tokenclass -errorhandler-
+{
+	parse_Error(parser, parse_SERIOUS, parm->msg);
+	return tlex_IGNORE;
+}
+
+tokenclass -global-
+	tokennumber token TOKEN
+
+-- whitespace
+tokenclass -none-
+	set [ \t\r\n\f]
+	recognizer ScanWhitespace
+	charset continueset [ \t\r\n\f]
+
+-- random unquoted strings : usually a number
+tokenclass TOKEN
+	set [!#-~]
+	recognizer ScanID
+	charset continueset [!#-~]
+{
+	tlex_SetTokenValue(tlex, (void *)atoi(tlex_GetTokenText(tlex)));
+	return tlex_ACCEPT;
+}
+
+-- STARTCHAR is followed by name of character (max 15 chars)
+--	often a single ASCII printable
+--	also:  sp for space, ch-dd for decimal digits, Cddd for octal digits
+--	or even a name
+-- tokentext is the name
+tokenclass STARTCHAR
+	seq "STARTCHAR"
+{
+	while (tlex_CurrChar(tlex) != '\n' && isspace(tlex_NextChar(tlex))) {}
+	tlex_StartToken(tlex);
+	if (tlex_CurrChar(tlex) == '\n') {
+		/* error, nothing after STARTCHAR: make empty token */
+		tlex_BackUp(tlex, 1);
+	}
+	while (tlex_Advance(tlex) != '\n' && tlex_CurrChar(tlex) != EOF) {}
+	tlex_EndToken(tlex);
+	return tlex_ACCEPT;
+}
+
+-- the following all return tokennumber TOKEN
+--	but the actual token number is returned in yylval
+--
+tokenclass FOUNDRY
+	seq "FOUNDRY"
+{
+	return SaveTokenNumber(tlex);
+}
+tokenclass FAMILY
+	seq "FAMILY"
+{
+	return SaveTokenNumber(tlex);
+}
+tokenclass WEIGHT
+	seq "WEIGHT"
+{
+	return SaveTokenNumber(tlex);
+}
+tokenclass DEFAULTCHAR
+	seq "DEFAULT_CHAR"
+{
+	return SaveTokenNumber(tlex);
+}
+tokenclass DEFAULTWIDTH
+	seq "DEFAULT_WIDTH"
+{
+	return SaveTokenNumber(tlex);
+}
+tokenclass DEFAULTHEIGHT
+	seq "DEFAULT_HEIGHT"
+{
+	return SaveTokenNumber(tlex);
+}
+tokenclass DEFAULTX
+	seq "DEFAULT_X"
+{
+	return SaveTokenNumber(tlex);
+}
+tokenclass DEFAULTY
+	seq "DEFAULT_Y"
+{
+	return SaveTokenNumber(tlex);
+}
+tokenclass DEFAULTDX
+	seq "DEFAULT_DX"
+{
+	return SaveTokenNumber(tlex);
+}
+tokenclass DEFAULTDY
+	seq "DEFAULT_DY"
+{
+	return SaveTokenNumber(tlex);
+}
+tokenclass ASCENT
+	seq "FONT_ASCENT"
+{
+	return SaveTokenNumber(tlex);
+}
+tokenclass DESCENT
+	seq "FONT_DESCENT"
+{
+	return SaveTokenNumber(tlex);
+}
+tokenclass RESX
+	seq "RESOLUTION_X"
+{
+	return SaveTokenNumber(tlex);
+}
+tokenclass RESY
+	seq "RESOLUTION_Y"
+{
+	return SaveTokenNumber(tlex);
+}
+tokenclass WEIGHTNAME
+	seq "WEIGHT_NAME"
+{
+	return SaveTokenNumber(tlex);
+}
+
+
+-- the following simply report their tokennumber
+--
+tokenclass STARTFONT
+	seq "STARTFONT"
+tokenclass SIZE
+	seq "SIZE"
+tokenclass FONTBOUNDINGBOX
+	seq "FONTBOUNDINGBOX"
+tokenclass STARTPROPERTIES
+	seq "STARTPROPERTIES"
+tokenclass ENDPROPERTIES
+	seq "ENDPROPERTIES"
+tokenclass CHARS
+	seq "CHARS"
+tokenclass ENCODING
+	seq "ENCODING"
+tokenclass SWIDTH
+	seq "SWIDTH"
+tokenclass DWIDTH
+	seq "DWIDTH"
+tokenclass BBX
+	seq "BBX"
+tokenclass ATTRIBUTES
+	seq "ATTRIBUTES"
+tokenclass ENDCHAR
+	seq "ENDCHAR"
+tokenclass ENDFONT
+	seq "ENDFONT"
+
+
+-- for a COMMENT line, the TokenText is the entire line, excluding \n
+--
+tokenclass COMMENT
+	seq "COMMENT"
+	recognizer ScanComment
+	boolean SaveText TRUE
+	char *endseq "\n"
+{
+	return tlex_ACCEPT;
+}
+
+-- for a FONT line, the TokenText is the entire line, excluding \n
+--
+tokenclass FONT
+	seq "FONT"
+	recognizer ScanComment
+	boolean SaveText TRUE
+	char *endseq "\n"
+{
+	return tlex_ACCEPT;
+}
+
+-- bitmaps are read from succeeding lines and attached to bdffont_ReadCharDefn
+--
+tokenclass BITMAP
+	seq "BITMAP"
+	recognizer ScanComment
+	char *endseq "\n"
+{
+	long row, column;
+	long width;
+	long alignedwidth;
+	long pad;
+	char c1, c2;
+	unsigned char *bytes;
+
+	bdffont_ReadCharDefn.bitmap =
+		(unsigned char *)malloc(bdffont_BitmapSize(&bdffont_ReadCharDefn));
+	bytes = bdffont_ReadCharDefn.bitmap;
+
+	width = bdffont_WidthInBytes(bdffont_ReadCharDefn.bbw);
+	alignedwidth = bdffont_AlignedWidthInBytes(&bdffont_ReadCharDefn);
+	pad = alignedwidth - width;
+
+	c1 = tlex_CurrChar(tlex);
+	for (row = bdffont_ReadCharDefn.bbh; row > 0; row--) {
+		column = width;
+		while (column > 0) 
+			if (isspace(c1)) 
+				c1 = tlex_NextChar(tlex);
+			else {
+				c2 = tlex_NextChar(tlex);
+				*bytes++ = bdflex_ComposeByte(c1, c2);
+				c1 = tlex_NextChar(tlex);
+				column--;
+			}
+
+		/* Ignore any trailing padding present in the file */
+		while (c1 != EOF && c1 != '\n')
+			c1 = tlex_NextChar(tlex);
+		c1 = tlex_NextChar(tlex);		/* skip newline */
+
+		/* Do the padding ourselves */
+		memset(bytes, '\0', pad);
+		bytes += pad;
+	}
+	return tlex_ACCEPT;
+}
+
+-- string : copy to TokenText the entire string including quotes
+--	double quotes continue the string
+--
+tokenclass TOKEN
+	seq "\""
+{
+	/* copy delimiters and contents to TokenText
+		"" is copied as is, but does not end string */
+	tlex_BackUp(tlex, 1);
+	tlex_StartToken(tlex);
+	tlex_Advance(tlex);	/* get initial " */
+	while (tlex_CurrChar(tlex) != EOF) 
+		if (tlex_CurrChar(tlex) == '\"') {
+			if (tlex_Advance(tlex) != '\"') 
+				break;
+			tlex_Advance(tlex);	/* absorb second " */
+		}
+		else 
+			tlex_Advance(tlex);
+	tlex_EndToken(tlex);
+	return tlex_ACCEPT;
+}

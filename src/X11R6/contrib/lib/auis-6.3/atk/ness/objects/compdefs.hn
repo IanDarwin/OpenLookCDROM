@@ -1,0 +1,266 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+	Copyright Carnegie Mellon University 1992 - All Rights Reserved
+	$Disclaimer: 
+Permission to use, copy, modify, and distribute this software and its 
+documentation for any purpose is hereby granted without fee, 
+provided that the above copyright notice appear in all copies and that 
+both that copyright notice, this permission notice, and the following 
+disclaimer appear in supporting documentation, and that the names of 
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+used in advertising or publicity pertaining to distribution of the software 
+without specific, written prior permission.
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+OF THIS SOFTWARE.
+ $
+\* ********************************************************************** */
+
+#ifndef _ness_compdefs_h_
+#define _ness_compdefs_h_
+
+/* compdefs.hn  -  definitions for ness.gra compilations
+
+	THIS FILE IS PROCESSED BY nodeclass.n TO PRODUCE compdefs.h
+	DO NOT EDIT compdefs.h
+
+A source file which imports compdefs.h should also import nodeclass.h
+
+*/
+/* $Log: compdefs.hn,v $
+Revision 1.12  1994/03/01  23:05:54  rr2b
+Commented out text after #endif's
+BUG
+
+Revision 1.11  1994/02/01  22:08:25  wjh
+fixed type error in call.c
+fixed to unsderstand "wraplook"
+first fields of eventnode now match funcnode
+
+Revision 1.10  1993/12/10  01:11:42  wjh
+remove curNess
+
+Revision 1.9  1993/05/04  01:23:55  susan
+RCS Tree Split
+
+Revision 1.7.1.2  1993/02/08  17:34:02  wjh
+use mark in funcnode instead of raw integers for location of function
+
+Revision 1.7.1.1  1993/02/02  03:00:12  rr2b
+new R6tape branch
+
+Revision 1.7  1992/12/08  04:14:46  wjh
+fixed so it will not crash when a runtime error occurs
+	moved the recompile to locate error operations to compile.c
+.
+
+Revision 1.6  1992/11/26  02:55:09  wjh
+converted CorrectGetChar to GetUnsignedChar
+moved ExtendShortSign to interp.h
+remove xgetchar.h; use simpletext_GetUnsignedChar
+nessrun timing messages go to stderr
+replaced curNess with curComp
+replaced genPush/genPop with struct compilation
+created compile.c to handle compilation
+moved scope routines to compile.c
+converted from lex to tlex
+convert to use lexan_ParseNumber
+truncated logs to 1992 only
+use bison and gentlex instead of yacc and lexdef/lex
+
+.
+
+Revision 1.5  91/09/12  19:43:38  bobg
+Update copyright notice
+
+Revision 1.4  1989/09/03  22:46:43  wjh
+newness
+
+Revision 1.3  89/06/01  15:58:30  wjh
+campus release version
+
+ */
+
+#include "toksym.ih"
+#include "nesssym.ih"
+#include "envt.h"	/* for TSysMarkRef */
+
+typedef union {
+	struct nesssym *s;
+	long i;
+	struct varnode *varnode;
+	struct exprnode *exprnode;
+	struct predstatenode *predstatenode;
+} YYSTYPE;
+
+
+/* a struct compilation is used for each compilation.  
+	Old ones are saved for reuse */
+struct compilation {
+	struct compilation *next;
+	struct tlex *tlex;
+	struct parse *parser;
+	struct ness *ness;
+	int idtok;		/* token number for setID */
+	struct nesssym *proto;  /* prototype for symbols */
+
+	long scopex;		/* index of current entry in 'scopes' */
+	nesssym_scopeType scopes[5];   /* nesting scopes */
+	nesssym_scopeType constscope;
+
+	struct nessmark *curfuncmark;	/* marker for object code 
+				of function currently being generated */
+	boolean predcond;	/* condition under which to branch to target */
+	struct gotonode *predtargetlist;    /* branchlist of gotos 
+					when predcond is met */
+	struct gotonode *preddropthrulist;  /* branchlist of gotos 
+					that are supposed to drop thru */
+	struct fixupstackrefnode *varfixups;
+	struct fixupstackrefnode *freefixups;
+	struct nessmark *savedCurfuncmark;
+	struct fixupstackrefnode *savedVarFixups;
+	boolean Locating;	/* TRUE if searching for obj loc */
+	long Sought;		/* what object offset are we seeking */
+	long CurrOffset;	/* where we are in object code */
+	boolean LocationAdvancing;  /* toggles depending on whether
+					in InitFunc */
+	long StmtStart;		/* where the most 
+					recent statement starts in source */
+};
+
+
+/* definitions of various flavors of nodes */
+
+nodeclass varnode {
+	long loc, len;
+	struct nesssym *sym;
+	struct toksym *paren;
+};
+
+/* first five fields are same as eventnode in nevent.hn */
+nodeclass funcnode {
+	TSysMarkRef SysMarkOffset;
+	nesssym_scopeType outerscope, ownscope;
+	struct mark *where;
+	struct nesssym *locallist;
+	struct nesssym *parmlist;
+	long functype;
+};
+
+nodeclass exprnode {
+	Texpr type;
+	struct exprnode *next;
+	boolean IsCat;		/* TRUE if is the result of catenation */
+	long loc, len;
+};
+#define exprnode_Combine(x,y,newtype) ( \
+		x->len = y->loc+y->len-x->loc, \
+		x->IsCat = FALSE, \
+		x->type = newtype, \
+		exprnode_Destroy(y),  x  )
+
+
+nodeclass predstatenode {
+	long fixuploc;	/* for ELIF */
+	long objloc;	/* location at start of predicate (for WHILE) */
+	long loc;		/* start of expr */
+	struct gotonode *targetlist, *dropthrulist;
+	boolean cond;
+	char construct;	/* 'I'-if  'W'-while  'L'-function  'X'-expr  
+				'A'-arg  'E'-extend  'V'-event  */
+};
+
+nodeclass gotonode {
+	long gotoloc;		/* the obj code location of the branch opcode */
+	struct gotonode *next;
+};
+
+
+/* these flags are in the flags field of a nesssym */
+
+#define  flag_globalvar	(1<<0)
+#define  flag_function	(1<<1)
+#define  flag_parmvar	(1<<2)
+#define  flag_localvar	(1<<3)
+#define  flag_const		(1<<4)
+#define  flag_builtin	(1<<5)
+#define  flag_proctable	(1<<6)
+#define  flag_classdefn	(1<<7)
+#define  flag_var		(1<<8)
+#define  flag_undef		(1<<9)
+#define  flag_xobj		(1<<10)
+#define  flag_event		(1<<11)
+#define  flag_xfunc		(1<<12)
+#define  flag_ness		(1<<13)
+#define  flag_forward	(1<<14)
+
+/* valid options:
+
+flag_function | flag_ness		top level function in a script	funcnode
+flag_function | flag_ness | flag_xfunc	function within an 'extend'	funcnode
+flag_function | flag_builtin		a builtin function	  	builtindef	
+flag_function | flag_proctable	  	function from proctable	callnode
+flag_function | flag_classdefn  	function from class 	callnode
+flag_function | flag_undef		undefined function		NULL or 1
+		(the value 1 indicates that it is a for-sure undefined func)
+flag_function | flag_forward		possibly a forward func call	callnode
+flag_const			a constant		TSysMarkRef
+flag_var | flag_parmvar		parameter of a function	none
+flag_var | flag_localvar		local within a function	none
+flag_var | flag_globalvar		global to a script		none
+flag_var | flag_builtin		predefined variable	  	builtindef
+flag_var | flag_undef		undefined variable		callnode
+flag_undef			undefined identifier		none
+flag_xobj				an extended object   	objnode
+flag_event			an event			eventnode
+
+*/
+
+/* enum exprType {
+ *	Tunk, Tlong, Tbool, Tdbl, Tstr, Tptr, Tfunc
+ * }; 
+ */
+/* defn of Texpr is in nesssym.ch as
+ *	typedef unsigned long Texpr;  
+ */
+#define Tend	((Texpr) 0)   /* end of list of types */
+#define Tlong	((Texpr) 1)   /* integer */
+#define Tbool	((Texpr) 2)   /* boolean (unsigned long) */
+#define Tbra	((Texpr) 3)   /* d.o. via branch predicates */
+#define Tdbl	((Texpr) 4)   /* float */
+#define Tstr	((Texpr) 5)   /* marker */
+#define Tptr	((Texpr) 6)   /* pointer to object */
+#define Tfunc	((Texpr) 7)   /* function */
+#define Tvoid	((Texpr) 8)   /* function with no value */
+#define Tunk	((Texpr) 9)   /* unknown type */
+
+/* types in C code (w/ corresponding Ness type) */
+#define Tcstr	((Texpr) 10)	/* char *  	(Tstr)  */
+#define Tshrt	((Texpr) 11)	/* short  	(Tlong) */
+#define Tchr	((Texpr) 12)	/* char   	(Tlong) */
+
+extern char *TypeName[];  /* see gen.c */
+
+/* compile.c */
+extern struct compilation *curComp;
+extern int ntEXTEND, ntON, ntFUNCTION, ntWHILE, ntIF, 
+	ntEVENT, ntMENU, ntMOUSE, ntKEYS;
+extern struct errornode *compile();
+extern boolean compileForLocation();
+extern void compileStmtStart();
+extern void compileLocate();
+nesssym_scopeType compNewScope(/* */);	
+		/* save current scope and make a new one */
+void compPopScope(/* */);	/* restore prior scope */
+void compPushScope(/* nesssym_scopetype scope */);  /* install a scope temporarily */
+
+
+
+#endif /* _ness_compdefs_h_*/

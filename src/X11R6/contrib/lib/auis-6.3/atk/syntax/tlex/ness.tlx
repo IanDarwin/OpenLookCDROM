@@ -1,0 +1,112 @@
+-- ness.tlx
+--	Token descriptions for Ness
+
+tokenclass -global-
+	char *msg="first ";
+	boolean FirstTime = TRUE;
+{
+	printf("Global initialization\n");
+}
+
+tokenclass -errorhandler-
+	{
+		fprintf(stderr, "tlex: @ %d - %s\n", tlex_GetTokEnd(tlex),
+			parm->msg);
+	}
+
+--			comments:   -- ... \n
+tokenclass -none-
+	recognizer	ScanComment
+	seq		"--"
+	char		*endseq		"\n"
+
+--			pragmats:  --$ ... \n
+tokenclass -none-
+	recognizer	ScanComment
+	seq		"--$"
+	char 		*endseq		"\n"
+	{
+		if (ness_global.FirstTime) {
+			ness_global.FirstTime = FALSE;
+			printf("%s", ness_global.msg);
+		}
+		printf("pragmat: %s", tlex_GetTokenText(tlex)+3);
+		return tlex_IGNORE;
+	}
+
+--			whitespace  (space)\n\t\r\v\b\f
+tokenclass -none-
+	recognizer	ScanWhitespace
+	set		[\000-\040\177-\237]
+	charset 	continueset [\000-\040\177-\237]
+
+--			id   [a-zA-Z_] [a-zA-Z0-9_]*
+tokenclass setID
+	set		[a-zA-Z_]
+	recognizer	ScanID
+	charset 	continueset  [a-zA-Z0-9_]
+{
+	struct toksym *s;
+	s = toksym_TFind(tlex_GetTokenText(tlex), grammarscope);
+	if (s != NULL)
+		tlex_SetTokenNumber(tlex, s->toknum);
+	return tlex_ACCEPT;
+}
+
+--			string	" ... "   escape is \
+tokenclass setSTRINGCON
+	seq		"\""
+	recognizer	ScanString
+	char		*endseq		"\""
+	char		*escapechar	"\\"
+	char		*badchar 	"\n"
+
+--			string \n// ... \n\\\\	 no escape
+tokenclass setSTRINGCON
+	seq	"//"
+{
+	register int c;
+	static char delim[4] = "\n\\\\";
+	char *dx;
+
+	dx = delim;
+	c = tlex_CurrChar(tlex);
+	while (*dx && c != EOF) {
+		if (*dx == c)
+			dx++, c = tlex_NextChar(tlex);
+		else if (dx == delim)
+			c = tlex_NextChar(tlex);
+		else dx = delim;
+	}
+	if (c != EOF)
+		tlex_NextChar(tlex);
+	tlex_EndToken(tlex);
+	return tlex_ACCEPT;
+}
+
+
+--			number [0-9] [0-9]*
+--			number 0 x [0-9a-f]*
+--			number [0-9] [0-9.e+-x]*
+--			number 'x' (with escapes)
+--			syntax builtin to lexan
+--			the handler may convert the tokennumber to setREALCON
+tokenclass setINTCON
+	set	[0-9'.]
+	recognizer	ScanNumber
+	tokennumber	realtok     setREALCON
+	{
+		if ( ! parm->IsInt)
+			tlex_SetTokenNumber(tlex, parm->realtok);
+		/* add value to symbol table */
+		return tlex_ACCEPT;
+	}
+
+
+
+--			[ and {  map to (
+--			] and } map to )
+tokenclass	'('
+set		[{\[]
+tokenclass	')'
+set		[}\]]

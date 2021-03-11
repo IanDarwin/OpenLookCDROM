@@ -1,0 +1,1561 @@
+\begindata{text,538945396}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\chapter{1	The CUI Library}
+
+
+\section{1.1	Introduction}
+
+
+This paper describes the CUI library interface of the Andrew Message System. 
+ It presumes a basic familiarity with the normal use and function of the 
+system.  For such information, please consult the overview document (AMS.ovr 
+and MsgSrvr.ovr).  You will also need to consult the documentation for the 
+message server interface (MsgSrvr.pgr).
+
+
+ If you are using EZ to read this document, you can open an interactive Table 
+of Contents window by choosing \bold{Table of Contents} from the \italic{Page} 
+menu card.  Clicking on a heading in the Table of Contents window that appears 
+scrolls this document to bring the heading into view.
+
+
+\section{1.2	Basic Concepts}
+
+
+The CUI library is a subroutine library to be shared by all programs that wish 
+to talk to the message server and have access to the message database.  It 
+includes the procedural interface to SNAP which makes message server calls 
+look like normal subroutine calls.  It also includes a cache mechanism which 
+makes many calls to the server unnecessary, and also provides a few 
+"abstractions of context" which the message server, because of its 
+connectionless nature, cannot provide.
+
+
+The primary abstraction provided by the library is the notion of "cuid".  A 
+cuid is simply an integer that the CUI library assigns to each message, which 
+is guaranteed to be session-unique -- that is, the integer uniquely identifies 
+the message for the duration of the current program run.  Client routines can 
+then use the cuid as a "handle" for operations on that message via CUI library 
+calls.
+
+
+It should be noted that the CUI library is still conceptually incomplete. 
+ Unlike the message server interface, which has been more carefully planned 
+and implemented, the CUI library, and indeed the definition of the line 
+between CUI library and client program, is still not very well defined.  Thus 
+the set of procedures in the CUI library is likely to change dramatically in 
+future releases.
+
+
+\section{1.3	The Programmer Interface of the CUI Library}
+
+
+The following variables and subroutines are provided as part of the CUI 
+library.  In general, routines from the CUI library should be given preference 
+over message server routines whenever it seems possible to do something with 
+either one, as the CUI library routines may be able to avoid message server 
+calls through the use of information in the CUI library cache.
+
+
+\italic{A note on parameter conventions}:  All parameter declarations below 
+are commented as either /* IN */, /* OUT */, or /* INOUT */, depending on 
+whether the parameters are passed in to the library, retrieved from the 
+library, or passed to the library, modified, and passed back.
+
+
+\italic{A note on return values}:  Unless otherwise noted, routines in the CUI 
+library return zero on successful completion, and an error code otherwise. 
+ The error code is formatted as a message server error code, as documented in 
+the message server interface documentation.
+
+
+\subsection{1.3.1	CUI variables visible to the client program}
+
+
+The cui maintains a few values which may be of interest to the interface 
+program:
+
+
+\typewriter{#define \index{CUI_MAJORVERSION} ...
+
+#define \index{CUI_MINORVERSION} ...}
+
+\leftindent{These are int constants (defined in CUI.h) that indicate the CUI 
+version number.}
+
+
+\typewriter{int \index{CUI_CuidsInUse}}
+
+\leftindent{This is the number of cuids the library has currently assigned.  A 
+cuid <=0 or > CUI_CuidsInUse is invalid.  Although the CUI library always 
+checks cuids you pass it to make sure they are valid, client programs may find 
+it useful at times to perform this check themselves.}
+
+
+\typewriter{int \index{CUI_IsMagic}}
+
+\leftindent{This variable is always zero unless the current user is a member 
+of the Andrew Message System group.  It can be used for testing new features 
+or for debugging purposes.}
+
+
+\typewriter{long \index{CUI_LastCallFinished}}
+
+\leftindent{This variable is the time (from a call to time(0)) that the last 
+call to the message server finished.  It can be used in determining whether or 
+not a "keepalive" message to the server is in order.}
+
+
+\typewriter{int \index{CUI_OnSameHost}}
+
+\leftindent{This variable is non-zero if the server is running on the same 
+machine as the client, zero otherwise.}
+
+
+\typewriter{char \index{CUI_VersionString}[]}
+
+\leftindent{This variable contains the text of the current CUI version string.}
+
+
+\typewriter{int \index{CUI_SnapIsRunning}}
+
+\leftindent{This variable is non-zero if the process is talking to the message 
+server via SNAP, and zero if the message server is linked in, without SNAP.}
+
+
+\typewriter{int \index{CUIDebugging}}
+
+\leftindent{This variable is zero if debugging is turned off, and otherwise is 
+the current debugging level for the cui & library.  The debugging level is a 
+bit mask, with each bit representing debugging of a certain kind.  See the 
+code for details.}
+
+
+\typewriter{long \index{mserrcode}}
+
+\leftindent{This is the result of the latest message server call.  It should 
+be zero if no error occurred, otherwise its meaning is explained in the 
+message server documentation.}
+
+
+\subsection{1.3.2	Calls Related to Individual Messages}
+
+
+\typewriter{\index{CUI_AlterSnapshot}(cuid, NewSnapshot, Code, dir)
+
+int     cuid, /* IN */
+
+        Code; /* IN */
+
+char   *NewSnapshot, /* IN */
+
+      **dir; /* OUT */}
+
+\leftindent{This routine alters the snapshot for the message identified by 
+cuid.  It is used, among other things, by the deletion and undeletion 
+routines.  It returns after setting the directory pointer to point at the name 
+of the directory in which the altered message resides.  See the documentation 
+for MS_AlterSnapshot for information on the NewSnapshot and Code parameters.}
+
+
+\typewriter{\index{CUI_CloneMessage}(cuid, DestDirName, Code)
+
+int   cuid,  /* IN */
+
+      Code; /* IN */
+
+char *DestDirName; /* OUT */}
+
+\leftindent{This routine makes a copy of the message identified by cuid.  See 
+the documentation for MS_CloneMessage for an explanation of the meaning of the 
+DestDirName and Code parameters.}
+
+
+\typewriter{\index{CUI_DeleteMessage}(cuid)
+
+int   cuid; /* IN */}
+
+\leftindent{This routine deletes the message identified by cuid, using 
+CUI_AlterSnapshot.  It also makes a note in its cache that the directory has 
+deleted messages and may need to be purged later.}
+
+
+\typewriter{\index{CUI_UndeleteMessage}(cuid)
+
+int     cuid; /* IN */}
+
+\leftindent{This routine undeletes the message identified by cuid, using 
+CUI_AlterSnapshot.
+
+
+}\typewriter{\index{CUI_GetHeaderContents}(cuid, HeaderName, HeaderTypeNumber, 
+HeaderBuf, lim)
+
+char   *HeaderName, /* IN */
+
+       *HeaderBuf; /* OUT */
+
+int     cuid, /* IN */
+
+        HeaderTypeNumber, /* IN */
+
+        lim; /* IN */}
+
+\leftindent{This routine extracts the contents of a specified header from the 
+message identified by cuid.  The meaning of the other parameters is the same 
+as in the documentation for MS_GetHeaderContents.}
+
+
+\typewriter{\index{CUI_GetPartialBody}(Buf, BufLim, cuid, offset, remaining, 
+ct)
+
+char   *Buf; /* OUT */
+
+int     BufLim, /* IN */
+
+        cuid; /* IN */
+
+long    offset, /* IN */
+
+       *remaining; /* OUT */
+
+int    *ct; /* OUT */}
+
+\leftindent{This routine extracts part of the body of a message identified by 
+cuid.  The meaning of the other parameters is the same as in the documentation 
+for MS_GetPartialBody.}
+
+
+\typewriter{\index{CUI_GetBodyToLocalFile}(cuid, FileName, ShouldDelete)
+
+int cuid; /* IN */
+
+char *FileName; /* OUT */
+
+int *ShouldDelete; /* OUT */
+
+}\leftindent{This routine gets the entire body of the message identified by 
+cuid into a locally-readable file.  If the file is a temporary file created by 
+the file system, the integer ShouldDelete will be set to a non-zero value, 
+indicating that you should delete the file when you're through with it.  If 
+ShouldDelete is zero, you are being pointed to a real file in the database, 
+which is apparently locally readable, and you should NOT delete the file when 
+you're done.}
+
+
+\typewriter{\index{CUI_ReallyGetBodyToLocalFile}(cuid, FileName, ShouldDelete, 
+MayFudge)
+
+int cuid; /* IN */
+
+char *FileName; /* OUT */
+
+int *ShouldDelete; /* OUT */
+
+int MayFudge; /* IN */
+
+}\leftindent{This is the same as the previous routine, except that it takes 
+the additional parameter MayFudge.  If MayFudge is true, it may just point you 
+at the database copy of the file and set ShouldDelete to zero.  If MayFudge is 
+false, it will also make a new temporary copy and set ShouldDelete to a 
+non-zero value.}
+
+
+\typewriter{\index{CUI_GetSnapshotFromCUID}(cuid, SnapshotBuf)
+
+int     cuid; /* IN */
+
+char   *SnapshotBuf; /* OUT */}
+
+\leftindent{This routine retrieves the snapshot of the message identified by 
+cuid.  The snapshot is returned in SnapshotBuf, which should be big enough to 
+hold one (AMS_SNAPSHOTSIZE, defined in AMS.h).}
+
+
+\typewriter{\index{CUI_MarkAsRead}(cuid)
+
+int     cuid; /* IN */}
+
+\leftindent{This routine marks the message identified by CUID as "seen".  It 
+only works if the user has write-access to the message directory in which the 
+message resides.}
+
+
+\typewriter{\index{CUI_MarkAsUnseen}(cuid)
+
+int     cuid; /* IN */}
+
+\leftindent{This routine un-marks the message identified by CUID as "seen". 
+ It only works if the user has write-access to the message directory in which 
+the message resides.}
+
+
+\typewriter{\index{CUI_PrintBodyFromCUID}(cuid)
+
+int     cuid; /* IN */}
+
+\leftindent{This routine tells the message server to queue the specified 
+message for printing on paper.}
+
+
+\typewriter{\index{CUI_PrintBodyFromCUIDWithFlags}(cuid, flags, printer)
+
+int cuid, flags; /* BOTH IN */
+
+char *printer;
+
+}\leftindent{This routine is just like the previous, in that it prints the 
+message specified.  However, it passes the flags and printer arguments on to 
+MS_PrintMessage, to be used as documented in the MS documentation.}
+
+
+\typewriter{\index{CUI_MarkRepliedTo}(cuid)
+
+int cuid; /* IN */
+
+}\leftindent{This routine marks the message identified by CUID has having been 
+replied to.}
+
+
+\typewriter{\index{CUI_FlagUrgency}(cuid, urgency)
+
+int cuid, urgency; /* BOTH IN */
+
+}\leftindent{This routine marks or unmarks a message as "urgent" -- that is, 
+it turns on or off the "urgent" attribute for the message identified by cuid. 
+ If urgency is non-zero, it is marked as urgent, otherwise the urgent mark is 
+turned off.}
+
+
+\subsection{1.3.3	Calls Related to User-Defined Attributes
+
+}
+\typewriter{\index{CUI_GetAttrName}(dir, which, buf)
+
+char *dir, /* IN */
+
+      *buf; /* OUT */
+
+int which; /* IN */
+
+}\leftindent{This call takes a message folder (dir) and an attribute number 
+(which) and returns the name of that attribute, if defined.  (If it is not 
+defined, a non-zero return and an error message occur.)  The buf should be big 
+enough to hold any attribute name, i.e. AMS_ATTRNAMEMAX.  Returns zero on 
+success, non-zero on error.}
+
+
+\typewriter{\index{CUI_SetAttribute}(cuid, attrname)
+
+int cuid; /* IN */
+
+char *attrname; /* IN */
+
+}\leftindent{This call turns on the attribute named by attrname for the 
+message identified by cuid.  See CUI_FixAttribute, below.  Returns zero on 
+success, non-zero on error.}
+
+
+\typewriter{\index{CUI_UnsetAttribute}(cuid, attrname)
+
+int cuid; /* IN */
+
+char *attrname; /* IN */
+
+}\leftindent{This call turns off the attribute named by attrname for the 
+message identified by cuid.  See CUI_FixAttribute, below.  Returns zero on 
+success, non-zero on error.}
+
+
+\typewriter{\index{CUI_FixAttribute}(cuid, attrname, Set)
+
+int cuid, Set; /* BOTH IN */
+
+char *attrname; /* IN */
+
+}\leftindent{This call turns on or off (depending on whether Set is non-zero 
+or zero, respectively) the attribute named by attrname for the message 
+identified by cuid.  If the named attribute does not exist, it will ask the 
+user if he wants to create it.  If you're setting an existing attribute and 
+know its number, not just its name, the CUI_FixAttributeByNumber call will be 
+faster.  Returns zero on success, non-zero on error.}
+
+
+\typewriter{\index{CUI_FixAttributeByNumber}(cuid, attnum, Set)
+
+int cuid, attnum, Set; /* ALL IN */
+
+}\leftindent{This routine sets or unsets (depending on whether Set is non-zero 
+or zero, respectively) the attribute numbered attnum.  It does not check the 
+existence of that attribute, but it does check to see that it is in range for 
+a valid user-defined attribute.  Returns zero on success, non-zero on error.}
+
+
+\subsection{1.3.4	Calls Related to Mail Delivery}
+
+
+\typewriter{\index{CUI_NameReplyFile}(cuid, code, FileName)
+
+int     cuid, /* IN */
+
+        code; /* IN */
+
+char   *FileName; /* OUT */}
+
+\leftindent{This routine prepares a mail reply template file for the message 
+identified by cuid.  The file name is returned in the FileName buffer, which 
+should be big enough to hold any file name (MAXPATHLEN).  
+
+
+The precise contents of the file are determined by the code value, which 
+should be one of the following values defined in AMS.h:
+
+
+\leftindent{\bold{AMS_REPLY_FRESH}: The DirName and id are ignored, and a 
+template for a fresh piece of mail is generated.  This is typically not 
+necessary, but is included for completeness to simplify some conceivable mail 
+generation algorithms.
+
+
+\bold{AMS_REPLY_SENDER}:  The mail is generated as a reply to the sender of 
+the original message.
+
+
+\bold{AMS_REPLY_WIDE}: The mail is generated as a reply to the recipients of 
+the original message.  (This is typically the To, CC, and Resent-To lines, but 
+may be overridden by the X-Andrew-WideReply header.)
+
+
+\bold{AMS_REPLY_WIDER}:  The mail is generated as a reply to both the sender 
+and recipients of the original message.
+
+
+\bold{AMS_REPLY_FORWARD}:  The mail is generated as an attempt to forward the 
+original message; all that is filled in initially is the subject header and 
+the body.
+
+
+\bold{AMS_REPLY_FORWARD_FMT}:  Same as AMS_REPLY_FORWARD, except that BE2 
+formatting is preserved; this should only be used by interfaces that 
+understand the BE2 datastream.
+
+
+\bold{AMS_REPLY_REDRAFT}:  The mail is considered to be a draft message which 
+is now to be considered again for sending.  Several headers and the body are 
+filled in.
+
+}}
+\typewriter{\index{CUI_RewriteHeaderLine}(text, realname)
+
+char *text, /* IN */
+
+     **realname; /* OUT */}
+
+\leftindent{This call is the basic engine by which client interfaces should 
+validate the "To" and "CC" headers before delivering mail.  The old line is 
+passed in the text parameter, and the rewritten line is passed out via the the 
+realname parameter, which is allocated by the routine and must be freed by the 
+client.
+
+
+The value returned by this routine is zero if everything went well, and 
+otherwise is the number of addresses which were not valid.  realname is ALWAYS 
+rewritten, so that it is always better to use realname than text, as at least 
+the valid addresses will have been rewritten in canonical format.}
+
+
+\typewriter{\index{CUI_RewriteHeaderLineInternal}(text, realname, 
+ maxdealiases, numfound, externalct, formatct, stripct, trustct)
+
+char *text,  /* IN */
+
+      **newtext; /* OUT */
+
+int maxdealiases,  /* IN */
+
+      *numfound, *externalct, *formatct, *stripct, *trustct; /* ALL OUT */
+
+}\leftindent{This call is just like RewriteHeaderLine, except that it provides 
+a few extras.  You get to specify maxdealiases, which is the maximum number of 
+personal alias definitions that can invoke other personal alias definitions. 
+ (There has to be some maximum to prevent loops; when last we looked, the 
+default was 25, and nobody had complained.)  Five additional values are 
+returned.  The first, numfound, is the number of separate addresses that were 
+found, while the second, externalct, is the number of those addresses that 
+were clearly destined to non-local recipients.  The last three are the number 
+of the external recipients that have been designated (by the user's 
+.AMS_aliases file) as having a set designation for the handling of formatted 
+mail, e.g. to always strip out formatting, always send formatting, or always 
+trust the delivery system for those users.}
+
+
+\typewriter{\index{CUI_ValidateFile}(InFile, OutFile)
+
+char *InFile; /* IN */
+
+char *OutFile; /* OUT */
+
+}\leftindent{This call takes a draft mail file (that is, a file containing 
+headers and body in RFC822 format), validates all the addresses on the To and 
+CC lines, and rewrites the result as a new file, the name of which is 
+generated by this routine.  The original file is not deleted; that is the 
+responsiblity of the caller.  Nonzero return value indicates success, as 
+usual.}
+
+
+\typewriter{\index{CUI_SubmitMessage}(FileName, DeliveryOpts)
+
+char   *FileName; /* IN */
+
+int     DeliveryOpts; /* IN */}
+
+\leftindent{This is the routine used to submit mail for delivery.  The 
+FileName,and DeliveryOpts parameters are the same as in the documentation for 
+MS_SubmitMessage.  The primary difference between the CUI_ and MS_ versions of 
+this routine are that the CUI_ routines report and handle most errors 
+themselves.  }
+
+
+\typewriter{\index{CUI_ResendMessage}(cuid, Tolist)
+
+int cuid; /* IN */
+
+char *Tolist; /* IN */}
+
+\leftindent{This routine will resend a message to the list of recipients 
+(comma-separated) in the Tolist parameter.  This routine internally performs 
+all necessary address validation.}
+
+
+\subsection{1.3.5	Calls Related to Message Directories}
+
+
+\typewriter{\index{CUI_BuildNickName}(FullName, NickName)
+
+char   *FullName, /* IN */
+
+       *NickName; /* OUT */}
+
+\leftindent{This routine takes a full message directory path name (FullName) 
+and produces from it the "nickname" that users want to see -- e.g. 
+transforming /cmu/itc/bb/.MESSAGES/andrew/gripes into "andrew.gripes".  The 
+NickName buffer should be at least as big as FullName.}
+
+
+\typewriter{\index{CUI_CheckMailboxes}(DirName)
+
+char   *Dirname; /* IN */}
+
+\leftindent{This routine will check the mailbox associated with the named 
+directory.  It is used, for example, in the cui update command, so that if you 
+type "update misc" it will first read in new files from your personal Mailbox 
+(assuming that misc is your personal mail directory).  If DirName is null, all 
+mailboxes on your mspath to which you have appropriate access will be checked.}
+
+
+\typewriter{\index{CUI_CheckNewMessages}(arg)
+
+char   *arg; /* IN */}
+
+\leftindent{This routine takes one argument, a string, which is searched for a 
+"space" character.  Everything before the space character is the name of 
+mailbox, and anything after that is the name of a .MS.spec file.  If there is 
+no mailbox, the file "~/Mailbox" is used.  Messages are read from the 
+appropriate mailbox using MS_ProcessNewMessages (see the documentation), and 
+the results are reported to the user as appropriate.}
+
+
+\typewriter{\index{CUI_CreateNewMessageDirectory}(dir, bodydir)
+
+char   *dir, /* IN */
+
+       *bodydir; /* IN */}
+
+\leftindent{This routine is just like MS_CreateNewMessageDirectory, except 
+that it will not overwrite a directory that already exists.  It is preferred 
+over the MS_ routine because it reports errors properly and because it may 
+eventually make entries in the CUI directory cache, though it does not at 
+present.}
+
+
+\typewriter{\index{CUI_SetSubscriptionEntry}(FullName, NickName, status)
+
+char *FullName; /* IN */
+
+char *NickName; /* IN */
+
+int status; /* IN */}
+
+\leftindent{This routine alters the user's subscription status for the 
+directory named as FullName.  It sets the nickname (the name the user will see 
+during subscription updating) and the subscription status (as defined in 
+AMS.h).  It should, in general, be used instead of MS_SetSubscriptionEntry.}
+
+
+\typewriter{\index{CUI_HandleMissingFolder}(DirName)
+
+char *DirName;}
+
+\leftindent{This routine should be called every time a folder is found on the 
+subscription list which no longer exists (ENOENT is AMS_ERRNO).  This will 
+check to see if it has been moved or simply deleted, and will ask the user the 
+appropriate questions to alter his subscription list.  NOTE THAT THE PARAMETER 
+MUST BE A FULL PATH NAME.}
+
+
+\typewriter{\index{CUI_RenameDir}(old, new)
+
+char   *old, /* IN */
+
+       *new; /* IN */}
+
+\leftindent{This routine renames a message directory.  It should ALWAYS be 
+used instead of MS_RenameDir in order to keep the cui cache consistent.  As 
+with MS_RenameDir, the new parameter must be a single level-name (no dots or 
+slashes), and the directory can have no children.}
+
+
+\typewriter{\index{CUI_RemoveDirectory}(DirName)
+
+char   *DirName; /* IN */}
+
+\leftindent{This routine asks the user if he wants to delete the N messages in 
+the directory and then, if the user says yes, deletes them with an appropriate 
+call to MS_RemoveDirectory.}
+
+
+\typewriter{\index{CUI_MergeDirectories} (SourceDirName, DestDirName)
+
+char   *SourceDirName, /* IN */
+
+       *DestDirName; /* IN */}
+
+\leftindent{This routine will merge the directory SourceDirName into the 
+directory DestDirName.  SourceDirName will cease to exist, and DestDirName 
+will contain the union of the two old directories.  Clients should use 
+CUI_MergeDirectories rather than MS_MergeDirectories.}
+
+
+\typewriter{\index{CUI_DirectoriesToPurge}() }
+
+\leftindent{This routine returns the number of directories that the CUI 
+library knows have deleted messages and should be purged.}
+
+
+\typewriter{\index{CUI_DoesDirNeedPurging}(DirName)
+
+char *DirName; /* IN */}
+
+\leftindent{This routine returns non-zero only if the named directory is 
+cached as needing to be purged.}
+
+
+\typewriter{\index{CUI_PurgeDeletions}(DirName)
+
+char   *DirName; /* IN */}
+
+\leftindent{This routine purges all deleted messages in the named directory. 
+ If DirName is null, then all of the directories known to  have deleted 
+messages will be purged.}
+
+
+\typewriter{\index{CUI_PurgeMarkedDirectories}(Ask, OfferQuit)
+
+Boolean Ask, OfferQuit;}
+
+\leftindent{This routine purges all deleted messages in all directories known 
+to have deleted messages.  If Ask is true, it will ask for confirmation first; 
+one of the choices offered will be "purge selectively", in which case the 
+question will be asked again for each directory to be purged.  If OfferQuit is 
+also true, then "Do not quit" will be offered as an additional choice.  This 
+routine returns 0 on success, -1 on error, and 1 on a "Do not quit" choice.}
+
+
+\typewriter{\index{CUI_MarkDirectoryForPurging}(dirname)
+
+char *dirname; /* IN */}
+
+\leftindent{This routine marks the named directory as needing to be purged, so 
+that it will be known to the CUI_PurgeMarkedDirectories routine.}
+
+
+\typewriter{\index{CUI_UnmarkDirectoryForPurging}(dirname)
+
+char *dirname; /* IN */}
+
+\leftindent{This routine marks the named directory as NOT needing to be 
+purged, so that it will NOT be known to the CUI_PurgeMarkedDirectories 
+routine.}
+
+
+\typewriter{\index{CUI_DisambiguateDir}(shortname, longname)
+
+char   *shortname; /* IN */
+
+char  **longname; /* IN */}
+
+\leftindent{This routine takes a (typically) user-specified directory name 
+shortname (e.g. "andrew.gripes") and produces the appropriate full path name 
+for the directory.  The CUI library keeps a cache of directory names, so that 
+most of the calls to CUI_DisambiguateDir do NOT result in any calls to the 
+message server.  The longname pointer is set to point to the appropriate full 
+path name in the CUI library's cache.  This storage is managed by the library 
+and should NOT be freed by the client.}
+
+
+\typewriter{\index{CUI_CacheDirName}(shortname, longname)
+
+char *shortname, *longname; /* IN */}
+
+\leftindent{This routine short-circuits CUI_DisambiguateDir; it tells the 
+library that "shortname" is a nickname for "longname", so that the next time 
+CUI_DisambiguateDir is called on shortname, the longname answer will be 
+returned.  This is primarily useful for saving the information the 
+messageserver has provided in the form of a subscription map, which includes 
+both forms of the name.}
+
+
+\typewriter{\index{CUI_GetAMSID}(cuid, id, dir)
+
+int cuid;
+
+char **id, **dir;}
+
+\leftindent{This routine takes a cuid and gives you a pointer to the 
+associated message directory name and ID.  The storage pointed to is managed 
+by the CUI library and should NOT be freed by the client.}
+
+
+\typewriter{\index{CUI_GetCUID}(amsid, dirname, IsDup)
+
+char *amsid */
+
+     *dirname; /* IN */
+
+int *IsDup; /* OUT */}
+
+\leftindent{This routine takes an id and dirname and assigns a CUID to the 
+message referenced.  If the message has already been assigned a CUID, it uses 
+the old one.  This function returns the cuid itself.  It also sets IsDup to be 
+non-zero if this message appears in multiple directories, and the directory 
+named is NOT the first such directory referenced.}
+
+
+\typewriter{\index{CUI_ReconstructDirectory}(DirName, TrustTimeStamp)
+
+char   *DirName; /* IN */
+
+int   TrustTimeStamp;  /* IN */}
+
+\leftindent{This routine reconstructs the specified message directory DirName. 
+ The TrustTimeStamp integer, if non-zero, indicates that the reconstruction 
+should order the message based on the raw time stamp on the body files; 
+otherwise, the ordering is based on a (slower) parsing of the "Date" headers. 
+ See the documentation for MS_ReconstructDirectory for further details.}
+
+
+\subsection{1.3.6	Calls Related to User Preferences}
+
+
+\typewriter{\index{CUI_GetProfileString}(prog, pref, valbuf, lim)
+
+char *prog, /* IN */
+
+     *pref, /* IN */
+
+     *valbuf; /* OUT */
+
+int lim; /* IN */}
+
+\leftindent{This routine gets a string from the user's preferences file. 
+ Preferences are formatted as "prog.pref: val".  lim is the maximum size of 
+the string to be written in valbuf.  Returns zero on success, -1 on error.}
+
+
+\typewriter{\index{CUI_GetProfileSwitch}(prog, pref, def)
+
+char *prog, /* IN */
+
+     *pref; /* IN */
+
+int def; /* IN */}
+
+\leftindent{This routine gets a boolean value from the user's preferences 
+file.  If there is no such preference, the default def is returned.}
+
+
+\typewriter{\index{CUI_GetProfileInt}(prog, pref, int)
+
+char *prog, /* IN */
+
+     *pref; /* IN */
+
+int def; /* IN */}
+
+\leftindent{This routine gets an integer value from the user's preferences 
+file.  If there is no such preference, the default def is returned.}
+
+
+\typewriter{\index{CUI_SetProfileString}(prog, pref, val)
+
+char *prog, /* IN */
+
+     *pref, /* IN */
+
+     *val; /* IN */}
+
+\leftindent{This routine sets the user's "prog.pref" preferences to the string 
+value given in val.  For switches or integers, a string conversion should be 
+performed prior to calling this routine.  It returns 0 on success, -1 on 
+errors.}
+
+
+\subsection{1.3.7	Calls Related to Access of Server and Local Files}
+
+
+\typewriter{\index{CUI_GenTmpFileName}(nmbuf)
+
+char   *nmbuf; /* IN */}
+
+\leftindent{This routine generates a reasonably unique name for a file to be 
+stored on the message server.  It puts that name in nmbuf, which should be big 
+enough to hold any path name (MAXPATHLEN).}
+
+
+\typewriter{\index{CUI_GetFileFromVice}(LocalFile, ViceFile)
+
+char *LocalFile,  /* IN */
+
+     *ViceFile; /* IN */}
+
+\leftindent{This routine copies ViceFile from the server and puts it in the 
+locally accessible file LocalFile.}
+
+
+\typewriter{\index{CUI_StoreFileToVice}(LocalFile, ViceFile)
+
+char *LocalFile, /* IN */
+
+     *ViceFile; /* IN */}
+
+\leftindent{This routine copies LocalFile from the local machine and puts it 
+in the file ViceFile which is accessible to the message server.}
+
+
+\typewriter{\index{CUI_AppendFileToVice}(LocalFile, ViceFile, offset)
+
+char *LocalFile, /* IN */
+
+     *ViceFile; /* IN */
+
+long offset; /* IN */}
+
+\leftindent{This routine copies LocalFile from the local machine and puts it 
+in the file ViceFile which is accessible to the message server.  It starts the 
+store at the byte specified by offset, and hence can be used to conveniently 
+append something to a Vice file.}
+
+
+\typewriter{\index{CUI_CopyViceFile}(FromFile, ToFile)
+
+char *FromFile, *ToFile; /* BOTH IN */
+
+}\leftindent{This routine copies the Vice file FromFile to the Vice file 
+ToFile.}
+
+
+\typewriter{\index{CUI_CopyViceFileTails}(FromFile, FromSkip, ToFile, ToSkip)
+
+char *FromFile, *ToFile; /* BOTH IN */
+
+long FromSkip, ToSkip; /* BOTH IN */
+
+}\leftindent{This routine appends the last part of the Vice file FromFile 
+(skipping FromSkip bytes) to the end of ToFile (skipping ToSkip bytes).  It is 
+used in the implementation of CUI_CopyViceFile, and has also proven useful in 
+its own right on occasion.}
+
+
+\subsection{1.3.8	Calls that Handle Active Messages}
+
+
+There are a number of calls in the CUI library that handle the notion of an 
+"active" message.  The easiest way to handle active messages, and the 
+recommended way, is to simply call the CUI_ProcessMessageAttributes routine 
+every time a message is displayed.  This routine will do all necessary 
+interactions with the user, using the interface-provided routines such as 
+ChooseFromList (see below).  However, an interface may instead choose to 
+handle each type of active message individually, using the routines listed 
+after the first routine in this section.
+
+
+\typewriter{\index{CUI_ProcessMessageAttributes}(cuid, Snapshot)
+
+int cuid; /* IN */
+
+char *Snapshot; /* IN */
+
+}\leftindent{This routine checks each "active" attribute in a message and 
+interacts with the user to process that attribute.  If you call it once each 
+time you display a message to the user, you never need to use the additional 
+routines described in this section, with the possible exception of 
+CUI_SetHeaderCustomizationProc.}
+
+
+\typewriter{int \index{CUI_HandleEnclosure}(cuid, Snapshot)
+
+int cuid;
+
+char *Snapshot;}
+
+\leftindent{When called with the cuid and snapshot of a message that contains 
+an enclosure, this routine interacts with the user to allow him to write the 
+enclosure to a file or pipe it through a process.}
+
+
+\typewriter{int \index{CUI_HandleAckRequest}(cuid,Snapshot)
+
+int cuid;
+
+char *Snapshot;
+
+}\leftindent{When called with the cuid and snapshot of a message that contains 
+an acknowledgement request, this routine interacts with the user to allow him 
+to choose whether or not to send an acknowledgement.}
+
+
+\typewriter{int \index{CUI_HandleVote}(cuid, Snapshot)
+
+int cuid;
+
+char *Snapshot;}
+
+\leftindent{When called with the cuid and snapshot of a message that contains 
+a vote, this routine interacts with the user to allow him to choose whether or 
+not to send a vote.}
+
+
+\typewriter{int \index{CUI_HandleFolderCreationNotice}(cuid, Snapshot)
+
+int cuid;
+
+char *Snapshot;
+
+}\leftindent{When called with the cuid and snapshot of a message that contains 
+a folder creation announcement, this routine interacts with the user to allow 
+him to choose whether or not to subscribe to the folder.}
+
+
+\typewriter{int \index{CUI_HandleRedistributionMessage}(cuid, Snapshot)
+
+int cuid;
+
+char *Snapshot;
+
+}\leftindent{When called with the cuid and snapshot of a message that contains 
+a redistribution invitation, this routine interacts with the user to allow him 
+to choose whether or not to redistribute the message as suggested.}
+
+
+\typewriter{int \index{CUI_HandleCustomizationMessage}(cuid, Snapshot)
+
+int cuid;
+
+char *Snapshot;
+
+}\leftindent{When called with the cuid and snapshot of a message, this routine 
+checks to see if the user has specified any personal customized response to 
+the message (in the file ~/.headmagic) and, if so, runs the filter program 
+specified by the user.}
+
+
+\typewriter{int \index{CUI_SetHeaderCustomizationProc}(p, rock)
+
+int (*p)();
+
+long rock;
+
+}\leftindent{This routine is intended to be called at initialization time to 
+tell the CUI library that there is an interface-dependent routine that should 
+be called on certain user-customization headers, as specified by the user's 
+~/.headmagic file.  This can be used to allow an interface to gracefully 
+extend the header-based customization facilities beyond those provided by the 
+CUI library.}
+
+
+\subsection{1.3.9	Miscellaneous Calls}
+
+
+\typewriter{\index{CUI_SetPrinter}(printername)
+
+char *printername; /* IN */
+
+}\leftindent{This routine sets the name of the printer to be used on all 
+subsequent printing-related calls that do not explicitly specify a printer 
+parameter.  The routine will return zero if the printer name was valid.}
+
+
+\typewriter{\index{CUI_SetClientSignalHandler}(handler)
+
+int (*handler)()
+
+}\leftindent{This routine sets the procedure that will be called when the 
+client process receives a signal.  It is necessary for clients to use this 
+rather than the raw UNIX signal mechanism, even if they are indeed UNIX 
+clients, in order to make the signal handling work identically in the SNAP and 
+no-SNAP version without interfering with the message server's signal handling.}
+
+
+\leftindent{The handler routine should be declared as taking two parameters:
+
+
+\typewriter{\indent{Handler(signum, ActNormal)
+
+int signum; /* IN */
+
+int *ActNormal; /* OUT */
+
+}}
+Signum is simply the signal received; ActNormal should be set to non-zero by 
+this routine if the normal signal-handling behavior is to be carried out after 
+the client's signal handling is done.}
+
+
+\typewriter{\index{CUI_PrefetchMessage}(cuid, GetNext)
+
+int cuid; /* IN */
+
+int MailOnly; /* IN */}
+
+\leftindent{On a Vice system, this call will tell venus to prefetch a message 
+body file.  The message is identified by the cuid.  If the GetNext field is 
+non-zero, then the message fetched will be the one AFTER the one named.  If 
+the message is the last one in a folder and GetNext is non-zero, the error 
+code returned will be EINVAL for AMS_ERRNO.  On a non-Vice system, this call 
+is a no-op.  This corresponds almost exactly to the MS_PrefetchMessage call, 
+except that it understands cuid's.}
+
+
+\typewriter{\index{CUI_EndConver\typewriter{s}ation}()}
+
+\leftindent{This routine cleans up the SNAP state relevant to the 
+client-server connection, and should be called before exiting if possible.}
+
+
+\typewriter{\index{CUI_GetHeaders}(FullDirName, datefield, ReturnBuf, 
+MaxReturn, startbyte, numbytes, bytesleft, RegisterCuids)
+
+char   *FullDirName, /* IN */
+
+       *datefield, /* IN */
+
+       *ReturnBuf; /* OUT */
+
+int     MaxReturn,  /* IN */
+
+        RegisterCuids; /* IN */
+
+long    startbyte, /* IN */
+
+       *numbytes, /* OUT */
+
+       *bytesleft; /* OUT */}
+
+\leftindent{This routine retrieves snapshots from the message server from a 
+given directory since a given date.   The FulLDirName, datefield, ReturnBuf, 
+MaxReturn, startbyte, numbytes, and bytesleft parameters are the same as 
+documented for the MS_HeadersSince call.   However, this routine provides 
+additional error reporting.  It also looks at an extra parameter, 
+RegisterCuids, which tells it whether or not to enter each of the snapshots in 
+the CUID cache.  It is ALWAYS safe to do this; the only time when you do not 
+particularly want to do this is if you are going to register them yourself 
+afterwards, which is not yet an exported CUI_ routine and hence is not yet 
+documented.  In general, unless you known what you are doing, RegisterCuids 
+should be non-zero.}
+
+
+\typewriter{\typewriter{\index{CUI_Initialize}(TimerFunction, Rock)
+
+int (*TimerFunction)(); /* IN */
+
+char *Rock; /* IN */
+
+}}\leftindent{This is the function that is called when the program first 
+starts, to initialize the connection to the message server and to initialize 
+the CUI library's state.  The TimerFunction is the name of a function which 
+will periodically perform updates and keep the message server alive or, in the 
+non-SNAP version, will periodically clean up the message server's state.  One 
+such function, CUI_InitializeKeepAlives, is provided with the 
+machine-dependent module for the cui library, but some interfaces (notably the 
+messages program) need to define their own mechanisms for sending the 
+keepalives.  The Rock is simply a pointer (to anything) which will be passed 
+back to the interface when it needs a "hook" to find its own data.}
+
+
+\typewriter{\index{CUI_SetClientVersion}(Vers)
+
+char *Vers; /* IN */}
+
+\leftindent{This function should be called after CUI_Initialize to tell the 
+CUI library the name and version number of the current interface.  This will 
+eventually be automatically placed in Received headers of outgoing mail, for 
+debugging/tracing purposes.}
+
+
+\typewriter{\index{CUI_SetMachineName}(Name)
+
+char *Name; /* IN */}
+
+\leftindent{This function should be called from Machine_Init to tell the CUI 
+library the name of the current machine.  This will eventually be 
+automatically placed in Received headers of outgoing mail, for 
+debugging/tracing purposes.  This routine should not be necessary for anyone 
+except those porting a CUI library application to a new machine type.
+
+}
+\typewriter{\index{CUI_SetMachineName}(Name)
+
+char *Name; /* IN */}
+
+\leftindent{This function should be called from Machine_Init to tell the CUI 
+library the machine type of the current machine.  This will eventually be 
+automatically placed in Received headers of outgoing mail, for 
+debugging/tracing purposes.  This routine should not be necessary for anyone 
+except those porting a CUI library application to a new machine type.}
+
+
+\typewriter{\index{CUI_ReportAmbig}(name, atype)
+
+char *name, *atype; /* both in */}
+
+\leftindent{This is a stupid little function that does exactly this:
+
+
+\typewriter{\{
+
+    char ErrorText[1000];
+
+
+    sprintf(ErrorText, "There is no %s named '%s'.", atype, name);
+
+    ReportError(ErrorText, ERR_WARNING, TRUE);
+
+\}}}
+
+
+\typewriter{\index{CUI_FreeCaches}()}
+
+\leftindent{This function frees up storage from the cui cache.  All cuids and 
+directory pointers previously handed out by the CUI will become invalid.  It 
+is intended for use only in a "refresh" situation, e.g. clearing out all the 
+headers visible to the user.
+
+}
+\typewriter{\index{CUI_PrintUpdates}(dname, nickname)
+
+char *dname,  /* IN */
+
+     *nickname; /* IN */}
+
+\leftindent{This routine will cause the message server to print all new 
+messages in the directory named as dname, and to then update the user's 
+profile information for that directory.  It is used for print-subscribed 
+bulletin boards, which are all updated in the same manner regardless of 
+interface.  The nickname parameter is simply the name this routine will use in 
+describing its actions to the user.}
+
+
+\typewriter{\index{CUI_PrintUpdatesWithFlags}(dname, nickname, flags, printer)
+
+char *dname, /* IN */
+
+        *nickname, /* IN */
+
+        *printer; /* IN */
+
+int flags; /* IN */
+
+}\leftindent{This routine is just like CUI_PrintUpdates, except that the flags 
+and printer parameters are passed on to MS_PrintMessage, to be used as 
+described in the MS documentation.}
+
+
+\subsection{1.3.10	Calls That Must Be Provided By the Client Program}
+
+
+\italic{A note on linkage bogosities}:  In addition to the useful routines 
+described below, you need to provide the following integer and two routines to 
+satisfy the linker:
+
+
+\leftindent{\typewriter{int \index{Interactive} = 1;
+
+\index{GetTerminalParams}();
+
+\index{SetTerminalParams}();
+
+}
+These should not really be necessary, but the only way to get rid of them 
+would involve having a machine-dependent module for each interface program; we 
+prefer to have only one machine-dependent module in the system, and this is 
+the price we've had to pay for it so far.}
+
+
+The following routines must be provided by each interface program:\smaller{
+
+}
+\typewriter{\index{ReportSuccess}(text)
+
+char *text; /* IN */}
+
+\leftindent{Conveys a message (text) to the user which is NOT very bad news.}
+
+
+\typewriter{\index{ReportError}(text, level, Decode)
+
+char *text; /* IN */
+
+int   level; /* IN */
+
+Boolean Decode; /* IN */}
+
+\leftindent{Conveys an error message (text) to the user.  The level parameter 
+indicates the severity of the error, and is one of the symbolic values defined 
+in errprintf.h.  The Decode Boolean (== short) is non-zero if the global error 
+code mserrcode is believed to contain relevant information.  In that case, 
+mserrcode must be decoded.  The meaning of message server error codes is 
+explained in the message server documentation, but the best thing to do is to 
+start with the CUI's ReportError routine and modify it for your own interface. 
+ In particular, it helps to check specially for temporary Vice failures and 
+for authentication problems; the CUI code serves as a good generic example.}
+
+
+\typewriter{\index{GetBooleanFromUser}(prompt, defaultans)
+
+char *prompt; /* IN */
+
+Boolean defaultans; /* IN */}
+
+\leftindent{This routine asks the user a question, given in prompt, and 
+returns a non-zero code if the answer was yes.  The default answer is given in 
+defaultans.}
+
+
+\typewriter{\index{ChooseFromList}(QVec, defaultans)
+
+char **QVec; /* IN */
+
+int    defaultans /* IN */}
+
+\leftindent{This routine asks the user a multiple choice question.  QVec is a 
+vector of character strings, the first of which is the question.  The 
+remaining strings are the choices, with the last choice folled by a null entry 
+in QVec.  defaultans specifies the default answer, or is zero if there is no 
+default.}
+
+
+\typewriter{\index{GetStringFromUser}(prompt, buf, len, IsPassword)
+
+char *prompt,  /* IN */
+
+     *buf; /* OUT */
+
+int   len,  /* IN */
+
+      IsPassword; /* IN */}
+
+\leftindent{This routine asks the user a question (prompt), and puts the text 
+of the answer in buf, up to len characters.  If IsPassword is non-zero, then 
+echoing of the user's input should be suppressed.}
+
+
+\typewriter{\index{DirectoryChangeHook}(adddir, deldir, rock)
+
+char *adddir, *deldir, *rock; /* IN */}
+
+\leftindent{This routine is called whenever a directory is created, deleted, 
+or renamed, to allow the interface to update any relevant user-visible state. 
+ The rock is the rock that was last passed to the CUI library via the 
+CUI_Initialize call.}
+
+
+\typewriter{\index{SubscriptionChangeHook}(name, nick, status, rock)
+
+char *name, *nick;
+
+int status;
+
+char *rock;  /* any pointer you like */}
+
+\leftindent{This routine is called whenever the subscription status of a 
+folder is changed by the CUI_SetSubscriptionEntry call.  You can use it if you 
+want to keep some representation of a folder list that includes subscription 
+information.}
+
+
+\typewriter{\index{HandleTimeout}(name, retries, restarts)
+
+char *name; /* IN */
+
+int   retries,  /* IN */
+
+      restarts; /* IN */}
+
+\leftindent{This routine is called by the CUI library when the message server 
+connection times out.  name is the name of the message server call in 
+progress, retries is the number of times the operation has been retried, and 
+restarts is the number of times the library has tried to reconnect to the 
+server.  The routine should return CUI_RPC_RETRY to cause the operation to be 
+retried again, CUI_RPC_RESTART to try to reconnect to the server, and 
+CUI_RPC_BUGOUT to give up and cause an error message to be propogated up to 
+the calling routine.  These constants are defined in CUI.h.}
+
+
+\typewriter{\index{DidRestart}()}
+
+\leftindent{This routine is called when the CUI reconnects to the message 
+server.  The client may want to notify the user of this event.}
+
+
+\subsection{1.3.11	Calls That May Be Provided By the Interface Program, but 
+Need Not Be
+
+}
+The following two routines are actually part of the messageserver process, and 
+are used when the messageserver wants to send a diagnostic message to the 
+user, beyond what it can convey via the RPC error codes.  Unfortunately, when 
+the messageserver is on another machine, the user never sees these messages. 
+ If the messageserver is linked in to the client process (i.e. SNAP is not 
+used), then the client may override these routines and do a better job of 
+showing the message to the user.
+
+
+\typewriter{\index{NonfatalBizarreError}(text)
+
+char *text;}
+
+
+\typewriter{\index{CriticalBizarreError}(text)
+
+char *text;}
+
+\leftindent{These routines should each take a single string message and 
+present it to the user.  The Critical ones are rarer more important errors.}
+
+
+\subsection{1.3.12	Calls That Must Be Provided In the Machine-Dependent Code}
+
+
+\typewriter{\index{Machine_HandleClientSignal}(signum, ActNormal)
+
+int signum, *ActNormal;}
+
+\leftindent{This routine must be provided in the machine-dependent code IF you 
+are linking the message server in (no snap).  Thus it will probably not be 
+necessary on any machine other than UNIX machines, but is mentioned here for 
+completeness.  }
+
+
+\typewriter{\index{Machine_Init}(ThisHost, ThisUser, ThisPassword, len, type, 
+IsRecon)
+
+char **ThisHost,  /* OUT */
+
+     **ThisUser,  /* OUT */
+
+     **ThisPassword; /* OUT */
+
+int   *len,  /* OUT */
+
+      *type,  /* OUT */
+
+       IsRecon; /* IN */}
+
+\leftindent{This routine is called from CUI_Initialize or when trying to 
+reconnect to the message server.  It is used to configure the message server 
+connection.  It should return after setting ThisHost to point to the name of 
+the host on which to talk to a message server, setting ThisUser to point to 
+the name of the user on the server machine, ThisPassword to point to the 
+user's password, type to encode how to interpret the password field, len to 
+the len of the password field.  len includes the terminating null for 
+unencrypted passwords.  The IsRecon field is non-zero if this is not the first 
+time the routine has been called.  The Machine_Init routine \italic{should} 
+also call the CUI_SetMachineName and CUI_SetMachineType procedures, to ensure 
+that the proper tracing information appears in the Received headers of 
+outgoing mail.
+
+
+The password should be encoded according to the guardian protocol specified in 
+the include file "gasp.h", and is typically either GASP_PWD_STRING or 
+GASP_PWD_VTOKENS.}
+
+
+\typewriter{\index{CUI_GenLocalTmpFileName}(nmbuf)
+
+char *nmbuf; /* OUT */}
+
+\leftindent{This routine should generate a valid name for a new local 
+temporary file, and write it into nmbuf.}
+
+
+\typewriter{\index{CUI_InitializeKeepalives}()}
+
+\leftindent{This routine should initiate the sequence of events that will 
+cause the client to send periodic keepalive messages to the server.  This 
+routine may not be used, if a different parameter is supplied to the 
+CUI_Initialize routine, but it must be provided in order to make the CUI 
+program do keepalives on any given machine.  If you make the 
+CUI_InitializeKeepalives routine a no-op, then everything will still work, but 
+your users will see MANY more "Reconnecting to message server, please wait..." 
+messages.}
+
+
+\typewriter{\index{EditLocalFile}(LocalName, FinishedElsewhere)
+
+char *LocalName; /* IN */
+
+int  *FinishedElsewhere; /* OUT */}
+
+\leftindent{This routine is called by cui when it wants to edit a draft piece 
+of mail.  The draft is stored in the file named as LocalName.  Generally, the 
+file should be edited, FinishedElsewhere should be set to zero, and this 
+routine should return zero.  However, on Andrew, if the user is running under 
+the window manager then editing the message causes a sendmessage window to be 
+created, and cui gets out of the delivery process; in this case, the 
+FinishedElsewhere variable must be set to be non-zero.}
+
+
+\typewriter{\index{RedirectOutput}()}
+
+\leftindent{This routine is called when the cui forks to act as a daemon, and 
+redirects output to the console.  Since this will not happen on most machine 
+types, this routine may generally be defined as a no-op.}
+
+
+\typewriter{\index{GetNewPassword}(ptr, IsRecon, ThisUser, ThisHost)
+
+char **ptr,  /* OUT */
+
+      *ThisUser, /* IN */
+
+      *ThisHost; /* IN */
+
+int    IsRecon; /* IN */}
+
+\leftindent{This routine is called when the attempt to authenticate the user 
+fails because of a bad password.  IsRecon tells whether this is a reconnection 
+attempt or the first authentication attempt.  ThisUser and ThisHost are useful 
+in framing the question to ask the user.  The new password should be returned 
+by changing the ptr variable to point at an approriate location in static 
+storage.}
+
+
+
+rcs information about this file:
+
+$Header: 
+/afs/andrew.cmu.edu/itc/src/andrew/doc/itc/ams/prog/RCS/LibraryCalls.d,v 1.3 
+89/01/18 09:46:43 nsb Exp Locker: jr34 $
+
+$Log: CuiLib.pgr,v $
+
+Revision 1.5  1993/05/04  00:58:25  susan
+
+RCS Tree Split
+
+
+
+Revision 1.4.1.1  1993/02/01  23:02:15  rr2b
+
+new R6tape branch
+
+
+
+Revision 1.4  1992/12/17  21:57:12  rr2b
+
+disclaimerization
+
+ Revision 1.3  1989/10/27  13:42:46  jr34 added blurb 
+about EZ.  Revision 1.2  89/10/27  12:06:04  jr34 reformatted to use 
+interactive toc & index.  Revision 1.1  89/09/13  16:43:26  jr34 Initial 
+revision
+
+Revision 1.4  89/04/11  15:31:26  jr34 added TrustTimeStamp per nsb.  Revision 
+1.3  89/01/18  09:46:43  nsb *** empty log message ***  Revision 1.2  89/01/14 
+ 13:51:26  nsb Described four new subroutines.  Revision 1.1  88/10/04 
+ 15:59:41  jr34 Initial revision
+
+Revision 1.2  88/10/04  14:21:09  nsb *** empty log message ***  Revision 1.1 
+ 88/08/23  12:25:18  jr34 Initial revision
+
+Revision 1.1  88/08/19  17:31:23  jr34 Initial revision
+
+Revision 5.0  88/05/29  20:27:41  ghoti Up to date - tested as of 5/29/88 
+bumped version number to 5.0 named "june88"
+
+Revision 1.9  88/04/06  09:49:29  aw0g say CUI_MAJORVERSION and 
+CUI_MINORVERSION are declared by #define instead of int. In Machint_Init say 
+the the len argument includes the null Add a rcs header and rcs log at the end
+
+
+
+[1] ...
+
+
+[2] ...
+
+ 
+
+[3] ...
+
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1580,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,538945396}

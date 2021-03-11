@@ -1,0 +1,105 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+	Copyright Carnegie Mellon University 1992 - All Rights Reserved
+\* ********************************************************************** */
+
+/*
+	$Disclaimer: 
+Permission to use, copy, modify, and distribute this software and its 
+documentation for any purpose is hereby granted without fee, 
+provided that the above copyright notice appear in all copies and that 
+both that copyright notice, this permission notice, and the following 
+disclaimer appear in supporting documentation, and that the names of 
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+used in advertising or publicity pertaining to distribution of the software 
+without specific, written prior permission.
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+OF THIS SOFTWARE.
+ $
+*/
+
+/* call.hn -  definitions for nesscomp function call routines
+
+	THIS FILE IS PROCESSED BY nodeclass.n TO PRODUCE call.h
+	DO NOT EDIT call.h
+
+A source file which imports call.h should also import nodeclass.h
+*/
+
+#ifndef _ness_call_h_
+#define _ness_call_h_
+
+
+#include "nesssym.ih"
+#include "ness.ih"
+#include "envt.h"	/* for TSysMarkRef */
+
+enum callvariety {callC, callPE, callSym, callNess, 
+		callMethod, callClProc, callGet, callSet, };
+extern char *callvarietyname[];
+extern nesssym_scopeType LibScope;
+
+#define MAXARGS  12
+struct callnode {
+	enum callvariety variety;
+	union {
+		int  (*Cproc)();		/* callC */
+		TSysMarkRef Nproc;	/* callNess */
+		struct nesssym *Sym;	/* callSym */
+		struct proctable_Entry *pe;	/* callPE */
+		long offset;		/* callMethod, callClProc, callGet, callSet,  */
+	} where;
+	struct classinfo *requiredclass;  /* if first arg must be object */
+	Texpr rettype;		/* callMethod, callClProc, callGet, callSet,  */
+	long nargs;		/* number of arguments supplied */
+	Texpr argtype[MAXARGS];	/* array with type of each argument (*right* to *left*) */
+};
+
+enum libstate {NotRead, ReadFailed, NotCompiled, Compiling, CompiledWithError, OK};
+
+nodeclass libnode {
+	unsigned char *path;	/* dir name, slashes at both ends */
+	unsigned char *filename;	/* name of file (ends in '.n') */
+	struct ness *ness;		/* a ness for this file (initially NULL) */
+	enum libstate status;
+	long useid;		/* note that it is used by current ness
+				(avoid searches of libuseList) */
+	struct libnode *next;
+};
+
+nodeclass libusenode {
+	struct libnode *used;
+	struct libusenode *next;
+};
+
+
+void   callInit(/* nesssym_scopetype Gscope, int idtok, struct nesssym *proto */);  /* initialize for generating calls */
+struct exprnode *  callFunc(/* struct varnode *varnode, struct exprnode *argtypes */);
+void   callUnknown(/* struct nesssym *sym */);	/* make undefined function */
+void   callPredefId(/* struct nesssym *var */);	/* generate code for predefined id */
+struct errornode *callInitAll(/* struct ness *ness */);  /* call init() for ness and libraries */
+void   callCheck(/* struct callnode *call, unsigned char *iar */);
+			/* resolve reference and do a call at run-time */
+void callCfunc(/* struct callnode *call, unsigned char *iar,
+			struct textview *textview */); 
+void callCheat(/* unsigned char op, unsigned char *iar, struct ness *ness */);
+
+enum libstate   callCheckLib(/* char *fun, struct funcnode **fnode */);
+				/* load library and find function 'fun` */
+void callCompLib(/* struct libnode *lnode; */);
+		/* compile ness from library and set libnode->status */
+long ReadTextFileStream(/* struct text *text, 
+		unsigned char *name, FILE *f, boolean objok */);
+	/* checks filetype and whatnot 
+	returns dataobject_NOREADERROR or a dataobject error */
+
+#endif
+

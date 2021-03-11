@@ -1,0 +1,3510 @@
+\begindata{text,838784}
+\textdsversion{12}
+\template{default}
+\center{\bold{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{I\
+man API Programmer's Manual}}}}}}}}}}
+
+
+\smaller{
+
+ 
+
+
+\bold{Version 1 Release 2Copyright (c) 1993,1994 Bruno RIVAS
+
+}}\smaller{\smaller{
+}This manual presents all the techniques and capabilities of the toolkit 
+meant for the X developers who use the window manager IMAN .
+
+
+
+The development kit respects the mains conventions of the ICCCM defined by the 
+X Consortium and enables any application using it to "behave as a good 
+citizen" independently from the window manager or from another X11 client.
+
+
+Nevertheless, the toolkit finds its best use if you intend to develop 
+specially for IMAN.
+
+
+Programming an application requires the following phases:
+
+
+\indent{* opening and initializing a new session with an X server
+
+
+* creating windows
+
+
+* creating widgets
+
+
+* capture and reaction to events
+
+}
+These four stages will be explained in detail in the following manual.
+
+}
+\smaller{For later application programming, here is some useful tips that 
+every example in this book implies:
+
+
+\indent{* the programmer must master perfectly the C language and Xlib.
+
+
+* all C files using the development kit must include the headers 
+<X11/iman/widgets.h>, <X11/iman/windows.h> and <X11/iman/messages.h>. X11 
+declaration files must of course have been previously declared.
+
+
+* linking applications with the IMAN library (libXiman.a) is done in the 
+following way: cc file.c -lXiman -lX11 -lrpcscvc
+
+}
+\begindata{bp,894624}
+\enddata{bp,894624}
+\view{bpv,894624,0,0,7}
+\bold{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\
+\bigger{\flushright{1
+
+Managing the sessions
+
+}}}}}}}}}}}}
+
+
+
+This chapter presents the procedure to initialize a session with the toolkit. 
+All clients must use the techniques described hereafter.
+
+
+
+
+
+\bold{\bigger{\bigger{1.1  Connection to a server
+
+}}}
+
+Before starting an activity with an X server, each client must connect himself 
+to it and establish a network link, allocate memory space and initialize data.
+
+
+When exclusively programming with Xlib, this operation is done with the 
+function \italic{XOpenDisplay}.  Since the Iman technology is more complex, it 
+is mandatory to know its own connection and disconnection functi}\smaller{ons.
+
+
+To establish dialog with an X server, you must use the function 
+\italic{tk_OpenSession} defined as follows:
+
+}
+\smaller{\smaller{\typewriter{TkDisplay 
+*tk_OpenSession(display_name,argc,argv)
+
+char *display_name;
+
+int argc;
+
+char **argv;}}}
+
+
+\smaller{\bold{display_name}} \smaller{: name of the server to be contacted 
+(to the format defined by the API Xlib).
+
+\bold{argc} : number of arguments of the command line.
+
+\bold{argv} : arguments of the command line of the program you are executing;
+
+
+The function returns a pointer on a structure of \bold{TkDisplay} type which 
+you will have to enter as first argument when using any API function.
+
+If connection has been denied, the function returns a NULL pointer.
+
+
+\italic{tk_OpenSession} takes care of initializing the numerous data and 
+resources in the TkDisplay structure, and checks whether the Iman WM is there 
+or not.
+
+
+
+\bold{\bigger{\bigger{1.2   The TkDisplay structure}}}
+
+
+
+We absolutely need to spend some time on this C structure. It is the 
+foundation stone of  all the toolkit's functions. Once again, you will have to 
+enter it as argument when using any API function.
+
+
+\bold{TkDisplay} is defined as follows in the <X11/iman/tk_system.h> file 
+included in the <X11/iman/widgets.h> file:
+
+
+\bigger{\smaller{typedef struct \{
+
+		Display *display;		/* Display of the X server */
+
+		int screen;			/* Screen of the X server */
+
+		int depth; 			/*Default depth */
+
+		int argc;	  			/* Number of arguments */
+
+		char **argv;			/* Arguments */
+
+		TkInfos infos;			/* Infos on the toolkit */
+
+		WmInfos wm;			/* Infos on the Iman WM */
+
+		HsInfos hs; 			/* Infos on the Help Server */
+
+		TkAtoms    atoms;		/* Collection of atoms */	
+
+		TkFonts fonts; 			/* Collection of fontes */
+
+		TkPixmaps pixmaps; 		/* Collection of pixmaps */
+
+		TkCursors  cursors;		/* Collection of cursors */
+
+		WidgetColors   bn_colors;	/* Button colors */
+
+		WidgetColors   sb_colors; 	/* Scrollbar colors */
+
+		WidgetColors   ed_colors;	/* Edit colors */
+
+		WidgetColors   ls_colors;	/* List colors */
+
+		WidgetColors   mn_colors;	/* Menu colors */
+
+		WindowColors  win_colors; 	/* Window colors */
+
+		WindowColors dlg_colors;	/* Dialog box colors */
+
+		IconColors icn_colors;  		/* Icon colors */
+
+		ActionStruct action;		/* Current action */
+
+		WidgetStruct *widgets;		/* List of active widgets */
+
+		unsigned int numwidgets; 	/* Number of widgets */
+
+		unsigned int maxwidgets; 	/* Maximum of widgets */}\smaller{
+
+		unsigned long widget_double_click; /* Double-click speed */
+
+		\} TkDisplay;}}
+
+
+For each server you wish to connect yourself to, you will need 
+\italic{tk_openSession} to return a pointer on a new structure.
+
+
+
+\bold{\bigger{\bigger{1.3  Initialized resources
+
+}}}
+
+All initialized resources are used by the toolkit's widgets. Nevertheless, you 
+retain direct access to these resources as long as you do not modify or 
+destroy them.
+
+
+
+}\bold{\smaller{1.3.1.  Colors
+
+}}\smaller{
+
+Color is a precious resource under X. The toolkit only allocates it to widgets 
+and windows. You can use them as drawing colors for your applications; the 
+TkDisplay->win_colors and TkDisplay->dig_colors structures contain on a 
+permanent basis the suggested and/or effective color of the different elements 
+of windows and dialog boxes.}
+
+
+\smaller{If WM is not active, these structures contain the colors possibly 
+defined in the resource files \typewriter{.imanrc} (user's local file) or 
+\typewriter{\smaller{/usr/lib/iman/.imanrc}.}
+
+Otherwise, WM instructs the window, through an Xlib ClientMessage type of 
+message, to update the colors WM defines as standard and stores in the root 
+window's \typewriter{_IMAN_WM_DATA} property:
+
+
+Only the window manager can modify the contents of this property and decide of 
+the system colors of widgets and windows.
+
+}
+\smaller{In the same way, the TkDisplay->bn_colors, TkDisplay->ed_colors, 
+etc., structures contain the colors for the widgets and follow the same 
+protocole as for the windows. Their importance is however greater because all 
+widgets refer to it by default for their display, whereas the display of 
+windows' colors is not managed automatically: it's up to you, you make the 
+call!
+
+
+If you wish to modify the toolkit's system colors (something only feasible 
+with widgets), you can call the function \italic{tk_SetSystemColors}:
+
+
+\typewriter{\smaller{int tk_SetSystemColors(tk_display, widget_class, 
+*wid_colors, delay)
+
+	 TkDisplay *tk_display;}}\smaller{\typewriter{
+
+        unsigned int widget_class;
+
+        WidgetColors *wid_colors;
+
+        Bool delay;}
+
+}
+\bold{widget_class} can have one of the following values :
+
+
+\bigger{\smaller{	#define WI_BUTTON		1}
+
+\smaller{	#define WI_SCROLLBAR	2
+
+	#define WI_EDIT		3
+
+	#define WI_LIST		4
+
+	#define WI_COMBO		5
+
+	#define WI_MENU		6}}
+
+
+}\bold{\smaller{wid_colors : }}\smaller{structure of WidgetColors type 
+containing the colors that are meant to be allocated ot the components of each 
+widget.
+
+}\smaller{
+typedef struct \{
+
+		unsigned long bg;
+
+		unsigned long fg;
+
+		unsigned long light;
+
+		unsigned long shadow;
+
+		unsigned long text;
+
+		unsigned long text_grayed;		
+
+		unsigned long selected;
+
+		unsigned long selected_inactive;
+
+		unsigned long text_selected;
+
+		unsigned long text_grayed_selected;
+
+		unsigned long text_selected_inactive;
+
+		unsigned long text_grayed_selected_inactive;
+
+		unsigned long cursor;
+
+		unsigned long focus;
+
+		unsigned long nofocus;
+
+		unsigned long cross, check, radio_bg, radio_light;
+
+		\}WidgetColors;
+
+\typewriter{\smaller{\bold{
+}}}}\bold{\smaller{delay :}}\smaller{\typewriter{\smaller{\bold{ }}}True= 
+refreshing of widgets postponed, False= immediate refreshing.
+
+
+If everything goes well the function returns a zero, otherwise it returns a 
+negative value. 
+
+
+
+If you wish to load colors from a resource file, you can use 
+\italic{t\italic{k}}\italic{_LoadSystemColorsFromFile }:
+
+
+\typewriter{\smaller{extern int 
+tk_LoadSystemColorsFromFile(tk_display,filename);
+
+        TkDisplay *tk_display;
+
+        char *filename;
+
+}}
+Both functions only work if the WM is absent, otherwise the latter decides of 
+the colors of the widgets and windows.
+
+
+Last point: if you wish to know wether the toolkit is using a particular 
+color, here is a very useful function before risking vacating a color cell 
+that might be missed later:
+
+
+\typewriter{\smaller{Bool IsColorUsed(tk_display,pixel)
+
+TkDisplay *tk_display;
+
+unsigned long pixel;
+
+}}
+If the function returns True, it means that the toolkit  is using this color 
+for one of its widgets (only the system colors of widgets are examined by 
+\italic{IsColorUsed})  and it thus shouldn't be vacated or modified. 
+Otherwise, when the function returns False, you are free to do whatever you 
+please.
+
+
+
+\bold{1.3.2  Atoms and properties
+
+}
+
+The toolkit uses several properties to store information, dialog with the WM 
+or with other applications.
+
+These properties are defined as follows in the TkAtoms structure:
+
+
+typedef struct \{
+
+	Atom _IMAN_WINDOW_MANAGER;
+
+	Atom _IMAN_HELP_SERVER;
+
+	Atom _IMAN_WM_TYPE;
+
+	Atom _IMAN_WM_DATA;
+
+	Atom _IMAN_WM_FOCUS;
+
+	Atom _IMAN_WM_MDW;
+
+	Atom _IMAN_WM_MESSAGES;
+
+	Atom _IMAN_DROP_SITES;
+
+	Atom _IMAN_DROP_TARGETS;
+
+	Atom _IMAN_DROP_ACTION;
+
+	Atom _IMAN_DROP_MESSAGES;
+
+	Atom _IMAN_HS_DATABOOK;
+
+	Atom _IMAN_HS_TOPIC;		
+
+	Atom WM_STATE;
+
+	Atom WM_COLORMAP_WINDOWS;
+
+	Atom WM_PROTOCOLS;
+
+	Atom WM_CHANGE_STATE;
+
+	Atom WM_TAKE_FOCUS;
+
+	Atom WM_SAVE_YOURSELF;
+
+	Atom WM_DELETE_WINDOW;
+
+	Atom WM_TOP_LEVEL;
+
+	\} TkAtoms;
+
+
+
+The properties starting by _IMAN_ are used by the applications conceived with 
+the toolkit, the other properties correspond to those listed in the ICCCM for 
+the }\smaller{information of window} \smaller{managers and the exchange of 
+messages.
+
+You can use them by addressing them directly (ex : 
+tk_display->atoms._IMAN_WM_TYPE), but under no circumstances must you try to 
+redefine them.
+
+
+
+\bold{1.3.3  Pixmaps
+
+}
+
+Widgets use several bitmaps (depth 1) or pixmaps for their own display 
+according to their status (greyed, etc.).
+
+}
+\smaller{These are the only resources you must not use because the WM often 
+orders to modifiy them when he informs the application of a modification of 
+default colors.
+
+
+At the end of the session, all those pixmaps are automatically cleared by the 
+\italic{tk_CloseSession} function.
+
+
+
+\bold{1.3.4  Cursors}
+
+
+
+The toolkit also stores the ID of several standard cursors available in the X 
+server. They are found in the TkCursors structure.
+
+
+\bigger{\smaller{typedef struct \{
+
+		Cursor normal;		/* XC_left_ptr 		*/
+
+		Cursor textedit;		/* XC_xterm 		*/
+
+		Cursor top_left;		/* XC_top_left_corner 	*/
+
+		Cursor top_right;	/* XC_top_right_corner 	*/
+
+		Cursor bottom_left;	/* XC_bottom_left_corner */
+
+		Cursor bottom_right;	/* XC_bottom_right_corner */
+
+		Cursor up_down;	/* XC_sb_v_double_arrow */
+
+		Cursor left_right;	/* XC_sb_h_double_arrow */
+
+		Cursor sb_up;		/* XC_sb_left_arrow 	*/
+
+		Cursor sb_left;		/* XC_sb_up_arrow 	*/}
+
+\smaller{		\} TkCursors;}}
+
+
+You can use them for your applications by addressing them directly in the 
+structure.
+
+
+
+\bold{1.3.5  Fonts}
+
+
+
+The last resource allocated by the toolkit, fonts, are loaded  for text 
+display in the widgets.
+
+You can find them in the TkFonts structure :
+
+
+\bigger{\smaller{typedef struct \{
+
+		XFontStruct  *ega;		/* ega font, on PC only */
+
+		XFontStruct  *vga;		/* vga font, on PC only */
+
+		XFontStruct  *f8_13;		/* 8x13 */
+
+		XFontStruct  *f6_10;		/* 6x10 */
+
+		XFontStruct  *fixed;		/* fixed */
+
+		XFontStruct *helvetica12;	/* helvetica-bold-r--12 */
+
+		XFontStruct  *times12;		/* times-bold-r--12 */
+
+		XFontStruct  *f5_7;		/* 5x7 */
+
+		unsigned int flag;		/* flags */
+
+		\} TkFonts;}}
+
+
+
+\bigger{\bold{1.4  Simultaneous opening of several sessions}}
+
+
+
+There is no particular procedure to simultaneously open several connections to 
+different servers. This paragraph just gives you an example and some advice:
+
+
+\bigger{
+
+\typewriter{\smaller{\smaller{Exemple :
+
+TkDisplay *server1, *server2, *server3;
+
+void main(argc,argv)
+
+int argc;
+
+char **argv;
+
+\{
+
+  server1=tk_OpenSession("unix:0.0",argc,argv); 
+
+  server2=tk_OpenSession("market:0.0",argc,argv);
+
+  server3=tk_OpenSession("financial:0.0",argc,argv);
+
+  if(server1==NULL || server2==NULL || server3==NULL)}}}
+
+\typewriter{\smaller{\smaller{  \{
+
+    fprintf(stderr,"Error: one of the server cannot be reached\\n");
+
+    exit(-1);
+
+  \}
+
+........
+
+\}}
+
+}}}
+
+You see that this is quite a simple procedure. However, try to avoid the 
+following pitfalls:
+
+
+\leftindent{* using the resources allocated by the toolkit on another server 
+than the one who created it. This would lead to the end of your application 
+and maybe to the fall of several of the servers contacted.
+
+
+* forgetting to close the session on a server with the tk_CloseSession 
+function. Some servers don't automatically disallocate the resources used by 
+their clients. This will cause memory losses and ultimately the end of the X 
+server.
+
+
+}
+
+}\smaller{\bold{\bigger{1.5  Closing a session}}
+
+
+
+The toolkit provides you with one and only one function to disallocate the 
+resources he creates in a server  and to close the connection with it :
+
+
+
+\smaller{\typewriter{int tk_CloseSession(tk_display)
+
+TkDisplay *tk_display;}}
+
+
+The function returns 0 if everything went well, otherwise it returns a 
+negative value. It doesn't put in any way an end to your application. You are 
+free to reconnect yourself to the same server or to another later.
+
+
+
+
+\bold{\bigger{1.6 Using TkDisplay with the Xlib functions}}
+
+
+
+Xlib functions and Iman's don't use the same arguments. In general, all the 
+Xlib functions need a Display type of structure as first argument .
+
+
+The TkDisplay structure contains itself a pointer on an element of Display 
+type. To pass it as an argument to an Xlib function, all you need to do is 
+address it as follows:
+
+
+
+\bigger{\smaller{\smaller{ \typewriter{XMapWindow(tk_display->display,win);}}}}
+
+
+
+You can also use one of the toolkit's macros, \italic{mGetDisplay}:
+
+
+
+\smaller{\typewriter{Display *mGetDisplay(tk_display)
+
+TkDisplay *tk_display;}}
+
+
+A second macro enables you to know the default width of widgets created:
+
+
+\bigger{\smaller{
+}\smaller{\typewriter{\smaller{int mGetDefaultDepth(tk_display)}
+
+\smaller{TkDisplay *tk_display;}}}}
+
+
+
+You can use this macro when creating your windows.
+
+
+
+
+\bold{\bigger{1.7  Using the macros}}
+
+
+
+Iman's API also has at its disposition a set of macros functions whose sole 
+purpose is to extract information internal to the toolkit.
+
+
+
+\bold{1.7.1  Toolkit}
+
+
+
+You can use 4 macros to get information on the origin and the version of the 
+toolkit:
+
+
+\smaller{\typewriter{char *mGetVendorString(tk_display)
+
+TkDisplay *tk_display;}}
+
+
+This function returns a chain of caracters containing the name of the seller 
+of the toolkit.
+
+
+\smaller{\typewriter{int mGetTkVersion(tk_display)TkDisplay *tk_display;
+
+int mGetTkRelease(tk_display)TkDisplay *tk_display;}}
+
+Those two functions return the toolkit's version and its update number.
+
+
+\typewriter{\smaller{char *mGetTkComment(tk_display)
+
+TkDisplay *tk_display;}}
+
+
+This function returns a chain of caracters which the vendor might want to 
+provide along with the toolkit. It is usually a Copyright line.
+
+
+
+\bold{1.7.2  Window manager
+
+}}
+
+\smaller{In the same manner, three functions are available to you if you wish 
+to get information on WM Iman.
+
+
+
+\typewriter{\smaller{int mGetWmVersion(tk_display)
+
+TkDisplay *tk_display;
+
+int mGetWmRelease(tk_display)
+
+TkDisplay *tk_display;
+
+char *mGetWmComment(tk_display)
+
+TkDisplay *tk_display;}}
+
+
+Two additional functions permit to know the ID of WM's main window and to 
+ascertain whether WM is loaded in the memory.}
+
+\smaller{\bigger{\smaller{
+}\smaller{\smaller{\typewriter{Window mGetWmMainWindow(tk_display)
+
+TkDisplay *tk_display;
+
+Bool mIsWmActive(tk_display)
+
+TkDisplay *tk_display;}}
+
+\begindata{bp,894592}
+\enddata{bp,894592}
+\view{bpv,894592,1,0,0}}}
+\bold{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\
+\bigger{\flushright{2
+
+Creation of windows
+
+}}}}}}}}}}}}
+This chapter is about the creation, display and destruction of windows.
+
+The functions presented always apply, no matter what window manager is active. 
+The IMAN WM will know how to handle the additional information the toolkit 
+installs in the windows' properties.
+
+
+
+
+
+\bold{\bigger{2.1  Classes of windows}}
+
+
+
+Iman's toolkit proposes three classes of windows:
+
+
+	# define TOP_LEVEL_WINDOW 	0
+
+	# define DIALOG_BOX			100
+
+	# define ICON_WINDOW		101
+
+
+These classes define the way your windows behave when the IMAN WM is loaded.
+
+The other window managers may not take these classes into account and manage 
+windows as they like.
+
+
+\bold{TOP_LEVEL_WINDOW
+
+}
+It is the window in general, the way you should find it under any WM.
+
+It can be iconified, redimensioned, zoomed, it can lead or be a member of a 
+group, etc. It is subject to no restriction.
+
+
+
+\bold{DIALOG_BOX}
+
+
+It is a special kind of window. Its caracteristics are :
+
+
+}\smaller{\leftindent{* its size is fixed and it can't be redimensioned (or 
+zoomed, therefore) by the user.  However, if the program asks for a window to 
+be redimensioned, the command will be executed.
+
+
+* it can't be iconified.
+
+
+* it can block the activity of a mother window if its WM_TRANSIENT_FOR 
+property contains the ID of that window. This mother window will only be 
+allowed to return to normal once the dialog box is removed from the screen.
+
+}
+\leftindent{* it can lead or be a member of a group.
+
+}
+
+\bold{ICON_WINDOW}
+
+
+This class was defined to prevent the WM from reparenting as a true top-level 
+window the window meant to serve as icon for another window.
+
+ICON_WINDOW will remain unused until the leading window asks for its 
+iconification.
+
+
+Other classes of windows should appear in the next version of the toolkit.
+
+By default, if the _IMAN_WM_TYPE property doesn't contain information 
+regarding the window's class, the class will be TOP_LEVEL_WINDOW.
+
+
+
+
+\bold{\bigger{2.2  Attributes of windows}}
+
+
+
+You can use a combination of the following attributes to facilitate the 
+management and decoration of windows:
+
+
+\bigger{\smaller{# define TitleBar			1	/* Title bar */
+
+# define CloseBox		2	/* Button to close the window */
+
+# define IconifyBox		4	/* Button to iconify the window */
+
+# define ZoomBox		8	/* Button to zoom the window  */
+
+# define Border			16	/* Resizing border */
+
+# define GroupLeader		128	
+
+# define GroupMember		256        
+
+# define Overlapped		512	/* The members of the group always overlap it */
+
+# define AlwaysOnTop 		1024	/* The window always overlaps its leader */
+
+# define Unmoveable		2048	}
+
+\smaller{# define Unresizable		4096	
+
+# define MoveableWhenZoomed 	8192 	
+
+# define Iconic 			16384	/* The window is always iconified */}}
+
+
+These attributes are examined only by the IMAN WM. They will go unnoticed by 
+other window managers.
+
+
+
+\bold{TitleBar}
+
+
+This attribute enables the window to have a title bar to display the program's 
+name.
+
+
+
+\bold{CloseBox}
+
+
+This attribute gives the title bar a button which, when clicked on by the 
+user, asks the window to close itself.
+
+For this to happen, the window must be in accordance with the WM_DELETE_WINDOW 
+protocol inscribed in the window's WM_PROTOCOLS property.
+
+}\smaller{
+
+\bold{IconifyBox}
+
+
+This attribute gives the title bar a button responsible for the iconification 
+of the window or of its group.
+
+
+
+\bold{Zoom box
+
+}}
+\smaller{This attribute gives the title bar a button causing the window to 
+zoom.
+
+}
+
+\smaller{\bold{Border}
+
+
+This attribute gives the window a decoration border. If the window belongs to 
+the TOP_LEVEL_WINDOW class, this border will possess zones enabling the user 
+to redimension the window. If it's a DIALOG_BOX, the border will be plain and 
+unchangeable.
+
+
+
+\bold{GroupLeader}
+
+
+This attribute informs the WM that the window will be a group leader.
+
+
+
+\bold{GroupMember}
+
+
+This attribute informs the WM that the window is a member of a group. The 
+parameter WM_HINTS.group must contain the leader's window's ID.
+
+
+
+\bold{Overlapped
+
+}
+This attribute informs the WM that the window wishes to be covered by the 
+members of the group it manages. If the window doesn't have the GroupLeader 
+attribute, Overlapped is not used.
+
+
+
+\bold{AlwaysOnTop
+
+}
+This attribute informs the WM that the window wants to always cover its group 
+leader. If the window is not a member of a group or if it is a leader, this 
+attribute is not used.
+
+
+
+\bold{Unmoveable}
+
+
+This attribute informs the WM that the user must not be able to move the 
+window when it is in a normal state.
+
+
+
+\bold{MoveableWhen Zoomed
+
+}
+This attribute informs the WM that the window can be moved when zoomed. By 
+default, a zoomed window is not moveable.
+
+
+
+\bold{Unresizable
+
+}}
+\smaller{This attribute informs the WM that the window does not wish the user 
+to be able to redimension it. This attribute is valid only when the window is 
+in the "NormalState" mode"; in the "ZoomState" mode, the size of the window is 
+always fixed.
+
+
+
+\bold{Iconic}
+
+
+This attribute informs the WM that the window will always remain an icon, 
+whatever the action undertaken by the user or the particulars of the X server.
+
+
+
+If the _IMAN_WM_TYPE property doesn't contain information concerning the 
+window's attributes, its default attributes will be:
+
+
+	attributes=TitleBar+ZoomBox+IconifyBox+CloseBox+Border
+
+
+
+
+\bold{\bigger{2.3  Creating a window
+
+}}
+
+Creation of a window, whatever its parent, is done through the following 
+function:
+
+
+\typewriter{\typewriter{\smaller{Window 
+win_Create(tk_display,parent,top_level,class,attributes,x,y,width,height,depth,\
+type,visual,mask,
+
+params,initialstate)
+
+TkDisplay *tk_display;
+
+Window parent, top_level;
+
+long class, attributes,initialstate;
+
+int x, y;
+
+unsigned int width, height, depth,type;
+
+Visual *visual;
+
+unsigned long mask;
+
+XSetWindowAttributes *params;}}}
+
+
+
+\bold{tk_display}: pointer on the structure returned by tk_OpenSession
+
+\bold{parent}: parent window in which the new window will be located
+
+\bold{top-level}: top level window containing "parent" and the window being 
+created. If top-level is set to 0, the function will infer that the window 
+being created is also the top level window. Otherwise the function will 
+inscribe the past window identificator in its WM_TOP_LEVEL property. This 
+property is useful if you intend to drag and drop.
+
+\bold{class}: window's class
+
+\bold{attributes}: window's attributes
+
+\bold{x,y,width,height}: window's position and initial size
+
+\bold{depth}: window's depth
+
+\bold{type}: InputOnly or InputOutput (see Xlib's programmer's manual)
+
+\bold{visual}: pointer on a Visual type of structure
+
+\bold{mask}: mask of parameters chosen in params
+
+\bold{params}: pointer on a structure containing the window's Xlib parameters
+
+\bold{initialstate}: initial state of the window (IconicState, 
+NormalState,ZoomState)
+
+
+This function is a sur-set of Xlib's XCreateWindow function. It parameters the 
+standard data and adds those necessitated by the IMAN WM.
+
+If creation went well, the function returns the window's identificator, 
+otherwise it returns NULL.
+
+}
+
+
+\smaller{\bold{\bigger{2.4  Mapping the window created
+
+}}
+
+The mapping or deletion of a window are done through the three following 
+functions.
+
+
+\typewriter{\smaller{int win_Map(tk_display,window)
+
+TkDisplay *tk_display;
+
+Window window;
+
+int win_MapRaised(tk_display,window)
+
+TkDisplay *tk_display;
+
+Window window;
+
+int win_Unmap(tk_display,window)
+
+TkDisplay *tk_display;
+
+Window window;}
+
+}
+They return a negative value if an error took place, otherwise they return 0.
+
+
+
+
+\bold{\bigger{2.5  Destruction of a window
+
+}}
+
+You must never forget to destroy the windows you have no use for anymore. They 
+take up space in the X server.
+
+The following function will take care of deleting your window:
+
+
+\typewriter{\smaller{Window win_Destroy(tk_display,window)
+
+TkDisplay *tk_display;
+
+Window window;}
+
+}
+
+Do not forget however to first destroy the daughter windows and the widgets 
+contained in the window you wish to destroy.
+
+\begindata{bp,894560}
+\enddata{bp,894560}
+\view{bpv,894560,2,0,0}
+\flushright{\bold{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\
+\bigger{\bigger{\bigger{3
+
+Window groups and relationships}}}}}}}}}}}
+
+}
+
+
+
+Windows can use group relationships and behaviors when certains parameters are 
+present.
+
+
+
+
+\bold{\bigger{3.1  Notion of group}}
+
+
+
+X implements the idea of group through the group parameter found in the 
+WM_HINTS property of each window.
+
+A window (or a dialog box) can be leader of a group, member of a group or both 
+at the same time. This relation permits to build sub-groups and to manage a 
+set of windows more easily.
+
+
+All the windows in a group meet the following conditions:
+
+
+}\smaller{\leftindent{* their "group" parameter contains the leader's window's 
+ID.
+
+The leader has its parameter either set at 0, or containing its own 
+identificator, or containing that of its own leader in case it is itself a 
+member of another group.
+
+
+* the iconification of the leader or of a member of the group causes the 
+iconification of all the members, and vice-versa. The group's icon is that of 
+the leader.
+
+
+* when the leader is destroyed, group links disappear.
+
+}
+
+
+}\smaller{\bold{\bigger{3.2  Being a group member
+
+}}
+
+To be a member of a group, you must declare it with the 
+\italic{win_SetGroupLeader} function:
+
+
+\bigger{\smaller{
+}\smaller{\smaller{\typewriter{int 
+win_SetGroupLeader(tk_display,window,group_leader_ID)
+
+TkDisplay *tk_display;
+
+Window window;
+
+Window group_leader_ID;}}}}
+
+
+
+If you put a window's identificator in \bold{group_leader_ID}, that window 
+will be linked to its group. If you set the identificator to 0, the window 
+will be free from any group.
+
+
+
+
+\bigger{\bold{3.3  Influence of window attributes on group stacking
+
+}}
+
+When the window is linked to a group, its mapping varies according to its 
+attributes and those of its leader in the following manner:
+
+
+\leftindent{* if the leader possesses the Overlapped attribute, it is always 
+covered by the members of its group.
+
+
+* if the member window possesses the AlwaysOnTop attribute, it will always 
+cover its leader.
+
+
+* if none of these two attributes are used, the window having last received 
+focus will be placed on top of the stack.
+
+
+* as AlwaysOnTop and Overlapped have influence only with respect to the leader 
+of a group, if the leader uses AlwaysOnTop or a member uses Overlapped, these 
+attributes will not be taken into account and the above-mentioned case will 
+prevail.
+
+}
+
+
+\bold{\bigger{3.4  WM_TRANSIENT_FOR type of relationships}}
+
+
+
+X defines a property named WM_TRANSIENT_FOR which permits to establish a 
+ blocking  link  between two windows.
+
+When a (master) window puts another (slave) window's in its WM_TRANSIENT_FOR 
+property, it causes the following phenomena to happen:
+
+
+\leftindent{* the slave window finds itself "blocked", i.e. its widgets can't 
+function as long as the master window is displayed on the screen, it can't 
+receive focus anymore, it can't cover the master window.
+
+
+* when the master window disappears from the screen , the slave window resumes 
+its autonomous activity.
+
+}
+In a few words, this relationship (essentially used by dialog boxes) forces 
+the user to carry out different actions in the master window before being 
+allowed access again to the slave window.
+
+This behavior can vary from one window manager to the next and can even not be 
+used at all. IMAN perfectly tolerates it.
+
+}\smaller{
+
+
+\bold{\bigger{3.5  Establishing a WM_TRANSIENT_FOR link}}
+
+
+
+The development kit possesses a function to establish this relationship:
+
+
+
+\typewriter{\smaller{win_SetTransientFor(tk_display,window,transient_for_ID)
+
+TkDisplay *tk_display;
+
+Window window;
+
+Window transient_for_ID;}}
+
+
+If you put the identificator of a window in transient_for_ID, the link betwwen 
+the two windows will come into effect when window is displayed on the screen.
+
+If on the contrary the identificator is set to 0, the link is deletedand the 
+slave window is given back its autonomy.
+
+\begindata{bp,894528}
+\enddata{bp,894528}
+\view{bpv,894528,3,0,0}
+\bold{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\
+\bigger{\flushright{4
+
+Configurating a window
+
+}}}}}}}}}}}}
+
+
+
+You can act on a window's different parameters, even after its creation.
+
+At any moment you can thus modify its decoration, its display, its dimensions 
+or its state.
+
+
+
+
+\bold{\bigger{4.1  Titles}}
+
+
+
+The title is an essential piece of information that a window must transmit.
+
+You can decide to modify it at any moment with this function:
+
+
+\typewriter{\smaller{int win_SetTitleName(tk_display,window,title_name)
+
+TkDisplay *tk_display;
+
+Window window;
+
+char *title_name;}}
+
+
+All window managers are required by the ICCCM to display the window's title 
+and to modify it upon simple request of the client, whether it be in a list of 
+windows on the screen or in the title bar of each window.
+
+You can also modify the title present in the icon bar:
+
+
+\smaller{\typewriter{int win_SetIconName(tk_display,window,icon_name)
+
+TkDisplay *tk_display;
+
+Window window;
+
+char *icon_name;}}
+
+
+
+
+\bold{\bigger{4.2  Dimensions}}
+
+
+
+You can modify a window's dimensions in any of the window's states 
+(NormalState, ZoomState, IconicState):
+
+
+\smaller{\typewriter{int win_Resize(tk_display,window,width,height)
+
+TkDisplay *tk_display;
+
+Window window;
+
+unsigned int width, height;}}
+
+When the WM receives this request, it can either reject it or accept it in its 
+own way, which means that it is free to choose the true dimension the window 
+will take on the screen.
+
+It can either grant the space required or first refer to a certain number of 
+parameters it has been allocated in the WM_NORMAL_HINTS, WM_ZOOM_HINTS and 
+WM_HINTS properties. 
+
+
+It will particularly look at the following elements:
+
+
+\bigger{\smaller{ WM_NORMAL_HINTS.min_width 	/* Minimum width of the window 
+ */
+
+ WM_NORMAL_HINTS.min_height	/* Minimum height of the window} */
+
+\smaller{ WM_NORMAL_HINTS.max_width 	/* Maximum width */
+
+ WM_NORMAL_HINTS.max_height	/* Maximum height */
+
+ WM_ZOOM_HINTS.min_width 	/* Minimum width when zoomed */
+
+ WM_ZOOM_HINTS.min_height	/* Minimum height when zoomed */
+
+ WM_ZOOM_HINTS.max_width 	/* Maximum width when zoomed */
+
+ WM_ZOOM_HINTS.max_height	/* Maximum height when zoomed */}}
+
+
+These properties can be modified by the program with the following functions:
+
+}
+
+\smaller{\smaller{\typewriter{int win_SetNormalHints(tk_display,window,hints)
+
+Tkdisplay *tk_display;
+
+Window window;
+
+XSizeHints hints;
+
+}}
+\smaller{\typewriter{int win_SetZoomlHints(tk_display,window,hints)
+
+Tkdisplay *tk_display;
+
+Window window;
+
+XSizeHints hints;
+
+}}}
+
+\smaller{The window will receive an Xlib event of ConfigureNotify type 
+presenting the new dimensions.
+
+
+
+
+\bold{\bigger{4.3  Icon}}
+
+
+
+The ICCCM permits you to define 3 main caracteristics concerning the display 
+of a window's icon.: a pixmap, its mask and an icon window to draw in it 
+repeatedly.
+
+
+You can configurate these caracteristics at any moment with these functions:
+
+}\smaller{
+\typewriter{\smaller{int win_SetIconPixmap(tk_display,window,icon_pixmap)
+
+TkDisplay *tk_display;
+
+Window window;
+
+Pixmap icon_pixmap;}}
+
+
+If icon_pixmap is set to 0, the pixmap representing the window's icon will be 
+withdrawn from the screen.
+
+\typewriter{\smaller{
+int win_SetIconPixmapMask(tk_display,window,icon_pixmap_mask)
+
+TkDisplay *tk_display;
+
+Window window;
+
+Pixmap icon_pixmap_mask;
+
+int win_SetIconWindow(tk_display,window,icon_window)
+
+TkDisplay *tk_display;
+
+Window window, icon_window;}}
+
+
+
+If icon_window contains the ID of a window of ICON_WINDOW class, this ID will 
+be used as icon by window. If on the contrary icon_window is set to 0, the 
+icon window currently used (supposing there is one) will be withdrawn from the 
+screen.
+
+
+Some window managers can provide by default an icon window in which a program 
+can draw during its iconic phase.
+
+The ID is stored in the WM_STATE property and can be obtained with the 
+following function:
+
+
+\smaller{\typewriter{\smaller{\bigger{Window 
+win_GetIconWindow(tk_display,window)
+
+TkDisplay *tk_display;
+
+Window window;
+
+}}}}
+
+\bold{\bigger{4.4  Changing state
+
+}}
+
+WMs can authorize several states depending on their capabilities: NormalState, 
+ZoomState and IconicState.
+
+Since the display and behavior of your window can vary depending on its 
+current state, you can obtain it with this function :
+
+
+\typewriter{\smaller{long win_GetState(tk_display, window)
+
+TkDisplay *tk_display;
+
+Window window;}}
+
+
+This function extracts the current state of the window window that the WM must 
+place in the WM_STATE property. You can also ask the window manager to have 
+your window evolve from one state to another:
+
+
+\typewriter{\smaller{int win_SetState(tk_display,window,state)
+
+TkDisplay *tk_display;
+
+Window window;
+
+unsigned int state; 	/* NormalState, IconicState or ZoomState */
+
+int win_Zoom(tk_display,window)
+
+TkDisplay *tk_display;,
+
+Window window;
+
+
+int win_Unzoom(tk_display,window);
+
+TkDisplay *tk_display,
+
+Window window;
+
+}}
+
+
+\bold{\bigger{4.5  Reparenting a window}}
+
+
+
+If you decide to reparent a window, you must absolutely use the 
+\italic{win_Reparent} function:
+
+
+\typewriter{\smaller{\smaller{\bigger{int 
+win_Reparent(tk_status,window,parent,top_level,x,y)
+
+TkStatus *tk_status;
+
+Window window, parent, top_level;
+
+int x,y;	 	/* Position in the new window */}}}}
+
+
+Indeed, this function adds the top-level element (top level window containing 
+window and maybe parent) in the WM_TOP_LEVEL property used for dragging and 
+dropping.
+
+
+The Xlib \italic{XReparentWindow} function doesn't take into account this 
+important parameter.
+
+\begindata{bp,894496}
+\enddata{bp,894496}
+\view{bpv,894496,4,0,0}
+\bold{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\
+\bigger{\flushright{5
+
+Widgets theory
+
+}}}}}}}}}}}}
+
+
+
+Widgets (from window and gadget) are very particular windows. Their have their 
+own intelligence which enables them to function autonomously from the moment 
+they are created. They lie at the heart of the man-machine interface and 
+represent the toolkit's central nucleus.
+
+
+
+
+\bold{\bigger{5.1  Classes and objects}}
+
+}\smaller{
+
+Iman development kit puts at your disposal a vast number of graphic objects 
+grouped in 6 classes: buttons, scrollbars, edit zones, lists, combo boxes and 
+floating menus.
+
+These classes are defined in the following way in the <X11/iman/ev_struct.h> 
+file :
+
+
+\bigger{\smaller{	#define WI_BUTTON		1}
+
+\smaller{	#define WI_SCROLLBAR	2
+
+	#define WI_EDIT		3
+
+	#define WI_LIST		4
+
+	#define WI_COMBO		5
+
+	#define WI_MENU		6}}
+
+
+
+\bold{\bigger{5.2  Identificators}}
+
+
+In referring to a widget you can use either an identificator corresponding to 
+the type of widget:
+
+
+typedef int ButtonID; 		/* Button 	*/
+
+typedef int ScrollbarID; 		/* Scrollbar 	*/
+
+typedef int EditID; 		/* Edit 		*/
+
+typedef int ListID; 		/* List 		*/
+
+typedef int ComboID; 		/* Combo box 	*/
+
+typedef int MenuID; 		/* Menu  	*/
+
+
+}\smaller{or a generic identificator:
+
+
+typedef int WidgetID; 		/* Any widget */
+
+
+
+
+\bold{\bigger{5.3  Types and behaviors}}
+
+
+
+Each class has several types of widgets at its disposal that define its 
+display and its behavior.
+
+
+
+\bold{5.3.1  Buttons}
+
+\smaller{
+}\bigger{\smaller{		/******* Types of BOUTON *******/			
+
+	#define BN_PUSHBUTTON   		1
+
+	#define BN_CROSSBUTTON  		2
+
+	#define BN_CHECKBUTTON  		3}
+
+\smaller{	#define BN_RADIOBUTTON 	 	4
+
+	#define BN_REPEATBUTTON 		5
+
+	#define BN_POPUPBUTTON		10
+
+	#define BN_POPUPRADIOBUTTON	11}}
+
+Buttons can be grouped in 3 categories, depending on their behavior:
+
+
+\leftindent{* normal buttons: they generate an event when pushed or released. 
+They do not remain blocked when pushed and do not repetitively send other 
+messages. This is the most common type of button (BN_PUSHBUTTON).
+
+
+* blocking buttons: they generate an event when pushed and remain blocked 
+until the user clicks again to unlock them (BN_CROSSBUTTON, BN_CHECKBUTTON, 
+BN_RADIOBUTTON, BN_POPUPBUTTON, BN_POPUPRADIOBUTTON).
+
+
+* repetitive buttons: they generate a repetitive event when pushed 
+(BN_REPEATBUTTON).
+
+}
+
+\bold{5.3.2  Scrollbars}
+
+
+\bigger{\smaller{		/******* Types of SCROLLBAR *******/
+
+
+	#define SB_LEFTALIGN		20
+
+	#define SB_RIGHTALIGN		21
+
+	#define SB_TOPALIGN			22
+
+	#define SB_BOTTOMALIGN		23
+
+	#define SB_HTHUMB			24
+
+	#define SB_VTHUMB			25}
+
+}
+Scrollbars all have the same behavior. Different types correspond to different 
+displays.
+
+
+
+\bold{5.3.3  Edit zones}
+
+
+		/******* Types of EDIT *******/
+
+
+	#define ED_NORMALEDIT   		30
+
+	#define ED_SECRETEDIT		31
+
+	#define ED_FULLSELECT		32
+
+Edits all react in the same manner to the user's actions. Some however might 
+display nothing on the screen to keep things secret (ED-SECRETEDIT) or on the 
+contrary select everything as soon as the widget is activated (ED_FULLSELECT).
+
+
+
+\bold{5.3.4  Lists
+
+}
+\bigger{\smaller{		/******* Types of LIST *******/
+
+	#define LS_SIMPLE   			40 
+
+	#define LS_HSCROLL  			41
+
+	#define LS_LEFTVSCROLL  		42
+
+	#define LS_RIGHTVSCROLL		43
+
+	#define LS_HLEFTVSCROLL 		44
+
+	#define LS_HRIGHTVSCROLL} 		\smaller{45}}
+
+Lists all behave in the same way regardless of their type. Only their display 
+varies. Some will not possess a scrollbar (LS_SIMPLE), others will have a 
+horizontal scrollbar (LS_HSCROLL), a vertical scrollbar (LS_LEFTVSCROLL, 
+LS_RIGHTVSCROLL) or both (LS_HLEFTVSCROLL, LS_HRIGHTVSCROLL).
+
+
+
+}\smaller{\bold{5.3.5  Combo boxes}
+
+\bigger{\smaller{
+		/******* Types of COMBO *******/
+
+	#define CB_LEFTNOEDITION		50
+
+	#define CB_LEFTEDITION		51
+
+	#define CB_RIGHTNOEDITION		52
+
+	#define CB_RIGHTEDITION		53
+
+	#define CB_SLEFTNOEDI}\smaller{TION		54
+
+	#define CB_SLEFTEDITION		55}
+
+\smaller{	#define CB_SRIGHTNOEDITION	56
+
+	#define CB_SRIGHTEDITION		57
+
+}}
+All combo boxes don't behave the same way:
+
+
+\leftindent{* some forbid the entry of text in the box's edit zone (those CB_ 
+ending wiht NOEDITION).
+
+
+*  the others accept it and will send the program a message if the user 
+validates the text he typed there.
+
+}}
+\smaller{
+\bold{5.3.6  Floating menus
+
+}
+		/******* Types of MENU *******/
+
+	#define MN_MENUBAR  		60 
+
+	#define MN_FLOATING  		61
+
+Only 2 types of menus exist so far: the menu bar (MN_MENUBAR) and the floating 
+menu (MN_FLOATING).
+
+The menu bar is always located in the top right-hand corner of the main 
+window, whereas the floating menu can be located anywhere on the screen.
+
+\begindata{bp,894464}
+\enddata{bp,894464}
+\view{bpv,894464,5,0,0}
+\bold{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\
+\bigger{\flushright{6
+
+Creating widgets
+
+}}}}}}}}}}}}
+
+
+
+One of the main interests of the Iman development kit is the modest size of 
+its API.
+
+One function is enough to create any widget, and one function is also enough 
+to destroy it.
+
+
+
+
+\bold{\bigger{6.1 Creating a widget}}
+
+
+
+The only function you must use to create your widgets is the following:
+
+This function returns your widget's identificator, which you must always give 
+to the other functions. If this ID is null or negative, an error has occurred.
+
+
+\typewriter{\smaller{WidgetID 
+wid_Create(tk_display,widget_class,widget_type,wnd_parent,wnd_top_level,x,y,wid\
+th,height,
+
+wid_attributes,state)
+
+TkDisplay *tk_display;
+
+int widget_class, widget_type;
+
+Window wnd_parent, wnd_top_level;
+
+int x, y, width, height;
+
+WidgetAttributes *wid_attributes;
+
+unsigned int state;
+
+}}
+
+\bold{tk_display}: pointer on the structure that you get when connecting to a 
+server.
+
+\bold{widget_class}: class of the widget you wish to create (see paragraph 
+5.1).
+
+\bold{widget_type}: type of the widget to be created (see paragraph 5.3).
+
+\bold{wnd_parent}: window in which the widget will be located.
+
+\bold{wnd_top_level}: top level window containing or not wnd_parent and the 
+widget. This parameter is very important to manage the focus and the 
+WM_TOP_LEVEL property used to drag and drop.
+
+\bold{x,y}: widget's coordinates in wnd_parent.
+
+\bold{width, height:} widget's dimensions.
+
+\bold{wid_attributes:} address of a WidgetAttributes structure (see paragraph 
+6.2) containing the widget's original attributes.
+
+state: the initial state of the widget. It must be a OR combination of the 
+following values :
+
+
+	#define Ungrayed	0
+
+	#define Unchecked	0
+
+	#define Unpushed      	0
+
+	#define Unblocked	0
+
+	#define Pushed          	1
+
+	#define Grayed          	2
+
+	#define Blocked		4
+
+	#define Checked		8
+
+
+
+\bold{\bigger{6.2  WidgetAttributes structure}}
+
+
+
+Let's see how to use this structure. It partly determines your widget's state 
+and behavior.
+
+}
+\smaller{typedef struct \{
+
+		unsigned long mask;
+
+		int lighting;
+
+		int direction;}
+
+\smaller{		unsigned int range;
+
+		unsigned int pagerange;
+
+		unsigned int thumbsize;
+
+		Bool neverFocus;
+
+		Bool multipleSelection;
+
+		Bool border;
+
+		int htype, vtype;
+
+		unsigned int itemheight;
+
+		unsigned int position;
+
+		unsigned int crosstype;
+
+		Colormap colormap;
+
+		Visual *visual;
+
+		Cursor cursor;
+
+	       \}WidgetAttributes;}
+
+
+\smaller{\bold{mask}: it is a combination in logical OR of the following 
+values:
+
+\bigger{\smaller{
+\leftindent{#define SALighting			1
+
+#define SADirection			2
+
+#define SARange			4
+
+#define SAPagerange			8
+
+#define SAThumbsize			16
+
+#define SANeverFocus			32
+
+#define SAMultipleSelection		64
+
+#define SABorder			128
+
+#define SAHVtype			256
+
+#define SAItemHeight			512
+
+#define SAPosition			1024
+
+#define SACrossType			2048}}
+
+\smaller{\leftindent{#define SAColormap			4096
+
+#define SAVisual			8192
+
+#define SACursor			16384
+
+}}}
+
+Each value corresponds to an element of the structure. If you set mask at 0, 
+no field of the structure will be used.
+
+
+\bold{lighting}: this field is used by buttons. If you give it the True value, 
+your button will be highlighted when pushed, otherwise it will keep its 
+regular background color.
+
+\bold{direction}: this field is exclusively for the toolkit's use. Do not use 
+it.
+
+\bold{range, pagerange}: these 2 fields are used to create scrollbars, range 
+determines the number of times the user will have to push a scroobar's button 
+to have "the lift" go all the way down. pagerange determines the number of 
+those "rungs" climbed up or down each time the user cliks on the lift itself.
+
+\bold{thumbsize}: this field determines the thumbbutton's size in the 
+scrollbar.
+
+\bold{neverFocus}: this field determines if the widget wished to be able to 
+obtain the focus.
+
+}\smaller{\bold{multipleSelection:} this field decides whether it is possible 
+to select several elements in the widget simultaneously (for lists and combo 
+boxes).
+
+\bold{border}: this field decides if the widget must have a border (for lists 
+and edits).
+
+\bold{htype, vtype}: these 2 fields determine the type of scrollbar used in 
+the lists and the combo boxes. 
+
+The type used can be one of the following:
+
+
+\bigger{\smaller{		/******* Types of SCROLLBAR *******/
+
+}\leftindent{\smaller{#define SB_LEFTALIGN		20
+
+#define SB_RIGHTALIGN		21
+
+#define SB_TOPALIGN			22
+
+#define SB_BOTTOMALIGN		}\smaller{23}
+
+\smaller{#define SB_HTHUMB			24
+
+#define SB_VTHUMB			25}}}
+
+
+\bold{itemheight}: this field decides what the standard size (height in 
+pixels) of an element in a widget (list, menu or combo box) will be.
+
+\bold{position:} this field decides on what element the cursor bar must be 
+positioned (list, menu or combo box). By default, the cursor is not 
+positioned.
+
+\bold{crosstype}: this field decides what the BN_CROSSTYPE button will look 
+like. The value can be one of the following:
+
+\bigger{
+\smaller{		/*********** Cross Types *************/
+
+
+\leftindent{#define NoCross 		0
+
+#define BigCross		1
+
+#define LittleCross		2
+
+#define CheckMark		3}}}
+
+
+An erroneous parameter can cause irrecuperable errors and the end of your 
+application.
+
+}\smaller{Most of these parameters can be modified later with the following 
+function:
+
+}
+\typewriter{\smaller{\smaller{int 
+wid_SetAttributes(tk_display,widgetid,wid_attributes,delay)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+WidgetAttributes *wid_attributes;
+
+Bool delay;}}}
+
+
+\smaller{To obtain information concerning a widget's current configuration, 
+you can use the following function:
+
+
+\typewriter{\smaller{int wid_GetAttributes(tk_display,widgetid,wid_attributes)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+WidgetAttributes *wid_attributes;}}
+
+
+
+
+\bold{\bigger{6.3  Mapping a widget created}}
+
+
+
+The widgets' display is simple. One function is enough to put the widget on 
+the screen:
+
+
+\typewriter{\smaller{int wid_Map(tk_display,widgetid)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;}}
+
+
+In the same manner, you can withdraw a widget from the screen:
+
+
+\smaller{\bigger{\typewriter{\smaller{int wid_Unmap(tk_display,widgetid)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;}}}}
+
+
+
+\bold{\bigger{6.4  Destroying a widget
+
+}}
+
+When you don't need a widget anymore, you must destroy it to vacate the space 
+it occupies in the memory. This operation is done with the following function:
+
+
+\smaller{\typewriter{int wid_Destroy(tk_display,widgetid)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;}
+
+}
+Be careful when entering the widget's ID, you might otherwise destroy another 
+widget than the one you intended to.
+
+\begindata{bp,894432}
+\enddata{bp,894432}
+\view{bpv,894432,6,0,0}
+\bold{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\
+\bigger{\flushright{7
+
+Modifying the widgets' display
+
+}}}}}}}}}}}}
+
+
+
+We still haven't looked at the question of the widgets' display. This most 
+important point concerns almost all the widgets and permits to modify the 
+following components: the display font, the text, the image drawn and the 
+positioning of elements in the widget.
+
+}
+
+
+\smaller{\bold{\bigger{7.1  Modifying the text
+
+}}
+
+Only one function permits to modify all the text's parameters in all the 
+widgets:
+
+
+\typewriter{\smaller{\bigger{\smaller{int 
+wid_SetTextDecoration(tk_display,widgetid,wid_text,delay)}
+
+\smaller{TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+WidgetTextDecoration *wid_text;
+
+Bool delay;
+
+}}}}
+\bold{tk_display}: pointer on the structure returned by tk_OpenSession.
+
+}\smaller{\bold{widgetid:} identificator of the widget to be modified.
+
+\bold{wid_text:} pointer on a wid_text structure.
+
+\bold{delay:} bool value defining whether the widget's refreshing must take 
+place now (False) or later (True) with the function wid_Refresh.
+
+
+
+
+\bold{\bigger{7.1.1  WidgetTextDecoration type of structure
+
+}}
+
+This structure contains all the elements to modify if need be:
+
+
+\bigger{\smaller{typedef struct \{
+
+		unsigned long mask;}
+
+\smaller{		char *text;
+
+		XFontStruct *font;
+
+		unsigned int key;
+
+		unsigned int gravity;
+
+		int x, y;
+
+		\} WidgetTextDecoration;}}
+
+
+\bold{mask}: composition of the following values :
+
+
+	#define STText		1	#define STFont		2
+
+	#define STKey		4
+
+	#define STGravity	8
+
+	#define STX		16
+
+	#define STY		32
+
+
+
+each value corresponds to a field of the structure.
+
+
+\bold{text}: chain of caracters to be displayed in the widget. This field is 
+selected with the value STText.
+
+\bold{font}: default font for the widget's display. This field is selcted with 
+STFont.
+
+\bold{key}: keyboard key putting the focus on the widget. This option only 
+concerns buttons and corresponds to a letter inscribed in the text field. If 
+key is set to 3, the 3rd text caracter will be underlined and when the user 
+pushes the key corresponding to the caracter, the widget will receive the 
+focus. This field is selected with STKey.
+
+\bold{gravity}: positioning of the text in the widget. The positioning of the 
+text can be one of the following:
+
+
+	#define CenterText		5	/* Centered */
+
+	#define UserDefinedText 	10	/* Depend on X and Y */
+
+
+This field is selected with STGravity.
+
+
+\bold{x, y}: coordinates of the text in the widget if gravity is set at 
+UserDefinedText. widget's dimensions.
+
+ 
+
+}
+\smaller{\bold{7.1.2  Getting the widget's text
+
+}
+For some widgets (edits, combo boxes), it is essential to be able to get the 
+text they contain since the user can modify it to send information.
+
+
+The following function permits to get the widgets' text:
+
+
+\typewriter{\smaller{int wid_GetText(tk_display,widgetid,text)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+unsigned char **text;}}
+
+text: address of a pointer to allocate memory and store the widget's text. You 
+must use free(text) to free the chain of caracters once they are no longer 
+useful.
+
+
+
+
+}\bold{\bigger{\smaller{7.2  Modifyin}\smaller{g the image}
+
+}}\smaller{
+
+In the same way, only one function permits to modify the display of an image 
+in the widget. So far, the function only affects buttons.
+
+
+\typewriter{\smaller{int 
+wid_SetPixmapDecoration(tk_display,widgetid,wid_pixmap,delay)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+WidgetPixmapDecoration *wid_pixmap;
+
+Bool delay;}}
+
+
+\bold{tk_display}: pointer on the structure returned by 
+\italic{tk_OpenSession.}
+
+\bold{widgetid}: indentificator of the widget to be modified.
+
+\bold{wid_text}: pointer on a wid_text structure .
+
+\bold{delay:} bool value defining whether the widget's refreshing must take 
+place now (False) or later (True) with the \italic{wid_Refresh} function.
+
+
+
+\bold{7.2.1  WidgetPixmapDecoration structure
+
+}
+
+This structure contains all the items that might need modifying:
+
+
+typedef struct \{
+
+		unsigned long mask;
+
+		Pixmap pixmap, pixmap_mask;
+
+		unsigned int depth;
+
+		unsigned int gravity;
+
+		int x, y;
+
+		unsigned int width, height;
+
+		\} WidgetPixmapDecoration;
+
+
+\bold{mask}: composition in logical ORs of the following values
+
+
+\leftindent{#define SPPixmap		1
+
+#define SPPixmapMask		2
+
+#define SPDepth		4
+
+#define SPGravity		8
+
+#define SPX			16
+
+#define SPY			32
+
+#define SPWidth		64
+
+#define SPHeight		128
+
+}
+\bold{pixmap}: pixmap to be displayed
+
+\bold{pixmap_mask}: pixmap's mask. It is necessarily a depth 1 pixmap.
+
+\bold{depth}: pixmap's depth.
+
+\bold{gravity}: one of the following positionings:
+
+}\smaller{
+
+\bigger{\smaller{		/********* Bitmap Gravity *********/
+
+	#define NoBitmap          		0
+
+	#define NorthWestBitmap	1
+
+	#define NorthBitmap	  	2
+
+	#define NorthEastBitmap	3
+
+	#define WestBitmap	  	4}
+
+\smaller{	#define CenterBitmap      	5
+
+	#define EastBitmap        		6
+
+	#define SouthWestBitmap   	7
+
+	#define SouthBitmap       		8
+
+	#define SouthEastBitmap   	9
+
+	#define UserDefinedBitmap 	10}}
+
+
+\bold{x, y:} position of the pixmap in case gravity is UserDefinedBitmap:
+
+\bold{width, height}: pixmap's width and height.
+
+
+
+
+\bold{\bigger{7.3  Changing cursors}}
+
+
+
+Widgets have pre-attributed cursors. If you wish to modify them, call the 
+following function:
+
+
+\smaller{\typewriter{extern int wid_SetCursor(tk_display,widgetid,cursor);
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+Cursor cursor;}
+
+}
+\bold{cursor}: this parameter must contain the identificator of a valid 
+cursor. You can use those in tk_display->cursors, enter yours as argument or 
+put 0 to restore the default cursor.
+
+
+
+
+\bold{\bigger{7.4  Assigning a new colormap
+
+}}}\smaller{
+
+Widgets have a default colormap, the standard one installed on the server. If 
+you wish to assign your widget a new colormap, you must use 
+\italic{wid_SetColormap}:
+
+
+\typewriter{\smaller{extern int wid_SetColormap(tk_display,widgetid,colormap);
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+Colormap colormap;}}
+
+
+\bold{colormap}: this parameter must contain the identificator of a valid 
+colormap. You can use one of the colormaps defined by the X server or set 
+colormap to 0 to restore the toolkit's default colormap.
+
+
+\typewriter{\smaller{extern int wid_SetPrivateColors(
+
+	TkDisplay *tk_display,
+
+	WidgetID widgetid,
+
+	WidgetColors *wid_colors,
+
+	Bool delay
+
+);
+
+}}
+This function hasn't been tested. We strongly advise you against using it.
+
+
+
+
+\bold{\bigger{7.5  Setting private colors}}
+
+
+
+All the objects in the development kit refer to the default color tables 
+contained in the TkDisplay structure. To circumvent this rule and choose 
+colors specific to a particular widget , you can  call 
+\italic{wid_SetPrivateColors}.} \smaller{Be careful however, this function 
+requires a careful wording of the  WidgetColors structure:}
+
+
+\smaller{\smaller{\typewriter{extern int 
+wid_SetPrivateColors(tk_display,widgetid,wid_colors,delay);
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+WidgetColors *wid_colors;
+
+Bool delay;}
+
+}}
+\smaller{\bold{wid_colors}: this parameter must point on a WidgetColors 
+structure, every field of which must contain allocated colors.
+
+\bold{delay:} if True, the widget's refreshing is put off, otherwise False 
+causes it to begin immediately.
+
+
+
+
+\bold{\bigger{7.6  Refreshing a widget}}
+
+
+
+For reasons specific to your program, you can decide at any moment to refresh 
+your widget's contents.
+
+This operation takes place with the following function:
+
+
+\smaller{\bigger{\typewriter{\smaller{int wid_Refresh(tk_display,widgetid)
+
+TkDisplay *tk_display;
+
+int widgetid;}}}}
+
+\begindata{bp,894400}
+\enddata{bp,894400}
+\view{bpv,894400,7,0,0}
+\bold{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\
+\bigger{\flushright{8
+
+Managing widgets
+
+}}}}}}}}}}}}
+
+
+
+This chapter is most important because it deals with all the topics essential 
+to manage your objects easily.
+
+
+
+
+}\bold{\bigger{\smaller{8.1  Widgets' state}
+
+}}\smaller{
+
+Widgets all admit several states which can be used together:
+
+
+		/********* Common states to all widgets *********/
+
+	#define Ungrayed	0
+
+	#define Unpushed        	0
+
+	#define Unblocked	0
+
+	#define Pushed          	1
+
+	#define Grayed          	2
+
+	#define Blocked		4
+
+
+\bold{Ungrayed/Grayed}: the widget is grayed and totally out of user's reach. 
+It doesn't return any event to the program.
+
+\bold{Unpushed/Pushed}: the widget is pushed or released.
+
+\bold{Unblocked/Blocked}: the widget is "technically blocked", that is to say 
+that the user cannot get access to it. It is not grayed, however, and returns 
+events to the program.
+
+
+The following function takes care of modifying the widget's current state:
+
+
+\typewriter{\smaller{int wid_SetState(tk_display,widgetid,state)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+unsigned int state;}}
+
+
+The variable state is the sum of all chosen states (e.g. Grayed+Unpushed). The 
+widget is automatically refreshened.}
+
+
+\smaller{If you wish to make all the widgets of a window and its subwindows 
+momentarily inoperant, you must use \italic{wid_SetFreeze}:
+
+
+\typewriter{\smaller{wid_SetFreeze(tk_display,window, action)
+
+TkDisplay *tk_display;
+
+Window window;
+
+Bool action; 		/* True paralyses the widgets, False makes them accessible 
+again */}}
+
+
+
+To know a widget's state, you can use wid_GetState:
+
+
+\typewriter{\smaller{int wid_GetState(tk_display,widgetid)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;}}
+
+
+
+\bold{\bigger{8.2  Focus}}
+
+
+
+The focus is an important topic and should be seriously taken into 
+consideration. To facilitate its transfer from one widget to another, you must 
+absolutely use the \italic{wid_GiveFocus} function.
+
+
+\typewriter{\smaller{int wid_GiveFocus(tk_display,widgetid)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;}}
+
+
+This function takes the focus away from the current user and gives it to the 
+specified widget. If the widget or one of the windows containing it is not 
+displayed on the screen, the function returns a value different from 0.} 
+\smaller{Otherwise it returns 0.
+
+
+
+
+\bold{\bigger{8.3  Dimensions and coordinates}}}
+
+
+
+\smaller{Users often redimension windows as fits their needs. To rearrange the 
+positioning and size of the widgets contained, you must use this function:
+
+
+\smaller{\typewriter{int 
+wid_Configure(tk_display,widgetid,x,y,width,height,mask)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+int x,y;
+
+unsigned int width,height;
+
+unsigned long mask;}}
+
+
+\bold{x, y}: widget's coordinates
+
+\bold{width, height}: widget's size. These 2 parameters must absolutely be 
+greater than 0.
+
+\bold{mask:} composition of the following values which define what parameter 
+to modify:
+
+
+	#define CFX			1
+
+	#define CFY			2
+
+	#define CFWidth		4
+
+	#define CFHeight		8
+
+
+If an error occurs, the function returns a value different from 0, otherwise 
+it returns 0.
+
+
+On the inverse, if you wish to know a widget's dimensions (this is very 
+practical for the menu bars that can change height dynamically), call this 
+function:
+
+
+\typewriter{\smaller{int 
+wid_GetGeometry(tk_display,widgetid,parent,top_level,x,y,width,height)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+Window *parent, *top_level;		/* RETURN */
+
+int *x, *y;				/* RETURN */
+
+unsigned int *width, *height;	/* RETURN */}}
+
+
+\bold{parent}: window containing the widget:
+
+\bold{top_level}: top level window containing possibly the parent and the 
+widget.
+
+\bold{x, y}: widget's position.}
+
+\smaller{\bold{width, height}: widget's dimensions.
+
+
+
+
+\bold{\bigger{8.4  Reparenting}}
+
+
+
+You can move your widgets from one window to another by reparenting them. We 
+don't recommend you do it, but if you need to, here is the function you will 
+need:}
+
+\smaller{
+\typewriter{\smaller{wid_Reparent(tk_display,widgetid,parent,top_level)
+
+TkDisplay *display;
+
+WidgetID widgetid;
+
+Window parent, top_level;}}
+
+
+\bold{parent:} window in which the widget is supposed to be located.
+
+\bold{top_level}: top level window containing the widget and possibly the 
+parent if parent and top_level are different.
+
+\begindata{bp,894368}
+\enddata{bp,894368}
+\view{bpv,894368,8,0,0}
+\bold{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\
+\bigger{\flushright{9
+
+Items
+
+}}}}}}}}}}}}
+
+
+
+A certain number of widgets can contain items to be displayed, each item being 
+an independent object in itself. The best known widget is the floating menu. 
+Others function in the same way and share the same API.
+
+What we will study in this chapter is the item programming interface.
+
+
+
+
+\bold{\bigger{9.1  Adding or deleting an item
+
+}}
+
+Items, contrary to widgets, don't depend on the X server's resources (windows, 
+properties, etc.). They are managed dynamically and locally by the toolkit. 
+You can add items, delete some, move them or modify them at any moment.
+
+
+To add an item, you must call item_Add:
+
+
+\typewriter{\smaller{int 
+item_Add(tk_display,widgetid,subwidgetid,position,type,text,key,font,state,dela\
+y)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+WidgetID subwidgetid;
+
+int position, type;
+
+char *text;
+
+unsigned int key;
+
+XFontStruct *font;
+
+unsigned int state;
+
+Bool delay;
+
+}}
+\bold{widgetid}: widget supposed to contain the item.}
+
+\smaller{\bold{subwidgetid}: widget to which the item must be linked. This 
+option is valid only for a floating menu item used as entry point by another 
+menu. You can set it to 0 if you use it on a list or a combo box.
+
+\bold{position}: position of the item in the widget's set of items: either the 
+START value, or the END value, or a positive integer between 0 and the number 
+of already existing items.
+
+\bold{type}: type of the item:
+
+
+	#define MN_ITEM		0	/* Default */
+
+	#define MN_SUBMENU		1
+
+	#define MN_HBAR		2
+
+	#define MN_VBAR		3
+
+
+These values apply only to menu. For other widgets, enter 0.
+
+\bold{text}: chain of caracters supposed to appear in the widget to represent 
+the item. Be careful, no copy of this chain is made. Therefore you mustn't 
+disallocate or move this chain in the memory. The widget only keeps a pointer 
+on the chain, and a modification could lead to a memory error. To change the 
+text, use \italic{item_SetTextDecoration} (cf paragraph 9.3.1) .
+
+\bold{key}: invalid option. Always set it to 0.
+
+font: typeface used to draw the item's text. If font is NULL, the widget's 
+default font is used.
+
+\bold{state}: item's state, it's a combination of the following values:
+
+
+	#define Ungrayed	0
+
+	#define Unchecked	0
+
+	#define Unpushed      	0
+
+	#define Unblocked	0
+
+	#define Pushed          	1
+
+	#define Grayed          	2
+
+	#define Blocked		4
+
+	#define Checked		8
+
+
+\bold{delay}: determines if the widget must be redrawn immediately or wait for 
+other events or other actions to refreshen itself.
+
+
+The function returns 0 if everything goes well, otherwise it returns a 
+negative value.
+
+
+If you wish to delete this item or another one, use item_Delete:
+
+
+\typewriter{\smaller{int item_Delete(tk_display,widgetid,number,delay)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+int number;
+
+Bool delay;}}
+
+
+\bold{number}: position of the item to be deleted: either the value START, or 
+the value END, or a positive integer between 0 and the number of already 
+existing items minus 1.
+
+\bold{delay}: determines if the widget must be redrawn immediately or wait for 
+other events or other actions to be refreshed.
+
+
+To delete all items at once, you can prefer the faster, more efficient, 
+function hereafter:
+
+}
+\typewriter{\smaller{\smaller{int item_DeleteAll(tk_display,widgetid)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+}}}
+
+\smaller{It is sometimes necessary to know how many items are in a widget, for 
+that, \italic{wid_GetNumItems} returns the right number:
+
+
+\typewriter{\smaller{int wid_GetNumItems(tk_display,widgetid)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+
+
+
+
+}}}\bold{9.2 Positioning items }\smaller{
+
+
+
+The position of items is not static. At any moment you can move one with this 
+function :
+
+
+\typewriter{\smaller{int item_Move(tk_display,widgetid,current,new,delay)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+int current, new;
+
+Bool delay;}}
+
+
+\bold{current}: item's current position. It must imperatively be an integer 
+between 0 and the number of items minus 1.
+
+\bold{new}: item's new position. Either START, or END, or a positive integer 
+between 0 and the number of items minus 1.
+
+}\smaller{
+The function returns 0 if everything goes well, otherwise it returns a 
+negative value.
+
+
+Each widget able to contain items has a cursor current position. This crusor 
+highlights the item active or selected by the user.
+
+To change this current position, the toolkit provides the function 
+\italic{wid_SetPosition}:
+
+
+\typewriter{\smaller{int wid_SetPosition(tk_display,widgetid,position)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+int position;}}
+
+
+\bold{position}: number of the item to be selected as new item.
+
+
+The function returns 0 if everything goes well, otherwise it returns a 
+negative value.
+
+Inversely, if you want to obtain the current position following an event 
+(double click, text entered on the keyboard, etc.), the function 
+\italic{wid_GetPosition} will provide you with the desired information by 
+returning the correct position or -1 if there is no current position:
+
+
+
+
+\bold{\bigger{9.3  Decoration and composition of items}}
+
+}\smaller{
+
+Each item of a widget can be represented by a chain of caracters, a pixmap or 
+both.
+
+
+
+\bold{9.3.1  Chain of caracters}
+
+
+
+When you add an element, you usually enter the chain of caracters as argument 
+of the function. If this is not the case or if you wish to modify the} 
+\smaller{chain later on, the function \italic{item_SetTextDecoration} must 
+always be used.}
+
+\smaller{
+}\typewriter{\smaller{\smaller{int 
+item_SetTextDecoration(tk_display,widgetid,number,item_text,delay)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+int number;
+
+ItemTextDecoration *item_text;
+
+Bool delay;}}}\smaller{
+
+
+\bold{widgetid}: widget containing the element to be modified.
+
+\bold{number:} number of the item to be modified
+
+\bold{item_text}: pointer on an ItemTextDecoration structure correctly filled.
+
+\bold{delay}: bool value deciding whether the widget's refreshing must take 
+place now (False) or later (True).
+
+
+Let's look at the ItemTextDecoration structure in a little more detail. This 
+structure is somewhat like the WidgetTextDecoration structure for widgets. 
+Here is its composition:
+
+
+typedef struct \{
+
+		unsigned long mask;
+
+		char *text;
+
+		XFontStruct *font;
+
+		unsigned int key;
+
+		\} ItemTextDecoration;
+
+
+\bold{mask}: composition in logical ORs of the following values:
+
+
+	#define STText		1	#define STFont		2
+
+	#define STKey		4
+
+
+each value corresponds to a field in the structure.
+
+
+\bold{text}: chain of caracters to be displayed in the widget. This field is 
+selected with the value STText.
+
+\bold{font}: default font for the widget's display. This field is selected 
+with STFont.
+
+\bold{key}: key shifting the focus to the widget. This option is not valid 
+right now.} \smaller{The field is selected with STKey.
+
+
+To get the text of an item, you must use the follwing function:}
+
+\smaller{
+\typewriter{\smaller{int wid_GetText(tk_display,widgetid,text)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+unsigned char **text;}}
+
+
+It allocates memory and copies the chain of caracters in text. Once you don't 
+need it anymore, you can call free to free memory space.
+
+
+
+\bold{9.3.2  Pixmap and bitmap}
+
+
+
+In the same manner, you can act on the image that can appear in the item with 
+the following function:
+
+
+\typewriter{\smaller{int 
+item_SetPixmapDecoration(tk_display,widgetid,number,item_pixmap,delay)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+int number;
+
+ItemPixmapDecoration *item_pixmap;
+
+Bool delay;}}
+
+
+\bold{widgetid}: widget containing the item to be modified.}
+
+\smaller{\bold{number}: number of the item to be modified.
+
+\bold{item_pixmap}: pointer on an ItemPixmapDecoration structure correctly 
+filled.
+
+\bold{delay}: bool value deciding whether the widget's refreshing must take 
+place now (False) or later (True).
+
+
+ItemPixmapDecoration is to items what WidgetPixmapDecoration is to widgets. 
+They function exactly in the same way:
+
+
+typedef struct \{
+
+		unsigned long mask;
+
+		Pixmap pixmap, pixmap_mask;
+
+		unsigned int depth;
+
+		unsigned int width, height;
+
+		\} ItemPixmapDecoration;
+
+
+\bold{mask}: composition in logical ORs of the following  values:
+
+
+	#define SPPixmap		1
+
+	#define SPPixmapMask		2
+
+	#define SPDepth		4
+
+	#define SPWidth		64
+
+	#define SPHeight		128
+
+
+\bold{pixmap}: pixmap to be displayed.
+
+\bold{pixmap_mask}: pixmap's mask. It's is necessarily a pixmap of depth 1.
+
+\bold{depth}: pixmap's depth.
+
+\bold{width, height}: pixmap's width and height.
+
+
+
+\bold{9.3.3  Precedency of components
+
+}
+
+There must be a precedency between the chain of caracters and the pixmap. By 
+default, the text is drawn first, then on its right appears the} 
+\smaller{image, if there is one.
+
+If you wish to reverse this order, you can define a precedency with 
+\italic{item_SetPrecedency} :
+
+
+\typewriter{\smaller{int 
+item_SetPrecedency(tk_display,widgetid,number,precedency,delay)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+int number;
+
+unsigned int precedency;
+
+Bool delay;}}
+
+
+\bold{number}: number of the element to be modified.}
+
+\smaller{\bold{precedency}: either TextFlag, or PixmapFlag.
+
+\bold{delay:} bool value deciding whether the widget's refreshing must take 
+place now (False) or later (True).
+
+
+
+\bold{9.3.4  Obtaining an item's composition
+
+}
+
+To obtain all the information about an element, call this function:
+
+
+\typewriter{\smaller{int wid_GetItem(tk_display,widgetid,number,widgetitem)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+unsigned int number;
+
+WidgetItem *widgetitem;	/* RETURN */
+
+}}
+
+\bold{widgetid}: identifcator of the widget containing the desired item.
+
+\bold{number}: item's number
+
+\bold{widgetitem:} pointer on a WidgetItem type of structure that the function 
+will fill:
+
+
+typedef struct\{
+
+	int flags;				/* Reserved */
+
+	int precedency;				/* Components precedency */
+
+	int type;					/* Type of the item */
+
+	int state;				/* Current state */
+
+	int number;				/* Current position in the list of items  */
+
+	MenuID submenu;			/* Sub-menu (for menus) */
+
+	int x, y, width, height;			/* Unused */
+
+	char *text;				/* String */
+
+	int key;					/* Unused */
+
+	XFontStruct *font;			/* Font for text drawing */
+
+	Pixmap pixmap, pix_mask;		/* Pixmap and its mask */
+
+	Pixmap pix_grayed, pix_maskgrayed;	/* Unused */
+
+	int pix_width, pix_height, pix_depth;	/* Dimensions of the pixmap */
+
+	Bool selected;				/* Is the item selected ? */
+
+	\}WidgetItem;
+
+
+
+
+\bold{\bigger{9.4  Changing states}}
+
+
+
+Items can have numerous different states at the same time: grayed, selected, 
+normal, etc. To modify this attribute, one and only one function is available:
+
+
+\typewriter{\smaller{int 
+item_SetState(tk_display,widgetid,number,state,selected)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+int number;
+
+unsigned int state;
+
+Bool selected;}}
+
+
+\bold{widgetid}: identificator of the widget containing the desired item.
+
+\bold{number}: item's number.
+
+\bold{state}: item's state. It's a composition of the following values:
+
+}\smaller{
+	#define Ungrayed	0
+
+	#define Unchecked	0
+
+	#define Grayed          	2
+
+	#define Checked		8
+
+
+\bold{selected}: the item is selected if selected=True, otherwise it is 
+deselected with False.
+
+
+To know your item's state, the inverse function is the following:
+
+}\smaller{
+\typewriter{\smaller{int 
+item_GetState(tk_display,widgetid,number,state,selected)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+int number;
+
+unsigned int *state;		/* RETURN */
+
+int *selected;		/* RETURN */}}
+
+
+Sometimes several elements are selected together (it's the case for multiple 
+selection lists). If you wish to know the selected items' number, you can use 
+the \italic{wid_GetSelectedItems} function:
+
+
+\typewriter{\smaller{int 
+wid_GetSelectedItems(tk_display,widgetid,indexes,numitems)
+
+TkDisplay *tk_display;
+
+WidgetID widgetid;
+
+unsigned int **indexes;		/* RETURN */
+
+int *numitems;			/* RETURN */}}
+
+
+\bold{widgtetid}: identificator of the widget containing the desired item.
+
+\bold{indexes}: pointer on a table containing the selected items' numbers. You 
+can} \smaller{free this table after using it with the free function.}
+
+\smaller{\bold{numitems}: number of items selected returned in the table.
+
+\begindata{bp,894336}
+\enddata{bp,894336}
+\view{bpv,894336,9,0,0}
+\bold{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\bigger{\
+\bigger{\flushright{10
+
+Managing events
+
+}}}}}}}}}}}}
+
+
+
+Event programming is the basis of X. It is therefore normal that Iman's 
+toolkit should function on the same principles.
+
+
+
+
+\bold{\bigger{10.1  Reading events
+
+}}
+Iman's development kit only has one function to get widgets and windows' 
+events. This can be a drawback for programs necessitating Xlib calls other 
+than \italic{XGetNextEvent}. The function to be called then is 
+\italic{tk_GetWidgetEvents}:
+
+
+\typewriter{\smaller{int tk_GetWidgetEvents(tk_display,tk_event,dont_wait)
+
+TkDisplay *tk_display;
+
+TkEvent *tk_event;
+
+Bool dont_wait;}}
+
+
+\bold{tk_display}: server to which the application is connected.
+
+\bold{tk_event}: pointer on a TkEvent type of structure that the function will 
+fill.
+
+\bold{dont_wait}: if True, the function returns immediately, otherwise it 
+waits for an event to occur.
+
+
+If an event occurred, the function returns 1, otherwise it returns 0. A} 
+\smaller{negative value means an unknow error.
+
+
+
+
+\bold{\bigger{10.2  TkEvent type of structure
+
+}}}\smaller{
+
+Let's examine the contents of this structure:
+
+
+typedef struct \{
+
+	int ev_type;
+
+	unsigned long ev_widget;
+
+	ButtonID button;
+
+	ScrollbarID scroll;
+
+	EditID   edit;
+
+	ListID   list;
+
+	ComboID  combo;
+
+	MenuID   menu;;
+
+	XEvent event;
+
+	short debug;
+
+	\} TkEvent;
+
+
+\bold{ev_type}: type of event occurred: it is one of the following values:
+
+
+			/******* Types d'evenements *******/
+
+
+#define NO_EVENT    	 	0	/* No event */
+
+#define JUSTFOCUS	 	1	/* ev_widget received the focus */
+
+#define BN_PUSHED  	 	2	/* The button is pushed */ 
+
+#define BN_RELEASED 	3	/* The button is released */
+
+#define BN_MOVED	 	4	/* Reserved */
+
+#define BN_PRESSED	 	5	/* The button was pressed but not pushed (Blocked) */
+
+#define BN_UNPRESSED	6	/* The buton was unpressed but not released (Blocked) 
+*/
+
+#define BN_KEYUNKNOWN	31	/* Unknown key pressed in the button */
+
+#define SB_DOWN		7	/* The scrollbar is pushed down of one unit*/
+
+#define SB_UP		 	8	/* The scrollbar is pushed up of one unit */
+
+#define SB_LEFT		9	/* The scrollbar is pushed left of one unit */
+
+#define SB_RIGHT	 	10	/* The scrollbar is pushed right of one unit */
+
+#define SB_PAGEDOWN	11	/* The scrollbar is pushed down of one page */
+
+#define SB_PAGEUP	 	12	/* The scrollbar is pushed up of one page */
+
+#define SB_PAGELEFT	 	13	/* The scrollbar is pushed left of one unit */
+
+#define SB_PAGERIGHT	14	/* The scrollbar is pushed right of one unit */
+
+#define SB_THUMBMOVED	15	/* The thumb is being moved */
+
+#define SB_STATUS	 	16	/* Every action on the scrollbar is over */
+
+#define ED_VALIDATION	17	/* ENTER was pressed in the edit*/
+
+#define ED_KEYUNKNOWN	18	/* Unknown key pressed in the edit */
+
+#define LS_CLICKED	 	20	/* An item was clicked in the list */
+
+#define LS_RELEASED	 	21	/* Every action in the list is over */
+
+#define LS_DOUBLECLICKED 	22	/* An item was double-clicked */
+
+#define LS_VALIDATION	23	/* ENTER was pressed on an item */
+
+#define LS_KEYUNKNOWN	24	/* Unknown key pressed in the list */
+
+#define CB_VALIDATION	25	/* ENTER was pressed in the combo box */
+
+#define CB_PROPOSITION   	26	/*  ENTER was pressed in the edit zone of the 
+combo box*/
+
+#define CB_KEYUNKNOWN	27	/* Unknown key pressed in the combo box */
+
+#define MN_SELECTED	28	/* An item was selected in the menu */
+
+#define XLIBEVENT	 	50	/* XLIB event that doesn't concern any widget */
+
+
+
+\bold{ev_widget}: class of the widget generating the event:
+
+
+#define  WI_BUTTON		1
+
+#define  WI_SCROLLBAR	2
+
+#define  WI_EDIT		3
+
+#define  WI_LIST		4
+
+#define  WI_COMBO		5
+
+#define  WI_MENU		6
+
+
+
+According to this parameter, the button, list, scroll, edit, combo or menu 
+components contain the identificator of the widget concerned.
+
+
+\bold{event}: Xlib type of event. This structure is filled with the event 
+received if ev_type=XLIBEVENT. If toolkit events concerning the keyboard 
+(BN_KEYUNKNOWN, ED_KEYUNKNOWN, LS_KEYUNKNOWN or CB_KEYUNKNOWN) occur, the 
+event structure is also filled with the Xlib event transmitted.
+
+
+\bold{debug}: reserved for a later version.
+
+
+
+
+\bold{\bigger{10.3  Example 
+
+
+}}}\typewriter{\smaller{\smaller{int ret;
+
+ButtonID B1;
+
+ScrollbarID SB1;
+
+EditID ED1;
+
+TkDisplay *tk_display;
+
+TkEvent tk_event;
+
+
+/* Connection to the X server and creation of the widgets */
+
+...........
+
+
+START :
+
+ret=tk_GetWidgetEvent(tk_display,&tk_event,False);
+
+if (ret==0) goto START;
+
+switch(tk_event.ev_type)
+
+\{
+
+	case BN_PUSHED : 
+
+			if(tk_event.buttonid==B1)
+
+			....................................................
+
+			break;
+
+	
+
+	case ED_VALIDATION : 
+
+			if(tk_event.editid==ED1)
+
+			....................................................
+
+			break;
+
+
+	case XLIBEVENT :
+
+			/* XLIB events handling */
+
+			switch(tk_event.event.type)
+
+			....................................................
+
+			break;		
+
+
+\}
+
+
+}}}\smaller{\bold{\bigger{
+}}}\enddata{text,838784}

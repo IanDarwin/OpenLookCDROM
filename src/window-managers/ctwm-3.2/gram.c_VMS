@@ -1,0 +1,4918 @@
+
+# line 43 "gram.y"
+#include <stdio.h>
+#include <ctype.h>
+#include "twm.h"
+#include "menus.h"
+#include "icons.h"
+#include "list.h"
+#include "util.h"
+#include "screen.h"
+#include "parse.h"
+#ifdef VMS
+#include <decw$include/Xos.h>
+#include <X11Xmu/CharSet.h>
+#else
+#include <X11/Xos.h>
+#include <X11/Xmu/CharSet.h>
+#endif
+
+static char *Action = "";
+static char *Name = "";
+static char *defstring = "default";
+static MenuRoot	*root, *pull = NULL;
+static char *curWorkSpc;
+static char *client, *workspace;
+static MenuItem *lastmenuitem = (MenuItem*) 0;
+
+static MenuRoot *GetRoot();
+
+static Bool CheckWarpScreenArg(), CheckWarpRingArg();
+static Bool CheckColormapArg();
+static void GotButton(), GotKey(), GotTitleButton();
+static char *ptr;
+static name_list **list;
+static int cont = 0;
+static int color;
+int mods = 0;
+unsigned int mods_used = (ShiftMask | ControlMask | Mod1Mask);
+
+extern int do_single_keyword(), do_string_keyword(), do_number_keyword();
+extern name_list **do_colorlist_keyword();
+extern int do_color_keyword(), do_string_savecolor();
+extern int yylineno;
+
+# line 81 "gram.y"
+typedef union 
+{
+    int num;
+    char *ptr;
+} YYSTYPE;
+#ifdef __cplusplus
+#  include <stdio.h>
+   extern "C" {
+     extern void yyerror(char *);
+     extern int yylex();
+   }
+#endif	/* __cplusplus */ 
+# define LB 257
+# define RB 258
+# define LP 259
+# define RP 260
+# define MENUS 261
+# define MENU 262
+# define BUTTON 263
+# define DEFAULT_FUNCTION 264
+# define PLUS 265
+# define MINUS 266
+# define ALL 267
+# define OR 268
+# define CURSORS 269
+# define PIXMAPS 270
+# define ICONS 271
+# define COLOR 272
+# define SAVECOLOR 273
+# define MONOCHROME 274
+# define FUNCTION 275
+# define ICONMGR_SHOW 276
+# define ICONMGR 277
+# define WINDOW_FUNCTION 278
+# define ZOOM 279
+# define ICONMGRS 280
+# define ICONMGR_GEOMETRY 281
+# define ICONMGR_NOSHOW 282
+# define MAKE_TITLE 283
+# define ICONIFY_BY_UNMAPPING 284
+# define DONT_ICONIFY_BY_UNMAPPING 285
+# define NO_BORDER 286
+# define NO_ICON_TITLE 287
+# define NO_TITLE 288
+# define AUTO_RAISE 289
+# define NO_HILITE 290
+# define ICON_REGION 291
+# define META 292
+# define SHIFT 293
+# define LOCK 294
+# define CONTROL 295
+# define WINDOW 296
+# define TITLE 297
+# define ICON 298
+# define ROOT 299
+# define FRAME 300
+# define COLON 301
+# define EQUALS 302
+# define SQUEEZE_TITLE 303
+# define DONT_SQUEEZE_TITLE 304
+# define START_ICONIFIED 305
+# define NO_TITLE_HILITE 306
+# define TITLE_HILITE 307
+# define MOVE 308
+# define RESIZE 309
+# define WAITC 310
+# define SELECT 311
+# define KILL 312
+# define LEFT_TITLEBUTTON 313
+# define RIGHT_TITLEBUTTON 314
+# define NUMBER 315
+# define KEYWORD 316
+# define NKEYWORD 317
+# define CKEYWORD 318
+# define CLKEYWORD 319
+# define FKEYWORD 320
+# define FSKEYWORD 321
+# define SKEYWORD 322
+# define DKEYWORD 323
+# define JKEYWORD 324
+# define WINDOW_RING 325
+# define WARP_CURSOR 326
+# define ERRORTOKEN 327
+# define NO_STACKMODE 328
+# define WORKSPACE 329
+# define WORKSPACES 330
+# define WORKSPCMGR_GEOMETRY 331
+# define OCCUPYALL 332
+# define OCCUPYLIST 333
+# define MAPWINDOWCURRENTWORKSPACE 334
+# define MAPWINDOWDEFAULTWORKSPACE 335
+# define OPAQUEMOVE 336
+# define NOOPAQUEMOVE 337
+# define OPAQUERESIZE 338
+# define NOOPAQUERESIZE 339
+# define CHANGE_WORKSPACE_FUNCTION 340
+# define DEICONIFY_FUNCTION 341
+# define ICONIFY_FUNCTION 342
+# define STRING 343
+#define yyclearin yychar = -1
+#define yyerrok yyerrflag = 0
+extern int yychar;
+#ifndef YYMAXDEPTH
+#define YYMAXDEPTH 150
+#endif
+
+/* __YYSCLASS defines the scoping/storage class for global objects
+ * that are NOT renamed by the -p option.  By default these names
+ * are going to be 'static' so that multi-definition errors
+ * will not occur with multiple parsers.
+ * If you want (unsupported) access to internal names you need
+ * to define this to be null so it implies 'extern' scope.
+ * This should not be used in conjunction with -p.
+ */
+#ifndef __YYSCLASS
+# define __YYSCLASS static
+#endif
+YYSTYPE yylval;
+__YYSCLASS YYSTYPE yyval;
+typedef int yytabelem;
+# define YYERRCODE 256
+
+# line 830 "gram.y"
+
+yyerror(s) char *s;
+{
+    twmrc_error_prefix();
+    fprintf (stderr, "error in input file:  %s\n", s ? s : "");
+    ParseError = 1;
+}
+RemoveDQuote(str)
+char *str;
+{
+    register char *i, *o;
+    register n;
+    register count;
+
+    for (i=str+1, o=str; *i && *i != '\"'; o++)
+    {
+	if (*i == '\\')
+	{
+	    switch (*++i)
+	    {
+	    case 'n':
+		*o = '\n';
+		i++;
+		break;
+	    case 'b':
+		*o = '\b';
+		i++;
+		break;
+	    case 'r':
+		*o = '\r';
+		i++;
+		break;
+	    case 't':
+		*o = '\t';
+		i++;
+		break;
+	    case 'f':
+		*o = '\f';
+		i++;
+		break;
+	    case '0':
+		if (*++i == 'x')
+		    goto hex;
+		else
+		    --i;
+	    case '1': case '2': case '3':
+	    case '4': case '5': case '6': case '7':
+		n = 0;
+		count = 0;
+		while (*i >= '0' && *i <= '7' && count < 3)
+		{
+		    n = (n<<3) + (*i++ - '0');
+		    count++;
+		}
+		*o = n;
+		break;
+	    hex:
+	    case 'x':
+		n = 0;
+		count = 0;
+		while (i++, count++ < 2)
+		{
+		    if (*i >= '0' && *i <= '9')
+			n = (n<<4) + (*i - '0');
+		    else if (*i >= 'a' && *i <= 'f')
+			n = (n<<4) + (*i - 'a') + 10;
+		    else if (*i >= 'A' && *i <= 'F')
+			n = (n<<4) + (*i - 'A') + 10;
+		    else
+			break;
+		}
+		*o = n;
+		break;
+	    case '\n':
+		i++;	/* punt */
+		o--;	/* to account for o++ at end of loop */
+		break;
+	    case '\"':
+	    case '\'':
+	    case '\\':
+	    default:
+		*o = *i++;
+		break;
+	    }
+	}
+	else
+	    *o = *i++;
+    }
+    *o = '\0';
+}
+
+static MenuRoot *GetRoot(name, fore, back)
+char *name;
+char *fore, *back;
+{
+    MenuRoot *tmp;
+
+    tmp = FindMenuRoot(name);
+    if (tmp == NULL)
+	tmp = NewMenuRoot(name);
+
+    if (fore)
+    {
+	int save;
+
+	save = Scr->FirstTime;
+	Scr->FirstTime = TRUE;
+	GetColor(COLOR, &tmp->highlight.fore, fore);
+	GetColor(COLOR, &tmp->highlight.back, back);
+	Scr->FirstTime = save;
+    }
+
+    return tmp;
+}
+
+static void GotButton (butt, func)
+int butt, func;
+{
+    int i;
+    MenuRoot *menu;
+    MenuItem *item;
+
+    for (i = 0; i < NUM_CONTEXTS; i++) {
+	if ((cont & (1 << i)) == 0) continue;
+
+	if (func == F_MENU) {
+	    pull->prev = NULL;
+	    AddFuncButton (butt, i, mods, func, pull, (MenuItem*) 0);
+	}
+	else {
+	    root = GetRoot (TWM_ROOT, NULLSTR, NULLSTR);
+	    item = AddToMenu (root, "x", Action, NULLSTR, func, NULLSTR, NULLSTR);
+	    AddFuncButton (butt, i, mods, func, (MenuRoot*) 0, item);
+	}
+    }
+
+    Action = "";
+    pull = NULL;
+    cont = 0;
+    mods_used |= mods;
+    mods = 0;
+}
+
+static void GotKey(key, func)
+char *key;
+int func;
+{
+    int i;
+
+    for (i = 0; i < NUM_CONTEXTS; i++)
+    {
+	if ((cont & (1 << i)) == 0) 
+	  continue;
+	if (!AddFuncKey(key, i, mods, func, Name, Action)) 
+	  break;
+    }
+
+    Action = "";
+    pull = NULL;
+    cont = 0;
+    mods_used |= mods;
+    mods = 0;
+}
+
+
+static void GotTitleButton (bitmapname, func, rightside)
+    char *bitmapname;
+    int func;
+    Bool rightside;
+{
+    if (!CreateTitleButton (bitmapname, func, Action, pull, rightside, True)) {
+	twmrc_error_prefix();
+	fprintf (stderr, 
+		 "unable to create %s titlebutton \"%s\"\n",
+		 rightside ? "right" : "left", bitmapname);
+    }
+    Action = "";
+    pull = NULL;
+}
+
+static Bool CheckWarpScreenArg (s)
+    register char *s;
+{
+    XmuCopyISOLatin1Lowered (s, s);
+
+    if (strcmp (s,  WARPSCREEN_NEXT) == 0 ||
+	strcmp (s,  WARPSCREEN_PREV) == 0 ||
+	strcmp (s,  WARPSCREEN_BACK) == 0)
+      return True;
+
+    for (; *s && isascii(*s) && isdigit(*s); s++) ; /* SUPPRESS 530 */
+    return (*s ? False : True);
+}
+
+
+static Bool CheckWarpRingArg (s)
+    register char *s;
+{
+    XmuCopyISOLatin1Lowered (s, s);
+
+    if (strcmp (s,  WARPSCREEN_NEXT) == 0 ||
+	strcmp (s,  WARPSCREEN_PREV) == 0)
+      return True;
+
+    return False;
+}
+
+
+static Bool CheckColormapArg (s)
+    register char *s;
+{
+    XmuCopyISOLatin1Lowered (s, s);
+
+    if (strcmp (s, COLORMAP_NEXT) == 0 ||
+	strcmp (s, COLORMAP_PREV) == 0 ||
+	strcmp (s, COLORMAP_DEFAULT) == 0)
+      return True;
+
+    return False;
+}
+
+
+twmrc_error_prefix ()
+{
+    fprintf (stderr, "%s:  line %d:  ", ProgramName, yylineno);
+}
+__YYSCLASS yytabelem yyexca[] ={
+-1, 1,
+	0, -1,
+	-2, 0,
+-1, 2,
+	0, 1,
+	-2, 0,
+-1, 17,
+	257, 24,
+	-2, 26,
+-1, 18,
+	257, 27,
+	-2, 29,
+-1, 19,
+	257, 30,
+	-2, 32,
+-1, 20,
+	257, 33,
+	-2, 35,
+-1, 21,
+	257, 36,
+	-2, 38,
+-1, 30,
+	257, 53,
+	-2, 55,
+-1, 33,
+	257, 60,
+	-2, 62,
+-1, 34,
+	257, 63,
+	-2, 65,
+-1, 35,
+	257, 66,
+	-2, 68,
+-1, 37,
+	257, 71,
+	-2, 73,
+-1, 38,
+	257, 74,
+	-2, 76,
+-1, 41,
+	257, 81,
+	-2, 83,
+-1, 53,
+	257, 103,
+	-2, 105,
+-1, 54,
+	257, 106,
+	-2, 108,
+-1, 58,
+	257, 192,
+	-2, 191,
+-1, 59,
+	257, 195,
+	-2, 194,
+-1, 242,
+	257, 208,
+	-2, 207,
+-1, 267,
+	257, 10,
+	-2, 9,
+-1, 319,
+	257, 179,
+	-2, 178,
+	};
+# define YYNPROD 268
+# define YYLAST 654
+__YYSCLASS yytabelem yyact[]={
+
+    25,   209,    61,   331,   321,    68,   339,   175,    85,   122,
+    62,    63,    64,    83,    84,    68,   376,   178,   138,   372,
+   137,   364,    87,    78,    79,    80,    83,    84,   369,   303,
+   304,   243,   361,    61,   325,   323,   251,   161,   312,   301,
+   313,   270,   380,   104,   105,   337,   261,   268,   347,    61,
+   265,   346,   254,   210,   302,   357,   352,   117,   296,   297,
+   298,   299,   300,   294,     4,   252,   180,    83,    84,   246,
+    42,    60,    48,   316,   248,   240,   332,    16,    15,    44,
+    45,    46,    47,    43,    32,   139,    49,    14,    31,    10,
+    30,    39,    17,    26,    36,    37,    38,    41,    34,     9,
+    67,    61,   247,    81,    61,    61,    61,   264,   315,   132,
+   330,    58,    59,    40,    33,   234,    61,    61,   220,    61,
+    61,    22,    23,    61,    55,    57,    61,   176,   218,   177,
+    56,    61,    61,    54,    53,    61,    35,    61,    27,    11,
+    28,    29,    12,    13,    18,    19,    20,    21,    50,    51,
+    52,    61,   110,   111,   112,   113,   114,   212,   118,    61,
+    61,   121,   208,   173,   123,   124,   167,   169,   343,   344,
+    83,    84,   203,   165,   166,   257,   150,   219,   221,   147,
+   144,   222,   128,   126,   223,   224,   225,   226,   227,   228,
+   229,   230,   231,   232,   233,   236,   199,   200,   201,   202,
+    61,    72,    70,    61,   253,   204,   242,   245,   250,   140,
+   255,   213,   373,    61,   256,   367,   263,   266,    68,   365,
+   269,   349,   271,   351,   272,   273,   274,   275,   276,   277,
+   278,   279,   280,   281,   282,   260,   259,   334,   203,   181,
+   305,   195,   196,   191,   187,   333,   307,   308,   309,   244,
+   206,   310,   311,   314,   235,   194,   362,   318,   186,   348,
+   319,   320,   199,   200,   201,   202,   329,   306,   241,   205,
+   324,   197,   326,   292,   293,   249,   217,   207,   184,   185,
+   120,   183,   216,   290,   170,   119,   377,   370,   262,   188,
+   189,   190,   192,   193,   215,   356,   340,   141,   291,   258,
+   238,   214,   285,   286,   287,   288,   289,   283,   182,   130,
+   179,   336,   129,   295,   284,   198,   239,   237,   267,   116,
+   115,   109,   168,   108,   107,   164,   106,   211,   163,   162,
+   131,   354,   103,   102,   101,   100,    99,   350,    98,    97,
+   355,    96,    95,    94,   149,    93,    92,   146,    91,   363,
+   366,    90,   143,    89,    88,    77,   368,   317,    76,    75,
+    74,    73,    71,    69,   371,   127,    66,   125,   374,    65,
+   375,   378,   379,   322,     8,     7,     6,     5,     3,   381,
+   382,     2,     1,   384,    86,    82,   341,   327,    24,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,   328,     0,
+     0,     0,     0,     0,     0,   133,   134,   135,   136,     0,
+     0,   335,     0,     0,     0,     0,     0,     0,   338,   142,
+     0,   145,   342,   148,     0,   151,   152,   153,   154,   155,
+   156,   157,   158,   159,   160,     0,     0,   353,     0,     0,
+     0,     0,   358,     0,   359,   360,   171,   172,     0,     0,
+     0,   174,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,   383,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,   345 };
+__YYSCLASS yytabelem yypact[]={
+
+ -3000, -3000,  -192, -3000, -3000, -3000, -3000, -3000, -3000,  -341,
+  -341,  -341, -3000, -3000,  -300,   -55,   -56, -3000, -3000, -3000,
+ -3000, -3000,  -341,  -341,  -294,  -280, -3000, -3000, -3000, -3000,
+ -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000,
+ -3000, -3000,  -341,  -341, -3000, -3000, -3000, -3000,  -307,  -307,
+  -307,  -307,  -307, -3000, -3000, -3000,  -341,  -300, -3000, -3000,
+  -300, -3000,  -314,  -300,  -300,   -74,   -75, -3000, -3000, -3000,
+ -3000, -3000, -3000,  -148,  -148,  -148,  -148,  -148,  -282,  -284,
+ -3000, -3000, -3000, -3000,  -341, -3000, -3000, -3000,  -148,   -77,
+  -148,   -78,  -148,   -81,  -148,  -148,  -148,  -148,  -148,  -148,
+  -148,  -148,  -148,  -148,  -222, -3000,   -84,   -91,   -90,   -91,
+ -3000, -3000, -3000, -3000, -3000,  -148,  -148, -3000, -3000,   -94,
+  -148, -3000,  -316, -3000, -3000, -3000,  -341, -3000,  -341,  -241,
+   -19, -3000, -3000, -3000, -3000, -3000, -3000,  -307,  -307, -3000,
+   -30,   -96, -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000,
+ -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000,
+ -3000,  -341,  -204,  -100, -3000, -3000, -3000, -3000, -3000, -3000,
+ -3000, -3000, -3000, -3000, -3000,  -300,  -130,  -140, -3000, -3000,
+  -341, -3000, -3000,  -341,  -341,  -341,  -341,  -341,  -341,  -341,
+  -341,  -341,  -341,  -341,  -143, -3000, -3000, -3000, -3000,  -300,
+ -3000, -3000, -3000, -3000, -3000,  -183,  -227,  -184,  -265, -3000,
+ -3000, -3000, -3000,  -206,   -83,  -212,  -208,  -300, -3000,  -211,
+ -3000,  -217, -3000,  -341,  -341,  -341,  -341,  -341,  -341,  -341,
+  -341,  -341,  -341,  -341, -3000, -3000, -3000,     6, -3000,  -238,
+ -3000, -3000, -3000, -3000, -3000, -3000,  -341,  -341, -3000, -3000,
+  -341,  -341,  -220,  -150, -3000, -3000,  -341, -3000, -3000,  -341,
+  -341, -3000, -3000, -3000, -3000, -3000,  -320, -3000, -3000,  -223,
+ -3000,  -224, -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000,
+ -3000, -3000, -3000,  -307, -3000, -3000, -3000, -3000, -3000, -3000,
+ -3000, -3000, -3000, -3000,  -307, -3000, -3000, -3000, -3000, -3000,
+ -3000, -3000, -3000, -3000, -3000, -3000,  -147,  -181, -3000, -3000,
+  -310,  -215, -3000, -3000,  -253, -3000, -3000, -3000, -3000, -3000,
+ -3000,   -97,  -148, -3000,  -207, -3000,  -210, -3000, -3000, -3000,
+ -3000, -3000, -3000,  -181,  -201, -3000,  -300, -3000, -3000,  -341,
+  -202,  -300, -3000,  -300,  -300, -3000, -3000, -3000,  -226,  -237,
+ -3000, -3000, -3000, -3000,  -204,  -273, -3000, -3000, -3000, -3000,
+ -3000, -3000, -3000,  -341, -3000, -3000, -3000,  -239, -3000,  -341,
+  -242,  -341, -3000, -3000, -3000,  -218, -3000, -3000,  -341,  -341,
+  -307, -3000,  -341, -3000, -3000 };
+__YYSCLASS yytabelem yypgo[]={
+
+     0,     0,   103,   388,   100,   386,   385,   384,   382,   381,
+   378,   377,   376,   375,   374,   373,   330,   369,   367,   366,
+   365,   363,   362,   361,   360,   359,   358,   355,   354,   353,
+   352,   351,   348,   347,   346,   345,   344,   343,   342,   341,
+   339,   338,   336,   335,   334,   333,   332,   331,     1,   329,
+   328,   327,   326,   325,   324,   174,   323,   322,   321,   320,
+   319,   209,   317,   316,   315,   314,   313,   312,   310,   309,
+   308,   301,   299,   296,   295,   294,   288,   287,   286,   285,
+   282,   280,   277,   275,   269,   268,   267,   266,   259,   256,
+   255,   254,   250,   249,   246,     3,   245,   237,   223,   221,
+   219,   215,   212,   211,   210,   204,    73,    65,    40 };
+__YYSCLASS yytabelem yyr1[]={
+
+     0,     8,     9,     9,    10,    10,    10,    10,    10,    10,
+    15,    10,    10,    10,    10,    10,    17,    10,    19,    10,
+    10,    10,    10,    10,    23,    10,    10,    24,    10,    10,
+    25,    10,    10,    26,    10,    10,    27,    10,    10,    10,
+    10,    10,    10,    10,    10,    28,    10,    29,    10,    31,
+    10,    32,    10,    34,    10,    10,    35,    10,    37,    10,
+    38,    10,    10,    39,    10,    10,    40,    10,    10,    41,
+    10,    42,    10,    10,    43,    10,    10,    44,    10,    45,
+    10,    46,    10,    10,    47,    10,    49,    10,    50,    10,
+    52,    10,    54,    10,    56,    10,    58,    10,    10,    10,
+    10,    10,    10,    59,    10,    10,    60,    10,    10,    11,
+    12,    12,    13,     6,     7,    61,    61,    64,    64,    64,
+    64,    64,    64,    62,    62,    65,    65,    65,    65,    65,
+    65,    65,    65,    65,    63,    63,    66,    66,    66,    66,
+    66,    66,    66,    66,    66,    66,    21,    67,    67,    68,
+    22,    69,    69,    70,    70,    70,    70,    70,    70,    70,
+    70,    70,    70,    70,    70,    70,    70,    70,    70,    70,
+    70,    70,    70,    70,    70,    55,    71,    71,    72,    73,
+    72,    72,    57,    75,    75,    76,    76,    74,    77,    77,
+    78,    14,    79,    14,    14,    81,    14,    80,    80,    36,
+    82,    82,    83,    83,    30,    84,    84,    85,    86,    85,
+    87,    88,    88,    89,    89,    89,    89,    89,    18,    18,
+    18,    18,    20,    20,    20,    20,    16,    90,    90,    91,
+    33,    92,    92,    94,    93,    96,    93,    97,    93,    95,
+    99,    99,   100,    98,   101,   101,   102,    53,   103,   103,
+   104,    51,   105,   105,   106,    48,   107,   107,   108,   108,
+     2,     2,     5,     5,     5,     3,     1,     4 };
+__YYSCLASS yytabelem yyr2[]={
+
+     0,     2,     0,     4,     2,     2,     2,     2,     2,    13,
+     1,    16,     7,     5,     7,     5,     1,     6,     1,     6,
+     5,     3,     5,     5,     1,     6,     3,     1,     6,     3,
+     1,     6,     3,     1,     6,     3,     1,     6,     3,     9,
+     9,     5,     5,     5,     5,     1,     6,     1,     6,     1,
+     6,     1,     6,     1,     6,     3,     1,     6,     1,     6,
+     1,     6,     3,     1,     6,     3,     1,     6,     3,     1,
+     6,     1,     6,     3,     1,     6,     3,     1,     6,     1,
+     6,     1,     6,     3,     1,    19,     1,     9,     1,     8,
+     1,     6,     1,     6,     1,     6,     1,     6,     5,     5,
+     5,     5,     5,     1,     6,     3,     1,     6,     3,     3,
+     5,     3,     5,    13,    13,     0,     4,     3,     3,     3,
+     3,     5,     3,     0,     4,     3,     3,     3,     3,     3,
+     3,     3,     3,     3,     0,     4,     3,     3,     3,     3,
+     3,     3,     3,     3,     3,     3,     7,     0,     4,     5,
+     7,     0,     4,     7,     5,     7,     5,     7,     5,     7,
+     5,     7,     5,     7,     5,     7,     5,     7,     5,     7,
+     5,     7,     5,     7,     5,     7,     0,     4,     5,     1,
+     8,     5,     7,     0,     4,     3,     3,     7,     0,     4,
+     5,     3,     1,    10,     3,     1,     6,     0,    11,     7,
+     0,     4,     7,     9,     7,     0,     4,     3,     1,     6,
+     7,     0,     4,     3,     5,     7,     9,    11,     7,     9,
+    11,    13,     7,     9,    11,    13,     7,     0,     4,     3,
+     7,     0,     4,     1,     6,     1,     8,     1,     8,     7,
+     0,     4,     3,     7,     0,     4,     3,     7,     0,     4,
+     5,     7,     0,     4,     3,     7,     0,     4,     5,    15,
+     3,     5,     3,     5,     5,     5,     3,     3 };
+__YYSCLASS yytabelem yychk[]={
+
+ -3000,    -8,    -9,   -10,   256,   -11,   -12,   -13,   -14,   291,
+   281,   331,   334,   335,   279,   270,   269,   284,   336,   337,
+   338,   339,   313,   314,    -3,    -1,   285,   330,   332,   333,
+   282,   280,   276,   306,   290,   328,   286,   287,   288,   283,
+   305,   289,   262,   275,   271,   272,   273,   274,   264,   278,
+   340,   341,   342,   326,   325,   316,   322,   317,   303,   304,
+   263,   343,    -1,    -1,    -1,   -17,   -19,    -4,   315,   -21,
+   257,   -22,   257,   -23,   -24,   -25,   -26,   -27,    -1,    -1,
+    -1,    -2,    -6,   320,   321,   302,    -7,   302,   -28,   -29,
+   -31,   -32,   -34,   -35,   -37,   -38,   -39,   -40,   -41,   -42,
+   -43,   -44,   -45,   -46,    -1,    -1,   -52,   -54,   -56,   -58,
+    -2,    -2,    -2,    -2,    -2,   -59,   -60,    -1,    -4,   -79,
+   -81,    -4,   323,    -4,    -4,   -18,   257,   -20,   257,   -67,
+   -69,   -16,   257,   -16,   -16,   -16,   -16,   302,   302,    -1,
+   -61,   -61,   -16,   -30,   257,   -16,   -33,   257,   -16,   -36,
+   257,   -16,   -16,   -16,   -16,   -16,   -16,   -16,   -16,   -16,
+   -16,   259,   -49,   -50,   -53,   257,   -55,   257,   -57,   257,
+   -55,   -16,   -16,   257,   -16,   323,    -1,    -1,   258,   -68,
+   307,   258,   -70,   300,   297,   298,   277,   263,   308,   309,
+   310,   262,   311,   312,   -90,    -2,    -2,   301,   -64,   292,
+   293,   294,   295,   268,   301,   -84,   -92,   -82,    -1,   -48,
+   257,   -51,   257,  -103,   -71,   -75,   -80,    -4,   258,    -1,
+   258,    -1,    -1,    -1,    -1,    -1,    -1,    -1,    -1,    -1,
+    -1,    -1,    -1,    -1,   258,   -91,    -1,   -62,    -4,   -63,
+   258,   -85,    -1,   258,   -93,    -1,   296,   329,   258,   -83,
+    -1,   301,  -107,  -105,   258,  -104,    -1,   258,   -72,   319,
+   318,   258,   -76,    -1,   319,   258,    -1,    -4,   258,    -1,
+   258,    -1,    -1,    -1,    -1,    -1,    -1,    -1,    -1,    -1,
+    -1,    -1,    -1,   301,   -65,   296,   297,   298,   299,   300,
+   277,   292,   267,   268,   301,   -66,   296,   297,   298,   299,
+   300,   277,   292,   267,   268,    -1,   -86,   -94,    -1,    -1,
+    -1,    -1,   258,  -108,    -1,   258,  -106,    -2,    -1,    -1,
+    -1,   324,   -15,   258,    -1,   258,    -1,    -2,    -2,   -87,
+   257,   -95,   257,   -96,   -97,    -4,    -1,   260,    -2,   259,
+   -73,    -5,    -4,   265,   266,   -16,   258,   258,   -88,   -99,
+   -95,   -98,   257,    -4,   -47,    -1,   -74,   257,    -4,    -4,
+    -4,   258,   -89,    -1,   258,  -100,    -1,  -101,   -48,   301,
+   -77,    -1,   258,  -102,    -1,    -1,   258,   -78,    -1,    -1,
+   260,    -1,    -1,    -2,    -1 };
+__YYSCLASS yytabelem yydef[]={
+
+     2,    -2,    -2,     3,     4,     5,     6,     7,     8,     0,
+     0,     0,    16,    18,    21,     0,     0,    -2,    -2,    -2,
+    -2,    -2,     0,     0,     0,     0,    45,    47,    49,    51,
+    -2,    56,    58,    -2,    -2,    -2,    69,    -2,    -2,    77,
+    79,    -2,     0,     0,    90,    92,    94,    96,     0,     0,
+     0,     0,     0,    -2,    -2,   109,   111,     0,    -2,    -2,
+     0,   266,     0,    13,    15,     0,     0,    20,   267,    22,
+   147,    23,   151,     0,     0,     0,     0,     0,     0,     0,
+    41,    42,    44,   260,     0,   115,    43,   115,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,    86,    88,     0,     0,     0,     0,
+    98,    99,   100,   101,   102,     0,     0,   110,   112,     0,
+     0,   265,     0,    12,    14,    17,     0,    19,     0,     0,
+     0,    25,   227,    28,    31,    34,    37,     0,     0,   261,
+     0,     0,    46,    48,   205,    50,    52,   231,    54,    57,
+   200,    59,    61,    64,    67,    70,    72,    75,    78,    80,
+    82,     0,     0,     0,    91,   248,    93,   176,    95,   183,
+    97,   104,   107,   197,   196,     0,     0,     0,   146,   148,
+     0,   150,   152,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,    39,    40,   123,   116,   117,
+   118,   119,   120,   122,   134,     0,     0,     0,     0,    87,
+   256,    89,   252,     0,     0,     0,     0,     0,   218,     0,
+   222,     0,   149,   154,   156,   158,   160,   162,   164,   166,
+   168,   170,   172,   174,   226,   228,   229,     0,   121,     0,
+   204,   206,    -2,   230,   232,   233,     0,     0,   199,   201,
+     0,     0,     0,     0,   247,   249,     0,   175,   177,     0,
+     0,   182,   184,   185,   186,   193,     0,    -2,   219,     0,
+   223,     0,   153,   155,   157,   159,   161,   163,   165,   167,
+   169,   171,   173,     0,   124,   125,   126,   127,   128,   129,
+   130,   131,   132,   133,     0,   135,   136,   137,   138,   139,
+   140,   141,   142,   143,   144,   145,     0,     0,   235,   237,
+     0,     0,   255,   257,     0,   251,   253,   254,   250,    -2,
+   181,     0,     0,   220,     0,   224,     0,   113,   114,   209,
+   211,   234,   240,     0,     0,   202,     0,    84,   258,     0,
+     0,     0,   262,     0,     0,    11,   221,   225,     0,     0,
+   236,   238,   244,   203,     0,     0,   180,   188,   198,   263,
+   264,   210,   212,   213,   239,   241,   242,     0,    85,     0,
+     0,   214,   243,   245,   246,     0,   187,   189,     0,   215,
+     0,   190,   216,   259,   217 };
+typedef struct { char *t_name; int t_val; } yytoktype;
+#ifndef YYDEBUG
+#	define YYDEBUG	0	/* don't allow debugging */
+#endif
+
+#if YYDEBUG
+
+__YYSCLASS yytoktype yytoks[] =
+{
+	"LB",	257,
+	"RB",	258,
+	"LP",	259,
+	"RP",	260,
+	"MENUS",	261,
+	"MENU",	262,
+	"BUTTON",	263,
+	"DEFAULT_FUNCTION",	264,
+	"PLUS",	265,
+	"MINUS",	266,
+	"ALL",	267,
+	"OR",	268,
+	"CURSORS",	269,
+	"PIXMAPS",	270,
+	"ICONS",	271,
+	"COLOR",	272,
+	"SAVECOLOR",	273,
+	"MONOCHROME",	274,
+	"FUNCTION",	275,
+	"ICONMGR_SHOW",	276,
+	"ICONMGR",	277,
+	"WINDOW_FUNCTION",	278,
+	"ZOOM",	279,
+	"ICONMGRS",	280,
+	"ICONMGR_GEOMETRY",	281,
+	"ICONMGR_NOSHOW",	282,
+	"MAKE_TITLE",	283,
+	"ICONIFY_BY_UNMAPPING",	284,
+	"DONT_ICONIFY_BY_UNMAPPING",	285,
+	"NO_BORDER",	286,
+	"NO_ICON_TITLE",	287,
+	"NO_TITLE",	288,
+	"AUTO_RAISE",	289,
+	"NO_HILITE",	290,
+	"ICON_REGION",	291,
+	"META",	292,
+	"SHIFT",	293,
+	"LOCK",	294,
+	"CONTROL",	295,
+	"WINDOW",	296,
+	"TITLE",	297,
+	"ICON",	298,
+	"ROOT",	299,
+	"FRAME",	300,
+	"COLON",	301,
+	"EQUALS",	302,
+	"SQUEEZE_TITLE",	303,
+	"DONT_SQUEEZE_TITLE",	304,
+	"START_ICONIFIED",	305,
+	"NO_TITLE_HILITE",	306,
+	"TITLE_HILITE",	307,
+	"MOVE",	308,
+	"RESIZE",	309,
+	"WAITC",	310,
+	"SELECT",	311,
+	"KILL",	312,
+	"LEFT_TITLEBUTTON",	313,
+	"RIGHT_TITLEBUTTON",	314,
+	"NUMBER",	315,
+	"KEYWORD",	316,
+	"NKEYWORD",	317,
+	"CKEYWORD",	318,
+	"CLKEYWORD",	319,
+	"FKEYWORD",	320,
+	"FSKEYWORD",	321,
+	"SKEYWORD",	322,
+	"DKEYWORD",	323,
+	"JKEYWORD",	324,
+	"WINDOW_RING",	325,
+	"WARP_CURSOR",	326,
+	"ERRORTOKEN",	327,
+	"NO_STACKMODE",	328,
+	"WORKSPACE",	329,
+	"WORKSPACES",	330,
+	"WORKSPCMGR_GEOMETRY",	331,
+	"OCCUPYALL",	332,
+	"OCCUPYLIST",	333,
+	"MAPWINDOWCURRENTWORKSPACE",	334,
+	"MAPWINDOWDEFAULTWORKSPACE",	335,
+	"OPAQUEMOVE",	336,
+	"NOOPAQUEMOVE",	337,
+	"OPAQUERESIZE",	338,
+	"NOOPAQUERESIZE",	339,
+	"CHANGE_WORKSPACE_FUNCTION",	340,
+	"DEICONIFY_FUNCTION",	341,
+	"ICONIFY_FUNCTION",	342,
+	"STRING",	343,
+	"-unknown-",	-1	/* ends search */
+};
+
+__YYSCLASS char * yyreds[] =
+{
+	"-no such reduction-",
+	"twmrc : stmts",
+	"stmts : /* empty */",
+	"stmts : stmts stmt",
+	"stmt : error",
+	"stmt : noarg",
+	"stmt : sarg",
+	"stmt : narg",
+	"stmt : squeeze",
+	"stmt : ICON_REGION string DKEYWORD DKEYWORD number number",
+	"stmt : ICON_REGION string DKEYWORD DKEYWORD number number",
+	"stmt : ICON_REGION string DKEYWORD DKEYWORD number number win_list",
+	"stmt : ICONMGR_GEOMETRY string number",
+	"stmt : ICONMGR_GEOMETRY string",
+	"stmt : WORKSPCMGR_GEOMETRY string number",
+	"stmt : WORKSPCMGR_GEOMETRY string",
+	"stmt : MAPWINDOWCURRENTWORKSPACE",
+	"stmt : MAPWINDOWCURRENTWORKSPACE curwork",
+	"stmt : MAPWINDOWDEFAULTWORKSPACE",
+	"stmt : MAPWINDOWDEFAULTWORKSPACE defwork",
+	"stmt : ZOOM number",
+	"stmt : ZOOM",
+	"stmt : PIXMAPS pixmap_list",
+	"stmt : CURSORS cursor_list",
+	"stmt : ICONIFY_BY_UNMAPPING",
+	"stmt : ICONIFY_BY_UNMAPPING win_list",
+	"stmt : ICONIFY_BY_UNMAPPING",
+	"stmt : OPAQUEMOVE",
+	"stmt : OPAQUEMOVE win_list",
+	"stmt : OPAQUEMOVE",
+	"stmt : NOOPAQUEMOVE",
+	"stmt : NOOPAQUEMOVE win_list",
+	"stmt : NOOPAQUEMOVE",
+	"stmt : OPAQUERESIZE",
+	"stmt : OPAQUERESIZE win_list",
+	"stmt : OPAQUERESIZE",
+	"stmt : NOOPAQUERESIZE",
+	"stmt : NOOPAQUERESIZE win_list",
+	"stmt : NOOPAQUERESIZE",
+	"stmt : LEFT_TITLEBUTTON string EQUALS action",
+	"stmt : RIGHT_TITLEBUTTON string EQUALS action",
+	"stmt : button string",
+	"stmt : button action",
+	"stmt : string fullkey",
+	"stmt : button full",
+	"stmt : DONT_ICONIFY_BY_UNMAPPING",
+	"stmt : DONT_ICONIFY_BY_UNMAPPING win_list",
+	"stmt : WORKSPACES",
+	"stmt : WORKSPACES workspc_list",
+	"stmt : OCCUPYALL",
+	"stmt : OCCUPYALL win_list",
+	"stmt : OCCUPYLIST",
+	"stmt : OCCUPYLIST occupy_list",
+	"stmt : ICONMGR_NOSHOW",
+	"stmt : ICONMGR_NOSHOW win_list",
+	"stmt : ICONMGR_NOSHOW",
+	"stmt : ICONMGRS",
+	"stmt : ICONMGRS iconm_list",
+	"stmt : ICONMGR_SHOW",
+	"stmt : ICONMGR_SHOW win_list",
+	"stmt : NO_TITLE_HILITE",
+	"stmt : NO_TITLE_HILITE win_list",
+	"stmt : NO_TITLE_HILITE",
+	"stmt : NO_HILITE",
+	"stmt : NO_HILITE win_list",
+	"stmt : NO_HILITE",
+	"stmt : NO_STACKMODE",
+	"stmt : NO_STACKMODE win_list",
+	"stmt : NO_STACKMODE",
+	"stmt : NO_BORDER",
+	"stmt : NO_BORDER win_list",
+	"stmt : NO_ICON_TITLE",
+	"stmt : NO_ICON_TITLE win_list",
+	"stmt : NO_ICON_TITLE",
+	"stmt : NO_TITLE",
+	"stmt : NO_TITLE win_list",
+	"stmt : NO_TITLE",
+	"stmt : MAKE_TITLE",
+	"stmt : MAKE_TITLE win_list",
+	"stmt : START_ICONIFIED",
+	"stmt : START_ICONIFIED win_list",
+	"stmt : AUTO_RAISE",
+	"stmt : AUTO_RAISE win_list",
+	"stmt : AUTO_RAISE",
+	"stmt : MENU string LP string COLON string RP",
+	"stmt : MENU string LP string COLON string RP menu",
+	"stmt : MENU string",
+	"stmt : MENU string menu",
+	"stmt : FUNCTION string",
+	"stmt : FUNCTION string function",
+	"stmt : ICONS",
+	"stmt : ICONS icon_list",
+	"stmt : COLOR",
+	"stmt : COLOR color_list",
+	"stmt : SAVECOLOR",
+	"stmt : SAVECOLOR save_color_list",
+	"stmt : MONOCHROME",
+	"stmt : MONOCHROME color_list",
+	"stmt : DEFAULT_FUNCTION action",
+	"stmt : WINDOW_FUNCTION action",
+	"stmt : CHANGE_WORKSPACE_FUNCTION action",
+	"stmt : DEICONIFY_FUNCTION action",
+	"stmt : ICONIFY_FUNCTION action",
+	"stmt : WARP_CURSOR",
+	"stmt : WARP_CURSOR win_list",
+	"stmt : WARP_CURSOR",
+	"stmt : WINDOW_RING",
+	"stmt : WINDOW_RING win_list",
+	"stmt : WINDOW_RING",
+	"noarg : KEYWORD",
+	"sarg : SKEYWORD string",
+	"sarg : SKEYWORD",
+	"narg : NKEYWORD number",
+	"full : EQUALS keys COLON contexts COLON action",
+	"fullkey : EQUALS keys COLON contextkeys COLON action",
+	"keys : /* empty */",
+	"keys : keys key",
+	"key : META",
+	"key : SHIFT",
+	"key : LOCK",
+	"key : CONTROL",
+	"key : META number",
+	"key : OR",
+	"contexts : /* empty */",
+	"contexts : contexts context",
+	"context : WINDOW",
+	"context : TITLE",
+	"context : ICON",
+	"context : ROOT",
+	"context : FRAME",
+	"context : ICONMGR",
+	"context : META",
+	"context : ALL",
+	"context : OR",
+	"contextkeys : /* empty */",
+	"contextkeys : contextkeys contextkey",
+	"contextkey : WINDOW",
+	"contextkey : TITLE",
+	"contextkey : ICON",
+	"contextkey : ROOT",
+	"contextkey : FRAME",
+	"contextkey : ICONMGR",
+	"contextkey : META",
+	"contextkey : ALL",
+	"contextkey : OR",
+	"contextkey : string",
+	"pixmap_list : LB pixmap_entries RB",
+	"pixmap_entries : /* empty */",
+	"pixmap_entries : pixmap_entries pixmap_entry",
+	"pixmap_entry : TITLE_HILITE string",
+	"cursor_list : LB cursor_entries RB",
+	"cursor_entries : /* empty */",
+	"cursor_entries : cursor_entries cursor_entry",
+	"cursor_entry : FRAME string string",
+	"cursor_entry : FRAME string",
+	"cursor_entry : TITLE string string",
+	"cursor_entry : TITLE string",
+	"cursor_entry : ICON string string",
+	"cursor_entry : ICON string",
+	"cursor_entry : ICONMGR string string",
+	"cursor_entry : ICONMGR string",
+	"cursor_entry : BUTTON string string",
+	"cursor_entry : BUTTON string",
+	"cursor_entry : MOVE string string",
+	"cursor_entry : MOVE string",
+	"cursor_entry : RESIZE string string",
+	"cursor_entry : RESIZE string",
+	"cursor_entry : WAITC string string",
+	"cursor_entry : WAITC string",
+	"cursor_entry : MENU string string",
+	"cursor_entry : MENU string",
+	"cursor_entry : SELECT string string",
+	"cursor_entry : SELECT string",
+	"cursor_entry : KILL string string",
+	"cursor_entry : KILL string",
+	"color_list : LB color_entries RB",
+	"color_entries : /* empty */",
+	"color_entries : color_entries color_entry",
+	"color_entry : CLKEYWORD string",
+	"color_entry : CLKEYWORD string",
+	"color_entry : CLKEYWORD string win_color_list",
+	"color_entry : CKEYWORD string",
+	"save_color_list : LB s_color_entries RB",
+	"s_color_entries : /* empty */",
+	"s_color_entries : s_color_entries s_color_entry",
+	"s_color_entry : string",
+	"s_color_entry : CLKEYWORD",
+	"win_color_list : LB win_color_entries RB",
+	"win_color_entries : /* empty */",
+	"win_color_entries : win_color_entries win_color_entry",
+	"win_color_entry : string string",
+	"squeeze : SQUEEZE_TITLE",
+	"squeeze : SQUEEZE_TITLE",
+	"squeeze : SQUEEZE_TITLE LB win_sqz_entries RB",
+	"squeeze : DONT_SQUEEZE_TITLE",
+	"squeeze : DONT_SQUEEZE_TITLE",
+	"squeeze : DONT_SQUEEZE_TITLE win_list",
+	"win_sqz_entries : /* empty */",
+	"win_sqz_entries : win_sqz_entries string JKEYWORD signed_number number",
+	"iconm_list : LB iconm_entries RB",
+	"iconm_entries : /* empty */",
+	"iconm_entries : iconm_entries iconm_entry",
+	"iconm_entry : string string number",
+	"iconm_entry : string string string number",
+	"workspc_list : LB workspc_entries RB",
+	"workspc_entries : /* empty */",
+	"workspc_entries : workspc_entries workspc_entry",
+	"workspc_entry : string",
+	"workspc_entry : string",
+	"workspc_entry : string workapp_list",
+	"workapp_list : LB workapp_entries RB",
+	"workapp_entries : /* empty */",
+	"workapp_entries : workapp_entries workapp_entry",
+	"workapp_entry : string",
+	"workapp_entry : string string",
+	"workapp_entry : string string string",
+	"workapp_entry : string string string string",
+	"workapp_entry : string string string string string",
+	"curwork : LB string RB",
+	"curwork : LB string string RB",
+	"curwork : LB string string string RB",
+	"curwork : LB string string string string RB",
+	"defwork : LB string RB",
+	"defwork : LB string string RB",
+	"defwork : LB string string string RB",
+	"defwork : LB string string string string RB",
+	"win_list : LB win_entries RB",
+	"win_entries : /* empty */",
+	"win_entries : win_entries win_entry",
+	"win_entry : string",
+	"occupy_list : LB occupy_entries RB",
+	"occupy_entries : /* empty */",
+	"occupy_entries : occupy_entries occupy_entry",
+	"occupy_entry : string",
+	"occupy_entry : string occupy_workspc_list",
+	"occupy_entry : WINDOW string",
+	"occupy_entry : WINDOW string occupy_workspc_list",
+	"occupy_entry : WORKSPACE string",
+	"occupy_entry : WORKSPACE string occupy_window_list",
+	"occupy_workspc_list : LB occupy_workspc_entries RB",
+	"occupy_workspc_entries : /* empty */",
+	"occupy_workspc_entries : occupy_workspc_entries occupy_workspc_entry",
+	"occupy_workspc_entry : string",
+	"occupy_window_list : LB occupy_window_entries RB",
+	"occupy_window_entries : /* empty */",
+	"occupy_window_entries : occupy_window_entries occupy_window_entry",
+	"occupy_window_entry : string",
+	"icon_list : LB icon_entries RB",
+	"icon_entries : /* empty */",
+	"icon_entries : icon_entries icon_entry",
+	"icon_entry : string string",
+	"function : LB function_entries RB",
+	"function_entries : /* empty */",
+	"function_entries : function_entries function_entry",
+	"function_entry : action",
+	"menu : LB menu_entries RB",
+	"menu_entries : /* empty */",
+	"menu_entries : menu_entries menu_entry",
+	"menu_entry : string action",
+	"menu_entry : string LP string COLON string RP action",
+	"action : FKEYWORD",
+	"action : FSKEYWORD string",
+	"signed_number : number",
+	"signed_number : PLUS number",
+	"signed_number : MINUS number",
+	"button : BUTTON number",
+	"string : STRING",
+	"number : NUMBER",
+};
+#endif /* YYDEBUG */
+#define YYFLAG  (-3000)
+/* @(#) $Revision: 70.7 $ */    
+
+/*
+** Skeleton parser driver for yacc output
+*/
+
+#if defined(NLS) && !defined(NL_SETN)
+#include <msgbuf.h>
+#endif
+
+#ifndef nl_msg
+#define nl_msg(i,s) (s)
+#endif
+
+/*
+** yacc user known macros and defines
+*/
+#define YYERROR		goto yyerrlab
+
+#ifndef __RUNTIME_YYMAXDEPTH
+#define YYACCEPT	return(0)
+#define YYABORT		return(1)
+#else
+#define YYACCEPT	{free_stacks(); return(0);}
+#define YYABORT		{free_stacks(); return(1);}
+#endif
+
+#define YYBACKUP( newtoken, newvalue )\
+{\
+	if ( yychar >= 0 || ( yyr2[ yytmp ] >> 1 ) != 1 )\
+	{\
+		yyerror( (nl_msg(30001,"syntax error - cannot backup")) );\
+		goto yyerrlab;\
+	}\
+	yychar = newtoken;\
+	yystate = *yyps;\
+	yylval = newvalue;\
+	goto yynewstate;\
+}
+#define YYRECOVERING()	(!!yyerrflag)
+#ifndef YYDEBUG
+#	define YYDEBUG	1	/* make debugging available */
+#endif
+
+/*
+** user known globals
+*/
+int yydebug;			/* set to 1 to get debugging */
+
+/*
+** driver internal defines
+*/
+/* define for YYFLAG now generated by yacc program. */
+/*#define YYFLAG		(FLAGVAL)*/
+
+/*
+** global variables used by the parser
+*/
+# ifndef __RUNTIME_YYMAXDEPTH
+__YYSCLASS YYSTYPE yyv[ YYMAXDEPTH ];	/* value stack */
+__YYSCLASS int yys[ YYMAXDEPTH ];		/* state stack */
+# else
+__YYSCLASS YYSTYPE *yyv;			/* pointer to malloc'ed value stack */
+__YYSCLASS int *yys;			/* pointer to malloc'ed stack stack */
+
+#if defined(__STDC__) || defined (__cplusplus)
+#include <stdlib.h>
+#else
+	extern char *malloc();
+	extern char *realloc();
+	extern void free();
+#endif /* __STDC__ or __cplusplus */
+
+
+static int allocate_stacks(); 
+static void free_stacks();
+# ifndef YYINCREMENT
+# define YYINCREMENT (YYMAXDEPTH/2) + 10
+# endif
+# endif	/* __RUNTIME_YYMAXDEPTH */
+long  yymaxdepth = YYMAXDEPTH;
+
+__YYSCLASS YYSTYPE *yypv;			/* top of value stack */
+__YYSCLASS int *yyps;			/* top of state stack */
+
+__YYSCLASS int yystate;			/* current state */
+__YYSCLASS int yytmp;			/* extra var (lasts between blocks) */
+
+int yynerrs;			/* number of errors */
+__YYSCLASS int yyerrflag;			/* error recovery flag */
+int yychar;			/* current input token number */
+
+
+
+/*
+** yyparse - return 0 if worked, 1 if syntax error not recovered from
+*/
+int
+yyparse()
+{
+	register YYSTYPE *yypvt;	/* top of value stack for $vars */
+
+	/*
+	** Initialize externals - yyparse may be called more than once
+	*/
+# ifdef __RUNTIME_YYMAXDEPTH
+	if (allocate_stacks()) YYABORT;
+# endif
+	yypv = &yyv[-1];
+	yyps = &yys[-1];
+	yystate = 0;
+	yytmp = 0;
+	yynerrs = 0;
+	yyerrflag = 0;
+	yychar = -1;
+
+	goto yystack;
+	{
+		register YYSTYPE *yy_pv;	/* top of value stack */
+		register int *yy_ps;		/* top of state stack */
+		register int yy_state;		/* current state */
+		register int  yy_n;		/* internal state number info */
+
+		/*
+		** get globals into registers.
+		** branch to here only if YYBACKUP was called.
+		*/
+	yynewstate:
+		yy_pv = yypv;
+		yy_ps = yyps;
+		yy_state = yystate;
+		goto yy_newstate;
+
+		/*
+		** get globals into registers.
+		** either we just started, or we just finished a reduction
+		*/
+	yystack:
+		yy_pv = yypv;
+		yy_ps = yyps;
+		yy_state = yystate;
+
+		/*
+		** top of for (;;) loop while no reductions done
+		*/
+	yy_stack:
+		/*
+		** put a state and value onto the stacks
+		*/
+#if YYDEBUG
+		/*
+		** if debugging, look up token value in list of value vs.
+		** name pairs.  0 and negative (-1) are special values.
+		** Note: linear search is used since time is not a real
+		** consideration while debugging.
+		*/
+		if ( yydebug )
+		{
+			register int yy_i;
+
+			printf( "State %d, token ", yy_state );
+			if ( yychar == 0 )
+				printf( "end-of-file\n" );
+			else if ( yychar < 0 )
+				printf( "-none-\n" );
+			else
+			{
+				for ( yy_i = 0; yytoks[yy_i].t_val >= 0;
+					yy_i++ )
+				{
+					if ( yytoks[yy_i].t_val == yychar )
+						break;
+				}
+				printf( "%s\n", yytoks[yy_i].t_name );
+			}
+		}
+#endif /* YYDEBUG */
+		if ( ++yy_ps >= &yys[ yymaxdepth ] )	/* room on stack? */
+		{
+# ifndef __RUNTIME_YYMAXDEPTH
+			yyerror( (nl_msg(30002,"yacc stack overflow")) );
+			YYABORT;
+# else
+			/* save old stack bases to recalculate pointers */
+			YYSTYPE * yyv_old = yyv;
+			int * yys_old = yys;
+			yymaxdepth += YYINCREMENT;
+			yys = (int *) realloc(yys, yymaxdepth * sizeof(int));
+			yyv = (YYSTYPE *) realloc(yyv, yymaxdepth * sizeof(YYSTYPE));
+			if (yys==0 || yyv==0) {
+			    yyerror( (nl_msg(30002,"yacc stack overflow")) );
+			    YYABORT;
+			    }
+			/* Reset pointers into stack */
+			yy_ps = (yy_ps - yys_old) + yys;
+			yyps = (yyps - yys_old) + yys;
+			yy_pv = (yy_pv - yyv_old) + yyv;
+			yypv = (yypv - yyv_old) + yyv;
+# endif
+
+		}
+		*yy_ps = yy_state;
+		*++yy_pv = yyval;
+
+		/*
+		** we have a new state - find out what to do
+		*/
+	yy_newstate:
+		if ( ( yy_n = yypact[ yy_state ] ) <= YYFLAG )
+			goto yydefault;		/* simple state */
+#if YYDEBUG
+		/*
+		** if debugging, need to mark whether new token grabbed
+		*/
+		yytmp = yychar < 0;
+#endif
+		if ( ( yychar < 0 ) && ( ( yychar = yylex() ) < 0 ) )
+			yychar = 0;		/* reached EOF */
+#if YYDEBUG
+		if ( yydebug && yytmp )
+		{
+			register int yy_i;
+
+			printf( "Received token " );
+			if ( yychar == 0 )
+				printf( "end-of-file\n" );
+			else if ( yychar < 0 )
+				printf( "-none-\n" );
+			else
+			{
+				for ( yy_i = 0; yytoks[yy_i].t_val >= 0;
+					yy_i++ )
+				{
+					if ( yytoks[yy_i].t_val == yychar )
+						break;
+				}
+				printf( "%s\n", yytoks[yy_i].t_name );
+			}
+		}
+#endif /* YYDEBUG */
+		if ( ( ( yy_n += yychar ) < 0 ) || ( yy_n >= YYLAST ) )
+			goto yydefault;
+		if ( yychk[ yy_n = yyact[ yy_n ] ] == yychar )	/*valid shift*/
+		{
+			yychar = -1;
+			yyval = yylval;
+			yy_state = yy_n;
+			if ( yyerrflag > 0 )
+				yyerrflag--;
+			goto yy_stack;
+		}
+
+	yydefault:
+		if ( ( yy_n = yydef[ yy_state ] ) == -2 )
+		{
+#if YYDEBUG
+			yytmp = yychar < 0;
+#endif
+			if ( ( yychar < 0 ) && ( ( yychar = yylex() ) < 0 ) )
+				yychar = 0;		/* reached EOF */
+#if YYDEBUG
+			if ( yydebug && yytmp )
+			{
+				register int yy_i;
+
+				printf( "Received token " );
+				if ( yychar == 0 )
+					printf( "end-of-file\n" );
+				else if ( yychar < 0 )
+					printf( "-none-\n" );
+				else
+				{
+					for ( yy_i = 0;
+						yytoks[yy_i].t_val >= 0;
+						yy_i++ )
+					{
+						if ( yytoks[yy_i].t_val
+							== yychar )
+						{
+							break;
+						}
+					}
+					printf( "%s\n", yytoks[yy_i].t_name );
+				}
+			}
+#endif /* YYDEBUG */
+			/*
+			** look through exception table
+			*/
+			{
+				register int *yyxi = yyexca;
+
+				while ( ( *yyxi != -1 ) ||
+					( yyxi[1] != yy_state ) )
+				{
+					yyxi += 2;
+				}
+				while ( ( *(yyxi += 2) >= 0 ) &&
+					( *yyxi != yychar ) )
+					;
+				if ( ( yy_n = yyxi[1] ) < 0 )
+					YYACCEPT;
+			}
+		}
+
+		/*
+		** check for syntax error
+		*/
+		if ( yy_n == 0 )	/* have an error */
+		{
+			/* no worry about speed here! */
+			switch ( yyerrflag )
+			{
+			case 0:		/* new error */
+				yyerror( (nl_msg(30003,"syntax error")) );
+				yynerrs++;
+				goto skip_init;
+			yyerrlab:
+				/*
+				** get globals into registers.
+				** we have a user generated syntax type error
+				*/
+				yy_pv = yypv;
+				yy_ps = yyps;
+				yy_state = yystate;
+				yynerrs++;
+			skip_init:
+			case 1:
+			case 2:		/* incompletely recovered error */
+					/* try again... */
+				yyerrflag = 3;
+				/*
+				** find state where "error" is a legal
+				** shift action
+				*/
+				while ( yy_ps >= yys )
+				{
+					yy_n = yypact[ *yy_ps ] + YYERRCODE;
+					if ( yy_n >= 0 && yy_n < YYLAST &&
+						yychk[yyact[yy_n]] == YYERRCODE)					{
+						/*
+						** simulate shift of "error"
+						*/
+						yy_state = yyact[ yy_n ];
+						goto yy_stack;
+					}
+					/*
+					** current state has no shift on
+					** "error", pop stack
+					*/
+#if YYDEBUG
+#	define _POP_ "Error recovery pops state %d, uncovers state %d\n"
+					if ( yydebug )
+						printf( _POP_, *yy_ps,
+							yy_ps[-1] );
+#	undef _POP_
+#endif
+					yy_ps--;
+					yy_pv--;
+				}
+				/*
+				** there is no state on stack with "error" as
+				** a valid shift.  give up.
+				*/
+				YYABORT;
+			case 3:		/* no shift yet; eat a token */
+#if YYDEBUG
+				/*
+				** if debugging, look up token in list of
+				** pairs.  0 and negative shouldn't occur,
+				** but since timing doesn't matter when
+				** debugging, it doesn't hurt to leave the
+				** tests here.
+				*/
+				if ( yydebug )
+				{
+					register int yy_i;
+
+					printf( "Error recovery discards " );
+					if ( yychar == 0 )
+						printf( "token end-of-file\n" );
+					else if ( yychar < 0 )
+						printf( "token -none-\n" );
+					else
+					{
+						for ( yy_i = 0;
+							yytoks[yy_i].t_val >= 0;
+							yy_i++ )
+						{
+							if ( yytoks[yy_i].t_val
+								== yychar )
+							{
+								break;
+							}
+						}
+						printf( "token %s\n",
+							yytoks[yy_i].t_name );
+					}
+				}
+#endif /* YYDEBUG */
+				if ( yychar == 0 )	/* reached EOF. quit */
+					YYABORT;
+				yychar = -1;
+				goto yy_newstate;
+			}
+		}/* end if ( yy_n == 0 ) */
+		/*
+		** reduction by production yy_n
+		** put stack tops, etc. so things right after switch
+		*/
+#if YYDEBUG
+		/*
+		** if debugging, print the string that is the user's
+		** specification of the reduction which is just about
+		** to be done.
+		*/
+		if ( yydebug )
+			printf( "Reduce by (%d) \"%s\"\n",
+				yy_n, yyreds[ yy_n ] );
+#endif
+		yytmp = yy_n;			/* value to switch over */
+		yypvt = yy_pv;			/* $vars top of value stack */
+		/*
+		** Look in goto table for next state
+		** Sorry about using yy_state here as temporary
+		** register variable, but why not, if it works...
+		** If yyr2[ yy_n ] doesn't have the low order bit
+		** set, then there is no action to be done for
+		** this reduction.  So, no saving & unsaving of
+		** registers done.  The only difference between the
+		** code just after the if and the body of the if is
+		** the goto yy_stack in the body.  This way the test
+		** can be made before the choice of what to do is needed.
+		*/
+		{
+			/* length of production doubled with extra bit */
+			register int yy_len = yyr2[ yy_n ];
+
+			if ( !( yy_len & 01 ) )
+			{
+				yy_len >>= 1;
+				yyval = ( yy_pv -= yy_len )[1];	/* $$ = $1 */
+				yy_state = yypgo[ yy_n = yyr1[ yy_n ] ] +
+					*( yy_ps -= yy_len ) + 1;
+				if ( yy_state >= YYLAST ||
+					yychk[ yy_state =
+					yyact[ yy_state ] ] != -yy_n )
+				{
+					yy_state = yyact[ yypgo[ yy_n ] ];
+				}
+				goto yy_stack;
+			}
+			yy_len >>= 1;
+			yyval = ( yy_pv -= yy_len )[1];	/* $$ = $1 */
+			yy_state = yypgo[ yy_n = yyr1[ yy_n ] ] +
+				*( yy_ps -= yy_len ) + 1;
+			if ( yy_state >= YYLAST ||
+				yychk[ yy_state = yyact[ yy_state ] ] != -yy_n )
+			{
+				yy_state = yyact[ yypgo[ yy_n ] ];
+			}
+		}
+					/* save until reenter driver code */
+		yystate = yy_state;
+		yyps = yy_ps;
+		yypv = yy_pv;
+	}
+	/*
+	** code supplied by user is placed in this switch
+	*/
+	switch( yytmp )
+	{
+		
+case 9:
+# line 123 "gram.y"
+{
+		      (void) AddIconRegion(yypvt[-4].ptr, yypvt[-3].num, yypvt[-2].num, yypvt[-1].num, yypvt[-0].num);
+		  } break;
+case 10:
+# line 126 "gram.y"
+{
+		      list = AddIconRegion(yypvt[-4].ptr, yypvt[-3].num, yypvt[-2].num, yypvt[-1].num, yypvt[-0].num);
+		  } break;
+case 12:
+# line 130 "gram.y"
+{ if (Scr->FirstTime)
+						  {
+						    Scr->iconmgr->geometry= yypvt[-1].ptr;
+						    Scr->iconmgr->columns=yypvt[-0].num;
+						  }
+						} break;
+case 13:
+# line 136 "gram.y"
+{ if (Scr->FirstTime)
+						    Scr->iconmgr->geometry = yypvt[-0].ptr;
+						} break;
+case 14:
+# line 139 "gram.y"
+{ if (Scr->FirstTime)
+						  {
+						    Scr->workSpaceMgr.workspaceWindow.geometry= yypvt[-1].ptr;
+						    Scr->workSpaceMgr.workspaceWindow.columns=yypvt[-0].num;
+						  }
+						} break;
+case 15:
+# line 145 "gram.y"
+{ if (Scr->FirstTime)
+						    Scr->workSpaceMgr.workspaceWindow.geometry = yypvt[-0].ptr;
+						} break;
+case 16:
+# line 148 "gram.y"
+{} break;
+case 18:
+# line 151 "gram.y"
+{} break;
+case 20:
+# line 154 "gram.y"
+{ if (Scr->FirstTime)
+					  {
+						Scr->DoZoom = TRUE;
+						Scr->ZoomCount = yypvt[-0].num;
+					  }
+					} break;
+case 21:
+# line 160 "gram.y"
+{ if (Scr->FirstTime) 
+						Scr->DoZoom = TRUE; } break;
+case 22:
+# line 162 "gram.y"
+{} break;
+case 23:
+# line 163 "gram.y"
+{} break;
+case 24:
+# line 164 "gram.y"
+{ list = &Scr->IconifyByUn; } break;
+case 26:
+# line 166 "gram.y"
+{ if (Scr->FirstTime) 
+		    Scr->IconifyByUnmapping = TRUE; } break;
+case 27:
+# line 169 "gram.y"
+{ list = &Scr->OpaqueMoveList; } break;
+case 29:
+# line 171 "gram.y"
+{ if (Scr->FirstTime) Scr->DoOpaqueMove = TRUE; } break;
+case 30:
+# line 172 "gram.y"
+{ list = &Scr->NoOpaqueMoveList; } break;
+case 32:
+# line 174 "gram.y"
+{ if (Scr->FirstTime) Scr->DoOpaqueMove = FALSE; } break;
+case 33:
+# line 175 "gram.y"
+{ list = &Scr->OpaqueMoveList; } break;
+case 35:
+# line 177 "gram.y"
+{ if (Scr->FirstTime) Scr->DoOpaqueResize = TRUE; } break;
+case 36:
+# line 178 "gram.y"
+{ list = &Scr->NoOpaqueResizeList; } break;
+case 38:
+# line 180 "gram.y"
+{ if (Scr->FirstTime) Scr->DoOpaqueResize = FALSE; } break;
+case 39:
+# line 182 "gram.y"
+{ 
+					  GotTitleButton (yypvt[-2].ptr, yypvt[-0].num, False);
+					} break;
+case 40:
+# line 185 "gram.y"
+{ 
+					  GotTitleButton (yypvt[-2].ptr, yypvt[-0].num, True);
+					} break;
+case 41:
+# line 188 "gram.y"
+{
+		    root = GetRoot(yypvt[-0].ptr, NULLSTR, NULLSTR);
+		    AddFuncButton (yypvt[-1].num, C_ROOT, 0, F_MENU, root, (MenuItem*) 0);
+		} break;
+case 42:
+# line 192 "gram.y"
+{
+			if (yypvt[-0].num == F_MENU) {
+			    pull->prev = NULL;
+			    AddFuncButton (yypvt[-1].num, C_ROOT, 0, yypvt[-0].num, pull, (MenuItem*) 0);
+			}
+			else {
+			    MenuItem *item;
+
+			    root = GetRoot(TWM_ROOT,NULLSTR,NULLSTR);
+			    item = AddToMenu (root, "x", Action,
+					NULLSTR, yypvt[-0].num, NULLSTR, NULLSTR);
+			    AddFuncButton (yypvt[-1].num, C_ROOT, 0, yypvt[-0].num, (MenuRoot*) 0, item);
+			}
+			Action = "";
+			pull = NULL;
+		} break;
+case 43:
+# line 208 "gram.y"
+{ GotKey(yypvt[-1].ptr, yypvt[-0].num); } break;
+case 44:
+# line 209 "gram.y"
+{ GotButton(yypvt[-1].num, yypvt[-0].num); } break;
+case 45:
+# line 211 "gram.y"
+{ list = &Scr->DontIconify; } break;
+case 47:
+# line 213 "gram.y"
+{} break;
+case 49:
+# line 215 "gram.y"
+{ list = &Scr->OccupyAll; } break;
+case 51:
+# line 217 "gram.y"
+{} break;
+case 53:
+# line 219 "gram.y"
+{ list = &Scr->IconMgrNoShow; } break;
+case 55:
+# line 221 "gram.y"
+{ Scr->IconManagerDontShow = TRUE; } break;
+case 56:
+# line 222 "gram.y"
+{ list = &Scr->IconMgrs; } break;
+case 58:
+# line 224 "gram.y"
+{ list = &Scr->IconMgrShow; } break;
+case 60:
+# line 226 "gram.y"
+{ list = &Scr->NoTitleHighlight; } break;
+case 62:
+# line 228 "gram.y"
+{ if (Scr->FirstTime)
+						Scr->TitleHighlight = FALSE; } break;
+case 63:
+# line 230 "gram.y"
+{ list = &Scr->NoHighlight; } break;
+case 65:
+# line 232 "gram.y"
+{ if (Scr->FirstTime)
+						Scr->Highlight = FALSE; } break;
+case 66:
+# line 234 "gram.y"
+{ list = &Scr->NoStackModeL; } break;
+case 68:
+# line 236 "gram.y"
+{ if (Scr->FirstTime)
+						Scr->StackMode = FALSE; } break;
+case 69:
+# line 238 "gram.y"
+{ list = &Scr->NoBorder; } break;
+case 71:
+# line 240 "gram.y"
+{ list = &Scr->NoIconTitle; } break;
+case 73:
+# line 242 "gram.y"
+{ if (Scr->FirstTime)
+						Scr->NoIconTitlebar = TRUE; } break;
+case 74:
+# line 244 "gram.y"
+{ list = &Scr->NoTitle; } break;
+case 76:
+# line 246 "gram.y"
+{ if (Scr->FirstTime)
+						Scr->NoTitlebar = TRUE; } break;
+case 77:
+# line 248 "gram.y"
+{ list = &Scr->MakeTitle; } break;
+case 79:
+# line 250 "gram.y"
+{ list = &Scr->StartIconified; } break;
+case 81:
+# line 252 "gram.y"
+{ list = &Scr->AutoRaise; } break;
+case 83:
+# line 254 "gram.y"
+{ Scr->AutoRaiseDefault = TRUE; } break;
+case 84:
+# line 255 "gram.y"
+{
+					root = GetRoot(yypvt[-5].ptr, yypvt[-3].ptr, yypvt[-1].ptr); } break;
+case 85:
+# line 257 "gram.y"
+{ root->real_menu = TRUE;} break;
+case 86:
+# line 258 "gram.y"
+{ root = GetRoot(yypvt[-0].ptr, NULLSTR, NULLSTR); } break;
+case 87:
+# line 259 "gram.y"
+{ root->real_menu = TRUE; } break;
+case 88:
+# line 260 "gram.y"
+{ root = GetRoot(yypvt[-0].ptr, NULLSTR, NULLSTR); } break;
+case 90:
+# line 262 "gram.y"
+{ list = &Scr->IconNames; } break;
+case 92:
+# line 264 "gram.y"
+{ color = COLOR; } break;
+case 94:
+# line 266 "gram.y"
+{} break;
+case 96:
+# line 268 "gram.y"
+{ color = MONOCHROME; } break;
+case 98:
+# line 270 "gram.y"
+{ Scr->DefaultFunction.func = yypvt[-0].num;
+					  if (yypvt[-0].num == F_MENU)
+					  {
+					    pull->prev = NULL;
+					    Scr->DefaultFunction.menu = pull;
+					  }
+					  else
+					  {
+					    root = GetRoot(TWM_ROOT,NULLSTR,NULLSTR);
+					    Scr->DefaultFunction.item = 
+						AddToMenu(root,"x",Action,
+							  NULLSTR,yypvt[-0].num, NULLSTR, NULLSTR);
+					  }
+					  Action = "";
+					  pull = NULL;
+					} break;
+case 99:
+# line 286 "gram.y"
+{ Scr->WindowFunction.func = yypvt[-0].num;
+					   root = GetRoot(TWM_ROOT,NULLSTR,NULLSTR);
+					   Scr->WindowFunction.item = 
+						AddToMenu(root,"x",Action,
+							  NULLSTR,yypvt[-0].num, NULLSTR, NULLSTR);
+					   Action = "";
+					   pull = NULL;
+					} break;
+case 100:
+# line 294 "gram.y"
+{ Scr->ChangeWorkspaceFunction.func = yypvt[-0].num;
+					   root = GetRoot(TWM_ROOT,NULLSTR,NULLSTR);
+					   Scr->ChangeWorkspaceFunction.item = 
+						AddToMenu(root,"x",Action,
+							  NULLSTR,yypvt[-0].num, NULLSTR, NULLSTR);
+					   Action = "";
+					   pull = NULL;
+					} break;
+case 101:
+# line 302 "gram.y"
+{ Scr->DeIconifyFunction.func = yypvt[-0].num;
+					   root = GetRoot(TWM_ROOT,NULLSTR,NULLSTR);
+					   Scr->DeIconifyFunction.item = 
+						AddToMenu(root,"x",Action,
+							  NULLSTR,yypvt[-0].num, NULLSTR, NULLSTR);
+					   Action = "";
+					   pull = NULL;
+					} break;
+case 102:
+# line 310 "gram.y"
+{ Scr->IconifyFunction.func = yypvt[-0].num;
+					   root = GetRoot(TWM_ROOT,NULLSTR,NULLSTR);
+					   Scr->IconifyFunction.item = 
+						AddToMenu(root,"x",Action,
+							  NULLSTR,yypvt[-0].num, NULLSTR, NULLSTR);
+					   Action = "";
+					   pull = NULL;
+					} break;
+case 103:
+# line 318 "gram.y"
+{ list = &Scr->WarpCursorL; } break;
+case 105:
+# line 320 "gram.y"
+{ if (Scr->FirstTime) 
+					    Scr->WarpCursor = TRUE; } break;
+case 106:
+# line 322 "gram.y"
+{ list = &Scr->WindowRingL; } break;
+case 108:
+# line 324 "gram.y"
+{ Scr->WindowRingAll = TRUE; } break;
+case 109:
+# line 327 "gram.y"
+{ if (!do_single_keyword (yypvt[-0].num)) {
+					    twmrc_error_prefix();
+					    fprintf (stderr,
+					"unknown singleton keyword %d\n",
+						     yypvt[-0].num);
+					    ParseError = 1;
+					  }
+					} break;
+case 110:
+# line 337 "gram.y"
+{ if (!do_string_keyword (yypvt[-1].num, yypvt[-0].ptr)) {
+					    twmrc_error_prefix();
+					    fprintf (stderr,
+				"unknown string keyword %d (value \"%s\")\n",
+						     yypvt[-1].num, yypvt[-0].ptr);
+					    ParseError = 1;
+					  }
+					} break;
+case 111:
+# line 345 "gram.y"
+{ if (!do_string_keyword (yypvt[-0].num, defstring)) {
+ 					    twmrc_error_prefix();
+ 					    fprintf (stderr,
+ 				"unknown string keyword %d (no value)\n",
+ 						     yypvt[-0].num);
+ 					    ParseError = 1;
+ 					  }
+ 					} break;
+case 112:
+# line 355 "gram.y"
+{ if (!do_number_keyword (yypvt[-1].num, yypvt[-0].num)) {
+					    twmrc_error_prefix();
+					    fprintf (stderr,
+				"unknown numeric keyword %d (value %d)\n",
+						     yypvt[-1].num, yypvt[-0].num);
+					    ParseError = 1;
+					  }
+					} break;
+case 113:
+# line 367 "gram.y"
+{ yyval.num = yypvt[-0].num; } break;
+case 114:
+# line 370 "gram.y"
+{ yyval.num = yypvt[-0].num; } break;
+case 117:
+# line 377 "gram.y"
+{ mods |= Mod1Mask; } break;
+case 118:
+# line 378 "gram.y"
+{ mods |= ShiftMask; } break;
+case 119:
+# line 379 "gram.y"
+{ mods |= LockMask; } break;
+case 120:
+# line 380 "gram.y"
+{ mods |= ControlMask; } break;
+case 121:
+# line 381 "gram.y"
+{ if (yypvt[-0].num < 1 || yypvt[-0].num > 5) {
+					     twmrc_error_prefix();
+					     fprintf (stderr, 
+				"bad modifier number (%d), must be 1-5\n",
+						      yypvt[-0].num);
+					     ParseError = 1;
+					  } else {
+					     mods |= (Mod1Mask << (yypvt[-0].num - 1));
+					  }
+					} break;
+case 122:
+# line 391 "gram.y"
+{ } break;
+case 125:
+# line 398 "gram.y"
+{ cont |= C_WINDOW_BIT; } break;
+case 126:
+# line 399 "gram.y"
+{ cont |= C_TITLE_BIT; } break;
+case 127:
+# line 400 "gram.y"
+{ cont |= C_ICON_BIT; } break;
+case 128:
+# line 401 "gram.y"
+{ cont |= C_ROOT_BIT; } break;
+case 129:
+# line 402 "gram.y"
+{ cont |= C_FRAME_BIT; } break;
+case 130:
+# line 403 "gram.y"
+{ cont |= C_ICONMGR_BIT; } break;
+case 131:
+# line 404 "gram.y"
+{ cont |= C_ICONMGR_BIT; } break;
+case 132:
+# line 405 "gram.y"
+{ cont |= C_ALL_BITS; } break;
+case 133:
+# line 406 "gram.y"
+{  } break;
+case 136:
+# line 413 "gram.y"
+{ cont |= C_WINDOW_BIT; } break;
+case 137:
+# line 414 "gram.y"
+{ cont |= C_TITLE_BIT; } break;
+case 138:
+# line 415 "gram.y"
+{ cont |= C_ICON_BIT; } break;
+case 139:
+# line 416 "gram.y"
+{ cont |= C_ROOT_BIT; } break;
+case 140:
+# line 417 "gram.y"
+{ cont |= C_FRAME_BIT; } break;
+case 141:
+# line 418 "gram.y"
+{ cont |= C_ICONMGR_BIT; } break;
+case 142:
+# line 419 "gram.y"
+{ cont |= C_ICONMGR_BIT; } break;
+case 143:
+# line 420 "gram.y"
+{ cont |= C_ALL_BITS; } break;
+case 144:
+# line 421 "gram.y"
+{ } break;
+case 145:
+# line 422 "gram.y"
+{ Name = yypvt[-0].ptr; cont |= C_NAME_BIT; } break;
+case 146:
+# line 426 "gram.y"
+{} break;
+case 149:
+# line 433 "gram.y"
+{ SetHighlightPixmap (yypvt[-0].ptr); } break;
+case 150:
+# line 437 "gram.y"
+{} break;
+case 153:
+# line 444 "gram.y"
+{
+			NewBitmapCursor(&Scr->FrameCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 154:
+# line 446 "gram.y"
+{
+			NewFontCursor(&Scr->FrameCursor, yypvt[-0].ptr); } break;
+case 155:
+# line 448 "gram.y"
+{
+			NewBitmapCursor(&Scr->TitleCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 156:
+# line 450 "gram.y"
+{
+			NewFontCursor(&Scr->TitleCursor, yypvt[-0].ptr); } break;
+case 157:
+# line 452 "gram.y"
+{
+			NewBitmapCursor(&Scr->IconCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 158:
+# line 454 "gram.y"
+{
+			NewFontCursor(&Scr->IconCursor, yypvt[-0].ptr); } break;
+case 159:
+# line 456 "gram.y"
+{
+			NewBitmapCursor(&Scr->IconMgrCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 160:
+# line 458 "gram.y"
+{
+			NewFontCursor(&Scr->IconMgrCursor, yypvt[-0].ptr); } break;
+case 161:
+# line 460 "gram.y"
+{
+			NewBitmapCursor(&Scr->ButtonCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 162:
+# line 462 "gram.y"
+{
+			NewFontCursor(&Scr->ButtonCursor, yypvt[-0].ptr); } break;
+case 163:
+# line 464 "gram.y"
+{
+			NewBitmapCursor(&Scr->MoveCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 164:
+# line 466 "gram.y"
+{
+			NewFontCursor(&Scr->MoveCursor, yypvt[-0].ptr); } break;
+case 165:
+# line 468 "gram.y"
+{
+			NewBitmapCursor(&Scr->ResizeCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 166:
+# line 470 "gram.y"
+{
+			NewFontCursor(&Scr->ResizeCursor, yypvt[-0].ptr); } break;
+case 167:
+# line 472 "gram.y"
+{
+			NewBitmapCursor(&Scr->WaitCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 168:
+# line 474 "gram.y"
+{
+			NewFontCursor(&Scr->WaitCursor, yypvt[-0].ptr); } break;
+case 169:
+# line 476 "gram.y"
+{
+			NewBitmapCursor(&Scr->MenuCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 170:
+# line 478 "gram.y"
+{
+			NewFontCursor(&Scr->MenuCursor, yypvt[-0].ptr); } break;
+case 171:
+# line 480 "gram.y"
+{
+			NewBitmapCursor(&Scr->SelectCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 172:
+# line 482 "gram.y"
+{
+			NewFontCursor(&Scr->SelectCursor, yypvt[-0].ptr); } break;
+case 173:
+# line 484 "gram.y"
+{
+			NewBitmapCursor(&Scr->DestroyCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 174:
+# line 486 "gram.y"
+{
+			NewFontCursor(&Scr->DestroyCursor, yypvt[-0].ptr); } break;
+case 175:
+# line 490 "gram.y"
+{} break;
+case 178:
+# line 498 "gram.y"
+{ if (!do_colorlist_keyword (yypvt[-1].num, color,
+								     yypvt[-0].ptr)) {
+					    twmrc_error_prefix();
+					    fprintf (stderr,
+			"unhandled list color keyword %d (string \"%s\")\n",
+						     yypvt[-1].num, yypvt[-0].ptr);
+					    ParseError = 1;
+					  }
+					} break;
+case 179:
+# line 507 "gram.y"
+{ list = do_colorlist_keyword(yypvt[-1].num,color,
+								      yypvt[-0].ptr);
+					  if (!list) {
+					    twmrc_error_prefix();
+					    fprintf (stderr,
+			"unhandled color list keyword %d (string \"%s\")\n",
+						     yypvt[-1].num, yypvt[-0].ptr);
+					    ParseError = 1;
+					  }
+					} break;
+case 181:
+# line 518 "gram.y"
+{ if (!do_color_keyword (yypvt[-1].num, color,
+								 yypvt[-0].ptr)) {
+					    twmrc_error_prefix();
+					    fprintf (stderr,
+			"unhandled color keyword %d (string \"%s\")\n",
+						     yypvt[-1].num, yypvt[-0].ptr);
+					    ParseError = 1;
+					  }
+					} break;
+case 182:
+# line 529 "gram.y"
+{} break;
+case 185:
+# line 536 "gram.y"
+{ do_string_savecolor(color, yypvt[-0].ptr); } break;
+case 186:
+# line 537 "gram.y"
+{ do_var_savecolor(yypvt[-0].num); } break;
+case 187:
+# line 540 "gram.y"
+{} break;
+case 190:
+# line 547 "gram.y"
+{ if (Scr->FirstTime &&
+					      color == Scr->Monochrome)
+					    AddToList(list, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 191:
+# line 552 "gram.y"
+{ 
+				    if (HasShape) Scr->SqueezeTitle = TRUE;
+				} break;
+case 192:
+# line 555 "gram.y"
+{ list = &Scr->SqueezeTitleL; 
+				  if (HasShape && Scr->SqueezeTitle == -1)
+				    Scr->SqueezeTitle = TRUE;
+				} break;
+case 194:
+# line 560 "gram.y"
+{ Scr->SqueezeTitle = FALSE; } break;
+case 195:
+# line 561 "gram.y"
+{ list = &Scr->DontSqueezeTitleL; } break;
+case 198:
+# line 566 "gram.y"
+{
+				if (Scr->FirstTime) {
+				   do_squeeze_entry (list, yypvt[-3].ptr, yypvt[-2].num, yypvt[-1].num, yypvt[-0].num);
+				}
+			} break;
+case 199:
+# line 574 "gram.y"
+{} break;
+case 202:
+# line 581 "gram.y"
+{ if (Scr->FirstTime)
+					    AddToList(list, yypvt[-2].ptr, (char *)
+						AllocateIconManager(yypvt[-2].ptr, NULLSTR,
+							yypvt[-1].ptr,yypvt[-0].num));
+					} break;
+case 203:
+# line 587 "gram.y"
+{ if (Scr->FirstTime)
+					    AddToList(list, yypvt[-3].ptr, (char *)
+						AllocateIconManager(yypvt[-3].ptr,yypvt[-2].ptr,
+						yypvt[-1].ptr, yypvt[-0].num));
+					} break;
+case 204:
+# line 594 "gram.y"
+{} break;
+case 207:
+# line 601 "gram.y"
+{
+			AddWorkSpace (yypvt[-0].ptr, NULLSTR, NULLSTR, NULLSTR, NULLSTR, NULLSTR);
+		} break;
+case 208:
+# line 604 "gram.y"
+{
+			curWorkSpc = yypvt[-0].ptr;
+		} break;
+case 210:
+# line 610 "gram.y"
+{} break;
+case 213:
+# line 617 "gram.y"
+{
+			AddWorkSpace (curWorkSpc, yypvt[-0].ptr, NULLSTR, NULLSTR, NULLSTR, NULLSTR);
+		} break;
+case 214:
+# line 620 "gram.y"
+{
+			AddWorkSpace (curWorkSpc, yypvt[-1].ptr, yypvt[-0].ptr, NULLSTR, NULLSTR, NULLSTR);
+		} break;
+case 215:
+# line 623 "gram.y"
+{
+			AddWorkSpace (curWorkSpc, yypvt[-2].ptr, yypvt[-1].ptr, yypvt[-0].ptr, NULLSTR, NULLSTR);
+		} break;
+case 216:
+# line 626 "gram.y"
+{
+			AddWorkSpace (curWorkSpc, yypvt[-3].ptr, yypvt[-2].ptr, yypvt[-1].ptr, yypvt[-0].ptr, NULLSTR);
+		} break;
+case 217:
+# line 629 "gram.y"
+{
+			AddWorkSpace (curWorkSpc, yypvt[-4].ptr, yypvt[-3].ptr, yypvt[-2].ptr, yypvt[-1].ptr, yypvt[-0].ptr);
+		} break;
+case 218:
+# line 634 "gram.y"
+{
+		    WMapCreateCurrentBackGround (yypvt[-1].ptr, NULL, NULL, NULL);
+		} break;
+case 219:
+# line 637 "gram.y"
+{
+		    WMapCreateCurrentBackGround (yypvt[-2].ptr, yypvt[-1].ptr, NULL, NULL);
+		} break;
+case 220:
+# line 640 "gram.y"
+{
+		    WMapCreateCurrentBackGround (yypvt[-3].ptr, yypvt[-2].ptr, yypvt[-1].ptr, NULL);
+		} break;
+case 221:
+# line 643 "gram.y"
+{
+		    WMapCreateCurrentBackGround (yypvt[-4].ptr, yypvt[-3].ptr, yypvt[-2].ptr, yypvt[-1].ptr);
+		} break;
+case 222:
+# line 648 "gram.y"
+{
+		    WMapCreateDefaultBackGround (yypvt[-1].ptr, NULL, NULL, NULL);
+		} break;
+case 223:
+# line 651 "gram.y"
+{
+		    WMapCreateDefaultBackGround (yypvt[-2].ptr, yypvt[-1].ptr, NULL, NULL);
+		} break;
+case 224:
+# line 654 "gram.y"
+{
+		    WMapCreateDefaultBackGround (yypvt[-3].ptr, yypvt[-2].ptr, yypvt[-1].ptr, NULL);
+		} break;
+case 225:
+# line 657 "gram.y"
+{
+		    WMapCreateDefaultBackGround (yypvt[-4].ptr, yypvt[-3].ptr, yypvt[-2].ptr, yypvt[-1].ptr);
+		} break;
+case 226:
+# line 662 "gram.y"
+{} break;
+case 229:
+# line 669 "gram.y"
+{ if (Scr->FirstTime)
+					    AddToList(list, yypvt[-0].ptr, 0);
+					} break;
+case 230:
+# line 674 "gram.y"
+{} break;
+case 233:
+# line 681 "gram.y"
+{client = yypvt[-0].ptr;} break;
+case 235:
+# line 683 "gram.y"
+{client = yypvt[-0].ptr;} break;
+case 237:
+# line 685 "gram.y"
+{workspace = yypvt[-0].ptr;} break;
+case 239:
+# line 689 "gram.y"
+{} break;
+case 242:
+# line 696 "gram.y"
+{
+				AddToClientsList (yypvt[-0].ptr, client);
+			  } break;
+case 243:
+# line 700 "gram.y"
+{} break;
+case 246:
+# line 707 "gram.y"
+{
+				AddToClientsList (workspace, yypvt[-0].ptr);
+			  } break;
+case 247:
+# line 711 "gram.y"
+{} break;
+case 250:
+# line 718 "gram.y"
+{ if (Scr->FirstTime) AddToList(list, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 251:
+# line 721 "gram.y"
+{} break;
+case 254:
+# line 728 "gram.y"
+{ AddToMenu(root, "", Action, NULLSTR, yypvt[-0].num,
+						NULLSTR, NULLSTR);
+					  Action = "";
+					} break;
+case 255:
+# line 734 "gram.y"
+{lastmenuitem = (MenuItem*) 0;} break;
+case 258:
+# line 741 "gram.y"
+{
+			if (yypvt[-0].num == F_SEPARATOR) {
+			    if (lastmenuitem) lastmenuitem->separated = 1;
+			}
+			else {
+			    lastmenuitem = AddToMenu(root, yypvt[-1].ptr, Action, pull, yypvt[-0].num, NULLSTR, NULLSTR);
+			    Action = "";
+			    pull = NULL;
+			}
+		} break;
+case 259:
+# line 751 "gram.y"
+{
+			if (yypvt[-0].num == F_SEPARATOR) {
+			    if (lastmenuitem) lastmenuitem->separated = 1;
+			}
+			else {
+			    lastmenuitem = AddToMenu(root, yypvt[-6].ptr, Action, pull, yypvt[-0].num, yypvt[-4].ptr, yypvt[-2].ptr);
+			    Action = "";
+			    pull = NULL;
+			}
+		} break;
+case 260:
+# line 763 "gram.y"
+{ yyval.num = yypvt[-0].num; } break;
+case 261:
+# line 764 "gram.y"
+{
+				yyval.num = yypvt[-1].num;
+				Action = yypvt[-0].ptr;
+				switch (yypvt[-1].num) {
+				  case F_MENU:
+				    pull = GetRoot (yypvt[-0].ptr, NULLSTR,NULLSTR);
+				    pull->prev = root;
+				    break;
+				  case F_WARPRING:
+				    if (!CheckWarpRingArg (Action)) {
+					twmrc_error_prefix();
+					fprintf (stderr,
+			"ignoring invalid f.warptoring argument \"%s\"\n",
+						 Action);
+					yyval.num = F_NOP;
+				    }
+				  case F_WARPTOSCREEN:
+				    if (!CheckWarpScreenArg (Action)) {
+					twmrc_error_prefix();
+					fprintf (stderr, 
+			"ignoring invalid f.warptoscreen argument \"%s\"\n", 
+					         Action);
+					yyval.num = F_NOP;
+				    }
+				    break;
+				  case F_COLORMAP:
+				    if (CheckColormapArg (Action)) {
+					yyval.num = F_COLORMAP;
+				    } else {
+					twmrc_error_prefix();
+					fprintf (stderr,
+			"ignoring invalid f.colormap argument \"%s\"\n", 
+						 Action);
+					yyval.num = F_NOP;
+				    }
+				    break;
+				} /* end switch */
+				   } break;
+case 262:
+# line 805 "gram.y"
+{ yyval.num = yypvt[-0].num; } break;
+case 263:
+# line 806 "gram.y"
+{ yyval.num = yypvt[-0].num; } break;
+case 264:
+# line 807 "gram.y"
+{ yyval.num = -(yypvt[-0].num); } break;
+case 265:
+# line 810 "gram.y"
+{ yyval.num = yypvt[-0].num;
+					  if (yypvt[-0].num == 0)
+						yyerror("bad button 0");
+
+					  if (yypvt[-0].num > MAX_BUTTONS)
+					  {
+						yyval.num = 0;
+						yyerror("button number too large");
+					  }
+					} break;
+case 266:
+# line 822 "gram.y"
+{ ptr = (char *)malloc(strlen(yypvt[-0].ptr)+1);
+					  strcpy(ptr, yypvt[-0].ptr);
+					  RemoveDQuote(ptr);
+					  yyval.ptr = ptr;
+					} break;
+case 267:
+# line 827 "gram.y"
+{ yyval.num = yypvt[-0].num; } break;
+	}
+	goto yystack;		/* reset registers in driver code */
+}
+
+# ifdef __RUNTIME_YYMAXDEPTH
+
+static int allocate_stacks() {
+	/* allocate the yys and yyv stacks */
+	yys = (int *) malloc(yymaxdepth * sizeof(int));
+	yyv = (YYSTYPE *) malloc(yymaxdepth * sizeof(YYSTYPE));
+
+	if (yys==0 || yyv==0) {
+	   yyerror( (nl_msg(30004,"unable to allocate space for yacc stacks")) );
+	   return(1);
+	   }
+	else return(0);
+
+}
+
+
+static void free_stacks() {
+	if (yys!=0) free((char *) yys);
+	if (yyv!=0) free((char *) yyv);
+}
+
+# endif  /* defined(__RUNTIME_YYMAXDEPTH) */
+
+
+# line 43 "gram.y"
+#include <stdio.h>
+#include <ctype.h>
+#include "twm.h"
+#include "menus.h"
+#include "icons.h"
+#include "list.h"
+#include "util.h"
+#include "screen.h"
+#include "parse.h"
+#include <X11/Xos.h>
+#include <X11/Xmu/CharSet.h>
+
+static char *Action = "";
+static char *Name = "";
+static char *defstring = "default";
+static MenuRoot	*root, *pull = NULL;
+static char *curWorkSpc;
+static char *client, *workspace;
+static MenuItem *lastmenuitem = (MenuItem*) 0;
+
+static MenuRoot *GetRoot();
+
+static Bool CheckWarpScreenArg(), CheckWarpRingArg();
+static Bool CheckColormapArg();
+static void GotButton(), GotKey(), GotTitleButton();
+static char *ptr;
+static name_list **list;
+static int cont = 0;
+static int color;
+int mods = 0;
+unsigned int mods_used = (ShiftMask | ControlMask | Mod1Mask);
+
+extern int do_single_keyword(), do_string_keyword(), do_number_keyword();
+extern name_list **do_colorlist_keyword();
+extern int do_color_keyword(), do_string_savecolor();
+extern int yylineno;
+
+# line 81 "gram.y"
+typedef union 
+{
+    int num;
+    char *ptr;
+} YYSTYPE;
+#ifdef __cplusplus
+#  include <stdio.h>
+#  include <yacc.h>
+#endif	/* __cplusplus */ 
+# define LB 257
+# define RB 258
+# define LP 259
+# define RP 260
+# define MENUS 261
+# define MENU 262
+# define BUTTON 263
+# define DEFAULT_FUNCTION 264
+# define PLUS 265
+# define MINUS 266
+# define ALL 267
+# define OR 268
+# define CURSORS 269
+# define PIXMAPS 270
+# define ICONS 271
+# define COLOR 272
+# define SAVECOLOR 273
+# define MONOCHROME 274
+# define FUNCTION 275
+# define ICONMGR_SHOW 276
+# define ICONMGR 277
+# define WINDOW_FUNCTION 278
+# define ZOOM 279
+# define ICONMGRS 280
+# define ICONMGR_GEOMETRY 281
+# define ICONMGR_NOSHOW 282
+# define MAKE_TITLE 283
+# define ICONIFY_BY_UNMAPPING 284
+# define DONT_ICONIFY_BY_UNMAPPING 285
+# define NO_BORDER 286
+# define NO_ICON_TITLE 287
+# define NO_TITLE 288
+# define AUTO_RAISE 289
+# define NO_HILITE 290
+# define ICON_REGION 291
+# define META 292
+# define SHIFT 293
+# define LOCK 294
+# define CONTROL 295
+# define WINDOW 296
+# define TITLE 297
+# define ICON 298
+# define ROOT 299
+# define FRAME 300
+# define COLON 301
+# define EQUALS 302
+# define SQUEEZE_TITLE 303
+# define DONT_SQUEEZE_TITLE 304
+# define START_ICONIFIED 305
+# define NO_TITLE_HILITE 306
+# define TITLE_HILITE 307
+# define MOVE 308
+# define RESIZE 309
+# define WAITC 310
+# define SELECT 311
+# define KILL 312
+# define LEFT_TITLEBUTTON 313
+# define RIGHT_TITLEBUTTON 314
+# define NUMBER 315
+# define KEYWORD 316
+# define NKEYWORD 317
+# define CKEYWORD 318
+# define CLKEYWORD 319
+# define FKEYWORD 320
+# define FSKEYWORD 321
+# define SKEYWORD 322
+# define DKEYWORD 323
+# define JKEYWORD 324
+# define WINDOW_RING 325
+# define WARP_CURSOR 326
+# define ERRORTOKEN 327
+# define NO_STACKMODE 328
+# define WORKSPACE 329
+# define WORKSPACES 330
+# define WORKSPCMGR_GEOMETRY 331
+# define OCCUPYALL 332
+# define OCCUPYLIST 333
+# define MAPWINDOWCURRENTWORKSPACE 334
+# define MAPWINDOWDEFAULTWORKSPACE 335
+# define OPAQUEMOVE 336
+# define NOOPAQUEMOVE 337
+# define OPAQUERESIZE 338
+# define NOOPAQUERESIZE 339
+# define CHANGE_WORKSPACE_FUNCTION 340
+# define DEICONIFY_FUNCTION 341
+# define ICONIFY_FUNCTION 342
+# define STRING 343
+#define yyclearin yychar = -1
+#define yyerrok yyerrflag = 0
+extern int yychar;
+#ifndef YYMAXDEPTH
+#define YYMAXDEPTH 150
+#endif
+
+/* __YYSCLASS defines the scoping/storage class for global objects
+ * that are NOT renamed by the -p option.  By default these names
+ * are going to be 'static' so that multi-definition errors
+ * will not occur with multiple parsers.
+ * If you want (unsupported) access to internal names you need
+ * to define this to be null so it implies 'extern' scope.
+ * This should not be used in conjunction with -p.
+ */
+#ifndef __YYSCLASS
+# define __YYSCLASS static
+#endif
+YYSTYPE yylval;
+__YYSCLASS YYSTYPE yyval;
+typedef int yytabelem;
+# define YYERRCODE 256
+
+# line 845 "gram.y"
+
+yyerror(s) char *s;
+{
+    twmrc_error_prefix();
+    fprintf (stderr, "error in input file:  %s\n", s ? s : "");
+    ParseError = 1;
+}
+RemoveDQuote(str)
+char *str;
+{
+    register char *i, *o;
+    register n;
+    register count;
+
+    for (i=str+1, o=str; *i && *i != '\"'; o++)
+    {
+	if (*i == '\\')
+	{
+	    switch (*++i)
+	    {
+	    case 'n':
+		*o = '\n';
+		i++;
+		break;
+	    case 'b':
+		*o = '\b';
+		i++;
+		break;
+	    case 'r':
+		*o = '\r';
+		i++;
+		break;
+	    case 't':
+		*o = '\t';
+		i++;
+		break;
+	    case 'f':
+		*o = '\f';
+		i++;
+		break;
+	    case '0':
+		if (*++i == 'x')
+		    goto hex;
+		else
+		    --i;
+	    case '1': case '2': case '3':
+	    case '4': case '5': case '6': case '7':
+		n = 0;
+		count = 0;
+		while (*i >= '0' && *i <= '7' && count < 3)
+		{
+		    n = (n<<3) + (*i++ - '0');
+		    count++;
+		}
+		*o = n;
+		break;
+	    hex:
+	    case 'x':
+		n = 0;
+		count = 0;
+		while (i++, count++ < 2)
+		{
+		    if (*i >= '0' && *i <= '9')
+			n = (n<<4) + (*i - '0');
+		    else if (*i >= 'a' && *i <= 'f')
+			n = (n<<4) + (*i - 'a') + 10;
+		    else if (*i >= 'A' && *i <= 'F')
+			n = (n<<4) + (*i - 'A') + 10;
+		    else
+			break;
+		}
+		*o = n;
+		break;
+	    case '\n':
+		i++;	/* punt */
+		o--;	/* to account for o++ at end of loop */
+		break;
+	    case '\"':
+	    case '\'':
+	    case '\\':
+	    default:
+		*o = *i++;
+		break;
+	    }
+	}
+	else
+	    *o = *i++;
+    }
+    *o = '\0';
+}
+
+static MenuRoot *GetRoot(name, fore, back)
+char *name;
+char *fore, *back;
+{
+    MenuRoot *tmp;
+
+    tmp = FindMenuRoot(name);
+    if (tmp == NULL)
+	tmp = NewMenuRoot(name);
+
+    if (fore)
+    {
+	int save;
+
+	save = Scr->FirstTime;
+	Scr->FirstTime = TRUE;
+	GetColor(COLOR, &tmp->highlight.fore, fore);
+	GetColor(COLOR, &tmp->highlight.back, back);
+	Scr->FirstTime = save;
+    }
+
+    return tmp;
+}
+
+static void GotButton (butt, func)
+int butt, func;
+{
+    int i;
+    MenuRoot *menu;
+    MenuItem *item;
+
+    for (i = 0; i < NUM_CONTEXTS; i++) {
+	if ((cont & (1 << i)) == 0) continue;
+
+	if (func == F_MENU) {
+	    pull->prev = NULL;
+	    AddFuncButton (butt, i, mods, func, pull, (MenuItem*) 0);
+	}
+	else {
+	    root = GetRoot (TWM_ROOT, NULLSTR, NULLSTR);
+	    item = AddToMenu (root, "x", Action, NULLSTR, func, NULLSTR, NULLSTR);
+	    AddFuncButton (butt, i, mods, func, (MenuRoot*) 0, item);
+	}
+    }
+
+    Action = "";
+    pull = NULL;
+    cont = 0;
+    mods_used |= mods;
+    mods = 0;
+}
+
+static void GotKey(key, func)
+char *key;
+int func;
+{
+    int i;
+
+    for (i = 0; i < NUM_CONTEXTS; i++)
+    {
+	if ((cont & (1 << i)) == 0) 
+	  continue;
+
+	if (func == F_MENU) {
+	    pull->prev = NULL;
+	    if (!AddFuncKey (key, i, mods, func, pull, Name, Action)) break;
+	}
+	else
+	if (!AddFuncKey(key, i, mods, func, (MenuRoot*) 0, Name, Action)) 
+	  break;
+    }
+
+    Action = "";
+    pull = NULL;
+    cont = 0;
+    mods_used |= mods;
+    mods = 0;
+}
+
+
+static void GotTitleButton (bitmapname, func, rightside)
+    char *bitmapname;
+    int func;
+    Bool rightside;
+{
+    if (!CreateTitleButton (bitmapname, func, Action, pull, rightside, True)) {
+	twmrc_error_prefix();
+	fprintf (stderr, 
+		 "unable to create %s titlebutton \"%s\"\n",
+		 rightside ? "right" : "left", bitmapname);
+    }
+    Action = "";
+    pull = NULL;
+}
+
+static Bool CheckWarpScreenArg (s)
+    register char *s;
+{
+    XmuCopyISOLatin1Lowered (s, s);
+
+    if (strcmp (s,  WARPSCREEN_NEXT) == 0 ||
+	strcmp (s,  WARPSCREEN_PREV) == 0 ||
+	strcmp (s,  WARPSCREEN_BACK) == 0)
+      return True;
+
+    for (; *s && isascii(*s) && isdigit(*s); s++) ; /* SUPPRESS 530 */
+    return (*s ? False : True);
+}
+
+
+static Bool CheckWarpRingArg (s)
+    register char *s;
+{
+    XmuCopyISOLatin1Lowered (s, s);
+
+    if (strcmp (s,  WARPSCREEN_NEXT) == 0 ||
+	strcmp (s,  WARPSCREEN_PREV) == 0)
+      return True;
+
+    return False;
+}
+
+
+static Bool CheckColormapArg (s)
+    register char *s;
+{
+    XmuCopyISOLatin1Lowered (s, s);
+
+    if (strcmp (s, COLORMAP_NEXT) == 0 ||
+	strcmp (s, COLORMAP_PREV) == 0 ||
+	strcmp (s, COLORMAP_DEFAULT) == 0)
+      return True;
+
+    return False;
+}
+
+
+twmrc_error_prefix ()
+{
+    fprintf (stderr, "%s:  line %d:  ", ProgramName, yylineno);
+}
+__YYSCLASS yytabelem yyexca[] ={
+-1, 1,
+	0, -1,
+	-2, 0,
+-1, 2,
+	0, 1,
+	-2, 0,
+-1, 17,
+	257, 24,
+	-2, 26,
+-1, 18,
+	257, 27,
+	-2, 29,
+-1, 19,
+	257, 30,
+	-2, 32,
+-1, 20,
+	257, 33,
+	-2, 35,
+-1, 21,
+	257, 36,
+	-2, 38,
+-1, 30,
+	257, 57,
+	-2, 59,
+-1, 33,
+	257, 64,
+	-2, 66,
+-1, 34,
+	257, 67,
+	-2, 69,
+-1, 35,
+	257, 70,
+	-2, 72,
+-1, 37,
+	257, 75,
+	-2, 77,
+-1, 38,
+	257, 78,
+	-2, 80,
+-1, 41,
+	257, 85,
+	-2, 87,
+-1, 53,
+	257, 107,
+	-2, 109,
+-1, 54,
+	257, 110,
+	-2, 112,
+-1, 58,
+	257, 200,
+	-2, 199,
+-1, 59,
+	257, 203,
+	-2, 202,
+-1, 248,
+	257, 216,
+	-2, 215,
+-1, 273,
+	257, 10,
+	-2, 9,
+-1, 328,
+	257, 187,
+	-2, 186,
+	};
+# define YYNPROD 276
+# define YYLAST 548
+__YYSCLASS yytabelem yyact[]={
+
+    25,    81,   214,   312,   313,   341,    61,   330,    85,   349,
+    62,    63,    64,   310,    68,   177,   122,    83,    84,   353,
+   354,   139,    68,    78,    79,    80,    83,    84,   311,   387,
+   383,   375,   305,   306,   307,   308,   309,   303,   391,   137,
+   249,   372,    61,   104,   105,    87,   180,   380,   336,    61,
+   110,   111,   112,   113,   114,   347,   257,   117,   289,   357,
+   334,   356,   332,    60,   163,   215,   368,   363,   342,    68,
+    83,    84,    67,   132,     4,   198,   322,   267,   252,    61,
+    42,    60,    48,   321,   276,   141,   274,    16,    15,    44,
+    45,    46,    47,    43,    32,   182,    49,    14,    31,    10,
+    30,    39,    17,    26,    36,    37,    38,    41,    34,     9,
+   324,   253,    24,   271,    61,    61,    61,   260,   254,   246,
+   239,    58,    59,    40,    33,    61,    61,   178,   340,   179,
+   118,    22,    23,   121,    55,    57,   123,   124,   270,   197,
+    56,   200,   217,    54,    53,    61,    35,    61,    27,    11,
+    28,    29,    12,    13,    18,    19,    20,    21,    50,    51,
+    52,    61,    61,   225,   213,   168,   223,   199,    61,    61,
+   175,    61,    83,    84,   169,   171,   167,   152,   149,   224,
+   226,   263,   146,   227,   128,   126,   228,   229,   230,   231,
+   232,   233,   234,   235,   236,   237,   238,   241,    61,    72,
+    70,   258,    61,    61,    61,    61,   325,   259,   142,   261,
+   218,   248,   251,   256,   384,   131,   201,   378,   376,   262,
+   360,   269,   272,   362,   344,   275,   343,   277,   316,   278,
+   279,   280,   281,   282,   283,   284,   285,   286,   287,   288,
+   250,   266,   265,   211,   240,   196,   314,   373,    61,   359,
+   222,    61,   339,   317,   318,   301,   302,   319,   320,   323,
+   315,   326,   247,   327,   210,   299,   328,   329,   255,   212,
+   120,   221,   119,   388,   208,   172,   333,   244,   335,   381,
+   300,   268,   220,   367,   294,   295,   296,   297,   298,   292,
+   133,   134,   135,   136,   337,   273,   143,   208,   204,   205,
+   206,   207,   350,   264,   144,   338,   147,   209,   150,   219,
+   153,   154,   155,   156,   157,   158,   159,   160,   161,   162,
+   346,   204,   205,   206,   207,   348,   184,   130,   181,   129,
+   202,   173,   174,   290,   242,   304,   176,   293,   358,   203,
+   245,   243,   116,   115,   109,   170,   108,   183,   107,   361,
+   366,   193,   189,   166,   106,   291,   216,   165,   164,   365,
+   374,   377,   103,   102,   101,   100,   188,    99,   379,    98,
+    97,    96,    95,    94,   151,   382,    93,    92,   148,   385,
+    91,   386,   389,   390,    90,   145,   186,   187,    89,   185,
+   392,   393,   345,   394,   395,    88,   140,   190,   191,   192,
+   194,   195,   138,   352,    77,    76,    75,    74,    73,    71,
+    69,   127,    66,   125,    65,   331,     8,     7,     6,   364,
+     5,     3,     2,     1,   369,    86,   370,   371,    82,   351,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,   355 };
+__YYSCLASS yytabelem yypact[]={
+
+ -3000, -3000,  -182, -3000, -3000, -3000, -3000, -3000, -3000,  -337,
+  -337,  -337, -3000, -3000,  -293,   -57,   -58, -3000, -3000, -3000,
+ -3000, -3000,  -337,  -337,  -294,  -257, -3000, -3000, -3000, -3000,
+ -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000,
+ -3000, -3000,  -337,  -337, -3000, -3000, -3000, -3000,  -303,  -303,
+  -303,  -303,  -303, -3000, -3000, -3000,  -337,  -293, -3000, -3000,
+  -293, -3000,  -307,  -293,  -293,   -72,   -73, -3000, -3000, -3000,
+ -3000, -3000, -3000,  -184,  -184,  -184,  -184,  -184,  -263,  -281,
+ -3000, -3000, -3000, -3000,  -337, -3000, -3000, -3000,  -184,   -75,
+  -184,   -79,  -184,   -80,  -184,  -184,  -184,  -184,  -184,  -184,
+  -184,  -184,  -184,  -184,  -195, -3000,   -81,   -83,   -82,   -83,
+ -3000, -3000, -3000, -3000, -3000,  -184,  -184, -3000, -3000,   -87,
+  -184, -3000,  -308, -3000, -3000, -3000,  -337, -3000,  -337,  -212,
+    89, -3000, -3000, -3000, -3000, -3000, -3000,  -303,   -90,  -303,
+   -90, -3000,    29,     6, -3000, -3000, -3000, -3000, -3000, -3000,
+ -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000,
+ -3000, -3000, -3000,  -337,  -192,  -115, -3000, -3000, -3000, -3000,
+ -3000, -3000, -3000, -3000, -3000, -3000, -3000,  -293,   -92,   -95,
+ -3000, -3000,  -337, -3000, -3000,  -337,  -337,  -337,  -337,  -337,
+  -337,  -337,  -337,  -337,  -337,  -337,  -138, -3000, -3000, -3000,
+ -3000, -3000, -3000, -3000,  -293, -3000, -3000, -3000, -3000, -3000,
+  -139,  -218,  -140,  -245, -3000, -3000, -3000, -3000,  -141,   -77,
+  -181,  -145,  -293, -3000,  -172, -3000,  -174, -3000,  -337,  -337,
+  -337,  -337,  -337,  -337,  -337,  -337,  -337,  -337,  -337, -3000,
+ -3000, -3000,  -200,   -12, -3000,  -264, -3000, -3000, -3000, -3000,
+ -3000, -3000,  -337,  -337, -3000, -3000,  -337,  -337,  -175,  -148,
+ -3000, -3000,  -337, -3000, -3000,  -337,  -337, -3000, -3000, -3000,
+ -3000, -3000,  -317, -3000, -3000,  -196, -3000,  -198, -3000, -3000,
+ -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000, -3000,
+ -3000,  -253,  -303, -3000, -3000, -3000, -3000, -3000, -3000, -3000,
+ -3000, -3000, -3000,  -303, -3000, -3000, -3000, -3000, -3000, -3000,
+ -3000, -3000, -3000, -3000, -3000,  -129,  -189, -3000, -3000,  -301,
+  -205, -3000, -3000,  -250, -3000, -3000, -3000, -3000, -3000, -3000,
+  -246,  -184, -3000,  -197, -3000,  -199,  -303, -3000, -3000, -3000,
+ -3000, -3000, -3000,  -189,  -190, -3000,  -293, -3000, -3000,  -337,
+  -191,  -293, -3000,  -293,  -293, -3000, -3000, -3000, -3000,  -217,
+  -227, -3000, -3000, -3000, -3000,  -192,  -254, -3000, -3000, -3000,
+ -3000, -3000, -3000, -3000,  -337, -3000, -3000, -3000,  -228, -3000,
+  -337,  -229,  -337, -3000, -3000, -3000,  -222, -3000, -3000,  -337,
+  -337,  -303, -3000,  -337, -3000, -3000 };
+__YYSCLASS yytabelem yypgo[]={
+
+     0,     0,     1,   112,    72,   429,   428,   425,   423,   422,
+   421,   420,   418,   417,   416,   415,   215,   414,   413,   412,
+   411,   410,   409,   408,   407,   406,   405,   404,   402,    75,
+   396,   395,   388,   385,   384,   380,   378,   377,   376,   374,
+   373,   372,   371,   370,   369,   367,   365,   364,   363,   362,
+   359,     2,   358,   357,   356,   354,   353,   348,   165,   346,
+   345,   344,   343,   342,   208,   341,   340,   339,   337,   335,
+   334,   333,   329,   328,   327,   326,   309,   303,   302,   283,
+   282,   281,   279,   273,   272,   271,   270,   269,   268,   264,
+   262,   260,   252,   249,   247,   245,   244,   243,   240,   228,
+     5,   226,   224,   223,   220,   218,   217,   214,   210,   209,
+   207,   206,   201,    76 };
+__YYSCLASS yytabelem yyr1[]={
+
+     0,     8,     9,     9,    10,    10,    10,    10,    10,    10,
+    15,    10,    10,    10,    10,    10,    17,    10,    19,    10,
+    10,    10,    10,    10,    23,    10,    10,    24,    10,    10,
+    25,    10,    10,    26,    10,    10,    27,    10,    10,    10,
+    10,    28,    10,    30,    10,    10,    10,    10,    10,    31,
+    10,    32,    10,    34,    10,    35,    10,    37,    10,    10,
+    38,    10,    40,    10,    41,    10,    10,    42,    10,    10,
+    43,    10,    10,    44,    10,    45,    10,    10,    46,    10,
+    10,    47,    10,    48,    10,    49,    10,    10,    50,    10,
+    52,    10,    53,    10,    55,    10,    57,    10,    59,    10,
+    61,    10,    10,    10,    10,    10,    10,    62,    10,    10,
+    63,    10,    10,    11,    12,    12,    13,     6,     7,    64,
+    64,    67,    67,    67,    67,    67,    67,    65,    65,    68,
+    68,    68,    68,    68,    68,    68,    68,    68,    66,    66,
+    69,    69,    69,    69,    69,    69,    69,    69,    69,    69,
+    29,    70,    70,    71,    21,    72,    72,    73,    22,    74,
+    74,    75,    75,    75,    75,    75,    75,    75,    75,    75,
+    75,    75,    75,    75,    75,    75,    75,    75,    75,    75,
+    75,    75,    75,    58,    76,    76,    77,    78,    77,    77,
+    60,    80,    80,    81,    81,    79,    82,    82,    83,    14,
+    84,    14,    14,    86,    14,    85,    85,    39,    87,    87,
+    88,    88,    33,    89,    89,    90,    91,    90,    92,    93,
+    93,    94,    94,    94,    94,    94,    18,    18,    18,    18,
+    20,    20,    20,    20,    16,    95,    95,    96,    36,    97,
+    97,    99,    98,   101,    98,   102,    98,   100,   104,   104,
+   105,   103,   106,   106,   107,    56,   108,   108,   109,    54,
+   110,   110,   111,    51,   112,   112,   113,   113,     2,     2,
+     5,     5,     5,     3,     1,     4 };
+__YYSCLASS yytabelem yyr2[]={
+
+     0,     2,     0,     4,     2,     2,     2,     2,     2,    13,
+     1,    16,     7,     5,     7,     5,     1,     6,     1,     6,
+     5,     3,     5,     5,     1,     6,     3,     1,     6,     3,
+     1,     6,     3,     1,     6,     3,     1,     6,     3,     9,
+     9,     1,     8,     1,     8,     5,     5,     5,     5,     1,
+     6,     1,     6,     1,     6,     1,     6,     1,     6,     3,
+     1,     6,     1,     6,     1,     6,     3,     1,     6,     3,
+     1,     6,     3,     1,     6,     1,     6,     3,     1,     6,
+     3,     1,     6,     1,     6,     1,     6,     3,     1,    19,
+     1,     9,     1,     8,     1,     6,     1,     6,     1,     6,
+     1,     6,     5,     5,     5,     5,     5,     1,     6,     3,
+     1,     6,     3,     3,     5,     3,     5,    13,    13,     0,
+     4,     3,     3,     3,     3,     5,     3,     0,     4,     3,
+     3,     3,     3,     3,     3,     3,     3,     3,     0,     4,
+     3,     3,     3,     3,     3,     3,     3,     3,     3,     3,
+     6,     0,     4,     7,     7,     0,     4,     5,     7,     0,
+     4,     7,     5,     7,     5,     7,     5,     7,     5,     7,
+     5,     7,     5,     7,     5,     7,     5,     7,     5,     7,
+     5,     7,     5,     7,     0,     4,     5,     1,     8,     5,
+     7,     0,     4,     3,     3,     7,     0,     4,     5,     3,
+     1,    10,     3,     1,     6,     0,    11,     7,     0,     4,
+     7,     9,     7,     0,     4,     3,     1,     6,     7,     0,
+     4,     3,     5,     7,     9,    11,     7,     9,    11,    13,
+     7,     9,    11,    13,     7,     0,     4,     3,     7,     0,
+     4,     1,     6,     1,     8,     1,     8,     7,     0,     4,
+     3,     7,     0,     4,     3,     7,     0,     4,     5,     7,
+     0,     4,     3,     7,     0,     4,     5,    15,     3,     5,
+     3,     5,     5,     5,     3,     3 };
+__YYSCLASS yytabelem yychk[]={
+
+ -3000,    -8,    -9,   -10,   256,   -11,   -12,   -13,   -14,   291,
+   281,   331,   334,   335,   279,   270,   269,   284,   336,   337,
+   338,   339,   313,   314,    -3,    -1,   285,   330,   332,   333,
+   282,   280,   276,   306,   290,   328,   286,   287,   288,   283,
+   305,   289,   262,   275,   271,   272,   273,   274,   264,   278,
+   340,   341,   342,   326,   325,   316,   322,   317,   303,   304,
+   263,   343,    -1,    -1,    -1,   -17,   -19,    -4,   315,   -21,
+   257,   -22,   257,   -23,   -24,   -25,   -26,   -27,    -1,    -1,
+    -1,    -2,    -6,   320,   321,   302,    -7,   302,   -31,   -32,
+   -34,   -35,   -37,   -38,   -40,   -41,   -42,   -43,   -44,   -45,
+   -46,   -47,   -48,   -49,    -1,    -1,   -55,   -57,   -59,   -61,
+    -2,    -2,    -2,    -2,    -2,   -62,   -63,    -1,    -4,   -84,
+   -86,    -4,   323,    -4,    -4,   -18,   257,   -20,   257,   -72,
+   -74,   -16,   257,   -16,   -16,   -16,   -16,   302,   -28,   302,
+   -30,    -1,   -64,   -64,   -16,   -33,   257,   -16,   -36,   257,
+   -16,   -39,   257,   -16,   -16,   -16,   -16,   -16,   -16,   -16,
+   -16,   -16,   -16,   259,   -52,   -53,   -56,   257,   -58,   257,
+   -60,   257,   -58,   -16,   -16,   257,   -16,   323,    -1,    -1,
+   258,   -73,   307,   258,   -75,   300,   297,   298,   277,   263,
+   308,   309,   310,   262,   311,   312,   -95,    -2,   -29,   257,
+    -2,   -29,   301,   -67,   292,   293,   294,   295,   268,   301,
+   -89,   -97,   -87,    -1,   -51,   257,   -54,   257,  -108,   -76,
+   -80,   -85,    -4,   258,    -1,   258,    -1,    -1,    -1,    -1,
+    -1,    -1,    -1,    -1,    -1,    -1,    -1,    -1,    -1,   258,
+   -96,    -1,   -70,   -65,    -4,   -66,   258,   -90,    -1,   258,
+   -98,    -1,   296,   329,   258,   -88,    -1,   301,  -112,  -110,
+   258,  -109,    -1,   258,   -77,   319,   318,   258,   -81,    -1,
+   319,   258,    -1,    -4,   258,    -1,   258,    -1,    -1,    -1,
+    -1,    -1,    -1,    -1,    -1,    -1,    -1,    -1,    -1,   258,
+   -71,    -3,   301,   -68,   296,   297,   298,   299,   300,   277,
+   292,   267,   268,   301,   -69,   296,   297,   298,   299,   300,
+   277,   292,   267,   268,    -1,   -91,   -99,    -1,    -1,    -1,
+    -1,   258,  -113,    -1,   258,  -111,    -2,    -1,    -1,    -1,
+   324,   -15,   258,    -1,   258,    -1,   301,    -2,    -2,   -92,
+   257,  -100,   257,  -101,  -102,    -4,    -1,   260,    -2,   259,
+   -78,    -5,    -4,   265,   266,   -16,   258,   258,    -2,   -93,
+  -104,  -100,  -103,   257,    -4,   -50,    -1,   -79,   257,    -4,
+    -4,    -4,   258,   -94,    -1,   258,  -105,    -1,  -106,   -51,
+   301,   -82,    -1,   258,  -107,    -1,    -1,   258,   -83,    -1,
+    -1,   260,    -1,    -1,    -2,    -1 };
+__YYSCLASS yytabelem yydef[]={
+
+     2,    -2,    -2,     3,     4,     5,     6,     7,     8,     0,
+     0,     0,    16,    18,    21,     0,     0,    -2,    -2,    -2,
+    -2,    -2,     0,     0,     0,     0,    49,    51,    53,    55,
+    -2,    60,    62,    -2,    -2,    -2,    73,    -2,    -2,    81,
+    83,    -2,     0,     0,    94,    96,    98,   100,     0,     0,
+     0,     0,     0,    -2,    -2,   113,   115,     0,    -2,    -2,
+     0,   274,     0,    13,    15,     0,     0,    20,   275,    22,
+   155,    23,   159,     0,     0,     0,     0,     0,    41,    43,
+    45,    46,    48,   268,     0,   119,    47,   119,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,    90,    92,     0,     0,     0,     0,
+   102,   103,   104,   105,   106,     0,     0,   114,   116,     0,
+     0,   273,     0,    12,    14,    17,     0,    19,     0,     0,
+     0,    25,   235,    28,    31,    34,    37,     0,     0,     0,
+     0,   269,     0,     0,    50,    52,   213,    54,    56,   239,
+    58,    61,   208,    63,    65,    68,    71,    74,    76,    79,
+    82,    84,    86,     0,     0,     0,    95,   256,    97,   184,
+    99,   191,   101,   108,   111,   205,   204,     0,     0,     0,
+   154,   156,     0,   158,   160,     0,     0,     0,     0,     0,
+     0,     0,     0,     0,     0,     0,     0,    39,    42,   151,
+    40,    44,   127,   120,   121,   122,   123,   124,   126,   138,
+     0,     0,     0,     0,    91,   264,    93,   260,     0,     0,
+     0,     0,     0,   226,     0,   230,     0,   157,   162,   164,
+   166,   168,   170,   172,   174,   176,   178,   180,   182,   234,
+   236,   237,     0,     0,   125,     0,   212,   214,    -2,   238,
+   240,   241,     0,     0,   207,   209,     0,     0,     0,     0,
+   255,   257,     0,   183,   185,     0,     0,   190,   192,   193,
+   194,   201,     0,    -2,   227,     0,   231,     0,   161,   163,
+   165,   167,   169,   171,   173,   175,   177,   179,   181,   150,
+   152,     0,     0,   128,   129,   130,   131,   132,   133,   134,
+   135,   136,   137,     0,   139,   140,   141,   142,   143,   144,
+   145,   146,   147,   148,   149,     0,     0,   243,   245,     0,
+     0,   263,   265,     0,   259,   261,   262,   258,    -2,   189,
+     0,     0,   228,     0,   232,     0,     0,   117,   118,   217,
+   219,   242,   248,     0,     0,   210,     0,    88,   266,     0,
+     0,     0,   270,     0,     0,    11,   229,   233,   153,     0,
+     0,   244,   246,   252,   211,     0,     0,   188,   196,   206,
+   271,   272,   218,   220,   221,   247,   249,   250,     0,    89,
+     0,     0,   222,   251,   253,   254,     0,   195,   197,     0,
+   223,     0,   198,   224,   267,   225 };
+typedef struct { char *t_name; int t_val; } yytoktype;
+#ifndef YYDEBUG
+#	define YYDEBUG	0	/* don't allow debugging */
+#endif
+
+#if YYDEBUG
+
+__YYSCLASS yytoktype yytoks[] =
+{
+	"LB",	257,
+	"RB",	258,
+	"LP",	259,
+	"RP",	260,
+	"MENUS",	261,
+	"MENU",	262,
+	"BUTTON",	263,
+	"DEFAULT_FUNCTION",	264,
+	"PLUS",	265,
+	"MINUS",	266,
+	"ALL",	267,
+	"OR",	268,
+	"CURSORS",	269,
+	"PIXMAPS",	270,
+	"ICONS",	271,
+	"COLOR",	272,
+	"SAVECOLOR",	273,
+	"MONOCHROME",	274,
+	"FUNCTION",	275,
+	"ICONMGR_SHOW",	276,
+	"ICONMGR",	277,
+	"WINDOW_FUNCTION",	278,
+	"ZOOM",	279,
+	"ICONMGRS",	280,
+	"ICONMGR_GEOMETRY",	281,
+	"ICONMGR_NOSHOW",	282,
+	"MAKE_TITLE",	283,
+	"ICONIFY_BY_UNMAPPING",	284,
+	"DONT_ICONIFY_BY_UNMAPPING",	285,
+	"NO_BORDER",	286,
+	"NO_ICON_TITLE",	287,
+	"NO_TITLE",	288,
+	"AUTO_RAISE",	289,
+	"NO_HILITE",	290,
+	"ICON_REGION",	291,
+	"META",	292,
+	"SHIFT",	293,
+	"LOCK",	294,
+	"CONTROL",	295,
+	"WINDOW",	296,
+	"TITLE",	297,
+	"ICON",	298,
+	"ROOT",	299,
+	"FRAME",	300,
+	"COLON",	301,
+	"EQUALS",	302,
+	"SQUEEZE_TITLE",	303,
+	"DONT_SQUEEZE_TITLE",	304,
+	"START_ICONIFIED",	305,
+	"NO_TITLE_HILITE",	306,
+	"TITLE_HILITE",	307,
+	"MOVE",	308,
+	"RESIZE",	309,
+	"WAITC",	310,
+	"SELECT",	311,
+	"KILL",	312,
+	"LEFT_TITLEBUTTON",	313,
+	"RIGHT_TITLEBUTTON",	314,
+	"NUMBER",	315,
+	"KEYWORD",	316,
+	"NKEYWORD",	317,
+	"CKEYWORD",	318,
+	"CLKEYWORD",	319,
+	"FKEYWORD",	320,
+	"FSKEYWORD",	321,
+	"SKEYWORD",	322,
+	"DKEYWORD",	323,
+	"JKEYWORD",	324,
+	"WINDOW_RING",	325,
+	"WARP_CURSOR",	326,
+	"ERRORTOKEN",	327,
+	"NO_STACKMODE",	328,
+	"WORKSPACE",	329,
+	"WORKSPACES",	330,
+	"WORKSPCMGR_GEOMETRY",	331,
+	"OCCUPYALL",	332,
+	"OCCUPYLIST",	333,
+	"MAPWINDOWCURRENTWORKSPACE",	334,
+	"MAPWINDOWDEFAULTWORKSPACE",	335,
+	"OPAQUEMOVE",	336,
+	"NOOPAQUEMOVE",	337,
+	"OPAQUERESIZE",	338,
+	"NOOPAQUERESIZE",	339,
+	"CHANGE_WORKSPACE_FUNCTION",	340,
+	"DEICONIFY_FUNCTION",	341,
+	"ICONIFY_FUNCTION",	342,
+	"STRING",	343,
+	"-unknown-",	-1	/* ends search */
+};
+
+__YYSCLASS char * yyreds[] =
+{
+	"-no such reduction-",
+	"twmrc : stmts",
+	"stmts : /* empty */",
+	"stmts : stmts stmt",
+	"stmt : error",
+	"stmt : noarg",
+	"stmt : sarg",
+	"stmt : narg",
+	"stmt : squeeze",
+	"stmt : ICON_REGION string DKEYWORD DKEYWORD number number",
+	"stmt : ICON_REGION string DKEYWORD DKEYWORD number number",
+	"stmt : ICON_REGION string DKEYWORD DKEYWORD number number win_list",
+	"stmt : ICONMGR_GEOMETRY string number",
+	"stmt : ICONMGR_GEOMETRY string",
+	"stmt : WORKSPCMGR_GEOMETRY string number",
+	"stmt : WORKSPCMGR_GEOMETRY string",
+	"stmt : MAPWINDOWCURRENTWORKSPACE",
+	"stmt : MAPWINDOWCURRENTWORKSPACE curwork",
+	"stmt : MAPWINDOWDEFAULTWORKSPACE",
+	"stmt : MAPWINDOWDEFAULTWORKSPACE defwork",
+	"stmt : ZOOM number",
+	"stmt : ZOOM",
+	"stmt : PIXMAPS pixmap_list",
+	"stmt : CURSORS cursor_list",
+	"stmt : ICONIFY_BY_UNMAPPING",
+	"stmt : ICONIFY_BY_UNMAPPING win_list",
+	"stmt : ICONIFY_BY_UNMAPPING",
+	"stmt : OPAQUEMOVE",
+	"stmt : OPAQUEMOVE win_list",
+	"stmt : OPAQUEMOVE",
+	"stmt : NOOPAQUEMOVE",
+	"stmt : NOOPAQUEMOVE win_list",
+	"stmt : NOOPAQUEMOVE",
+	"stmt : OPAQUERESIZE",
+	"stmt : OPAQUERESIZE win_list",
+	"stmt : OPAQUERESIZE",
+	"stmt : NOOPAQUERESIZE",
+	"stmt : NOOPAQUERESIZE win_list",
+	"stmt : NOOPAQUERESIZE",
+	"stmt : LEFT_TITLEBUTTON string EQUALS action",
+	"stmt : RIGHT_TITLEBUTTON string EQUALS action",
+	"stmt : LEFT_TITLEBUTTON string",
+	"stmt : LEFT_TITLEBUTTON string binding_list",
+	"stmt : RIGHT_TITLEBUTTON string",
+	"stmt : RIGHT_TITLEBUTTON string binding_list",
+	"stmt : button string",
+	"stmt : button action",
+	"stmt : string fullkey",
+	"stmt : button full",
+	"stmt : DONT_ICONIFY_BY_UNMAPPING",
+	"stmt : DONT_ICONIFY_BY_UNMAPPING win_list",
+	"stmt : WORKSPACES",
+	"stmt : WORKSPACES workspc_list",
+	"stmt : OCCUPYALL",
+	"stmt : OCCUPYALL win_list",
+	"stmt : OCCUPYLIST",
+	"stmt : OCCUPYLIST occupy_list",
+	"stmt : ICONMGR_NOSHOW",
+	"stmt : ICONMGR_NOSHOW win_list",
+	"stmt : ICONMGR_NOSHOW",
+	"stmt : ICONMGRS",
+	"stmt : ICONMGRS iconm_list",
+	"stmt : ICONMGR_SHOW",
+	"stmt : ICONMGR_SHOW win_list",
+	"stmt : NO_TITLE_HILITE",
+	"stmt : NO_TITLE_HILITE win_list",
+	"stmt : NO_TITLE_HILITE",
+	"stmt : NO_HILITE",
+	"stmt : NO_HILITE win_list",
+	"stmt : NO_HILITE",
+	"stmt : NO_STACKMODE",
+	"stmt : NO_STACKMODE win_list",
+	"stmt : NO_STACKMODE",
+	"stmt : NO_BORDER",
+	"stmt : NO_BORDER win_list",
+	"stmt : NO_ICON_TITLE",
+	"stmt : NO_ICON_TITLE win_list",
+	"stmt : NO_ICON_TITLE",
+	"stmt : NO_TITLE",
+	"stmt : NO_TITLE win_list",
+	"stmt : NO_TITLE",
+	"stmt : MAKE_TITLE",
+	"stmt : MAKE_TITLE win_list",
+	"stmt : START_ICONIFIED",
+	"stmt : START_ICONIFIED win_list",
+	"stmt : AUTO_RAISE",
+	"stmt : AUTO_RAISE win_list",
+	"stmt : AUTO_RAISE",
+	"stmt : MENU string LP string COLON string RP",
+	"stmt : MENU string LP string COLON string RP menu",
+	"stmt : MENU string",
+	"stmt : MENU string menu",
+	"stmt : FUNCTION string",
+	"stmt : FUNCTION string function",
+	"stmt : ICONS",
+	"stmt : ICONS icon_list",
+	"stmt : COLOR",
+	"stmt : COLOR color_list",
+	"stmt : SAVECOLOR",
+	"stmt : SAVECOLOR save_color_list",
+	"stmt : MONOCHROME",
+	"stmt : MONOCHROME color_list",
+	"stmt : DEFAULT_FUNCTION action",
+	"stmt : WINDOW_FUNCTION action",
+	"stmt : CHANGE_WORKSPACE_FUNCTION action",
+	"stmt : DEICONIFY_FUNCTION action",
+	"stmt : ICONIFY_FUNCTION action",
+	"stmt : WARP_CURSOR",
+	"stmt : WARP_CURSOR win_list",
+	"stmt : WARP_CURSOR",
+	"stmt : WINDOW_RING",
+	"stmt : WINDOW_RING win_list",
+	"stmt : WINDOW_RING",
+	"noarg : KEYWORD",
+	"sarg : SKEYWORD string",
+	"sarg : SKEYWORD",
+	"narg : NKEYWORD number",
+	"full : EQUALS keys COLON contexts COLON action",
+	"fullkey : EQUALS keys COLON contextkeys COLON action",
+	"keys : /* empty */",
+	"keys : keys key",
+	"key : META",
+	"key : SHIFT",
+	"key : LOCK",
+	"key : CONTROL",
+	"key : META number",
+	"key : OR",
+	"contexts : /* empty */",
+	"contexts : contexts context",
+	"context : WINDOW",
+	"context : TITLE",
+	"context : ICON",
+	"context : ROOT",
+	"context : FRAME",
+	"context : ICONMGR",
+	"context : META",
+	"context : ALL",
+	"context : OR",
+	"contextkeys : /* empty */",
+	"contextkeys : contextkeys contextkey",
+	"contextkey : WINDOW",
+	"contextkey : TITLE",
+	"contextkey : ICON",
+	"contextkey : ROOT",
+	"contextkey : FRAME",
+	"contextkey : ICONMGR",
+	"contextkey : META",
+	"contextkey : ALL",
+	"contextkey : OR",
+	"contextkey : string",
+	"binding_list : LB binding_entries RB",
+	"binding_entries : /* empty */",
+	"binding_entries : binding_entries binding_entry",
+	"binding_entry : button COLON action",
+	"pixmap_list : LB pixmap_entries RB",
+	"pixmap_entries : /* empty */",
+	"pixmap_entries : pixmap_entries pixmap_entry",
+	"pixmap_entry : TITLE_HILITE string",
+	"cursor_list : LB cursor_entries RB",
+	"cursor_entries : /* empty */",
+	"cursor_entries : cursor_entries cursor_entry",
+	"cursor_entry : FRAME string string",
+	"cursor_entry : FRAME string",
+	"cursor_entry : TITLE string string",
+	"cursor_entry : TITLE string",
+	"cursor_entry : ICON string string",
+	"cursor_entry : ICON string",
+	"cursor_entry : ICONMGR string string",
+	"cursor_entry : ICONMGR string",
+	"cursor_entry : BUTTON string string",
+	"cursor_entry : BUTTON string",
+	"cursor_entry : MOVE string string",
+	"cursor_entry : MOVE string",
+	"cursor_entry : RESIZE string string",
+	"cursor_entry : RESIZE string",
+	"cursor_entry : WAITC string string",
+	"cursor_entry : WAITC string",
+	"cursor_entry : MENU string string",
+	"cursor_entry : MENU string",
+	"cursor_entry : SELECT string string",
+	"cursor_entry : SELECT string",
+	"cursor_entry : KILL string string",
+	"cursor_entry : KILL string",
+	"color_list : LB color_entries RB",
+	"color_entries : /* empty */",
+	"color_entries : color_entries color_entry",
+	"color_entry : CLKEYWORD string",
+	"color_entry : CLKEYWORD string",
+	"color_entry : CLKEYWORD string win_color_list",
+	"color_entry : CKEYWORD string",
+	"save_color_list : LB s_color_entries RB",
+	"s_color_entries : /* empty */",
+	"s_color_entries : s_color_entries s_color_entry",
+	"s_color_entry : string",
+	"s_color_entry : CLKEYWORD",
+	"win_color_list : LB win_color_entries RB",
+	"win_color_entries : /* empty */",
+	"win_color_entries : win_color_entries win_color_entry",
+	"win_color_entry : string string",
+	"squeeze : SQUEEZE_TITLE",
+	"squeeze : SQUEEZE_TITLE",
+	"squeeze : SQUEEZE_TITLE LB win_sqz_entries RB",
+	"squeeze : DONT_SQUEEZE_TITLE",
+	"squeeze : DONT_SQUEEZE_TITLE",
+	"squeeze : DONT_SQUEEZE_TITLE win_list",
+	"win_sqz_entries : /* empty */",
+	"win_sqz_entries : win_sqz_entries string JKEYWORD signed_number number",
+	"iconm_list : LB iconm_entries RB",
+	"iconm_entries : /* empty */",
+	"iconm_entries : iconm_entries iconm_entry",
+	"iconm_entry : string string number",
+	"iconm_entry : string string string number",
+	"workspc_list : LB workspc_entries RB",
+	"workspc_entries : /* empty */",
+	"workspc_entries : workspc_entries workspc_entry",
+	"workspc_entry : string",
+	"workspc_entry : string",
+	"workspc_entry : string workapp_list",
+	"workapp_list : LB workapp_entries RB",
+	"workapp_entries : /* empty */",
+	"workapp_entries : workapp_entries workapp_entry",
+	"workapp_entry : string",
+	"workapp_entry : string string",
+	"workapp_entry : string string string",
+	"workapp_entry : string string string string",
+	"workapp_entry : string string string string string",
+	"curwork : LB string RB",
+	"curwork : LB string string RB",
+	"curwork : LB string string string RB",
+	"curwork : LB string string string string RB",
+	"defwork : LB string RB",
+	"defwork : LB string string RB",
+	"defwork : LB string string string RB",
+	"defwork : LB string string string string RB",
+	"win_list : LB win_entries RB",
+	"win_entries : /* empty */",
+	"win_entries : win_entries win_entry",
+	"win_entry : string",
+	"occupy_list : LB occupy_entries RB",
+	"occupy_entries : /* empty */",
+	"occupy_entries : occupy_entries occupy_entry",
+	"occupy_entry : string",
+	"occupy_entry : string occupy_workspc_list",
+	"occupy_entry : WINDOW string",
+	"occupy_entry : WINDOW string occupy_workspc_list",
+	"occupy_entry : WORKSPACE string",
+	"occupy_entry : WORKSPACE string occupy_window_list",
+	"occupy_workspc_list : LB occupy_workspc_entries RB",
+	"occupy_workspc_entries : /* empty */",
+	"occupy_workspc_entries : occupy_workspc_entries occupy_workspc_entry",
+	"occupy_workspc_entry : string",
+	"occupy_window_list : LB occupy_window_entries RB",
+	"occupy_window_entries : /* empty */",
+	"occupy_window_entries : occupy_window_entries occupy_window_entry",
+	"occupy_window_entry : string",
+	"icon_list : LB icon_entries RB",
+	"icon_entries : /* empty */",
+	"icon_entries : icon_entries icon_entry",
+	"icon_entry : string string",
+	"function : LB function_entries RB",
+	"function_entries : /* empty */",
+	"function_entries : function_entries function_entry",
+	"function_entry : action",
+	"menu : LB menu_entries RB",
+	"menu_entries : /* empty */",
+	"menu_entries : menu_entries menu_entry",
+	"menu_entry : string action",
+	"menu_entry : string LP string COLON string RP action",
+	"action : FKEYWORD",
+	"action : FSKEYWORD string",
+	"signed_number : number",
+	"signed_number : PLUS number",
+	"signed_number : MINUS number",
+	"button : BUTTON number",
+	"string : STRING",
+	"number : NUMBER",
+};
+#endif /* YYDEBUG */
+#define YYFLAG  (-3000)
+/* @(#) $Revision: 70.7 $ */    
+
+/*
+** Skeleton parser driver for yacc output
+*/
+
+#if defined(NLS) && !defined(NL_SETN)
+#include <msgbuf.h>
+#endif
+
+#ifndef nl_msg
+#define nl_msg(i,s) (s)
+#endif
+
+/*
+** yacc user known macros and defines
+*/
+#define YYERROR		goto yyerrlab
+
+#ifndef __RUNTIME_YYMAXDEPTH
+#define YYACCEPT	return(0)
+#define YYABORT		return(1)
+#else
+#define YYACCEPT	{free_stacks(); return(0);}
+#define YYABORT		{free_stacks(); return(1);}
+#endif
+
+#define YYBACKUP( newtoken, newvalue )\
+{\
+	if ( yychar >= 0 || ( yyr2[ yytmp ] >> 1 ) != 1 )\
+	{\
+		yyerror( (nl_msg(30001,"syntax error - cannot backup")) );\
+		goto yyerrlab;\
+	}\
+	yychar = newtoken;\
+	yystate = *yyps;\
+	yylval = newvalue;\
+	goto yynewstate;\
+}
+#define YYRECOVERING()	(!!yyerrflag)
+#ifndef YYDEBUG
+#	define YYDEBUG	1	/* make debugging available */
+#endif
+
+/*
+** user known globals
+*/
+int yydebug;			/* set to 1 to get debugging */
+
+/*
+** driver internal defines
+*/
+/* define for YYFLAG now generated by yacc program. */
+/*#define YYFLAG		(FLAGVAL)*/
+
+/*
+** global variables used by the parser
+*/
+# ifndef __RUNTIME_YYMAXDEPTH
+__YYSCLASS YYSTYPE yyv[ YYMAXDEPTH ];	/* value stack */
+__YYSCLASS int yys[ YYMAXDEPTH ];		/* state stack */
+# else
+__YYSCLASS YYSTYPE *yyv;			/* pointer to malloc'ed value stack */
+__YYSCLASS int *yys;			/* pointer to malloc'ed stack stack */
+
+#if defined(__STDC__) || defined (__cplusplus)
+#include <stdlib.h>
+#else
+	extern char *malloc();
+	extern char *realloc();
+	extern void free();
+#endif /* __STDC__ or __cplusplus */
+
+
+static int allocate_stacks(); 
+static void free_stacks();
+# ifndef YYINCREMENT
+# define YYINCREMENT (YYMAXDEPTH/2) + 10
+# endif
+# endif	/* __RUNTIME_YYMAXDEPTH */
+long  yymaxdepth = YYMAXDEPTH;
+
+__YYSCLASS YYSTYPE *yypv;			/* top of value stack */
+__YYSCLASS int *yyps;			/* top of state stack */
+
+__YYSCLASS int yystate;			/* current state */
+__YYSCLASS int yytmp;			/* extra var (lasts between blocks) */
+
+int yynerrs;			/* number of errors */
+__YYSCLASS int yyerrflag;			/* error recovery flag */
+int yychar;			/* current input token number */
+
+
+
+/*
+** yyparse - return 0 if worked, 1 if syntax error not recovered from
+*/
+int
+yyparse()
+{
+	register YYSTYPE *yypvt;	/* top of value stack for $vars */
+
+	/*
+	** Initialize externals - yyparse may be called more than once
+	*/
+# ifdef __RUNTIME_YYMAXDEPTH
+	if (allocate_stacks()) YYABORT;
+# endif
+	yypv = &yyv[-1];
+	yyps = &yys[-1];
+	yystate = 0;
+	yytmp = 0;
+	yynerrs = 0;
+	yyerrflag = 0;
+	yychar = -1;
+
+	goto yystack;
+	{
+		register YYSTYPE *yy_pv;	/* top of value stack */
+		register int *yy_ps;		/* top of state stack */
+		register int yy_state;		/* current state */
+		register int  yy_n;		/* internal state number info */
+
+		/*
+		** get globals into registers.
+		** branch to here only if YYBACKUP was called.
+		*/
+	yynewstate:
+		yy_pv = yypv;
+		yy_ps = yyps;
+		yy_state = yystate;
+		goto yy_newstate;
+
+		/*
+		** get globals into registers.
+		** either we just started, or we just finished a reduction
+		*/
+	yystack:
+		yy_pv = yypv;
+		yy_ps = yyps;
+		yy_state = yystate;
+
+		/*
+		** top of for (;;) loop while no reductions done
+		*/
+	yy_stack:
+		/*
+		** put a state and value onto the stacks
+		*/
+#if YYDEBUG
+		/*
+		** if debugging, look up token value in list of value vs.
+		** name pairs.  0 and negative (-1) are special values.
+		** Note: linear search is used since time is not a real
+		** consideration while debugging.
+		*/
+		if ( yydebug )
+		{
+			register int yy_i;
+
+			printf( "State %d, token ", yy_state );
+			if ( yychar == 0 )
+				printf( "end-of-file\n" );
+			else if ( yychar < 0 )
+				printf( "-none-\n" );
+			else
+			{
+				for ( yy_i = 0; yytoks[yy_i].t_val >= 0;
+					yy_i++ )
+				{
+					if ( yytoks[yy_i].t_val == yychar )
+						break;
+				}
+				printf( "%s\n", yytoks[yy_i].t_name );
+			}
+		}
+#endif /* YYDEBUG */
+		if ( ++yy_ps >= &yys[ yymaxdepth ] )	/* room on stack? */
+		{
+# ifndef __RUNTIME_YYMAXDEPTH
+			yyerror( (nl_msg(30002,"yacc stack overflow")) );
+			YYABORT;
+# else
+			/* save old stack bases to recalculate pointers */
+			YYSTYPE * yyv_old = yyv;
+			int * yys_old = yys;
+			yymaxdepth += YYINCREMENT;
+			yys = (int *) realloc(yys, yymaxdepth * sizeof(int));
+			yyv = (YYSTYPE *) realloc(yyv, yymaxdepth * sizeof(YYSTYPE));
+			if (yys==0 || yyv==0) {
+			    yyerror( (nl_msg(30002,"yacc stack overflow")) );
+			    YYABORT;
+			    }
+			/* Reset pointers into stack */
+			yy_ps = (yy_ps - yys_old) + yys;
+			yyps = (yyps - yys_old) + yys;
+			yy_pv = (yy_pv - yyv_old) + yyv;
+			yypv = (yypv - yyv_old) + yyv;
+# endif
+
+		}
+		*yy_ps = yy_state;
+		*++yy_pv = yyval;
+
+		/*
+		** we have a new state - find out what to do
+		*/
+	yy_newstate:
+		if ( ( yy_n = yypact[ yy_state ] ) <= YYFLAG )
+			goto yydefault;		/* simple state */
+#if YYDEBUG
+		/*
+		** if debugging, need to mark whether new token grabbed
+		*/
+		yytmp = yychar < 0;
+#endif
+		if ( ( yychar < 0 ) && ( ( yychar = yylex() ) < 0 ) )
+			yychar = 0;		/* reached EOF */
+#if YYDEBUG
+		if ( yydebug && yytmp )
+		{
+			register int yy_i;
+
+			printf( "Received token " );
+			if ( yychar == 0 )
+				printf( "end-of-file\n" );
+			else if ( yychar < 0 )
+				printf( "-none-\n" );
+			else
+			{
+				for ( yy_i = 0; yytoks[yy_i].t_val >= 0;
+					yy_i++ )
+				{
+					if ( yytoks[yy_i].t_val == yychar )
+						break;
+				}
+				printf( "%s\n", yytoks[yy_i].t_name );
+			}
+		}
+#endif /* YYDEBUG */
+		if ( ( ( yy_n += yychar ) < 0 ) || ( yy_n >= YYLAST ) )
+			goto yydefault;
+		if ( yychk[ yy_n = yyact[ yy_n ] ] == yychar )	/*valid shift*/
+		{
+			yychar = -1;
+			yyval = yylval;
+			yy_state = yy_n;
+			if ( yyerrflag > 0 )
+				yyerrflag--;
+			goto yy_stack;
+		}
+
+	yydefault:
+		if ( ( yy_n = yydef[ yy_state ] ) == -2 )
+		{
+#if YYDEBUG
+			yytmp = yychar < 0;
+#endif
+			if ( ( yychar < 0 ) && ( ( yychar = yylex() ) < 0 ) )
+				yychar = 0;		/* reached EOF */
+#if YYDEBUG
+			if ( yydebug && yytmp )
+			{
+				register int yy_i;
+
+				printf( "Received token " );
+				if ( yychar == 0 )
+					printf( "end-of-file\n" );
+				else if ( yychar < 0 )
+					printf( "-none-\n" );
+				else
+				{
+					for ( yy_i = 0;
+						yytoks[yy_i].t_val >= 0;
+						yy_i++ )
+					{
+						if ( yytoks[yy_i].t_val
+							== yychar )
+						{
+							break;
+						}
+					}
+					printf( "%s\n", yytoks[yy_i].t_name );
+				}
+			}
+#endif /* YYDEBUG */
+			/*
+			** look through exception table
+			*/
+			{
+				register int *yyxi = yyexca;
+
+				while ( ( *yyxi != -1 ) ||
+					( yyxi[1] != yy_state ) )
+				{
+					yyxi += 2;
+				}
+				while ( ( *(yyxi += 2) >= 0 ) &&
+					( *yyxi != yychar ) )
+					;
+				if ( ( yy_n = yyxi[1] ) < 0 )
+					YYACCEPT;
+			}
+		}
+
+		/*
+		** check for syntax error
+		*/
+		if ( yy_n == 0 )	/* have an error */
+		{
+			/* no worry about speed here! */
+			switch ( yyerrflag )
+			{
+			case 0:		/* new error */
+				yyerror( (nl_msg(30003,"syntax error")) );
+				yynerrs++;
+				goto skip_init;
+			yyerrlab:
+				/*
+				** get globals into registers.
+				** we have a user generated syntax type error
+				*/
+				yy_pv = yypv;
+				yy_ps = yyps;
+				yy_state = yystate;
+				yynerrs++;
+			skip_init:
+			case 1:
+			case 2:		/* incompletely recovered error */
+					/* try again... */
+				yyerrflag = 3;
+				/*
+				** find state where "error" is a legal
+				** shift action
+				*/
+				while ( yy_ps >= yys )
+				{
+					yy_n = yypact[ *yy_ps ] + YYERRCODE;
+					if ( yy_n >= 0 && yy_n < YYLAST &&
+						yychk[yyact[yy_n]] == YYERRCODE)					{
+						/*
+						** simulate shift of "error"
+						*/
+						yy_state = yyact[ yy_n ];
+						goto yy_stack;
+					}
+					/*
+					** current state has no shift on
+					** "error", pop stack
+					*/
+#if YYDEBUG
+#	define _POP_ "Error recovery pops state %d, uncovers state %d\n"
+					if ( yydebug )
+						printf( _POP_, *yy_ps,
+							yy_ps[-1] );
+#	undef _POP_
+#endif
+					yy_ps--;
+					yy_pv--;
+				}
+				/*
+				** there is no state on stack with "error" as
+				** a valid shift.  give up.
+				*/
+				YYABORT;
+			case 3:		/* no shift yet; eat a token */
+#if YYDEBUG
+				/*
+				** if debugging, look up token in list of
+				** pairs.  0 and negative shouldn't occur,
+				** but since timing doesn't matter when
+				** debugging, it doesn't hurt to leave the
+				** tests here.
+				*/
+				if ( yydebug )
+				{
+					register int yy_i;
+
+					printf( "Error recovery discards " );
+					if ( yychar == 0 )
+						printf( "token end-of-file\n" );
+					else if ( yychar < 0 )
+						printf( "token -none-\n" );
+					else
+					{
+						for ( yy_i = 0;
+							yytoks[yy_i].t_val >= 0;
+							yy_i++ )
+						{
+							if ( yytoks[yy_i].t_val
+								== yychar )
+							{
+								break;
+							}
+						}
+						printf( "token %s\n",
+							yytoks[yy_i].t_name );
+					}
+				}
+#endif /* YYDEBUG */
+				if ( yychar == 0 )	/* reached EOF. quit */
+					YYABORT;
+				yychar = -1;
+				goto yy_newstate;
+			}
+		}/* end if ( yy_n == 0 ) */
+		/*
+		** reduction by production yy_n
+		** put stack tops, etc. so things right after switch
+		*/
+#if YYDEBUG
+		/*
+		** if debugging, print the string that is the user's
+		** specification of the reduction which is just about
+		** to be done.
+		*/
+		if ( yydebug )
+			printf( "Reduce by (%d) \"%s\"\n",
+				yy_n, yyreds[ yy_n ] );
+#endif
+		yytmp = yy_n;			/* value to switch over */
+		yypvt = yy_pv;			/* $vars top of value stack */
+		/*
+		** Look in goto table for next state
+		** Sorry about using yy_state here as temporary
+		** register variable, but why not, if it works...
+		** If yyr2[ yy_n ] doesn't have the low order bit
+		** set, then there is no action to be done for
+		** this reduction.  So, no saving & unsaving of
+		** registers done.  The only difference between the
+		** code just after the if and the body of the if is
+		** the goto yy_stack in the body.  This way the test
+		** can be made before the choice of what to do is needed.
+		*/
+		{
+			/* length of production doubled with extra bit */
+			register int yy_len = yyr2[ yy_n ];
+
+			if ( !( yy_len & 01 ) )
+			{
+				yy_len >>= 1;
+				yyval = ( yy_pv -= yy_len )[1];	/* $$ = $1 */
+				yy_state = yypgo[ yy_n = yyr1[ yy_n ] ] +
+					*( yy_ps -= yy_len ) + 1;
+				if ( yy_state >= YYLAST ||
+					yychk[ yy_state =
+					yyact[ yy_state ] ] != -yy_n )
+				{
+					yy_state = yyact[ yypgo[ yy_n ] ];
+				}
+				goto yy_stack;
+			}
+			yy_len >>= 1;
+			yyval = ( yy_pv -= yy_len )[1];	/* $$ = $1 */
+			yy_state = yypgo[ yy_n = yyr1[ yy_n ] ] +
+				*( yy_ps -= yy_len ) + 1;
+			if ( yy_state >= YYLAST ||
+				yychk[ yy_state = yyact[ yy_state ] ] != -yy_n )
+			{
+				yy_state = yyact[ yypgo[ yy_n ] ];
+			}
+		}
+					/* save until reenter driver code */
+		yystate = yy_state;
+		yyps = yy_ps;
+		yypv = yy_pv;
+	}
+	/*
+	** code supplied by user is placed in this switch
+	*/
+	switch( yytmp )
+	{
+		
+case 9:
+# line 123 "gram.y"
+{
+		      (void) AddIconRegion(yypvt[-4].ptr, yypvt[-3].num, yypvt[-2].num, yypvt[-1].num, yypvt[-0].num);
+		  } break;
+case 10:
+# line 126 "gram.y"
+{
+		      list = AddIconRegion(yypvt[-4].ptr, yypvt[-3].num, yypvt[-2].num, yypvt[-1].num, yypvt[-0].num);
+		  } break;
+case 12:
+# line 130 "gram.y"
+{ if (Scr->FirstTime)
+						  {
+						    Scr->iconmgr->geometry= yypvt[-1].ptr;
+						    Scr->iconmgr->columns=yypvt[-0].num;
+						  }
+						} break;
+case 13:
+# line 136 "gram.y"
+{ if (Scr->FirstTime)
+						    Scr->iconmgr->geometry = yypvt[-0].ptr;
+						} break;
+case 14:
+# line 139 "gram.y"
+{ if (Scr->FirstTime)
+						  {
+						    Scr->workSpaceMgr.workspaceWindow.geometry= yypvt[-1].ptr;
+						    Scr->workSpaceMgr.workspaceWindow.columns=yypvt[-0].num;
+						  }
+						} break;
+case 15:
+# line 145 "gram.y"
+{ if (Scr->FirstTime)
+						    Scr->workSpaceMgr.workspaceWindow.geometry = yypvt[-0].ptr;
+						} break;
+case 16:
+# line 148 "gram.y"
+{} break;
+case 18:
+# line 151 "gram.y"
+{} break;
+case 20:
+# line 154 "gram.y"
+{ if (Scr->FirstTime)
+					  {
+						Scr->DoZoom = TRUE;
+						Scr->ZoomCount = yypvt[-0].num;
+					  }
+					} break;
+case 21:
+# line 160 "gram.y"
+{ if (Scr->FirstTime) 
+						Scr->DoZoom = TRUE; } break;
+case 22:
+# line 162 "gram.y"
+{} break;
+case 23:
+# line 163 "gram.y"
+{} break;
+case 24:
+# line 164 "gram.y"
+{ list = &Scr->IconifyByUn; } break;
+case 26:
+# line 166 "gram.y"
+{ if (Scr->FirstTime) 
+		    Scr->IconifyByUnmapping = TRUE; } break;
+case 27:
+# line 169 "gram.y"
+{ list = &Scr->OpaqueMoveList; } break;
+case 29:
+# line 171 "gram.y"
+{ if (Scr->FirstTime) Scr->DoOpaqueMove = TRUE; } break;
+case 30:
+# line 172 "gram.y"
+{ list = &Scr->NoOpaqueMoveList; } break;
+case 32:
+# line 174 "gram.y"
+{ if (Scr->FirstTime) Scr->DoOpaqueMove = FALSE; } break;
+case 33:
+# line 175 "gram.y"
+{ list = &Scr->OpaqueMoveList; } break;
+case 35:
+# line 177 "gram.y"
+{ if (Scr->FirstTime) Scr->DoOpaqueResize = TRUE; } break;
+case 36:
+# line 178 "gram.y"
+{ list = &Scr->NoOpaqueResizeList; } break;
+case 38:
+# line 180 "gram.y"
+{ if (Scr->FirstTime) Scr->DoOpaqueResize = FALSE; } break;
+case 39:
+# line 182 "gram.y"
+{ 
+					  GotTitleButton (yypvt[-2].ptr, yypvt[-0].num, False);
+					} break;
+case 40:
+# line 185 "gram.y"
+{ 
+					  GotTitleButton (yypvt[-2].ptr, yypvt[-0].num, True);
+					} break;
+case 41:
+# line 188 "gram.y"
+{ CreateTitleButton(yypvt[-0].ptr, 0, NULL, NULL, FALSE, TRUE); } break;
+case 43:
+# line 190 "gram.y"
+{ CreateTitleButton(yypvt[-0].ptr, 0, NULL, NULL, TRUE, TRUE); } break;
+case 45:
+# line 192 "gram.y"
+{
+		    root = GetRoot(yypvt[-0].ptr, NULLSTR, NULLSTR);
+		    AddFuncButton (yypvt[-1].num, C_ROOT, 0, F_MENU, root, (MenuItem*) 0);
+		} break;
+case 46:
+# line 196 "gram.y"
+{
+			if (yypvt[-0].num == F_MENU) {
+			    pull->prev = NULL;
+			    AddFuncButton (yypvt[-1].num, C_ROOT, 0, yypvt[-0].num, pull, (MenuItem*) 0);
+			}
+			else {
+			    MenuItem *item;
+
+			    root = GetRoot(TWM_ROOT,NULLSTR,NULLSTR);
+			    item = AddToMenu (root, "x", Action,
+					NULLSTR, yypvt[-0].num, NULLSTR, NULLSTR);
+			    AddFuncButton (yypvt[-1].num, C_ROOT, 0, yypvt[-0].num, (MenuRoot*) 0, item);
+			}
+			Action = "";
+			pull = NULL;
+		} break;
+case 47:
+# line 212 "gram.y"
+{ GotKey(yypvt[-1].ptr, yypvt[-0].num); } break;
+case 48:
+# line 213 "gram.y"
+{ GotButton(yypvt[-1].num, yypvt[-0].num); } break;
+case 49:
+# line 215 "gram.y"
+{ list = &Scr->DontIconify; } break;
+case 51:
+# line 217 "gram.y"
+{} break;
+case 53:
+# line 219 "gram.y"
+{ list = &Scr->OccupyAll; } break;
+case 55:
+# line 221 "gram.y"
+{} break;
+case 57:
+# line 223 "gram.y"
+{ list = &Scr->IconMgrNoShow; } break;
+case 59:
+# line 225 "gram.y"
+{ Scr->IconManagerDontShow = TRUE; } break;
+case 60:
+# line 226 "gram.y"
+{ list = &Scr->IconMgrs; } break;
+case 62:
+# line 228 "gram.y"
+{ list = &Scr->IconMgrShow; } break;
+case 64:
+# line 230 "gram.y"
+{ list = &Scr->NoTitleHighlight; } break;
+case 66:
+# line 232 "gram.y"
+{ if (Scr->FirstTime)
+						Scr->TitleHighlight = FALSE; } break;
+case 67:
+# line 234 "gram.y"
+{ list = &Scr->NoHighlight; } break;
+case 69:
+# line 236 "gram.y"
+{ if (Scr->FirstTime)
+						Scr->Highlight = FALSE; } break;
+case 70:
+# line 238 "gram.y"
+{ list = &Scr->NoStackModeL; } break;
+case 72:
+# line 240 "gram.y"
+{ if (Scr->FirstTime)
+						Scr->StackMode = FALSE; } break;
+case 73:
+# line 242 "gram.y"
+{ list = &Scr->NoBorder; } break;
+case 75:
+# line 244 "gram.y"
+{ list = &Scr->NoIconTitle; } break;
+case 77:
+# line 246 "gram.y"
+{ if (Scr->FirstTime)
+						Scr->NoIconTitlebar = TRUE; } break;
+case 78:
+# line 248 "gram.y"
+{ list = &Scr->NoTitle; } break;
+case 80:
+# line 250 "gram.y"
+{ if (Scr->FirstTime)
+						Scr->NoTitlebar = TRUE; } break;
+case 81:
+# line 252 "gram.y"
+{ list = &Scr->MakeTitle; } break;
+case 83:
+# line 254 "gram.y"
+{ list = &Scr->StartIconified; } break;
+case 85:
+# line 256 "gram.y"
+{ list = &Scr->AutoRaise; } break;
+case 87:
+# line 258 "gram.y"
+{ Scr->AutoRaiseDefault = TRUE; } break;
+case 88:
+# line 259 "gram.y"
+{
+					root = GetRoot(yypvt[-5].ptr, yypvt[-3].ptr, yypvt[-1].ptr); } break;
+case 89:
+# line 261 "gram.y"
+{ root->real_menu = TRUE;} break;
+case 90:
+# line 262 "gram.y"
+{ root = GetRoot(yypvt[-0].ptr, NULLSTR, NULLSTR); } break;
+case 91:
+# line 263 "gram.y"
+{ root->real_menu = TRUE; } break;
+case 92:
+# line 264 "gram.y"
+{ root = GetRoot(yypvt[-0].ptr, NULLSTR, NULLSTR); } break;
+case 94:
+# line 266 "gram.y"
+{ list = &Scr->IconNames; } break;
+case 96:
+# line 268 "gram.y"
+{ color = COLOR; } break;
+case 98:
+# line 270 "gram.y"
+{} break;
+case 100:
+# line 272 "gram.y"
+{ color = MONOCHROME; } break;
+case 102:
+# line 274 "gram.y"
+{ Scr->DefaultFunction.func = yypvt[-0].num;
+					  if (yypvt[-0].num == F_MENU)
+					  {
+					    pull->prev = NULL;
+					    Scr->DefaultFunction.menu = pull;
+					  }
+					  else
+					  {
+					    root = GetRoot(TWM_ROOT,NULLSTR,NULLSTR);
+					    Scr->DefaultFunction.item = 
+						AddToMenu(root,"x",Action,
+							  NULLSTR,yypvt[-0].num, NULLSTR, NULLSTR);
+					  }
+					  Action = "";
+					  pull = NULL;
+					} break;
+case 103:
+# line 290 "gram.y"
+{ Scr->WindowFunction.func = yypvt[-0].num;
+					   root = GetRoot(TWM_ROOT,NULLSTR,NULLSTR);
+					   Scr->WindowFunction.item = 
+						AddToMenu(root,"x",Action,
+							  NULLSTR,yypvt[-0].num, NULLSTR, NULLSTR);
+					   Action = "";
+					   pull = NULL;
+					} break;
+case 104:
+# line 298 "gram.y"
+{ Scr->ChangeWorkspaceFunction.func = yypvt[-0].num;
+					   root = GetRoot(TWM_ROOT,NULLSTR,NULLSTR);
+					   Scr->ChangeWorkspaceFunction.item = 
+						AddToMenu(root,"x",Action,
+							  NULLSTR,yypvt[-0].num, NULLSTR, NULLSTR);
+					   Action = "";
+					   pull = NULL;
+					} break;
+case 105:
+# line 306 "gram.y"
+{ Scr->DeIconifyFunction.func = yypvt[-0].num;
+					   root = GetRoot(TWM_ROOT,NULLSTR,NULLSTR);
+					   Scr->DeIconifyFunction.item = 
+						AddToMenu(root,"x",Action,
+							  NULLSTR,yypvt[-0].num, NULLSTR, NULLSTR);
+					   Action = "";
+					   pull = NULL;
+					} break;
+case 106:
+# line 314 "gram.y"
+{ Scr->IconifyFunction.func = yypvt[-0].num;
+					   root = GetRoot(TWM_ROOT,NULLSTR,NULLSTR);
+					   Scr->IconifyFunction.item = 
+						AddToMenu(root,"x",Action,
+							  NULLSTR,yypvt[-0].num, NULLSTR, NULLSTR);
+					   Action = "";
+					   pull = NULL;
+					} break;
+case 107:
+# line 322 "gram.y"
+{ list = &Scr->WarpCursorL; } break;
+case 109:
+# line 324 "gram.y"
+{ if (Scr->FirstTime) 
+					    Scr->WarpCursor = TRUE; } break;
+case 110:
+# line 326 "gram.y"
+{ list = &Scr->WindowRingL; } break;
+case 112:
+# line 328 "gram.y"
+{ Scr->WindowRingAll = TRUE; } break;
+case 113:
+# line 331 "gram.y"
+{ if (!do_single_keyword (yypvt[-0].num)) {
+					    twmrc_error_prefix();
+					    fprintf (stderr,
+					"unknown singleton keyword %d\n",
+						     yypvt[-0].num);
+					    ParseError = 1;
+					  }
+					} break;
+case 114:
+# line 341 "gram.y"
+{ if (!do_string_keyword (yypvt[-1].num, yypvt[-0].ptr)) {
+					    twmrc_error_prefix();
+					    fprintf (stderr,
+				"unknown string keyword %d (value \"%s\")\n",
+						     yypvt[-1].num, yypvt[-0].ptr);
+					    ParseError = 1;
+					  }
+					} break;
+case 115:
+# line 349 "gram.y"
+{ if (!do_string_keyword (yypvt[-0].num, defstring)) {
+ 					    twmrc_error_prefix();
+ 					    fprintf (stderr,
+ 				"unknown string keyword %d (no value)\n",
+ 						     yypvt[-0].num);
+ 					    ParseError = 1;
+ 					  }
+ 					} break;
+case 116:
+# line 359 "gram.y"
+{ if (!do_number_keyword (yypvt[-1].num, yypvt[-0].num)) {
+					    twmrc_error_prefix();
+					    fprintf (stderr,
+				"unknown numeric keyword %d (value %d)\n",
+						     yypvt[-1].num, yypvt[-0].num);
+					    ParseError = 1;
+					  }
+					} break;
+case 117:
+# line 371 "gram.y"
+{ yyval.num = yypvt[-0].num; } break;
+case 118:
+# line 374 "gram.y"
+{ yyval.num = yypvt[-0].num; } break;
+case 121:
+# line 381 "gram.y"
+{ mods |= Mod1Mask; } break;
+case 122:
+# line 382 "gram.y"
+{ mods |= ShiftMask; } break;
+case 123:
+# line 383 "gram.y"
+{ mods |= LockMask; } break;
+case 124:
+# line 384 "gram.y"
+{ mods |= ControlMask; } break;
+case 125:
+# line 385 "gram.y"
+{ if (yypvt[-0].num < 1 || yypvt[-0].num > 5) {
+					     twmrc_error_prefix();
+					     fprintf (stderr, 
+				"bad modifier number (%d), must be 1-5\n",
+						      yypvt[-0].num);
+					     ParseError = 1;
+					  } else {
+					     mods |= (Mod1Mask << (yypvt[-0].num - 1));
+					  }
+					} break;
+case 126:
+# line 395 "gram.y"
+{ } break;
+case 129:
+# line 402 "gram.y"
+{ cont |= C_WINDOW_BIT; } break;
+case 130:
+# line 403 "gram.y"
+{ cont |= C_TITLE_BIT; } break;
+case 131:
+# line 404 "gram.y"
+{ cont |= C_ICON_BIT; } break;
+case 132:
+# line 405 "gram.y"
+{ cont |= C_ROOT_BIT; } break;
+case 133:
+# line 406 "gram.y"
+{ cont |= C_FRAME_BIT; } break;
+case 134:
+# line 407 "gram.y"
+{ cont |= C_ICONMGR_BIT; } break;
+case 135:
+# line 408 "gram.y"
+{ cont |= C_ICONMGR_BIT; } break;
+case 136:
+# line 409 "gram.y"
+{ cont |= C_ALL_BITS; } break;
+case 137:
+# line 410 "gram.y"
+{  } break;
+case 140:
+# line 417 "gram.y"
+{ cont |= C_WINDOW_BIT; } break;
+case 141:
+# line 418 "gram.y"
+{ cont |= C_TITLE_BIT; } break;
+case 142:
+# line 419 "gram.y"
+{ cont |= C_ICON_BIT; } break;
+case 143:
+# line 420 "gram.y"
+{ cont |= C_ROOT_BIT; } break;
+case 144:
+# line 421 "gram.y"
+{ cont |= C_FRAME_BIT; } break;
+case 145:
+# line 422 "gram.y"
+{ cont |= C_ICONMGR_BIT; } break;
+case 146:
+# line 423 "gram.y"
+{ cont |= C_ICONMGR_BIT; } break;
+case 147:
+# line 424 "gram.y"
+{ cont |= C_ALL_BITS; } break;
+case 148:
+# line 425 "gram.y"
+{ } break;
+case 149:
+# line 426 "gram.y"
+{ Name = yypvt[-0].ptr; cont |= C_NAME_BIT; } break;
+case 153:
+# line 437 "gram.y"
+{ ModifyCurrentTB(yypvt[-2].num, yypvt[-0].num, Action, pull);} break;
+case 154:
+# line 441 "gram.y"
+{} break;
+case 157:
+# line 448 "gram.y"
+{ SetHighlightPixmap (yypvt[-0].ptr); } break;
+case 158:
+# line 452 "gram.y"
+{} break;
+case 161:
+# line 459 "gram.y"
+{
+			NewBitmapCursor(&Scr->FrameCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 162:
+# line 461 "gram.y"
+{
+			NewFontCursor(&Scr->FrameCursor, yypvt[-0].ptr); } break;
+case 163:
+# line 463 "gram.y"
+{
+			NewBitmapCursor(&Scr->TitleCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 164:
+# line 465 "gram.y"
+{
+			NewFontCursor(&Scr->TitleCursor, yypvt[-0].ptr); } break;
+case 165:
+# line 467 "gram.y"
+{
+			NewBitmapCursor(&Scr->IconCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 166:
+# line 469 "gram.y"
+{
+			NewFontCursor(&Scr->IconCursor, yypvt[-0].ptr); } break;
+case 167:
+# line 471 "gram.y"
+{
+			NewBitmapCursor(&Scr->IconMgrCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 168:
+# line 473 "gram.y"
+{
+			NewFontCursor(&Scr->IconMgrCursor, yypvt[-0].ptr); } break;
+case 169:
+# line 475 "gram.y"
+{
+			NewBitmapCursor(&Scr->ButtonCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 170:
+# line 477 "gram.y"
+{
+			NewFontCursor(&Scr->ButtonCursor, yypvt[-0].ptr); } break;
+case 171:
+# line 479 "gram.y"
+{
+			NewBitmapCursor(&Scr->MoveCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 172:
+# line 481 "gram.y"
+{
+			NewFontCursor(&Scr->MoveCursor, yypvt[-0].ptr); } break;
+case 173:
+# line 483 "gram.y"
+{
+			NewBitmapCursor(&Scr->ResizeCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 174:
+# line 485 "gram.y"
+{
+			NewFontCursor(&Scr->ResizeCursor, yypvt[-0].ptr); } break;
+case 175:
+# line 487 "gram.y"
+{
+			NewBitmapCursor(&Scr->WaitCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 176:
+# line 489 "gram.y"
+{
+			NewFontCursor(&Scr->WaitCursor, yypvt[-0].ptr); } break;
+case 177:
+# line 491 "gram.y"
+{
+			NewBitmapCursor(&Scr->MenuCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 178:
+# line 493 "gram.y"
+{
+			NewFontCursor(&Scr->MenuCursor, yypvt[-0].ptr); } break;
+case 179:
+# line 495 "gram.y"
+{
+			NewBitmapCursor(&Scr->SelectCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 180:
+# line 497 "gram.y"
+{
+			NewFontCursor(&Scr->SelectCursor, yypvt[-0].ptr); } break;
+case 181:
+# line 499 "gram.y"
+{
+			NewBitmapCursor(&Scr->DestroyCursor, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 182:
+# line 501 "gram.y"
+{
+			NewFontCursor(&Scr->DestroyCursor, yypvt[-0].ptr); } break;
+case 183:
+# line 505 "gram.y"
+{} break;
+case 186:
+# line 513 "gram.y"
+{ if (!do_colorlist_keyword (yypvt[-1].num, color,
+								     yypvt[-0].ptr)) {
+					    twmrc_error_prefix();
+					    fprintf (stderr,
+			"unhandled list color keyword %d (string \"%s\")\n",
+						     yypvt[-1].num, yypvt[-0].ptr);
+					    ParseError = 1;
+					  }
+					} break;
+case 187:
+# line 522 "gram.y"
+{ list = do_colorlist_keyword(yypvt[-1].num,color,
+								      yypvt[-0].ptr);
+					  if (!list) {
+					    twmrc_error_prefix();
+					    fprintf (stderr,
+			"unhandled color list keyword %d (string \"%s\")\n",
+						     yypvt[-1].num, yypvt[-0].ptr);
+					    ParseError = 1;
+					  }
+					} break;
+case 189:
+# line 533 "gram.y"
+{ if (!do_color_keyword (yypvt[-1].num, color,
+								 yypvt[-0].ptr)) {
+					    twmrc_error_prefix();
+					    fprintf (stderr,
+			"unhandled color keyword %d (string \"%s\")\n",
+						     yypvt[-1].num, yypvt[-0].ptr);
+					    ParseError = 1;
+					  }
+					} break;
+case 190:
+# line 544 "gram.y"
+{} break;
+case 193:
+# line 551 "gram.y"
+{ do_string_savecolor(color, yypvt[-0].ptr); } break;
+case 194:
+# line 552 "gram.y"
+{ do_var_savecolor(yypvt[-0].num); } break;
+case 195:
+# line 555 "gram.y"
+{} break;
+case 198:
+# line 562 "gram.y"
+{ if (Scr->FirstTime &&
+					      color == Scr->Monochrome)
+					    AddToList(list, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 199:
+# line 567 "gram.y"
+{ 
+				    if (HasShape) Scr->SqueezeTitle = TRUE;
+				} break;
+case 200:
+# line 570 "gram.y"
+{ list = &Scr->SqueezeTitleL; 
+				  if (HasShape && Scr->SqueezeTitle == -1)
+				    Scr->SqueezeTitle = TRUE;
+				} break;
+case 202:
+# line 575 "gram.y"
+{ Scr->SqueezeTitle = FALSE; } break;
+case 203:
+# line 576 "gram.y"
+{ list = &Scr->DontSqueezeTitleL; } break;
+case 206:
+# line 581 "gram.y"
+{
+				if (Scr->FirstTime) {
+				   do_squeeze_entry (list, yypvt[-3].ptr, yypvt[-2].num, yypvt[-1].num, yypvt[-0].num);
+				}
+			} break;
+case 207:
+# line 589 "gram.y"
+{} break;
+case 210:
+# line 596 "gram.y"
+{ if (Scr->FirstTime)
+					    AddToList(list, yypvt[-2].ptr, (char *)
+						AllocateIconManager(yypvt[-2].ptr, NULLSTR,
+							yypvt[-1].ptr,yypvt[-0].num));
+					} break;
+case 211:
+# line 602 "gram.y"
+{ if (Scr->FirstTime)
+					    AddToList(list, yypvt[-3].ptr, (char *)
+						AllocateIconManager(yypvt[-3].ptr,yypvt[-2].ptr,
+						yypvt[-1].ptr, yypvt[-0].num));
+					} break;
+case 212:
+# line 609 "gram.y"
+{} break;
+case 215:
+# line 616 "gram.y"
+{
+			AddWorkSpace (yypvt[-0].ptr, NULLSTR, NULLSTR, NULLSTR, NULLSTR, NULLSTR);
+		} break;
+case 216:
+# line 619 "gram.y"
+{
+			curWorkSpc = yypvt[-0].ptr;
+		} break;
+case 218:
+# line 625 "gram.y"
+{} break;
+case 221:
+# line 632 "gram.y"
+{
+			AddWorkSpace (curWorkSpc, yypvt[-0].ptr, NULLSTR, NULLSTR, NULLSTR, NULLSTR);
+		} break;
+case 222:
+# line 635 "gram.y"
+{
+			AddWorkSpace (curWorkSpc, yypvt[-1].ptr, yypvt[-0].ptr, NULLSTR, NULLSTR, NULLSTR);
+		} break;
+case 223:
+# line 638 "gram.y"
+{
+			AddWorkSpace (curWorkSpc, yypvt[-2].ptr, yypvt[-1].ptr, yypvt[-0].ptr, NULLSTR, NULLSTR);
+		} break;
+case 224:
+# line 641 "gram.y"
+{
+			AddWorkSpace (curWorkSpc, yypvt[-3].ptr, yypvt[-2].ptr, yypvt[-1].ptr, yypvt[-0].ptr, NULLSTR);
+		} break;
+case 225:
+# line 644 "gram.y"
+{
+			AddWorkSpace (curWorkSpc, yypvt[-4].ptr, yypvt[-3].ptr, yypvt[-2].ptr, yypvt[-1].ptr, yypvt[-0].ptr);
+		} break;
+case 226:
+# line 649 "gram.y"
+{
+		    WMapCreateCurrentBackGround (yypvt[-1].ptr, NULL, NULL, NULL);
+		} break;
+case 227:
+# line 652 "gram.y"
+{
+		    WMapCreateCurrentBackGround (yypvt[-2].ptr, yypvt[-1].ptr, NULL, NULL);
+		} break;
+case 228:
+# line 655 "gram.y"
+{
+		    WMapCreateCurrentBackGround (yypvt[-3].ptr, yypvt[-2].ptr, yypvt[-1].ptr, NULL);
+		} break;
+case 229:
+# line 658 "gram.y"
+{
+		    WMapCreateCurrentBackGround (yypvt[-4].ptr, yypvt[-3].ptr, yypvt[-2].ptr, yypvt[-1].ptr);
+		} break;
+case 230:
+# line 663 "gram.y"
+{
+		    WMapCreateDefaultBackGround (yypvt[-1].ptr, NULL, NULL, NULL);
+		} break;
+case 231:
+# line 666 "gram.y"
+{
+		    WMapCreateDefaultBackGround (yypvt[-2].ptr, yypvt[-1].ptr, NULL, NULL);
+		} break;
+case 232:
+# line 669 "gram.y"
+{
+		    WMapCreateDefaultBackGround (yypvt[-3].ptr, yypvt[-2].ptr, yypvt[-1].ptr, NULL);
+		} break;
+case 233:
+# line 672 "gram.y"
+{
+		    WMapCreateDefaultBackGround (yypvt[-4].ptr, yypvt[-3].ptr, yypvt[-2].ptr, yypvt[-1].ptr);
+		} break;
+case 234:
+# line 677 "gram.y"
+{} break;
+case 237:
+# line 684 "gram.y"
+{ if (Scr->FirstTime)
+					    AddToList(list, yypvt[-0].ptr, 0);
+					} break;
+case 238:
+# line 689 "gram.y"
+{} break;
+case 241:
+# line 696 "gram.y"
+{client = yypvt[-0].ptr;} break;
+case 243:
+# line 698 "gram.y"
+{client = yypvt[-0].ptr;} break;
+case 245:
+# line 700 "gram.y"
+{workspace = yypvt[-0].ptr;} break;
+case 247:
+# line 704 "gram.y"
+{} break;
+case 250:
+# line 711 "gram.y"
+{
+				AddToClientsList (yypvt[-0].ptr, client);
+			  } break;
+case 251:
+# line 715 "gram.y"
+{} break;
+case 254:
+# line 722 "gram.y"
+{
+				AddToClientsList (workspace, yypvt[-0].ptr);
+			  } break;
+case 255:
+# line 726 "gram.y"
+{} break;
+case 258:
+# line 733 "gram.y"
+{ if (Scr->FirstTime) AddToList(list, yypvt[-1].ptr, yypvt[-0].ptr); } break;
+case 259:
+# line 736 "gram.y"
+{} break;
+case 262:
+# line 743 "gram.y"
+{ AddToMenu(root, "", Action, NULLSTR, yypvt[-0].num,
+						NULLSTR, NULLSTR);
+					  Action = "";
+					} break;
+case 263:
+# line 749 "gram.y"
+{lastmenuitem = (MenuItem*) 0;} break;
+case 266:
+# line 756 "gram.y"
+{
+			if (yypvt[-0].num == F_SEPARATOR) {
+			    if (lastmenuitem) lastmenuitem->separated = 1;
+			}
+			else {
+			    lastmenuitem = AddToMenu(root, yypvt[-1].ptr, Action, pull, yypvt[-0].num, NULLSTR, NULLSTR);
+			    Action = "";
+			    pull = NULL;
+			}
+		} break;
+case 267:
+# line 766 "gram.y"
+{
+			if (yypvt[-0].num == F_SEPARATOR) {
+			    if (lastmenuitem) lastmenuitem->separated = 1;
+			}
+			else {
+			    lastmenuitem = AddToMenu(root, yypvt[-6].ptr, Action, pull, yypvt[-0].num, yypvt[-4].ptr, yypvt[-2].ptr);
+			    Action = "";
+			    pull = NULL;
+			}
+		} break;
+case 268:
+# line 778 "gram.y"
+{ yyval.num = yypvt[-0].num; } break;
+case 269:
+# line 779 "gram.y"
+{
+				yyval.num = yypvt[-1].num;
+				Action = yypvt[-0].ptr;
+				switch (yypvt[-1].num) {
+				  case F_MENU:
+				    pull = GetRoot (yypvt[-0].ptr, NULLSTR,NULLSTR);
+				    pull->prev = root;
+				    break;
+				  case F_WARPRING:
+				    if (!CheckWarpRingArg (Action)) {
+					twmrc_error_prefix();
+					fprintf (stderr,
+			"ignoring invalid f.warptoring argument \"%s\"\n",
+						 Action);
+					yyval.num = F_NOP;
+				    }
+				  case F_WARPTOSCREEN:
+				    if (!CheckWarpScreenArg (Action)) {
+					twmrc_error_prefix();
+					fprintf (stderr, 
+			"ignoring invalid f.warptoscreen argument \"%s\"\n", 
+					         Action);
+					yyval.num = F_NOP;
+				    }
+				    break;
+				  case F_COLORMAP:
+				    if (CheckColormapArg (Action)) {
+					yyval.num = F_COLORMAP;
+				    } else {
+					twmrc_error_prefix();
+					fprintf (stderr,
+			"ignoring invalid f.colormap argument \"%s\"\n", 
+						 Action);
+					yyval.num = F_NOP;
+				    }
+				    break;
+				} /* end switch */
+				   } break;
+case 270:
+# line 820 "gram.y"
+{ yyval.num = yypvt[-0].num; } break;
+case 271:
+# line 821 "gram.y"
+{ yyval.num = yypvt[-0].num; } break;
+case 272:
+# line 822 "gram.y"
+{ yyval.num = -(yypvt[-0].num); } break;
+case 273:
+# line 825 "gram.y"
+{ yyval.num = yypvt[-0].num;
+					  if (yypvt[-0].num == 0)
+						yyerror("bad button 0");
+
+					  if (yypvt[-0].num > MAX_BUTTONS)
+					  {
+						yyval.num = 0;
+						yyerror("button number too large");
+					  }
+					} break;
+case 274:
+# line 837 "gram.y"
+{ ptr = (char *)malloc(strlen(yypvt[-0].ptr)+1);
+					  strcpy(ptr, yypvt[-0].ptr);
+					  RemoveDQuote(ptr);
+					  yyval.ptr = ptr;
+					} break;
+case 275:
+# line 842 "gram.y"
+{ yyval.num = yypvt[-0].num; } break;
+	}
+	goto yystack;		/* reset registers in driver code */
+}
+
+# ifdef __RUNTIME_YYMAXDEPTH
+
+static int allocate_stacks() {
+	/* allocate the yys and yyv stacks */
+	yys = (int *) malloc(yymaxdepth * sizeof(int));
+	yyv = (YYSTYPE *) malloc(yymaxdepth * sizeof(YYSTYPE));
+
+	if (yys==0 || yyv==0) {
+	   yyerror( (nl_msg(30004,"unable to allocate space for yacc stacks")) );
+	   return(1);
+	   }
+	else return(0);
+
+}
+
+
+static void free_stacks() {
+	if (yys!=0) free((char *) yys);
+	if (yyv!=0) free((char *) yyv);
+}
+
+# endif  /* defined(__RUNTIME_YYMAXDEPTH) */
+

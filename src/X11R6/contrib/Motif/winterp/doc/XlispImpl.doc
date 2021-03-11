@@ -1,0 +1,952 @@
+********************************************************************************
+* (c) Copyright 1991, 1992, by Jeff Prothero.
+*
+* Permission to use, copy, modify, distribute, and sell this software and its
+* documentation for any purpose is hereby granted without fee, provided that
+* the above copyright notice appear in all copies and that both that
+* copyright notice and this permission notice appear in supporting
+* documentation, and that the name of Jeff Prothero and the University of
+* Washington not be used in advertising or publicity pertaining to
+* distribution of the software and documentation without specific, written
+* prior permission.  Jeff Prothero and the University of Washington make
+* no representations about the suitability of this software and documentation
+* for any purpose. It is provided "as is" without express or implied warranty.
+*
+* JEFF PROTHERO AND THE UNIVERSITY OF WASHINGTON DISCLAIM ALL WARRANTIES WITH
+* REGARD TO THIS SOFTWARE AND DOCUMENTATION, INCLUDING ALL IMPLIED WARRANTIES OF
+* MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL JEFF PROTHERO AND THE UNIVERSITY
+* OF WASHINGTON BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIALDAMAGES OR
+* ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
+* AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
+* IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE AND DOCUMENTATION.
+********************************************************************************
+* Document Version: $Header: /users/npm/src/winterp/doc/RCS/XlispImpl.doc,v 2.4 1994/06/06 15:21:18 npm Exp $
+********************************************************************************
+92Jan14 jsp@glia.biostr.washington.edu (Jeff Prothero).
+
+                   +---------------------+
+                   | xlisp 2.1 internals |
+                   +---------------------+
+
+            "Trust the Source, Luke, trust the Source!"
+
+
+ Contents
+ --------
+ Who should read this?
+ What is an LVAL?
+ What is the obarray?
+ The Interpreter Stacks
+ What is a context?
+ What is an environment?
+ How are xlisp entities stored and identified?
+ How are vectors implemented?
+ How are strings implemented?
+ How are symbols implemented?
+ How are closures implemented?
+ How are objects implemented?
+ How are classes implemented?
+ How is the class hierarchy laid out?
+ How do we look up the value of a variable?
+ How are function calls implemented?
+ How are message-sends implemented?
+ How is garbage collection implemented?
+ How are the source files laid out?
+ How do I add a new primitive fn to xlisp?
+ Minor Observations.
+ Acknowledgements.
+
+
+
+ Who should read this?
+ ---------------------
+
+Anyone poking through the C implementation of xlisp for the first
+time.  This is intended to provide a rough roadmap of the global xlisp
+structures and algorithms.  If you just want to write lisp code in
+xlisp, you don't need to read this file -- go read xlisp.doc,
+XlispOOP.doc, and XlispRef.doc, in about that order.  If you want to
+tinker with the xlisp implementation code, you should *still* read
+those three before reading this.  The following isn't intended to be
+exhaustively precise -- that's what the source code is for!  It is
+intended only to allow you a fighting change of understanding the code
+the first time through (instead of the third time).
+
+At the bottom of the file you'll find an example of how to add new
+primitive functions to xlisp.
+
+
+
+ What is an LVAL?
+ ----------------
+
+An "LVAL" is the C type for a generic pointer to an xlisp
+garbage-collectable something.  (Cons cell, object, string, closure,
+symbol, vector, whatever.)  Virtually every variable in the
+interpreter is an LVAL.  Cons cells contain two LVAL slots,
+symbols contains four LVAL slots, etc.
+
+
+
+ What is the obarray?
+ -------------------
+
+The obarray is the xlisp symbol table.  More precisely, it is a
+hashtable mapping ascii strings (SYMBOL names) to SYMBOLs.  (The name
+"obarray" is traditional but a bit of a misnomer, since it contains
+only xlisp SYMBOLs, and in particular contains no xlisp OBJECTs.)  It
+is used when converting lisp expressions from text to internal form.
+Since it is a root for the garbage collector, it also serves to
+distinguish permanent global-variable SYMBOLs from other SYMBOLs --
+you can permanently protect a SYMBOL from the garbage collector by
+entering it into the obarray.  This is called "interning" the SYMBOL.
+The obarray is called "obarray" in C and "*OBARRAY*" in xlisp. It is
+physically implemented as a VECTOR-valued SYMBOL.
+
+
+
+ The Interpreter Stacks
+ ----------------------
+
+xlisp uses two stacks, an "evaluation stack" and an "argument stack".
+Both are roots for the garbage collector.  The evaluation stack is
+largely private to the interpreter and protects internal values from
+garbage collection, while the argument stack holds the conventional
+user-visible stackframes.
+
+
+The evaluation stack is an EDEPTH-long array of "LVAL" allocated by
+xldmem.c:xlminit().  It grows zeroward.
+
+xlstkbase points to the zero-near end of the evaluation stack.
+
+xlstktop points to the zero-far end of the evaluation stack; the
+occupied part of the stack lies between xlstack and xlstktop.  NOTE
+that xlstktop is *NOT* the top of the stack in the conventional sense
+of indicating the most recent entry on the stack: xlstktop is a static
+bounds pointer which never changes once the stack is allocated.
+
+xlstack starts at the zero-far end of the evaluation stack.  *xlstack
+is the most recent LVAL on the stack.  The garbage collector MARKs
+everything reachable from the evaluation stack (among other things),
+so we frequently push things on this stack while C code is
+manipulating them. (Via xlsave(), xlprotect(), xlsave1(), xlprot1().)
+
+
+The argument stack is an ADEPTH-long array of "LVAL".  It also grows
+zeroward.  The evaluator pushes arguments on the argument stack at the
+start of a function call (form evaluation).  Built-in functions
+usually eat them directly off the stack.  For user-lisp functions
+xleval.c:evfun() pops them off the stack and binds them to the
+appropriate symbols before beginning execution of the function body
+proper.
+
+xlargstkbase is the zero-near end of argument stack.
+
+xlargstktop is the zero-far end of argument stack.  Like xlstktop,
+xlargstktop is a static bounds pointer which never changes after
+the stack is allocated.
+
+*xlsp ("sp"=="stack pointer") is the most recent item on the argument stack.
+
+xlfp ("fp"=="frame pointer") is the base of the current stackframe.
+
+
+
+  What is a context?
+  ------------------
+
+An xlisp "context" is something like a checkpoint, recording a
+particular point buried in the execution history so that we can
+abort/return back to it.  Contexts are used to implement call/return,
+catch/throw, signals, gotos, and breaks.  xlcontext points to the
+chain of active contexts, the top one being the second-newest active
+context.  (The newest -- that is, current -- active context is
+implemented by the variables xlstack xlenv xlfenv xldenv xlcontext
+xlargv xlargc xlfp xlsp.)  Context records are written by
+xljump.c:xlbegin() and read by xljump.c:xljump().  Context records are
+C structures on the C program stack; They are not in the dynamic
+memory pool or on the lisp execution or argument stacks.
+
+
+
+  What is an environment?
+  -----------------------
+
+An environment is basically a store of symbol-value pairs, used to
+resolve variable references by the lisp program.  xlisp maintains
+three environments, in the global variables xlenv, xlfenv and xldenv.
+
+Lisp supports two sorts of binding, "lexical binding" and "dynamic
+binding".  Lexically bound variables are 'visible' only in code
+textually within their binding form.  Dynamically bound variables are
+'visible' in any code *called* from the binding form.  (Either kind of
+binding may be shadowed by other declarations, of course.)
+Historically, lisp has been moving from dynamic binding (which is easy
+for interpreters to handle), to lexical binding (which is easy for
+humans and compilers to handle).  Almost all xlisp binding forms are
+lexically scoped.  The most important exception is progv.
+
+xlenv and xlfenv track lexical bindings.  xlenv and xlfenf are
+conceptually a single environment, although they are implemented
+separately.  They are linked-list stacks which are pushed when we
+enter a function and popped when we exit it.  We also switch
+xlenv+xlfenf environments entirely when we begin executing a new
+closure (user-fn written in lisp).
+
+The xlenv environment is the most heavily used environment.  It is
+used to resolve everyday data references to local variables.  It
+consists of a list of frames (and objects).  Each frame is a list of
+sym-val pairs.  In the case of an object, we check all the instance
+and class variables of the object, then do the same for its
+superclass, until we run out of superclasses.
+
+The xlfenv environment is maintained strictly parallel to xlenv, but
+is used to find function values instead of variable values.  The
+separation may be partly for lookup speed and partly for historical
+reasons.  Merging these two lists into a single list (while
+distinguishing function bindings from variable bindings, of course)
+would slightly decrease fn enter/exit overhead while increasing the
+overhead of looking up each variable or function binding.
+
+When we send a message, we set xlenv to the value it had when the
+message CLOSURE was built, then push on (obj msg-class), where
+msg-class is the [super]class defining the method.  (We also set
+xlfenv to the value xlfenv had when the method was built.)  This makes
+the object instance variables part of the environment, and saves the
+information needed to correctly resolve references to class variables,
+and to implement SEND-SUPER.
+
+The xldenv environment tracks dynamic bindings.  It is a simple list
+of sym-val pairs, treated as a stack.  Progv uses it to save the old
+values of symbols it binds, and it is also used to save old values of
+s_evalhook and s_applyhook (*EVALHOOK* and *APPLYHOOK*).  (These
+latter mostly support the debug facilities.)
+
+These environments are manipulated in C via the xlisp.h macros
+xlframe(e), xlbind(s,v), xlfbind(s,v), xlpbind(s,v,e), xldbind(s,v),
+xlunbind(e).
+
+
+
+  How are xlisp entities stored and identified?
+  ---------------------------------------------
+
+Conceptually, xlisp manages memory as a single array of fixed-size
+objects.  Keeping all objects the same size simplifies memory
+management enormously, since any object can be allocated anywhere, and
+complex compacting schemes aren't needed.  Every LVAL pointer points
+somewhere in this array.  Every xlisp object has the basic format
+(xldmem.h:typdef struct node)
+
+ struct node {
+     char n_type;
+     char n_flags;
+     LVAL car;
+     LVAL cdr;
+ }
+
+where n_type is one of:
+
+ FREE     A node on the freelist.
+ SUBR     A function implemented in C. (Needs evaluated arguments.)
+ FSUBR    A "special form" implemented in C. (Needs unevaluated arguments).
+ CONS     A regular lisp cons cell.
+ SYMBOL   A symbol.
+ FIXNUM   An integer.
+ FLONUM   A floating-point number.
+ STRING   A string.
+ OBJECT   Any object, including class objects.
+ STREAM   An input or output file.
+ VECTOR   A variable-size array of LVALs.
+ CLOSURE  Result of DEFUN or LAMBDA -- a function written in lisp.
+ CHAR     An ascii character.
+ USTREAM  An internal stream.
+ STRUCT   A structure.
+
+Messages may be sent only to nodes with n_type == OBJECT.
+
+Obviously, several of the above types won't fit in a fixed-size
+two-slot node.  The escape is to have them malloc() some memory
+and have one of the slots point to it -- VECTOR is the archetype.  For
+example, see xldmem.c:newvector().  To some extent, this malloc()
+hack simply exports the memory- fragmentation problem to the C
+malloc()/free() routines.  However, it helps keep xlisp simple, and it
+has the happy side-effect of unpinning the body of the vector, so that
+vectors can easily be expanded and contracted.
+
+The garbage collector has special-case code for each of the above node
+types, so it can find all LVAL slots and recycle any malloc()ed ram
+when a node is garbage-collected.
+
+Xlisp pre-allocates nodes for all ascii characters, and for small
+integers.  These nodes are never garbage-collected.
+
+As a practical matter, allocating all nodes in a single array is not
+very sensible.  Instead, nodes are allocated as needed, in segments of
+one or two thousand nodes, and the segments linked by a pointer chain
+rooted at xldmem.c:segs.
+
+
+
+  How are vectors implemented?
+  ----------------------------
+
+An xlisp vector is a generic array of LVAL slots.  Vectors are also
+the canonical illustration of xlisp's escape mechanism for node types
+which need more than two LVAL slots (the maximum possible in the
+fixed-size nodes in the dynamic memory pool).  The node CAR/CDR slots
+for a vector hold a size field plus a pointer to a malloc()ed ram
+chunk, which is automatically free()ed when the vector is
+garbage-collected.
+
+xldmem.h defines macros for reading and writing vector fields and
+slots: getsize(), getelement() and setelement().  It also defines
+macros for accessing each of the other types of xlisp nodes.
+
+
+
+  How are strings implemented?
+  ---------------------------- 
+
+Strings work much like vectors: The node has a pointer to a malloc()ed
+ram chunk which is automatically free()ed when the string gets
+garbage-collected.
+
+
+
+ How are symbols implemented?
+ ----------------------------
+
+A symbol is a generic user-visible lisp variable, with separate slots
+for print name, value, function, and property list.  Any or all of
+these slots (including name) may be NIL.
+
+You create an xlisp symbol from C by calling "xlmakesym(name)" or
+"xlenter(name)" (to make a symbol and enter it in the obarray).
+
+You may create symbols from xlisp by explicitly calling GENSYM or
+MAKE-SYMBOL (uninterned symbols), or INTERN (interned symbol).
+However, the lisp reader will create symbols on sight, so most
+lisp symbols are created as side-effects of expressions like 'name.
+
+(A symbol is 'interned' if it is listed in *OBARRAY*.  Various parts
+of the system, like the lisp reader, treat *OBARRAY* essentially as
+the list of all known symbols.  It is unusual but occasionally useful
+to create uninterned symbols.  You can make READ create an uninterned
+symbol by preceding it with #:.  In xlisp, a newly created symbol has
+no value unless its name begins with a ':', in which case it has
+itself for its value -- handy for keywords and message selectors.)
+
+Most of the symbol-specific code in the interpreter is in xlsym.c.
+
+Physically, a symbol is implemented like a four-slot vector.
+
+Random musing: Abstractly, the LISP symbols plus cons cells (etc)
+constitute a single directed graph, and the symbols mark spots where
+normal recursive evaluation should stop.  Normal lisp programming
+practice is to have a symbol in every cycle in the graph, so that
+recursive traversal can be done without MARK bits.
+
+
+
+  How are closures implemented?
+  -----------------------------
+
+A closure, the return value from a lambda, is a regular coded-in-lisp
+fn.  Physically, it is implemented like an eleven-slot vector, with the
+node n_type field hacked to contain CLOSURE instead of VECTOR. The
+vector slots contain:
+
+ name   symbol -- 1st arg of DEFUN.  NIL for LAMBDA closures.
+ type   (s_lambda or s_macro). Must be s_lambda to be executable.
+ args   List of "required" formal arguments (as symbols)
+ oargs  List of "optional" args, each like: (name (default specified-p))
+ rest   Name of "&rest" formal arg, else NIL.
+ kargs  keyword args, each like: ((':foo 'bar default specified-p))
+ aargs  &aux vars, each like: (('arg default))
+ body   actual code (as lisp list) for fn.
+ env    value of xlenv when the closure was built.  NIL for macros.
+ fenv   value of xlfend when the closure was built. NIL for macros.
+ lambda The original formal args list in the DEFUN or LAMBDA.
+
+The lambda field is for printout purposes.  The remaining fields store
+a predigested version of the formal args list.  This is a limited form
+of compilation: by processing the args list at closure-creation time,
+we reduce the work needed during calls to the closure.
+
+
+
+  How are objects implemented?
+  ----------------------------
+
+An object is implemented like a vector, with the size determined by
+the number of instance variables.  The first slot in the vector points
+to the class of the object; the remaining slots hold the instance
+variables for the object.  An object needs enough slots to hold all
+the instance variables defined by its class, *plus* all the instance
+variables defined by all of its superclasses.
+
+
+
+  How are classes implemented?
+  ----------------------------
+
+A class is a specific kind of object, hence has a class pointer plus
+instance variables.  All classes have the following instance variables:
+
+ MESSAGES   A list of (interned-symbol method-closure) pairs.
+ IVARS      Instance variable names: A list of interned symbols.
+ CVARS      Class variable names:    A list of interned symbols.
+ CVALS      Class variable values:   A vector of values.
+ SUPERCLASS A pointer to the superclass.
+ IVARCNT    Number of class instance variables, as a fixnum.
+ IVARTOTAL  Total number of instance variables, as a fixnum.
+
+IVARCNT is the count of the number of instance variables defined by
+our class.  IVARTOTAL is the total number of instance variables in an
+object of this class -- IVARCNT for this class plus the IVARCNTs from
+all of our superclasses.
+
+
+
+  How is the class hierarchy laid out?
+  ------------------------------------
+
+The fundamental objects are the OBJECT and CLASS class objects.  (Both
+are instances of class CLASS, and since CLASSes are a particular kind
+of OBJECT, both are also objects, with n_type==OBJECT.  Bear with me!)
+
+OBJECT is the root of the class hierarchy: everything you can send a
+message to has OBJECT as its class or super*class.  (Vectors, chars,
+integers and so forth stand outside the object hierarchy -- you can't
+send messages to them.  I'm not sure why Dave did it this way.) OBJECT
+defines the messages:
+
+ :isnew -- Does nothing but return the object.
+ :class -- Returns contents of class-pointer slot.
+ :show  -- Prints names of obj, obj->class and instance vars.
+
+Since a CLASS is a specialized type of OBJECT (with instance variables
+like MESSAGES which generic OBJECTs lack), class CLASS has class
+OBJECT as its superclass.  The CLASS object defines the messages:
+
+ :new    -- Create new object with self.IVARTOTAL LVAR slots, plus
+            one for the class pointer. Point class slot to self.
+            Set new.n_type char to OBJECT.
+ :isnew  -- Fill in IVARS, CVARS, CVALS, SUPERCLASS, IVARCNT and
+            IVARTOTAL, using parameters from :new call.  (The
+            :isnew msg inherits the :new msg parameters because
+            the  :isnew msg is generated automatically after
+            each :new   msg, courtesy of a special hack in
+            xlobj.c:sendmsg().)
+ :answer -- Add a (msg closure) pair to self.MESSAGES.
+
+
+
+Here's a figure to summarize the above, with a generic object thrown
+in for good measure.  Note that all instances of CLASS will have a
+SUPERCLASS pointer, but no normal object will.  Note also that the
+messages known to an object are those which can be reached by
+following exactly one Class Ptr and then zero or more Superclass Ptrs.
+For example, the generic object can respond to :ISNEW, :CLASS and
+:SHOW, but not to :NEW or :ANSWER.  (The functions implementing the
+given messages are shown in parentheses.)
+
+                                    NIL
+                                     ^
+                                     |
+                                     |Superclass Ptr
+                                     |
+                            Msg+--------+
+ :isnew (xlobj.c:obisnew) <----|  class |Class Ptr
+ :class (xlobj.c:obclass) <----| OBJECT |------------------------------>+
+ :show  (xlobj.c:objshow) <----|        |                               |
+                               +--------+                               |
+                                 ^  ^  ^                                |
+       +---------+               |  |  |                                |
+       | generic |Class Ptr      |  |  +<---------------+               |
+       | object  |-------------->+  |Superclass Ptr     ^Superclass Ptr |
+       +---------+                  |                   |               |
+                            Msg+--------+          +---------+          |
+ :isnew (xlobj.c:clnew)   <----| class  |Class Ptr | generic |Class Ptr |
+ :new   (xlobj.c:clisnew) <----| CLASS  |------->+ | CLASS   |------->+ |
+ :answer(xlobj.c:clanswer)<----|        |        | |         |        | |
+                               +--------+        | +---------+        | |
+                                  ^  ^           |                    | |
+                                  |  |           v                    v |
+                                  |  +-----------+ <------------------+ v
+                                  +<------------------------------------+
+
+Thus, class CLASS inherits the :CLASS and :SHOW messages from class
+OBJECT, overrides the default :ISNEW message, and provides new
+messages :NEW and :ANSWER.
+
+New classes are created by (send CLASS :NEW ...) messages.  Their
+Class Ptr will point to CLASS.  By default, they will have OBJECT as
+their superclass, but this can be overridden by the second optional
+argument to :NEW.
+
+The above basic structure is set up by xlobj.c:xloinit().
+
+
+
+  How do we look up the value of a variable?
+  ------------------------------------------
+
+When we're cruising along evaluating an expression and encounter a
+symbol, the symbol might refer to a global variable, an instance
+variable, or a class variable in any of our superclasses.  Figuring
+out which means digging through the environment.  The canonical place
+this happens is in xleval.c:xleval(), which simply passes the buck to
+xlsym.c:xlgetvalue(), which in turn passes the buck to
+xlxsym.c:xlxgetvalue(), where the fun of scanning down xlenv begins.
+The xlenv environment looks something like
+
+         Backbone    Environment frame contents
+         --------    --------------------------
+xlenv --> frame      ((sym val) (sym val) (sym val) ... )
+          frame      ...
+          object     (obj msg-class)
+          frame      ...
+          object     ...
+          frame      ...
+          ...
+
+The "frame" lines are due to everyday nested constructs like LET
+expressions, while the "object" lines represent an object environment
+entered via a message send.  xlxgetvalue scans the enviroment left to
+right, and then top to bottom.  It scans down the regular environment
+frames itself, and calls xlobj.c:xlobjgetvalue() to search the object
+environment frames.
+
+xlobjgetvalue() first searches for the symbol in the msg-class, then
+in all the successive superclasses of msg-class.  In each class, it
+first checks the list of instance-variable names in the IVARS slot,
+then the list of class-variables name in the CVARS slot.
+
+  
+
+  How are function calls implemented?
+  -----------------------------------
+
+xleval.c contains the central expression-evaluation code.
+xleval.c:xleval() is the standard top-level entrypoint.  The two
+central functions are xleval.c:xlevform() and xleval.c:evfun().
+xlevform() can evaluate four kinds of expression nodes:
+
+SUBR: A normal primitive fn coded in C.  We call evpushargs() to
+evaluate and push the arguments, then call the primitive.
+
+FSUBR: A special primitive fn coded in C, which (like IF) wants its
+arguments unevaluated.  We call pushargs() (instead of evpushargs())
+and then the C fn.
+
+CLOSURE: A preprocessed written-in-lisp fn from a DEFUN or LAMBDA.  We
+call evpushargs() and then evfun().
+
+CONS: We issue an error if CONS.car isn't a LAMBDA, otherwise we call
+xleval.c:xlclose() to build a CLOSURE from the LAMBDA, and fall into
+the CLOSURE code.
+
+The common thread in all the above cases is that we call evpushargs()
+or pushargs() to push all the arguments on the evaluation stack,
+leaving the number and location of the arguments in the global
+variables xlargc and xlargv.  The primitive C functions consume
+their arguments directly from the argument stack.
+
+xleval.c:evfun() evaluates a CLOSURE by:
+
+(1) Switching xlenv and xlfenv to the values they had when
+the CLOSURE was built. (These values are recorded in the CLOSURE.)
+
+(2) Binding the arguments to the environment.  This involves scanning
+through the section of the argument stack indicated by xlargc/xlargv,
+using information from the CLOSURE to resolve keyword arguments
+correctly and assign appropriate default values to optional arguments,
+among other things.
+
+(3) Evaluating the body of the function via xleval.c:xleval().
+
+(4) Cleaning up and restoring the original environment.
+
+
+
+  How are message-sends implemented?
+  ----------------------------------
+
+We scan the MESSAGES list in the CLASS object of the recipient,
+looking for a (message-symbol method) pair that matches our message
+symbol.  If necessary, we scan the MESSAGES lists of the recipient's
+superclasses too.  (xlobj.c:sendmsg().)  Once we find it, we basically
+do a normal function evaluation. (xlobjl.c:evmethod().)
+
+Two differences between message-send and normal function invocation:
+
+1) We need to replace the message-symbol by the recipient on the
+argument stack to make "self" available in the method closure.
+
+2) We need to push an 'object' stack entry on the xlenv environment to
+record which class is handling the message (so that, for example,
+SEND-SUPER can find our superclass).
+
+
+
+  How is garbage collection implemented?
+  --------------------------------------
+
+The dynamic memory pool managed by xlisp consists of a chain of memory
+segments (xldmem.h:struct segment) rooted at global C variable "segs".
+Each segment contains an array of "struct node"s plus a pointer to the
+next segment.  Each node contains a n_type field and a MARK bit, which
+is zero except during garbage collection.
+
+Xlisp uses a simple, classical mark-and-sweep garbage collector.  When
+it runs out of memory (fnodes==NIL), it does a recursive traversal
+setting the MARK flag on all nodes reachable from the obarray, the
+three environments xlenv/xlfenv/xldenv, and the evaluation and
+argument stacks.  (A "switch" on the n_type field tells us how to find
+all the LVAL slots in the node (plus associated storage), and a
+pointer-reversal trick lets us avoid using too much stack space during
+the traversal.)  sweep() then adds all un-MARKed LVALs to fnodes, and
+clears the MARK bit on the remaining nodes.  If this fails to produce
+enough free nodes, a new segment is malloc()ed.
+
+The code to do this stuff is mostly in xldmem.c.
+
+
+
+ How are the source files laid out?
+ -----------------------------------------
+
+To really understand the source, of course, you simply have to sit
+down and read it.  There's no royal road to hacking!  So this is a map
+of the source, not a picture of it.
+
+The core portable xlisp files have the prefix 'xl' (for 'xlisp').  
+
+The best place to start reading the code is in the two main header
+files, xlisp.h and xldmem.h.
+
+The xldmem.h file ('dmem' for 'dynamic memory') defines the actual
+structure in memory of all the primitive xlisp data types.  This is
+the file you will most likely refer to most often.
+
+The xlisp.h file essentially all global constants and macros which
+don't need to know about the structures in xldmem.h, mainly manifest
+constants sizing various arrays for different machines, and macros to
+test for the type of a list object and to help parse xlisp argument
+lists.
+
+The central code files to understand are xlmain.c, xleval.c, xlbfun.c,
+and xlsym.c.
+
+xlmain.c contains both main() and the central read-eval-print loop, so
+it is the place from which to begin tracing flow of control.
+
+xleval.c (with some support from xlbfun.) contains the heart of xlisp,
+the code to evaluate functions and macros.
+
+xlsym.c contains the code to find the value of a symbol.
+
+Once you understand the above three, you know where xlisp decides to
+evaluate an s-expression, how it evaluates it, and how it finds the
+values needed by the expression.
+
+A good file to tackle next is xlobj.c, which handles much of the
+object-oriented support, and has much of the flavor of xleval.c.
+
+Most of the other files are just libraries of functions to handle
+particular types of processing, and are easily understood once the
+central code is grokked.
+
+One of the charms of xlisp *is* that it is small enough to easily read
+and comprehend.  I hope it stays that way!
+
+Here's a very brief file-by-file overview of the source.  Your files
+will probably be laid out just a little differently.  In particular,
+if you're not running on unix, instead of 'unixstuff.c' you'll have
+something like 'dosstuff.c'.
+
+ Size Name        Contains
+----- --------    --------
+ 2054 osdefs.h    System specific declarations.  Empty file in my case.
+ 2050 osptrs.h    System specific pointers.      Empty file in my case.
+14172 unixstuff.c Isolates I/O fns, which tend to be OS-specific. Unix version.
+19049 xlbfun.c    'Basic FUNctions': highlevel eval stuff + random support.
+30229 xlcont.c    'CONTrol': case, do, while, dotimes, other special forms.
+ 6380 xldbug.c    'DeBUG': break, abort, error, baktrace...
+18006 xldmem.c    'Dynamic MEMory': ram allocation, garbage collector.
+ 9431 xldmem.h    Declaration of LVAL, scads of useful macros.
+21220 xleval.c    'EVALuation': eval, apply, macroexpand and support for them.
+11935 xlfio.c     'File I/O': OPEN, READ-CHAR, WRITE-CHAR ...
+18481 xlftab.c    'Function TABle': Array of all xlisp primitives.
+ 4866 xlglob.c    'GLOBal variables':  Boring list of declarations.
+11048 xlimage.c   'memory IMAGE': Code to save/restore contents of xlisp.
+10579 xlinit.c    'INITialization': Start-of-the-world setup code.
+ 6016 xlio.c      'Input/Output': misc I/O stuff, some called by xlfio.c.
+12664 xlisp.h     consp() ..., xlgetarg() ..., misc types.
+ 5853 xljump.c    catch, throw, return ...
+20723 xllist.c    car, cdr, append, map ... basic list manipulation.
+11975 xlmath.c    Arithmetic functions -- addition, multiplication ...
+16425 xlobj.c     Object support -- create objects & classes, send msgs...
+ 4134 xlpp.c      A little prettyprinter.
+ 9487 xlprin.c    Print an arbitrary lisp value in ascii.
+19535 xlread.c    Read in an arbitrary ascii lisp expression.
+15062 xlstr.c     Manipulation of characters and strings.
+12889 xlstruct.c  Lisp structures -- defstruct and kin.
+ 5957 xlsubr.c    eq, equal, some internal utility fns.
+ 7019 xlsym.c     Symbols and obarrays ... maksym, getvalue, getprop...
+ 5566 xlsys.c     Misc stuff -- read file, print backtrace, peek/poke...
+ 3926 xmain.c     main(), with top read-eval-print loop.
+
+
+
+ How do I add a new primitive fn to xlisp?
+ -----------------------------------------
+
+Two preliminary comments:
+
+* You should have a copy of Guy L Steele's "Common Lisp: The Language"
+  (2nd Edition), and make your new primitives compatible with the
+  standard whenever practical.
+
+* The Skandha4 version of xlisp has been modified to allow new
+  primitives to be added without changing the xlisp source files at
+  all.  If you're using this xlisp, you should ignore the following
+  and refer to the Skandha4 documents instead.
+
+Add a line to the end of xlftab.c:funtab[].  This table contains a
+list of triples:
+
+The first element of each triple is the function name as it will
+appear to the programmer. Make it all upper case.
+
+The second element is S (for SUBR) if (like most fns) your function
+wants its arguments pre-evaluated, else F (for FSUBR).
+
+The third element is the name of the C function to call.
+
+Remember that your arguments arrive on the xlisp argument stack rather
+than via the usual C parameter mechanism.
+
+CAUTION: Try to keep your files separate from generic xlisp files, and
+to minimize the number of changes you make in the generic xlisp files.
+This way, you'll have an easier time re-installing your changes when
+new versions of xlisp come out.  For example, if you are going to add
+many primitive functions to your xlisp, use an #include file rather
+than putting them all in xlftab.c.  It's a good idea to put a marker
+(like a comment with your initials) on each line you change or insert
+in the generic xlisp fileset.
+
+CAUTION: Remember that you usually need to protect the LVAL variables
+in your function from the garbage-collector.  It never hurts to do
+this, and often produces obscure bugs if you do not.  You protect
+uninitialized local variables with xlsave1() and initialized local
+variables with xlprot1().
+
+BE CAREFUL NOT TO PROTECT UNINITIALIZED LOCAL VARIABLES WITH XLPROT1()
+OR XLPROTECT()!  This will appear to work fine until garbage
+collection happens at an inconvenient moment, at which point the
+garbage collector will wind up following your uninitialized pointer
+off to never-never land.
+
+Note: If you have several pointers to protect, you can save a little
+runtime and codespace by using
+xlstkcheck(number-of-variables-to-protect) followed by xlsave()s and
+xlprotect()s instead of the more expensive xlsave1()s and xlprot1()s.
+
+Generic code for a new primitive fn:
+
+/* xlsamplefun - do useless stuff.        */
+/* Called like (samplefun '(a c b) 1 2.0) */
+LVAL xlsamplefun()
+{
+    /* Variables to hold the arguments: */
+    LVAL    list_arg, integer_arg, float_arg;
+
+    /* Get the arguments, with appropriate errors */
+    /* if any are of the wrong type.  Look in     */
+    /* xlisp.h for macros to read other types of  */
+    /* arguments.  Look in xlmath.c for examples  */
+    /* of functions which can handle an argument  */
+    /* which may be either int or float:          */
+    list_arg    = xlgalist()  ;  /* "XLisp Get A LIST"   */
+    integer_arg = xlgafixnum();  /* "XLisp Get A FIXNUM" */
+    float_arg   = xlgaflonum();  /* "XLisp Get A FLONUM" */
+
+    /* Issue an error message if there are any extra arguments: */
+    xllastarg();
+
+
+
+    /* Call a separate C function to do the actual  */
+    /* work.  This way, the main function can       */
+    /* be called from both xlisp code and C code.   */
+    /* By convention, the name of the xlisp wrapper */
+    /* starts with "xl", and the native C function  */
+    /* has the same name minus the "xl" prefix:     */
+    return samplefun( list_arg, integer_arg, float_arg );
+}
+LVAL samplefun( list_arg, integer_arg, float_arg )
+LVAL            list_arg, integer_arg, float_arg;
+{
+    FIXTYPE val_of_integer_arg;
+    FLOTYPE val_of_float_arg;
+
+    /* Variables which will point to LISP objects: */
+    LVAL result;
+    LVAL list_ptr;
+    LVAL float_ptr;
+    LVAL int_ptr;
+
+    /* Protect our internal pointers by */
+    /* pushing them on the evaluation   */
+    /* stack so the garbage collector   */
+    /* can't recycle them in the middle */
+    /* of the routine:                  */
+    xlstkcheck(4);    /* Make sure following xlsave */
+                      /* calls won't overrun stack. */
+    xlsave(list_ptr); /* Use xlsave1() if you don't */
+    xlsave(float_ptr);/* do an xlstkcheck().        */
+    xlsave(int_ptr);
+    xlsave(result);
+
+    /* Semantic check, illustrating use of xlfail(): */
+    if (list_ptr == NULL) {
+        xlfail("null list");
+        /* Won't return. */
+    }
+
+    /* Create an internal list structure, protected */
+    /* against garbage collection until we exit fn: */
+    list_ptr = cons(list_arg,list_arg);
+
+    /* Get the actual values of our fixnum and flonum: */
+    val_of_integer_arg = getfixnum( integer_arg );
+    val_of_float_arg   = getflonum( float_arg   );
+
+    /* Semantic check, illustrating use of xlerror(): */
+    if (val_of_integer_arg < -2) {
+        xlerror("bad integer",cvfixnum(val_of_integer_arg));
+        /* Won't return. */
+    }
+
+
+
+    /*******************************************/
+    /* You can have any amount of intermediate */
+    /* computations at this point in the fn... */
+    /*******************************************/
+
+
+    /* Make new numeric values to return: */
+    integer_ptr = cvfixnum( val_of_integer_arg * 3   );
+    float_ptr   = cvflonum( val_of_float_arg   * 3.0 );
+
+    /* Cons it all together to produce a return value: */
+    result = cons( float_ptr,   NIL    );
+    result = cons( integer_ptr, result );
+    result = cons( list_ptr,    result );
+
+    /* Restore the stack, canceling the xlsave()s: */
+    xlpopn(4); /* Use xlpop() for a single argument.*/
+
+    return result;
+}
+
+
+
+ Example of what NOT to do:
+ --------------------------
+
+Here's a function I wrote which does *NOT* correctly prevent the
+garbage collector from stealing its dynamically allocated cells:
+
+LVAL incorrect_Point_To_List( p )/*DON'T USE THIS CODE! */
+geo_point*                    p;
+/*-
+    Convert point to (x y z) list.
+-*/
+{
+    LVAL result;
+    xlsave1(result);
+    result = cons(              /* THIS CODE IS BROKEN! */
+        cvflonum(        p->x), /* THIS CODE IS BROKEN! */
+        cons(                   /* THIS CODE IS BROKEN! */
+            cvflonum(    p->y), /* THIS CODE IS BROKEN! */
+            cons(               /* THIS CODE IS BROKEN! */
+                cvflonum(p->z), /* THIS CODE IS BROKEN! */
+                NIL             /* THIS CODE IS BROKEN! */
+            )                   /* THIS CODE IS BROKEN! */
+        )                       /* THIS CODE IS BROKEN! */
+    );                          /* THIS CODE IS BROKEN! */
+    xlpop();
+    return result;
+}
+
+The problem with the above function is that the "z" cell will be
+allocated first, and is not protected during the allocation of the "y"
+flonum (or vice versa, depending on the order the compiler chooses to
+evaluate these arguments). Similarly, the "y" cell is not protected
+during allocation of the "x" flonum. Here is a correct version, in
+which "result" always protects the list-to-date:
+
+LVAL correct_Point_To_List( p )
+geo_point*                  p;
+/*-
+    Convert point to (x y z) list.
+-*/
+{
+    LVAL result;
+    xlsave1(result);
+    result = cons( cvflonum(p->z), NIL          );
+    result = cons( cvflonum(p->y), result       );
+    result = cons( cvflonum(p->x), result       );
+    xlpop();
+    return result;
+}
+
+
+
+ Minor Observations:
+ -------------------
+
+xlapply, xlevform and sendmsg will issue an error if they encounter a
+s_macro CLOSURE.  You are not allowed to use APPLY or FUNCALL with
+macros in Common Lisp. There is no way provided to declare macro
+methods, nor do they make much sense...
+
+Neither xlapply nor sendmsg will handle FSUBRs.  Common Lisp does not
+allow APPLYing a special form (FSUBR), and since SEND is a SUBR, all
+of its arguments are already evaluated, so it is not possible to have
+FSUBR methods.
+
+Since xlisp tracks the three most recent input expressions (in
+variables +, ++ and +++) and three most recent results (in variables
+*, ** and ***), things may occasionally not get garbage-collected as
+soon as you expect!
+
+Both xlobj.c:xloinit() and xlobj.c:obsymvols() initialize the "object"
+and "class" variables.  This is not redundant or a bug:
+
+xloinit creates the classes class and object, as well as the symbols,
+but sets the C variables class and object to point to the class and
+object.
+
+obsymbols just sets the C variables by looking up the symbols. It is
+needed because when you restore a workspace you don't create new
+objects but still need to know where the existing objects are (they
+might be in a different location in the saved workspace). Notice that
+obsymbols is called by xlsymbols which is called both when
+initializing a new workspace and when restoring an old workspace.
+
+
+
+
+ Acknowledgements
+ ----------------
+
+This document is considerably improved thanks to careful reading and
+thoughtful suggestions from Ken Whedbee (kcw@beach.cis.ufl.edu) and
+(especially) Tom Almy (toma@sail.labs.tek.com).

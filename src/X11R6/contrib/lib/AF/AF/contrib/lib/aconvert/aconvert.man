@@ -1,0 +1,196 @@
+.TH aconvert 3 "AF"
+.SH NAME
+AConvertError, AConvertAllocInit, AConvertInit, AConvertFiles,
+AConvert, AConvertStats, AConvertClose - callable audio conversion library
+
+.SH SYNTAX
+.DS L
+#include <aconvert.h>
+
+char* AConvertError();
+
+AConvertCtxt* AConvertAlloc();
+
+AConvertCtxt* AConvertAllocInit(AEncodeType eInpType, int iInpFreq,
+ int iInpChans, AEncodeType eOutType, int iOutFreq, int iOutChans);
+
+int AConvertInit(AConvertCtxt* tpACC, char* cpName, char* cpVal);
+
+int AConvertFiles(int argc, char** argv);
+
+int AConvert(AConvertCtxt* tpACC, int iCnt, void* vpSrc, void* vppDst);
+
+void AConvertStats(AConvertCtxt* tpACC);
+
+void AConvertClose(AConvertCtxt* tpACC);
+.DE
+
+.SH ARGUMENTS
+.TP 16
+.B eInpType
+Type of input as defined in \fIaudio.h\fP
+.TP 16
+.B iInpFreq
+Input frequency in samples/second
+.TP 16
+.B iInpChans
+Number of input channels
+.TP 16
+.B eOutType
+Type of output as defined in \fIaudio.h\fP
+.TP 16
+.B iOutFreq
+Output frequency in samples/second
+.TP 16
+.B iOutChans
+Number of output channels
+.TP 16
+.B tpACC
+Current \fIaconvert\fP context
+.TP 16
+.B cpName
+Name of init parameter to set
+.TP 16
+.B cpVal
+Value of init parameter to set
+.TP 16
+.B argc
+Command line arg count
+.TP 16
+.B argv
+Command line argument array
+.TP 16
+.B iCnt
+Number of input units
+.TP 16
+.B vpSrc
+Input data buffer
+.TP 16
+.B vppDst
+Returned output data buffer pointer
+
+.SH DESCRIPTION
+The \fIlibaconvert\fP routines are used
+to convert between different audio data formats, sampling rates
+and sample sizes.
+
+The \fIAConvertError\fP routine returns a pointer to a libaconvert error
+message. It should be called after one of the library routines returns an
+error status.
+
+The \fIAConvertAlloc\fP routine creates a new \fIaconvert\fP context
+(initialized with all standard default values) and returns the value.
+
+The \fIAConvertAllocInit\fP routine creates a new \fIaconvert\fP context
+and initializes it according to the specified parameters. The resulting
+context is then returned.
+
+The \fIAConvertInit\fP routine allows individual parameters of an
+\fIaconvert\fP context to be set. Legal parameters are:
+
+.RS
+.TS
+lfI lfI
+l l.
+Parameter	Value
+agc	"1" or "0"
+byteSwap	"1" or "0"
+base	"base-input-frequency"
+copy	"1" or "0"
+filter	"size-of-filter"
+gain	"gain.multipler"
+input	"name[,opt...]"
+jump	"bytes-to-skip-in-header"
+max	"max-input-count"
+output	"name[,opt...]"
+stats	"1" or "0"
+vox	"1" or "0"
+.TE
+.RE
+
+The \fIAConvertFiles\fP routine is used to parse a command line and execute
+the commands found therein.
+
+The \fIAConvert\fP routine is called with an \fIaconvert\fP context and
+a buffer to convert. The size of the buffer is in \fIunits\fP (which is
+the smallest common multiple of bits/sample and 8). The returned output
+buffer is only good until the next call to \fIAConvert\fP. \fIAConvert\fP
+returns the actual number of \fIunits\fP in the output buffer if the
+conversion was successful.
+
+The \fIAConvertStats\fP routine prints out statistics (on stderr) about
+the completed conversion (provided that the \fIstats\fP flag was previously
+set).
+
+The \fIAConvertClose\fP routine closes the current \fIaconvert\fP context
+and deallocates all buffers.
+
+.SH DIAGNOSTICS
+.LP
+All routines return NULL or -1 on error (depending on whether they return
+a pointer or an integer value). In addition \fIAConvert\fP returns 0 when
+EOF or \fImax-input\fP is reached.
+
+.SH EXAMPLES
+.PP
+Convert 8 bit, 8khz input to 16 bit, 16khz output:
+
+.RS
+.nf
+#include <stdio.h>
+#include <aconvert.h>
+
+static void Leave() {
+  fprintf(stderr,"\n****ERROR: %s\n",AConvertError());
+  exit(1);
+}
+
+main(int argc,char** argv) {
+  int           iUnits;
+  u_char        ucaBuf[1024];
+  short*        spBuf;
+  AConvertCtxt* tpACC = AConvertAllocInit(
+                           MU255,8000,1,LIN16,16000,1);
+
+  if (!tpACC) Leave();
+
+  while ((iUnits = fread(ucaBuf,sizeof(u_char),1024,stdin)) > 0) {
+    if (AConvert(tpACC,iUnits,ucaBuf,&spBuf) != iUnits * 2) Leave();
+    fwrite(spBuf,sizeof(short),iUnits * 2,stdout);
+  }
+  AConvertClose(tpACC);
+  exit(0);
+}
+.fi
+.RE
+
+Perform file to file conversion:
+
+.RS
+.nf
+main(int argc,char** argv) {
+  if (AConvertFiles(argc,argv)) Leave();
+  exit(0);
+}
+.fi
+.RE
+
+.SH "SEE ALSO"
+.PP
+aconvert(1)
+AF(1)
+.SH BUGS
+.I melcep
+and
+.I cepstrum
+have not been implemented yet.
+
+If you encounter a reproducible bug, please submit a problem report to
+(af-bugs@crl.dec.com).
+
+.SH COPYRIGHT
+Copyright 1993-1994, Digital Equipment Corporation.
+.br
+See \fIAF(1)\fP for a full statement of rights and permissions.
+.SH AUTHORS
+Dave Wecker, Cambridge Research Lab, Digital Equipment Corporation.

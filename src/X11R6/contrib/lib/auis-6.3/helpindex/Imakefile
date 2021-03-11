@@ -1,0 +1,68 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+ *        For full copyright information see:'andrew/config/COPYRITE'     *
+\* ********************************************************************** */
+
+/* Put site-specific help.overview and help.programs in ${DESTDIR}/lib */
+
+#ifdef CMUCS
+
+InstallFileToFile(cmucs.ovrvw, $(INSTINCFLAGS), $(DESTDIR)/lib/help.overviews)
+InstallFileToFile(cmucs.prgms, $(INSTINCFLAGS), $(DESTDIR)/lib/help.programs)
+
+install.time::
+	../site/index/installindex.SYS_NAME $(DESTDIR)
+
+#else /* CMUCS */
+
+/*  If not at CMU, install a simple help index. */
+
+install.time::
+	-rm -rf ovrvw.tmp prgms.tmp
+
+/* Take the help.ovrvw file in the site directory if there is one; otherwise, use the one here. Put the result in $(DESTDIR)/lib. */
+ovrvw.tmp:
+	@sh -c '(if test -r ../site/help.ovrvw; then $(CP) ../site/help.ovrvw ovrvw.tmp; else $(CP) help.ovrvw ovrvw.tmp; fi; exit 0)'
+
+/* Take the help.prgms file in the site directory if there is one; otherwise, use the one here. Put the result in $(DESTDIR)/lib. */
+prgms.tmp:
+	@sh -c '(if test -r ../site/help.prgms; then $(CP) ../site/help.prgms prgms.tmp; else $(CP) help.prgms prgms.tmp; fi; exit 0)'
+
+InstallFileToFile(ovrvw.tmp, $(INSTINCFLAGS), $(DESTDIR)/lib/help.overviews)
+InstallFileToFile(prgms.tmp, $(INSTINCFLAGS), $(DESTDIR)/lib/help.programs)
+
+/* Take the common.idx or SYS_NAME.idx file in the site directory if there is one (if both exist, concatenate them.) Otherwise, use the one here. Run mkindex  on the result. */
+install.time::
+	$(RM) hindex.tmp index.idx
+	@sh -c '(if test -r ../site/common.idx; then cat ../site/common.idx >> hindex.tmp; fi; exit 0)'
+	@sh -c '(if test -r ../site/SYS_NAME.idx; then cat ../site/SYS_NAME.idx >> hindex.tmp; fi; exit 0)'
+	@sh -c '(if test ! -r hindex.tmp; then $(CP) default.idx hindex.tmp; fi; exit 0)'
+	sed -e s,DESTDIR,${DESTDIR},g hindex.tmp > index.idx
+	rm -fr ${DESTDIR}/lib/help.index
+	-mkdir ${DESTDIR}/lib/help.index
+	${DESTDIR}/etc/mkindex -v index.idx ${DESTDIR}/lib/help.index
+
+clean::
+	$(RM) ovrvw.tmp prgms.tmp hindex.tmp index.idx
+
+#endif  /* CMUCS */
+
+install.time::
+	$(RM) aliases.tmp
+	cat help.alias > aliases.tmp
+	@sh -c '(if test -r ../site/help.alias; then cat ../site/help.alias >> aliases.tmp; fi; exit 0)'
+	$(CP) aliases.tmp $(DESTDIR)/help/help.aliases
+	@sh -c '(cd ..; make Aliases; exit 0)'
+
+/* the 'make Aliases' line used to be in ./helpaliases/Imakefile, */
+/* but it makes more sense here.                                  */
+
+clean::
+	$(RM) aliases.tmp
+
+/*******************************
+ Note: to install a file under a different name, just use
+	the InstallFileToFile rule with a full path as the last
+	argument.
+	 ie InstallFileToFile(file.site_specific, $(INSTINCFLAGS), file.common)
+*******************************/

@@ -1,0 +1,385 @@
+/* xterm-ops,v 1.4 1994/05/26 21:02:54 me Exp */
+
+/*
+ * This file is part of the Emu system.
+ *
+ * Copyright 1990 by PCS Computer Systeme, GmbH. Munich, West Germany.
+ * 
+ * Copyright 1994 by Jordan K. Hubbard and Michael W. Elbel
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the
+ * "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to
+ * the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL PCS, THE AUTHORS, OR THEIR HOUSEPETS BE LIABLE FOR
+ * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. SO DON'T SUE US.
+ * THANK YOU.
+ */
+
+/*
+ * Input operations for the emu "xterm" terminal.
+ *
+ * Author: Michael Elbel, Jordan Hubbard.
+ * Date: June 28th, 1990
+ * Description: This file describes, in essence, what the "xterm" terminal
+ *		looks like. It is a 'hacked down' vt220 description.
+ *		So if you find any inconsistencies, let us know.
+ *
+ * Revision History:
+ *
+ * xterm-ops,v
+ * Revision 1.4  1994/05/26  21:02:54  me
+ * New copyright
+ *
+ * Revision 1.3  1994/05/25  18:20:05  me
+ * Changes to get better vt100 compliance - works properly when you
+ * telnet to a VAX
+ *
+ * Revision 1.1.1.1  1994/05/22  11:22:42  me
+ * Initial import into CVS
+ *
+ *
+ * Revision 1.2  91/09/30  18:30:01  me
+ * added the 'alternate screen' switch as dummy
+ *
+ */
+
+*term.xterm-ops:							\
+/* Absolute Cursor Positioning */					\
+OP_MOVE_ABS		<\\E[%d;%d%{1,-,px,1,-,py}H>			\
+/*	Shortcut, no coordinates goto 0,0 */				\
+OP_MOVE_ABS		<\\E[%{0,py,0,px}H>				\
+/*	Shortcut, no x coordinate goto 0,y */				\
+OP_MOVE_ABS		<\\E[;%d%{1,-,py,0,px}H>			\
+/*	Shortcut, no y coordinate goto x,0 */				\
+OP_MOVE_ABS		<\\E[%d;%{1,-,px,0,py}H>			\
+OP_MOVE_ABS		<\\E[%d;%d%{1,-,px,1,-,py}f>			\
+OP_MOVE_ABS		<\\E[%{0,py,0,px}f>				\
+OP_MOVE_ABS_COLUMN	<%0%px\\r>					\
+/* Relative Cursor Positioning */					\
+OP_MOVE_REL_ROW		<\\E[%-1%pyA>					\
+OP_MOVE_REL_ROW		<\\E[%{d,-1,*,py}A>				\
+OP_MOVE_REL_ROW		<\\E[%1%pyB>					\
+OP_MOVE_REL_ROW		<\\E[%d%pyB>					\
+OP_MOVE_REL_COLUMN	<\\E[%{d,D,0,=,?,X,1,;,px}C>			\
+OP_MOVE_REL_COLUMN	<\\E[%1%pxC>					\
+OP_MOVE_REL_COLUMN	<\\E[%{d,D,0,=,?,X,1,;,-1,*,px}D>		\
+OP_MOVE_REL_COLUMN	<\\E[%-1%pxD>					\
+OP_MOVE_REL_COLUMN	<%-1%px\\b>					\
+/* Scrolled Positioning */						\
+OP_MOVE_REL_ROW_SCROLLED<%1%py\\n>					\
+OP_MOVE_REL_ROW_SCROLLED<%1%py^K>					\
+OP_MOVE_REL_ROW_SCROLLED<%1%py^L>					\
+OP_MOVE_REL_ROW_SCROLLED<\\E%-1%pyM>					\
+OP_MOVE_REL_ROW_SCROLLED<\\E%1%pyD>					\
+OP_MOVE_REL_ROW_SCROLLED,OP_MOVE_ABS_COLUMN<\\E%1%py%0%pxE>		\
+/* Deleting */								\
+OP_DELETE_CHARS		<\\E[%1%paP>					\
+OP_DELETE_CHARS		<\\E[%d%paP>					\
+OP_ERASE_CHARS		<\\E[%d%paX>					\
+OP_DELETE_TO_EOL	<\\E[K>						\
+OP_DELETE_TO_EOL	<\\E[0K>					\
+OP_ERASE_LINE_LEFT	<\\E[1K>					\
+OP_ERASE_LINES		<\\E[2%1%paK>					\
+OP_DELETE_TO_EOSCR	<\\E[J>						\
+OP_DELETE_TO_EOSCR	<\\E[0J>					\
+OP_ERASE_FROM_TOSCR	<\\E[1J>					\
+OP_CLEAR_SCREEN		<\\E[2J>					\
+/* Inserting */								\
+OP_INSERT_LINES		<\\E[%1%paL>					\
+OP_INSERT_LINES		<\\E[%d%paL>					\
+OP_DELETE_LINES		<\\E[%1%paM>					\
+OP_DELETE_LINES		<\\E[%d%paM>					\
+/* Bell */								\
+OP_RING_BELL		<^G>						\
+/* Attributes */							\
+OP_CLEAR_ATTRIBUTE	<\\E[%15%pbm>					\
+OP_NOP			<\\E[%{						\
+	s D								\
+	/* clear everything and out */					\
+	/* now loop over the string to find the arguments */		\
+	La /* Loop head */						\
+		';' $ 		/* find the next delimiter (if any) */	\
+		CB_INT_TYPE @						\
+		D 0 = ?		/* all off */				\
+			15 pb OP_CLEAR_ATTRIBUTE C jb ;			\
+		D 7 = ?		/* reverse video */			\
+			ATT_REVERSE pa OP_SET_ATTRIBUTE  C jb ;		\
+		D 1 = ?		/* bold */				\
+			ATT_BOLD pa OP_SET_ATTRIBUTE  C jb ;		\
+		D 4 = ?		/* underlined */			\
+			ATT_UNDERL pa OP_SET_ATTRIBUTE  C jb ;		\
+		D 5 = ?		/* blinking */				\
+			ATT_BLINK pa OP_SET_ATTRIBUTE  C jb ;		\
+		D 22 = ?	/* bold off */				\
+			ATT_BOLD pb OP_CLEAR_ATTRIBUTE  C jb ;		\
+		D 24 = ?	/* underline off */			\
+			ATT_UNDERL pb OP_CLEAR_ATTRIBUTE  C jb ;	\
+		D 25 = ?	/* blinking off */			\
+			ATT_BLINK pb OP_CLEAR_ATTRIBUTE  C jb ;		\
+		D 27 = ?	/* reverse video off */			\
+			ATT_REVERSE pb OP_CLEAR_ATTRIBUTE  C;		\
+		Lb							\
+		X 		/* drop the processed item */		\
+		D l ? ja ;	/* jump back if there's anything left */\
+	Lc								\
+	X f}m>								\
+									\
+/* Terminal Modes */							\
+/* ANSI Modes */							\
+OP_NOP			<\\E[%{						\
+	/* get the string and rip off the l at the end */		\
+	s D								\
+	/* now loop over the string to find the arguments */		\
+	La /* Loop head */						\
+		';' $ 		/* find the next delimiter (if any) */	\
+		CB_INT_TYPE @						\
+		D 4 = ?		/* insert mode off */			\
+			OP_OVERWRITE_MODE C ;				\
+		X 		/* drop the processed item */		\
+		D l ? ja ;	/* jump back if there's anything left */\
+	X f}l>								\
+									\
+OP_NOP			<\\E[%{						\
+	/* get the string and rip off the h at the end */		\
+	s D								\
+	/* now loop over the string to find the arguments */		\
+	La /* Loop head */						\
+		';' $ 		/* find the next delimiter (if any) */	\
+		CB_INT_TYPE @						\
+		D 4 = ?		/* insert mode  on */			\
+			OP_INSERT_MODE C ;				\
+		X 		/* drop the processed item */		\
+		D l ? ja ;	/* jump back if there's anything left */\
+	X f}h>								\
+									\
+/* DEC private Modes */							\
+OP_NOP			<\\E[?%{					\
+	s D								\
+	/* now loop over the string to find the arguments */		\
+	La /* Loop head */						\
+		';' $ 		/* find the next delimiter (if any) */	\
+		CB_INT_TYPE @						\
+		D 47 = ?	/* alternate screen */			\
+			/* we don't support this (yet) */ jb ;		\
+		D 25 = ?	/* cursor invisible */			\
+			OP_CURSOR_OFF C jb ;				\
+		D 1 = ?	/* ANSI control cursor keys */			\
+			"normCKeys" pa OP_OVERRIDE_TRANSLATIONS C jb ;	\
+		D 3 = ?	/* 80 columns */				\
+			OP_CANVAS_SIZE C /* get the current size */	\
+			80 px 		 /* set 80 columns */		\
+			OP_SET_SCREEN_SIZE C jb ;			\
+		D 5 = ?	/* normal video	*/				\
+			OP_NORMAL_VIDEO C jb ;				\
+		D 6 = ?	/* cursor positioning absolute */		\
+			OP_CURSOR_POS_ABSOLUTE C			\
+			0 px 0 py OP_MOVE_ABS C jb ; /* go to 0/0 */	\
+		D 7 = ?	/* don't wrap around at end of line */		\
+			OP_DONT_WRAP C ;				\
+		Lb							\
+		X 		/* drop the processed item */		\
+		D l ? ja ;	/* jump back if there's anything left */\
+	X f}l>								\
+									\
+OP_NOP			<\\E[?%{					\
+	s D								\
+	/* now loop over the string to find the arguments */		\
+	La /* Loop head */						\
+		';' $ 		/* find the next delimiter (if any) */	\
+		CB_INT_TYPE @						\
+		D 47 = ?	/* alternate screen */			\
+			/* we don't support this (yet) */ jb ;		\
+		D 25 = ?	/* cursor visible */			\
+			OP_CURSOR_ON C jb ;				\
+		D 1 = ?	/* application control cursor keys */		\
+			"appCKeys" pa OP_OVERRIDE_TRANSLATIONS C jb ;	\
+		D 3 = ?	/* 132 columns */				\
+			OP_CANVAS_SIZE C /* get the current size */	\
+			132 px		 /* set 80 columns */		\
+			OP_SET_SCREEN_SIZE C jb ;			\
+		D 5 = ?	/* reverse video */				\
+			OP_REVERSE_VIDEO C jb ;				\
+		D 6 = ?	/* cursor positioning relative */		\
+			OP_CURSOR_POS_REL_TO_SCR_REG C			\
+			0 px 0 py OP_MOVE_ABS C jb ; /* go to 0/0 */	\
+		D 7 = ?	/* wrap around at end of line */		\
+			OP_WRAP_AROUND C ;				\
+		Lb							\
+		X 		/* drop the processed item */		\
+		D l ? ja ;	/* jump back if there's anything left */\
+	X f}h>								\
+									\
+/* Tabs */								\
+OP_SET_TAB_CUR_COL	<\\EH>						\
+OP_CLEAR_TAB_CUR_COL	<\\E[g>						\
+OP_CLEAR_TAB_CUR_COL	<\\E[0g>					\
+OP_NOP			<\\E[1g>  /* what is this supposed to do ??? */	\
+OP_NOP			<\\E[2g>  /* what is this supposed to do ??? */	\
+OP_CLEAR_ALL_TABS	<\\E[3g>					\
+OP_HOR_TAB		<\\t>						\
+/* Modes */								\
+/* Translation Management */						\
+OP_OVERRIDE_TRANSLATIONS<\\E%"appKeypad"%pa=>				\
+OP_OVERRIDE_TRANSLATIONS<\\E%"numKeypad"%pa\\>>				\
+									\
+/* FLUT settings : G0 to G3 are stored in registers 0 to 3 */		\
+OP_NOP			<\\EB>						\
+OP_NOP			<\\E(%{						\
+		/* check if G0 was already invoked into GL */		\
+		0 g5 = ?						\
+			"ascii" pa 32 pb OP_CHANGE_FLUT C ;		\
+		"ascii" p0						\
+		}B>							\
+OP_NOP			<\\E)%"ascii"%p1B>				\
+OP_NOP			<\\E*%"ascii"%p2B>				\
+OP_NOP			<\\E+%"ascii"%p3B>				\
+OP_NOP			<\\E<>						\
+OP_NOP			<\\E(%{						\
+		/* check if G0 was already invoked into GL */		\
+		0 g5 = ?						\
+			"dec" pa 32 pb OP_CHANGE_FLUT C ;		\
+		"dec" p0						\
+		}<>							\
+OP_NOP			<\\E)%"dec"%p1<>				\
+OP_NOP			<\\E*%"dec"%p2<>				\
+OP_NOP			<\\E+%"dec"%p3<>				\
+OP_NOP			<\\EA>						\
+OP_NOP			<\\E(%"uk"%p0A>					\
+OP_NOP			<\\E)%"uk"%p1A>					\
+OP_NOP			<\\E0>						\
+OP_NOP			<\\E(%{						\
+		/* check if G0 was already invoked into GL */		\
+		0 g5 = ?						\
+			"graphics" pa 32 pb OP_CHANGE_FLUT C ;		\
+		"graphics" p0						\
+		}0>							\
+OP_NOP			<\\E)%"graphics"%p10>				\
+OP_NOP			<\\E*%"graphics"%p20>				\
+OP_NOP			<\\E+%"graphics"%p30>				\
+									\
+/* Actual FLUT changing, the arguments come from registers 1 to 4, */	\
+/* the character sets GL and GR are stored in registers 5 and 6 */	\
+OP_CHANGE_FLUT		<%{g0,1,p5,pa,32,pb}\017>			\
+OP_CHANGE_FLUT		<%{g1,1,p5,pa,32,pb}\016>			\
+OP_CHANGE_FLUT		<\\E%{g2,2,p5,pa,32,pb}n>			\
+OP_CHANGE_FLUT		<\\E%{g3,3,p5,pa,32,pb}o>			\
+OP_CHANGE_FLUT		<\\E%{g1,1,p6,pa,160,pb}~>			\
+OP_CHANGE_FLUT		<\\E%{g2,2,p6,pa,160,pb}\}>			\
+OP_CHANGE_FLUT		<\\E%{g3,3,p6,pa,160,pb}|>			\
+									\
+/* Invoking G2 or G3 into GL for a single shift */			\
+OP_NOP			<\\EN%c%{					\
+		g2 pa 32 pb OP_CHANGE_FLUT C	     /* invoke g2 */	\
+ 		CB_STR_TYPE @ bs OP_INSERT C	     /* print char */	\
+		g5 '0' + G pa 32 pb OP_CHANGE_FLUT C /* restore flut */	\
+			}>						\
+OP_NOP			<\\EO%c%{					\
+		g3 pa 32 pb OP_CHANGE_FLUT C	     /* invoke g2 */	\
+ 		CB_STR_TYPE @ bs OP_INSERT C	     /* print char */	\
+		g5 '0' + G pa 32 pb OP_CHANGE_FLUT C /* restore flut */	\
+			}>						\
+									\
+/* Scroll region setting */						\
+OP_SET_SCROLL_REGION	<\\E[%d;%d%{1,-,pb,1,-,pa}r>			\
+OP_SET_SCROLL_REGION	<\\E[%{OP_CANVAS_SIZE,C,gy,1,-,pb,0,pa}r>	\
+									\
+/* Saving and restoring state. Regs o - w are used for storage */	\
+OP_NOP			<\\E%{						\
+		g0 g1 g2 g3 po pp pq pr 		/* save fluts */\
+		OP_CANVAS_CURSOR_POS C gx gy ps pt	/* cursor pos */\
+		OP_CANVAS_ATTRIBS C ga pu		/* attributes */\
+		OP_CANVAS_WRAP_MODE C ga pv		/* wrap flag  */\
+		OP_SAVE_FLUT C				/* save flut  */\
+			}7>						\
+OP_NOP			<\\E%{						\
+		go gp gq gr p0 p1 p2 p3			/* fluts */	\
+		gs gt px py OP_MOVE_ABS C		/* cursor pos */\
+		15 pb OP_CLEAR_ATTRIBUTE C				\
+		gu pa OP_SET_ATTRIBUTE C		/* attributes */\
+		gv ? OP_WRAP_AROUND : OP_DONT_WRAP ; C	/* wrapping   */\
+		OP_RESTORE_FLUT C			/* restore it */\
+			}8>						\
+									\
+/* Print full screen of 'E's for test pattern */			\
+OP_NOP			<\\E#%{						\
+	OP_CANVAS_CURSOR_POS C gx gy					\
+	0 px 0 py OP_MOVE_ABS C						\
+	OP_CLEAR_SCREEN C						\
+	OP_CANVAS_SIZE C						\
+	gx								\
+	"" bs								\
+		Lb							\
+		"E" ba							\
+		1 - D ? jb ;						\
+	gy								\
+		La							\
+		OP_INSERT C						\
+		1 - D ? ja ;						\
+	 py px OP_MOVE_ABS C						\
+			}8>						\
+									\
+/* line attributes */							\
+/*	(DECDHL) Double-height line, top half. */			\
+OP_SET_LINE_ATTRIBUTES	<\\E#%{ LINE_D_UPPER pa}3>			\
+/*	(DECDHL) Double-height line, bottom half. */			\
+OP_SET_LINE_ATTRIBUTES	<\\E#%{ LINE_D_LOWER pa}4>			\
+/*	(DECSWL) Single-width line. */					\
+OP_SET_LINE_ATTRIBUTES	<\\E#%0%pa5>					\
+/*	(DECDWL) Double-width line. */					\
+OP_SET_LINE_ATTRIBUTES	<\\E#%{ LINE_D_WIDE pa}6>			\
+									\
+/* Reports from the Emulation */					\
+OP_NOP		<\\E[7%{OP_CANVAS_SIZE C ROP_SCREEN_SIZE R}n>		\
+OP_NOP		<\\E[6%{OP_CANVAS_CURSOR_POS C ROP_CURSOR_POS R}n>	\
+/* Now the unsupported Features, we just ignore them */			\
+OP_NOP		<\\E F>							\
+OP_NOP		<\\E G>							\
+OP_NOP		<\\E[%cq>						\
+OP_NOP		<\\E[?K>						\
+OP_NOP		<\\E[?%dK>						\
+OP_NOP		<\\E[?J>						\
+OP_NOP		<\\E[?%dJ>						\
+OP_NOP		<\\E[%d\"p>						\
+OP_NOP		<\\E[%d;%d\"p>						\
+OP_NOP		<\\E[i>							\
+OP_NOP		<\\E[%di>						\
+OP_NOP		<\\E[?%di>						\
+/* Special xterm Sequences */						\
+OP_NOP		<\\E%dr>						\
+OP_NOP		<\\E%ds>						\
+/* Setting the title */							\
+OP_NOP		<\\E]2;%{s,D,t,f}\\007>					\
+/* Setting the icon */							\
+OP_NOP		<\\E]1;%{s,D,i,f}\\007>					\
+/* Setting title and icon */						\
+OP_NOP		<\\E]0;%{s,D,D,t,i,f}\\007>				\
+/* Unsupported xterm Features. We have to explicitly ignore these */	\
+/* Mouse tracking */							\
+OP_NOP		<\\E%d;%d;%d;%d;%dT>					\
+/*	String terminator. */						\
+OP_NOP			<\\E\\\\\\>					\
+/* select C1 control transmission */					\
+/* primary DA request */						\
+OP_NOP		<\\E[%{ROP_PRIMARY_DA R}c>				\
+OP_NOP		<\\E[0%{ROP_PRIMARY_DA R}c>				\
+/* secondary DA request */						\
+OP_NOP		<\\E[\\>%{ROP_SECONDARY_DA R}c>				\
+OP_NOP		<\\E[\\>0%{ROP_SECONDARY_DA R}c>			\
+/* Device Status Report */						\
+OP_NOP		<\\E%dn>						\
+/* Save and restore DEC Private Mode Values */				\
+OP_NOP		<\\E[?%s%fr>						\
+OP_NOP		<\\E[?%s%fs>

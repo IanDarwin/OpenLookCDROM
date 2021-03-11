@@ -1,0 +1,123 @@
+@begin(header)
+author: ackerman@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+node_expert:
+expiration_date: 06/25/93
+last_modifier: ackerman@ics.uci.edu
+last_mod_date: 06/25/91
+mod_num: 1
+@end(header)
+@begin(Q)
+Date: 8 May 89 01:26:05 GMT
+From: eureka!argv@sun.com  (Dan Heller)
+Organization: Island Graphics Corporation, Marin County, CA
+Subject: Re: Reading sockets from the Toolkit
+
+(Chris D. Peterson) writes:
+
+> > Could some knowledgeable Toolkit programmer suggest the best way to add
+> > a new event to the toolkit main loop XtMainLoop() that will execute my
+> > callback function when data comes in over a socket. I am using Athena
+> > widgets if that makes a difference.
+> 
+> Take a look at section 7.1.1 (Adding and Removing Input Sources) in 
+> the X11R3 instrinsics manual I think this is exactly what you are looking
+> for.
+> 						Chris D. Peterson     
+
+I hate to request this, but could you please discuss this in more detail? I
+think the question addresses more issues than it was intended-- specifically,
+I don't believe that Xt handles how the application is supposed to handle
+signals.
+
+The user is reading from a socket -- which is a file descriptor.  There could
+be a SIGIO event delivered to the application's event handler for that signal
+interrupting something critical within Xt.  If this routine does more Xt calls,
+then all sorts of havoc can result.
+
+    dan
+@end(Q)
+
+@begin(A)
+Date: 10 Nov 89 00:40:57 GMT
+From: Barr3y Jaspan
+Organization: Massachusetts Institute of Technology
+Subject: Re: XtAddInput problem
+
+I've seen random discussion about the use of XtAddInput() and about
+how it supposedly does not work.  It *does* work, and I will attempt
+to clear up the confusion.
+
+Anyone who is familiar with UNIX realizes that the intrinsics use
+select() to detect X and other events, and that XtAddInput() merely
+adds filedescriptors to the parameters passed to select.  The man page
+for select() says that it returns when there a file descriptor is
+"ready for reading, ready for writing, ..."
+
+The confusion, I think, is in "ready for writing."  That means that
+the fd is in a state such that data CAN be written to it, not that
+data actually has been written to it.  Specifically, stdout is ALWAYS
+"ready for writing" (unless it has been messed with) and so *IF YOU DO
+AN XtAddInput ON FD 1, IT WILL TO CALL THE FUNCTION CONSTANTLY* and
+that is the correct behavior.
+
+For input events, XtAddInput also does the right thing: it calls the
+function whenever there is data waiting to be read.  For example, if
+you do XtAddInput() on fd 0 with XtInputReadMask, the callback will be
+called when the user has typed a line (or a character in cbreak mode).
+The function IS NOT called constantly.
+
+As proof of my argument, I present the following source code and
+execution output.
+
+--- snip snip ---
+
+#include <stdio.h>
+
+#include <X11/Intrinsic.h>
+#include <X11/StringDefs.h>
+#include <X11/Label.h>
+
+void input();
+
+main(argc, argv)
+   int argc;
+   char **argv;
+{
+     Widget	top;
+
+     top = XtInitialize("Hello", "World", NULL, 0, &argc, argv);
+     (void) XtCreateManagedWidget("label", labelWidgetClass, top,
+				  NULL, 0);
+     
+     XtAddInput(0, XtInputReadMask, input, NULL);
+     XtRealizeWidget(top);
+     XtMainLoop();
+}
+
+void input(client_data, source, input_id)
+   caddr_t	client_data;
+   int		*source;
+   XtInputId	*input_id;
+{
+     char	buf[BUFSIZ];
+     
+     printf("Input received on fd %d.\n", *source);
+     scanf("%s", buf);
+     printf("\"%s\"\n", buf);
+}
+
+--- snip snip ---
+
+~% cc -I/mit/x11/include -L/mit/x11/vaxlib input-example.c -lXaw -lXmu -lXt -lX11
+~% a.out
+testing
+Input received on fd 0.
+"testing"
+Hi there!!
+Input received on fd 0.
+"Hi"
+^C~%
+@end(A)
+

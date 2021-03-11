@@ -1,0 +1,98 @@
+@begin(header)
+author: ackerman=ag@.ics.uci.edu
+show_author: ShowNone
+author_organization: Harvard X Class
+node_expert: ackerman=ag@ics.uci.edu 
+expiration_date: 10/17/93
+last_modifier: ackerman=ag@.ics.uci.edu
+last_mod_date: 10/17/91
+mod_num: 1
+@end(header)
+@begin(Q)
+I am trying to use the XQueryTextExtents routine.  The second
+parameter to be passed to the routine is a font_id of type XID.  I
+have an XFontStruct for the font that I would like to pass to the
+routine.  However, this struct contains only an fid field of type
+font which contains its resourse ID.  How do I convert from the
+font type to XID? @end(Q)
+
+@begin(A)
+You don't need to.  
+
+You can either pass a font id (which you have in the font struct)
+or something called a GContext (which is seldom used by
+programmers - and is *not* a GC).  The XID is an unfortunate
+documentation convention.
+@end(A)
+
+@begin(Q)
+How do I use XQueryTextExtents ?  I am making a call as follows:
+
+ XQueryTextExtents(display, font, string, strlen(string), direction,
+                    ascent, descent, overall);
+
+where:
+   char *string,
+   int *direction, *ascent, *descent;
+   XCharStruct *overall;
+
+ I keep getting 0 returned in the overall field...???
+@end(Q)
+
+@begin(A)
+You've been stung by the documentation.
+
+You really want to say:
+
+ XQueryTextExtents(display, font, string, strlen(string), 
+		    &direction,
+                    &ascent, &descent, &overall);
+
+where it is *received* as:
+
+   char *string,
+   int *direction, *ascent, *descent;
+   XCharStruct *overall;
+
+That is, you are responsible for allocating storage.  This is
+generally true in Xlib for any data structure.  (Exceptions are
+noted in the manual or man pages as requiring a XFree after use to
+de-allocate the storage.)
+@end(A)
+
+@begin(Q)
+I called
+
+XQueryTextExtents(display, font,...)
+
+ where
+
+font is declared as XFontStruct *font and was previously
+"allocated", if that is the right term, by calling
+
+  font = XLoadQueryFont(display, "some font name");
+
+The call to XQueryTextExtents now returns 3544 for
+overall.lbearing, 64 for overall.rbearing, and 0 for the .width,
+.ascent, and .descent fields....  What's going on?
+@end(Q)
+
+@begin(A)
+Here's the problem:  XQueryTextExtents takes a font id, not a
+fontstruct.  You were lucky (?) your code didn't blow up.  You
+were accessing random memory for your font struct (which is on the
+client side).
+
+You wanted to use font->fid and not font in your call.  You might
+want to call XFontStructs something besides "font" to avoid the
+confusion between fonts and font_structs.  (Fonts are server
+resources; font structs are client-side data structures.)
+
+
+But, what you really wanted to do was to use XTextExtents, which
+takes a font struct, and is a client-side call.  XQueryTextExtents
+goes to the server for its information (and even worse, waits
+until the server replies).  It will take much longer, and there is
+no reason to go to the server since you already have the
+information client-side in the font struct.  
+@end(A)

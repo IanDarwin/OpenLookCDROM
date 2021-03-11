@@ -1,0 +1,262 @@
+/* 
+ * The following macros are supported
+ * ----------------------------------
+ * create_dir(dir)			- Create a directory hierarchy
+ * AnsiCC()				- Specify desire for ANSI compiling
+ * ProfiledObjectRule()			- Build profiled objects/libraries
+ * SpecialObject(obj,depends,options)	- Build a special object
+ *
+ * cmd_table(tbl)			- build a command table module (tbl.ct)
+ * error_table(tbl)			- build an error table module (tbl.et)
+ *
+ * SimpleProgram(prog,objs,libs,dest)	- Build/install a program    (simple)
+ * build_program(prog,objs,ldflags,libs)- Build a program            (complex)
+ * install_program(prog,instflags,dest)	- Install a program          (complex)
+ * install_script(prog,instflags,dest)	- Install a script	     (complex)
+ *
+ * SimpleLibrary(base,objs,destdir)	- Build/install a library    (simple)
+ * build_library(base,objs)		- Build a library
+ * install_library(base,dir)		- Install a library
+ *
+ * SimpleLint(base,srcs)		- Build/install a lint library
+ *
+ * install_man(src,name)		- Install man page
+ * install_man_links(name,links)	- Install man page links
+ *
+ * install_file(src,dest)		- Install file
+ *
+ * foreach_subdirs(name,subdirs)	- Make 'name' in subdirs
+ * do_subdirs_imakefile(subdirs)	- Make Makefile in subdirs (Athena)
+ * do_subdirs_xmakefile(subdirs)	- Make Makefile in subdirs (X-style)
+ * do_subdirs(subdirs)			- Make common instances in subdirs
+ */
+
+#define create_dir(dir)							@@\
+install_dirs:: $(DESTDIR)dir						@@\
+$(DESTDIR)dir:								@@\
+	$(MKDIRHIER) $(DESTDIR)dir
+
+#define build_program(prog,objs,ldflags,libs)				@@\
+all::	prog								@@\
+prog::	objs								@@\
+	$(LD) ldflags $(LDFLAGS) -o prog objs $(LDPATH) libs $(LDLIBS)	@@\
+clean::									@@\
+	$(RM) prog							@@\
+
+#ifndef static_program(prog,objs,ldflags,libs)
+#define static_program(prog,objs,ldflags,libs)				@@\
+build_program(prog,objs,ldflags,libs)
+#endif
+
+#define install_program(prog,instflags,dest)				@@\
+install::								@@\
+	$(INSTALL) InstPgmFlags instflags prog $(DESTDIR)dest
+
+#define install_script(prog,instflags,dest)				@@\
+install::								@@\
+	$(INSTALL) InstScriptFlags instflags prog $(DESTDIR)dest
+
+#define install_file(src,dest)						@@\
+install::								@@\
+	$(INSTALL) -m 0444 src $(DESTDIR)dest
+
+#define SimpleProgram(prog,objs,libs,dest)				@@\
+build_program(prog,objs,,libs)						@@\
+install_program(prog,,dest)
+
+#define SpecialObject(obj,depends,options)				@@\
+obj: depends								@@\
+	$(RM) $@							@@\
+	$(CC) -c $(CFLAGS) options $*.c
+
+#define install_man(src,name)						@@\
+install.man::								@@\
+	base=`expr name \: '\(.*\)\.'`; \				@@\
+	ext=`expr name \: '.*\.\(.*\)'`; \				@@\
+	sdir=$(DESTDIR)$(ATHMANDIR)/man`expr name \: '.*\.\(.\)'`; \	@@\
+	$(INSTALL) -m 0444 src $${sdir}/`basename name`
+
+#define install_man_links(name,links)					@@\
+name.so:								@@\
+	$(RM) name.so							@@\
+	sdir=man`expr name \: '.*\.\(.\)'`; \				@@\
+	echo ".so $${sdir}/name" > name.so				@@\
+clean::									@@\
+	$(RM) name.so							@@\
+install.man:: name.so							@@\
+	for i in links; do \						@@\
+		sdir=$(DESTDIR)$(ATHMANDIR)/man`expr $$i \: '.*\.\(.\)'`;\ @@\
+		$(INSTALL) -m 0444 name.so $${sdir}/$$i;\		@@\
+	done
+
+#define ProfiledObjectRule()						@@\
+.c.o:									@@\
+	$(RM) $@ profiled/$@						@@\
+	$(CC) ProfCcFlags -c $(CFLAGS) $*.c				@@\
+	mv $*.o profiled/$*.o						@@\
+	$(CC) -c $(CFLAGS) $*.c						@@\
+all:: profiled all-prof							@@\
+install:: inst-prof							@@\
+profiled:								@@\
+	-mkdir $@							@@\
+clean::									@@\
+	$(RM) -r profiled						@@\
+all-prof inst-prof::
+
+#define AnsiCC()							@@\
+CC=AnsiCcCmd								@@\
+LD=AnsiLdCmd
+
+#define error_table(tbl)						@@\
+depend:: tbl/**/.c tbl/**/.h						@@\
+tbl/**/.o: tbl/**/.c							@@\
+tbl/**/.c tbl/**/.h: tbl/**/.et						@@\
+	$(RM) tbl/**/.c tbl/**/.h					@@\
+	compile_et tbl/**/.et						@@\
+clean::									@@\
+	$(RM) tbl/**/.c tbl/**/.h
+
+#define cmd_table(tbl)							@@\
+depend:: tbl/**/.c							@@\
+tbl/**/.o: tbl/**/.c							@@\
+tbl/**/.c: tbl/**/.ct							@@\
+	$(RM) tbl/**/.c tbl/**/.h					@@\
+	mk_cmds tbl/**/.ct						@@\
+clean::									@@\
+	$(RM) tbl/**/.c
+
+#define build_library(base,objs)					@@\
+all::	lib/**/base.a							@@\
+lib/**/base.a::	objs							@@\
+	ar cru lib/**/base.a objs					@@\
+	$(RANLIB) lib/**/base.a						@@\
+all-prof::	lib/**/base/**/_p.a					@@\
+lib/**/base/**/_p.a:	objs						@@\
+	cd profiled; ar cru ../lib/**/base/**/_p.a objs			@@\
+	$(RANLIB) lib/**/base/**/_p.a
+
+#define install_library(base,dir)					@@\
+install::								@@\
+	$(RM) $(DESTDIR)dir/lib/**/base.a				@@\
+	$(INSTALL) -m 0644 lib/**/base.a $(DESTDIR)dir			@@\
+	$(RANLIB) $(DESTDIR)dir/lib/**/base.a				@@\
+inst-prof::								@@\
+	$(RM) $(DESTDIR)dir/lib/**/base/**/_p.a				@@\
+	$(INSTALL) -m 0644 lib/**/base/**/_p.a $(DESTDIR)dir		@@\
+	$(RANLIB) $(DESTDIR)dir/lib/**/base/**/_p.a
+
+#define SimpleLibrary(base,objs,dir)					@@\
+build_library(base,objs)						@@\
+install_library(base,dir)
+
+
+#ifdef NOLINT
+#define SimpleLint(base,srcs)
+#else
+#define SimpleLint(base,srcs)						@@\
+all::	llib-l/**/base.ln						@@\
+llib-l/**/base.ln:: srcs						@@\
+	LintCmd $(LINTCFLAG)base LintFlags $(LINTFLAGS) srcs		@@\
+install::								@@\
+	$(INSTALL) llib-l/**/base.ln $(DESTDIR)/usr/lib/lint/		@@\
+clean::									@@\
+	$(RM) llib-l/**/base.ln
+#endif
+
+#define makefile_target()						@@\
+Makefile:: $(ICONFIGFILE)						@@\
+	-@if [ -f Makefile ]; then \                                    @@\
+        	echo "  $(RM) Makefile.bak; mv Makefile Makefile.bak"; \ @@\
+		$(RM) Makefile.bak; mv Makefile Makefile.bak; \		@@\
+        else exit 0; fi                                                 @@\
+	$(IMAKE) $(IFLAGS) $(IPROJ) -DNEWTOP=$(TOP) -DNEWCWD=$(CWD) @@\
+									@@\
+XMakefile::								@@\
+	-@if [ -f Makefile ]; then \                                    @@\
+        	echo "  $(RM) Makefile.bak; mv Makefile Makefile.bak"; \ @@\
+		$(RM) Makefile.bak; mv Makefile Makefile.bak; \		@@\
+        else exit 0; fi                                                 @@\
+	$(IMAKE) $(XIFLAGS)
+
+
+#define foreach_subdirs_flags(name,subdirs,flgs)			@@\
+name:: FRC								@@\
+	@for d in subdirs; \						@@\
+	do \								@@\
+		(cd $$d; echo "### Making" name "in $(CWD)/$$d"; \	@@\
+			make $(MFLAGS) flgs DESTDIR=$(DESTDIR) name; \	@@\
+			echo "### Done with $(CWD)/$$d"); \		@@\
+	done
+
+#define do_subdirs_flags(subdirs,flgs)					@@\
+	foreach_subdirs_flags(all, subdirs, flgs)			@@\
+	foreach_subdirs_flags(install, subdirs, flgs)			@@\
+	foreach_subdirs_flags(clean, subdirs, flgs)			@@\
+	foreach_subdirs_flags(depend, subdirs, flgs)			@@\
+subdirs:: FRC								@@\
+	@(cd $@; echo "### Making" all "in $(CWD)/$@"; \		@@\
+		make $(MFLAGS) flgs DESTDIR=$(DESTDIR) all ; \		@@\
+		echo "### Done with $(CWD)/$@")
+
+#define foreach_subdirs(name,subdirs)					@@\
+	foreach_subdirs_flags(name,subdirs,)
+
+#define do_subdirs(subdirs)						@@\
+	do_subdirs_flags(subdirs,)
+
+#define do_subdirs_imakefile(subdirs)					@@\
+Makefiles:: Makefile							@@\
+	@echo "### Making Makefiles in $(CWD)"				@@\
+	@-for d in subdirs; \						@@\
+	do \								@@\
+		case "$$d" in \						@@\
+                ./?*/?*/?*/?*)	newtop=../../../.. ;; \			@@\
+                ./?*/?*/?*)	newtop=../../.. ;; \			@@\
+                ./?*/?*)	newtop=../.. ;; \			@@\
+                ./?*)		newtop=.. ;; \				@@\
+                */?*/?*/?*)	newtop=../../../.. ;; \			@@\
+                */?*/?*)	newtop=../../.. ;; \			@@\
+                */?*)		newtop=../.. ;; \			@@\
+                *)		newtop=.. ;; \				@@\
+                esac; \							@@\
+		( cd $$d; \						@@\
+		  echo "### Making Makefile in $(CWD)/$$d"; \		@@\
+		  if [ -f Makefile ]; then \				@@\
+			$(RM) Makefile.bak; \				@@\
+		 	mv Makefile Makefile.bak; fi; \			@@\
+		  make -f $${newtop}/Makefile TOP=$${newtop}/$(TOP) \	@@\
+			CWD=$(CWD)/$$d Makefile; \			@@\
+		  make $(MFLAGS) Makefiles; \				@@\
+		  echo "### Done with $(CWD)/$$d" ) ; \			@@\
+	done
+
+#define do_subdirs_xmakefile(subdirs)					@@\
+	foreach_subdirs(install.man,subdirs)				@@\
+Makefiles:: Makefile							@@\
+	@echo "### Making Makefiles in $(CWD)"				@@\
+	@-for d in subdirs; \						@@\
+	do \								@@\
+		case "$$d" in \						@@\
+                ./?*/?*/?*/?*)	newtop=../../../.. ;; \			@@\
+                ./?*/?*/?*)	newtop=../../.. ;; \			@@\
+                ./?*/?*)	newtop=../.. ;; \			@@\
+                ./?*)		newtop=.. ;; \				@@\
+                */?*/?*/?*)	newtop=../../../.. ;; \			@@\
+                */?*/?*)	newtop=../../.. ;; \			@@\
+                */?*)		newtop=../.. ;; \			@@\
+                *)		newtop=.. ;; \				@@\
+                esac; \							@@\
+		( cd $$d; \						@@\
+		  echo "### Making Makefile in $(CWD)/$$d"; \		@@\
+		  if [ -f Makefile ]; then \				@@\
+			$(RM) Makefile.bak; \				@@\
+		 	mv Makefile Makefile.bak; fi; \			@@\
+		  make -f $${newtop}/Makefile TOP=$${newtop}/$(TOP) \	@@\
+			CWD=$(CWD)/$$d XMakefile; \			@@\
+		  make $(MFLAGS) Makefiles; \				@@\
+		  echo "### Done with $(CWD)/$$d" ) ; \			@@\
+	done
+
+#define create_depend(files)						@@\
+depend::								@@\
+	makedepend ${CFLAGS} files

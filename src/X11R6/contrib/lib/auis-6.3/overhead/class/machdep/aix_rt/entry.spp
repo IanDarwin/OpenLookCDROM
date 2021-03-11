@@ -1,0 +1,237 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+ *        For full copyright information see:'andrew/config/COPYRITE'     *
+\* ********************************************************************** */
+
+/*
+	$Disclaimer: 
+* Permission to use, copy, modify, and distribute this software and its 
+* documentation for any purpose is hereby granted without fee, 
+* provided that the above copyright notice appear in all copies and that 
+* both that copyright notice, this permission notice, and the following 
+* disclaimer appear in supporting documentation, and that the names of 
+* IBM, Carnegie Mellon University, and other copyright holders, not be 
+* used in advertising or publicity pertaining to distribution of the software 
+* without specific, written prior permission.
+* 
+* IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+* DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+* ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+* SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+* BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+* DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+* WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+* ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+* OF THIS SOFTWARE.
+*  $
+*/
+
+
+/* 
+ * This is the AIX version of the class entrypoints.
+ */
+
+/* 
+ * some names to make things more readable (hopefully)
+ */
+
+#define R0 0
+#define R1 1
+#define R2 2
+#define R3 3
+#define R4 4
+#define R5 5
+#define R6 6
+#define R7 7
+#define R8 8
+#define R9 9
+#define R10 10
+#define R11 11
+#define R12 12
+#define R13 13
+#define R14 14
+#define R15 15
+
+#define SCR0 0
+#define SCR1 1
+#define SCR2 2
+#define SCR3 3
+#define SCR4 4
+#define SCR5 5
+#define SCR6 6
+#define SCR7 7
+#define SCR8 8
+#define SCR9 9
+#define SCR10 10
+#define SCR11 11
+#define SCR12 12
+#define SCR13 13
+#define SCR14 14
+#define SCR15 15
+
+#define MQ	SCR10
+#define IAR	SCR13
+#define CS	SCR15
+
+
+/*
+ * there are the text segment part of the entry points
+ */
+
+	.text
+	.align	1
+
+/*
+ * declare all the entry points
+ */
+
+#ifdef __HIGHC__
+#define ClassEntry(n) \
+        .globl/**/.ClassEntry##n ; \
+.ClassEntry##n:
+#else
+#define ClassEntry(n) \
+        .globl  .ClassEntry/**/n ; \
+.ClassEntry/**/n:
+#endif /* __HIGHC__ */
+
+#include <../common/entrydefs.h>
+
+
+/*
+ * All the entry points come straight to this label.  All the above
+ * names are simply aliases for this label.
+ */
+	.text
+L000:
+
+/*
+ * While in this routine (after the first few instructions) the stack 
+ * looks like this:
+ * 
+ * execution	entry
+ * R1 + 0x2C	R1 - 0x00	parm5		<-- R1 points here at entry time
+ * R1 + 0x28	R1 - 0x04	parm4 space if needed (used for R5)
+ * R1 + 0x24	R1 - 0x08	parm3 space if needed (used for R4)
+ * R1 + 0x20	R1 - 0x0C	parm2 space if needed (used for R3)
+ * R1 + 0x1C	R1 - 0x10	parm1 space if needed (used for R2)
+ * R1 + 0x18	R1 - 0x14	reserved
+ * R1 + 0x14	R1 - 0x18	reserved
+ * R1 + 0x10	R1 - 0x1C	reserved
+ * R1 + 0x0C	R1 - 0x20	reserved
+ * R1 + 0x08	R1 - 0x24	reserved (Pascal Linkage)
+ * R1 + 0x04	R1 - 0x28	saved R15 (return address)
+ * R1 + 0x00	R1 - 0x2C	saved R14	<-- R1 points here most of the time
+ * 
+ */
+
+	.set FirstSaveReg, R14	# first register in STM
+	.set FrameSize, 4 * (4 + 5 + (16 - FirstSaveReg))	# size of this frame
+
+/**/	# start of code
+	stm	FirstSaveReg, -FrameSize(R1)	# prolog saving registers
+	cal	R1, -FrameSize(R1)	# bump down frame pointer for needed space
+	lr	R14, R0		# save PCP in R14 by convension
+
+/**/	# Save incoming register parameters
+	st	R5, FrameSize-0x04(R1)
+	st	R4, FrameSize-0x08(R1)
+	st	R3, FrameSize-0x0C(R1)
+	st	R2, FrameSize-0x10(R1)
+
+/**/	#set up to call class_Lookup
+/**/				# 1st param (R2) already correct for class_Lookup
+	l	R3, 4(R14)	# set up 2nd arg for class_Lookup (index from PCP)
+	lr	R4, R3		# move index to R4, its OK to trash R4
+	sli	R4, 3		# multiply by 8
+	sf	R4, R14		# R4 now points to _ClassEntry0
+	l	R4, -4(R4)	# R4 now contains PCP of class_Lookup
+
+/**/	# call class_Lookup to get base of class_routine function array
+	callr	R4, 2		# call through R4 with 2 args		
+
+/**/	# back from class_Lookup
+	ci	R2, 0		# lookup failed?
+	beq	ErrorExit		# yes, return _class_ErrorReturnValue
+/**/				# no, jump to the proper class routine
+
+/**/	# non-zero value from class_Lookup is base of proc table
+	l	R3, 4(R14)	# get back index
+	sli   	R3, 2		# multiply index by 4
+	cas	R3, R2, R3	# R3 now points to a pointer to the PCP of proper routine
+	l	R3, 0(R3)	# R3 now points to the PCP of the proper routine
+	l	R2, 0(R3)	# R2 has address of code
+	lr	R0, R3		# R0 points to PCP to prepare to branch
+
+/**/	# Squirrel the original value of R2 away in MQ so it can 
+/**/	# be restored on the way out.
+	l	R3, FrameSize-0x10(R1)	# saved value of R2
+	mts	MQ, R3			# keep it in MQ for now
+
+/**/	# OK, restore state and branch to proper routine.
+/**/	# The routine will return straight to the original caller.
+	l	R5, FrameSize-0x04(R1)	# restore registers
+	l	R4, FrameSize-0x08(R1)
+	l	R3, FrameSize-0x0C(R1)
+	lm	FirstSaveReg, 0(R1)
+	cal	R1, FrameSize(R1)		# restore frame pointer
+
+	brx	R2			# branch to the procedure
+	mfs	MQ, R2			# and restore R2 on the way out
+
+ErrorExit:
+/**/	# return the value in class_ErrorReturnValue, toss other parameters
+	l	R2, _class_ErrorReturnValue
+	lm	FirstSaveReg, 0(R1)
+	brx	R15
+	cal	R1, FrameSize(R1)		# restore frame pointer
+
+
+/* 
+ * This is a bit messy but...
+ * 
+ * We need a place we can put a pointer the the PCP
+ * for the C function called "class_Lookup".  We put
+ * the pointer here (it will get filled in by the linker and
+ * loader) and computer the location of the pointer based
+ * on the _ClassEntry* address and the index number.
+ * IF THE ENTRIES IN THE FOLLOWING TABLE
+ * CHANGE IN SIZE, THE ABOVE CODE MUST
+ * BE CHANGED.  ALSO, THE .long THAT POINTS
+ * TO class_Lookup MUST BE THE WORD IN
+ * FRONT OF _ClassEntry0.
+ */
+	.data
+	.globl	_class_ErrorReturnValue	# external used get class_Lookup status
+	.align 2		# just to be sure
+	.globl	_class_Lookup
+/* 
+ * pointer to C function called class_Lookup
+ */
+	.long	_class_Lookup	# this is how we get to class_Lookup
+/*
+ * and now come the PCPs.
+ */
+#undef ClassEntry
+#ifdef __HIGHC__
+#define ClassEntry(n) \
+        .globl  _ClassEntry##n ; \
+_ClassEntry##n: ; \
+        .long L000 ; \
+        .long n
+#else
+#define ClassEntry(n) \
+        .globl  _ClassEntry/**/n ; \
+_ClassEntry/**/n: ; \
+        .long L000 ; \
+        .long n
+#endif /* __HIGHC__ */
+
+#include <../common/entrydefs.h>
+
+
+	.data
+
+/*
+ * end of AIX specific code
+ */

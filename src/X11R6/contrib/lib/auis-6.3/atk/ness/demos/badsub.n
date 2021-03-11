@@ -1,0 +1,451 @@
+\begindata{text,538270968}
+\textdsversion{12}
+\template{default}
+--  Check subscription in templates
+
+
+-- This script checks all users preferences for templatepath specifications
+
+--	For each path specified, all templates are checked to see if
+
+--	they contain -393, the beginning of an invalid value in subscription
+
+
+-- Various statistics are also printed.
+
+
+
+--  Usage
+
+--	nessrun -b badsub.n  <directory>
+
+--  Each subdirectory of directory will be treated as a user account and 
+checked.
+
+--  If <directory> is omitted, the current user's home directory is checked.
+
+--
+
+--  Example:
+
+--	foreach i (0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 
+25) 
+
+--	echo $i
+
+--	nessrun -b badsub.n /afs/andrew.cmu.edu/usr$i/ > ~/public/suberr$i
+
+--	end
+
+
+
+integer nusers		-- number of users
+
+integer nopref		-- count people without preferences
+
+integer hiddenpref		-- count those without read permission
+
+integer notempl		-- count readable prefs without templatepaths
+
+integer nglobal		-- count global paths mention in template path lines
+
+integer nlocal		-- count users with their own template llibraries
+
+
+--	number of users with templatepaths but without their own preferences is
+
+--		nusers - nopref - hiddenpref - notempl - nlocal
+
+
+marker GlobalTemplatePaths    -- template paths not containing the name 
+
+			-- of the user who references them
+
+marker UsersToNotify   -- users who have problems
+
+
+function Notify(user)
+
+	if search(UsersToNotify, user) = "" then
+
+		UsersToNotify ~:= user ~ "  "
+
+	end if
+
+end function
+
+
+	integer
+
+function countlines(text)
+
+	marker m
+
+	integer count
+
+	count := 0
+
+	m := search(text, "\\n")
+
+	while m /= "" and extent(finish(text), m) = "" do
+
+		count := count + 1
+
+		m := search(finish(m), "\\n")
+
+	end while
+
+	return count
+
+end function
+
+
+-- check each path mentioned in a TemplatePath
+
+--
+
+--	if the path includes the user's name, the path is checked
+
+--	otherwise it is added to a list GlobalTemplatePaths
+
+--
+
+function CheckTemplate(user, path)
+
+	marker v
+
+	if search(path ~ "", user) /= "" then
+
+		-- it belongs to user.  check it for -393
+
+		nlocal := nlocal +1
+
+		v := system ("egrep '\\\\-393' " ~ path ~ "/*.template /dev/null")
+
+		if v /= "" then
+
+			printline(v)
+
+			Notify (user)
+
+		end if
+
+	elif search(GlobalTemplatePaths, path) = "" then
+
+		-- hitherto unseen global template path
+
+		nglobal := nglobal + 1
+
+		GlobalTemplatePaths ~:= ":" ~ path
+
+	end if
+
+end function
+
+
+-- check one line of the list of templatelist lines
+
+--
+
+function CheckTemplateLine(user, line, boolean print)
+
+	marker templ
+
+	marker colon
+
+	templ := anyof(line, ":\\n")
+
+	while templ = ":" do
+
+		-- templ has the colon before a path in the list
+
+		colon := anyof(finish(templ), ":\\n")
+
+		if colon = "" then 
+
+			colon := finish(line)
+
+		end if
+
+		templ := extent(next(span(start(templ), " \\t")), start(colon))
+
+
+		if match(templ, "~/") /= "" then
+
+			replace(first(templ), "/afs/andrew.cmu.edu/usr/" ~ user)
+
+		elif match(templ, "/cmu") /= "" then
+
+			printline (user ~ " has a template reference to /cmu")
+
+			Notify(user)
+
+		end if
+
+
+		if print then 
+
+			printline(templ)
+
+		end if
+
+
+		if first(templ) = "~" then
+
+			printline("For user " ~ user ~ " cannot check " ~ templ)
+
+		else
+
+			CheckTemplate(user, templ)
+
+		end if
+
+
+		templ := next(templ)
+
+	end while
+
+end function
+
+
+
+-- the 'list' argument may be several templatepath lines
+
+--	call CheckTemplatePathLine for each
+
+--	assumption: list = base(list)
+
+--
+
+function CheckTemplateList(user, list, boolean print)
+
+	marker line
+
+	marker nextline
+
+	line := first(list)
+
+	while line /= "" do
+
+		-- 'line' is the first character of a line
+
+		if line = "#" then
+
+			line := next(search(start(line), "\\n"))
+
+		else
+
+			-- process a line
+
+			nextline := search(start(line), "\\n")
+
+			if nextline = "" then
+
+				line := extent(line, list)
+
+			else 
+
+				line := extent(line, start(nextline))
+
+			end if
+
+
+			CheckTemplateLine(user, line, print)
+
+
+			line := next(nextline)
+
+		end if
+
+	end while
+
+end function
+
+
+
+-- Call CheckTemplateList for each user of Andrew
+
+--
+
+function main(args)
+
+	marker users
+
+	marker user
+
+	marker idletters
+
+	marker pref
+
+
+	nopref := 0
+
+	hiddenpref := 0
+
+	notempl := 0
+
+	nglobal := 0
+
+	nlocal := 0
+
+	GlobalTemplatePaths := newbase()
+
+	UsersToNotify := newbase()
+
+	-- get a list of all users
+
+	if args /= "" then 
+
+		printline("Checking all users in " ~ args)
+
+		users := system ("ls -1 " ~ args)
+
+	else
+
+		users := system("whoami")
+
+	end if
+
+	nusers := countlines(users)
+
+	printline("There are " ~ textimage(nusers) ~ " users\\n\\n")
+
+
+	idletters := "1234567890qwertyuiopasdfghjklzxcvbnm"
+
+	user := token(users, idletters)
+
+	while user /= "" do
+
+		pref := system("file  /afs/andrew.cmu.edu/usr/" ~ user ~ "/preferences")
+
+		if search(pref, "Permission denied") /= "" then 
+
+			hiddenpref := hiddenpref + 1
+
+		elif search(pref, "No such file or directory") /= "" then 
+
+			nopref := nopref + 1
+
+		else
+
+			pref := system ("grep -i templatepath /afs/andrew.cmu.edu/usr/"
+
+				~ user ~ "/preferences")
+
+			if pref = "" then 
+
+				notempl := notempl + 1
+
+			else
+
+				CheckTemplateList(user, pref, False)
+
+			end if
+
+		end if
+
+		user := token(next(user), idletters)
+
+	end while
+
+
+	printline("\\n\\nTotal number of users " ~ textimage(nusers))
+
+	printline("Number of users without preferences " ~ textimage(nopref))
+
+	printline("Number of users with unreadable preferences " ~ 
+textimage(hiddenpref))
+
+	printline("Number of preference files without templatepaths " ~ 
+textimage(notempl))
+
+	printline("Number of personal template directories checked " ~ 
+textimage(nlocal))
+
+	printline("Number of global template paths " ~ textimage(nglobal) ~ "\\n\\n")
+
+
+	printline("The following users had problems with their templates: \\n" 
+
+		~ UsersToNotify)
+
+
+
+	-- check the global templates
+
+	--  BOGOSITY: pass user name "and" which string should be contained in 
+
+	--		all paths.
+
+	pref := GlobalTemplatePaths
+
+	GlobalTemplatePaths := newbase()
+
+	printline("\\n\\nNow checking template paths that did not belong to the users 
+that mentioned them")
+
+	CheckTemplateLine("and", pref, True)
+
+
+	if GlobalTemplatePaths /= "" then
+
+		printline("\\nNon-AFS template paths (not checked): \\n" 
+
+			~ GlobalTemplatePaths)
+
+	end if
+
+
+end function
+
+
+
+-- 
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,3,0,0}
+
+-- Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{-- $Disclaimer: 
+
+-- Permission to use, copy, modify, and distribute this software and its 
+
+-- documentation for any purpose is hereby granted without fee, 
+
+-- provided that the above copyright notice appear in all copies and that 
+
+-- both that copyright notice, this permission notice, and the following 
+
+-- disclaimer appear in supporting documentation, and that the names of 
+
+-- IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+-- used in advertising or publicity pertaining to distribution of the software 
+
+-- without specific, written prior permission.
+
+-- 
+
+-- IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+-- DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+-- ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+-- SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+-- BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+-- DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+-- WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+-- ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+-- OF THIS SOFTWARE.
+
+--  $
+
+}}\enddata{text,538270968}

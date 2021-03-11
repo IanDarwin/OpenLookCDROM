@@ -1,0 +1,100 @@
+#!/bin/csh -f
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1989 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+#
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+
+
+%include pobbconfig.defs
+
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+
+%ifdef pobb_GetListOfLists
+
+set LOGFILE="/tmp/listlog$$$$"
+set DATE=`?[arpadatepgm]`
+set PUBLISHED=?[NetBBHome]/list-of-lists
+set HOST=dartcms1.dartmouth.edu
+set nonomatch
+echo "Date: $$DATE" >& $$LOGFILE
+echo "From: List-of-Lists Daemon <?[PostmasterName]+@?[WorkstationCell]>" >>& $$LOGFILE
+echo "To: ?[DaemonBB].listoflists" >>& $$LOGFILE
+echo "Subject: Getting a new local copy of list-of-lists" >>& $$LOGFILE
+echo "" >>& $$LOGFILE
+
+echo "Trying to contact host $$HOST" >>& $$LOGFILE
+
+rm -f i-groups I-GALL >>& $$LOGFILE
+
+ftp -i -n $$HOST <<!
+user anonymous ?[PostmasterTitle]@?[WorkstationCell]
+cd SIGLISTS
+get listserv.lists i-groups
+quit
+!
+echo "Done with ftp; checking results" >>& $$LOGFILE
+
+if (! -e i-groups) then
+    echo "One of the files is missing or zero length: aborting." >>& $$LOGFILE
+else
+    (cat i-groups > I-GALL) >>& $$LOGFILE
+    if (-z I-GALL) then
+      echo "result is zero length: aborting" >>& $$LOGFILE
+    else
+      cmp -s I-GALL $$PUBLISHED >>& $$LOGFILE
+      if ($$status == 1) then 
+	echo "List of lists has changed; composing bboard post." >>& $$LOGFILE
+	cp I-GALL $$PUBLISHED >>& $$LOGFILE
+	if ($$status) then 
+	    echo "cp failed" >>& $$LOGFILE
+	else
+	    set LOGFILE2="/tmp/listlog-two$$$$"
+	    echo "Date: $$DATE" >& $$LOGFILE2
+	    echo "From: List-of-Lists Daemon <?[PostmasterName]+@?[WorkstationCell]>" >>& $$LOGFILE2
+	    echo "To: arpalists+list-of-lists@?[WorkstationCell]" >>& $$LOGFILE2
+	    echo "Subject: New local copy of list-of-lists" >>& $$LOGFILE2
+	    echo "" >>& $$LOGFILE2
+	    echo "The list of all internet mailing lists has been updated." >>& $$LOGFILE2
+	    echo ""  >>& $$LOGFILE2
+	    echo "That file, $$PUBLISHED, is an up-to-date list of the known mailing lists on the Internet." >>& $$LOGFILE2
+	    echo "" >>& $$LOGFILE2
+	    echo "If there are any mailing lists on that list which we do not receive" >>& $$LOGFILE2
+	    echo "as part of the ?[InternetRootName].* folder tree that you think we SHOULD" >>& $$LOGFILE2
+	    echo "be receiving, please notify ?[PostmasterTitle]@?[WorkstationCell]." >>& $$LOGFILE2
+	    echo "" >>& $$LOGFILE2
+	    echo "Thank you." >>& $$LOGFILE2
+	    ?[queuemail] -f $$LOGFILE2 -a arpalists+list-of-lists
+	    rm -rf $$LOGFILE2
+              endif
+      else
+	echo "The list of lists is unchanged." >>& $$LOGFILE
+      endif
+    endif
+endif
+echo "Removing temporary files" >>& $$LOGFILE
+if (-e i-groups) rm i-groups >>& $$LOGFILE
+if (-e I-GALL) rm I-GALL >>& $$LOGFILE
+?[queuemail] -f $$LOGFILE -a bb+andrew.daemons.listoflists
+rm -rf $$LOGFILE
+
+%endif pobb_GetListOfLists

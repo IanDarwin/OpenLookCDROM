@@ -1,0 +1,347 @@
+#
+# Copyright (C) 1994, Enterprise Integration Technologies Corp. and Niels Mayer.
+# WINTERP 1.15-1.99, Copyright (c) 1993, Niels P. Mayer.
+# WINTERP 1.0-1.14, Copyright (c) 1989-1992 Hewlett-Packard Co. and Niels Mayer.
+# 
+# Permission to use, copy, modify, distribute, and sell this software and its
+# documentation for any purpose is hereby granted without fee, provided that
+# the above copyright notice appear in all copies and that both that
+# copyright notice and this permission notice appear in supporting
+# documentation, and that the name of Enterprise Integration Technologies,
+# Hewlett-Packard Company, or Niels Mayer not be used in advertising or
+# publicity pertaining to distribution of the software without specific,
+# written prior permission. Enterprise Integration Technologies, Hewlett-Packard
+# Company, and Niels Mayer makes no representations about the suitability of
+# this software for any purpose.  It is provided "as is" without express or
+# implied warranty.
+# 
+# ENTERPRISE INTEGRATION TECHNOLOGIES, HEWLETT-PACKARD COMPANY AND NIELS MAYER
+# DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL ENTERPRISE
+# INTEGRATION TECHNOLOGIES, HEWLETT-PACKARD COMPANY OR NIELS MAYER BE LIABLE
+# FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER
+# RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF
+# CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+# CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+#
+
+* Problem w/ comint/cmulisp: if asynchronous output occurs, then it isn't
+displayed until the next time the appropriate promt "X>" appears...
+
+This can cause problems/confusion when a widget does a print/format/whatever
+and causes asynchronous output.
+
+This problem only occurs when running under emacs using comint/cmushell.
+Running under emacs using normal shell works ok though...
+
+Winterp_Print_Prompt() contains the following code to force output to occur
+when "X>" is printed -- "fflush(stdout); fflush(stderr)".
+
+That call isn't happening during "asynchronous" output from a callback.
+Don't really want a fflush() in each callback-fn since that's kinda
+inefficient...
+
+Basically, this is a bug in comint/cmulisp -- the "output filter" is
+probably calling it, and I don't feel like fixing this. So either don't use
+comint/cmulisp, or use it, and  remember that asynch output won't display
+properly (try printing output to a widget instead!).
+
+==============================================================================
+;; * BUG-WORKAROUND: on my test system (HPUX 8.0), the default comint/cmulisp
+;; setup didn't work correctly for sending large chunks of lisp to the
+;; subprocess. To work around this problem, I use pipes rather than the 
+;; default ptys for communicating between emacs and the winterp subprocess.
+;; This is done by setting process-connection-type == NIL...
+;; See "N O T E   O N   C O M I N T / C M U L I S P   B U G" and function
+;; 'cmulisp' below.
+
+FIXED>> Note, i think the problem here resides in cmulisp/comint; reason is that
+FIXED>> this same error occurs when using 'xlisp' too. See
+FIXED>> ~/src/gnuemacs/xlisp-cmulisp.el ...
+FIXED>> 
+FIXED>> BUG-IN-CMULISP!! >> Problem with stdin callback???? note that using cmushell/cmulisp to send
+FIXED>> BUG-IN-CMULISP!! >> text from a buffer into winterp, I had the following in a buffer:
+FIXED>> BUG-IN-CMULISP!! >> 
+FIXED>> BUG-IN-CMULISP!! >> in emacs, ran the following:
+FIXED>> BUG-IN-CMULISP!! >> 	(cmulisp "winterp -enable_stdin_debug -init_file initialize.lsp")
+FIXED>> BUG-IN-CMULISP!! >> 
+FIXED>> BUG-IN-CMULISP!! >> 		(progn
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 1)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 2)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 3)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 4)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 5)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 6)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 7)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 8)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 9)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 10)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 11)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 12)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 13)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 14)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 15)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 16)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 17)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 18)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 19)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 20)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 21)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 22)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 23)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 24)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 25)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 26)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 27)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 28)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 29)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 30)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 31)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 32)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 33)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 34)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 35)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 36)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 37)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 38)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 39)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 40)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 41)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 42)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 43)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 44)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 45)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 46)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 47)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 48)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 49)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 50)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 51)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 52)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 53)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 54)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 55)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 56)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 57)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 58)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 59)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 60)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 61)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 62)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 63)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 64)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 65)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 66)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 67)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 68)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 69)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 70)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 71)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 72)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 73)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 74)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 75)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 76)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 77)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 78)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 79)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 80)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 81)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 82)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 83)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 84)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 85)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 86)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 87)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 88)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 89)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 90)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 91)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 92)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 93)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 94)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 95)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 96)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 97)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 98)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 99)
+FIXED>> BUG-IN-CMULISP!! >> 		  (print 100)
+FIXED>> BUG-IN-CMULISP!! >> 		  )
+FIXED>> BUG-IN-CMULISP!! >> 
+FIXED>> BUG-IN-CMULISP!! >> and it produced the  following output glitch:
+FIXED>> BUG-IN-CMULISP!! >> 
+FIXED>> BUG-IN-CMULISP!! >> |||||||| stdin callback = '  (print 32)
+FIXED>> BUG-IN-CMULISP!! >> |||||||| '
+FIXED>> BUG-IN-CMULISP!! >> |||||||| stdin callback = 'nt 72)
+FIXED>> BUG-IN-CMULISP!! >> |||||||| '
+FIXED>> BUG-IN-CMULISP!! >> |||||||| stdin callback = '  (print 73)
+FIXED>> BUG-IN-CMULISP!! >> |||||||| '
+FIXED>> BUG-IN-CMULISP!! >> 
+FIXED>> BUG-IN-CMULISP!! >> 
+FIXED>> BUG-IN-CMULISP!! >> Here's the full thing:
+FIXED>> BUG-IN-CMULISP!! >> 
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '(progn
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 1)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 2)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 3)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 4)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 5)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 6)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 7)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 8)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 9)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 10)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 11)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 12)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 13)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 14)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 15)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 16)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 17)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 18)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 19)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 20)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 21)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 22)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 23)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 24)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 25)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 26)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 27)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 28)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 29)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 30)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 31)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 32)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = 'nt 72)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 73)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 74)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 75)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 76)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 77)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 78)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 79)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 80)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 81)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 82)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 83)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 84)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 85)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 86)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 87)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 88)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 89)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 90)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 91)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 92)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 93)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 94)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 95)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 96)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 97)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 98)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 99)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  (print 100)
+FIXED>> BUG-IN-CMULISP!! >> '
+FIXED>> BUG-IN-CMULISP!! >> stdin callback = '  )
+FIXED>> BUG-IN-CMULISP!! >> '
+
+------------------------------------------------------------------------------
+
+;; * BUG-WORKAROUND: on my test system (HPUX 8.0), the default comint/cmulisp
+;; setup didn't work correctly for sending large chunks of lisp to the
+;; subprocess. To work around this problem, I use pipes rather than the 
+;; default ptys for communicating between emacs and the winterp subprocess.
+;; This is done by setting process-connection-type == NIL...
+;; See "N O T E   O N   C O M I N T / C M U L I S P   B U G" and function
+;; 'cmulisp' below.
+
+FIXED>> When using cmulisp interface to winterp (src-client/win-cmulisp.el),
+FIXED>> I did the following:
+FIXED>> * loaded rc-shell.
+FIXED>> * visit pixmaps.lsp in emacs.
+FIXED>> * on evaluating first defun in that file, I got the error below.
+FIXED>> 
+FIXED>> It looks like cmulisp interface seems to be skipping text or overflowing a buffer or
+FIXED>> something. I need to check to see if comint.el sends the lisp straight to winterp's
+FIXED>> input, this would be ungood, since winterp's eval-listener isn't that good for 
+FIXED>> receiving huge amounts of text.
+FIXED>> 
+FIXED>> In either case, is this a bug in WINTERP's input-evaluator, or a bug in comint/cmulisp?
+FIXED>> 
+FIXED>> 
+FIXED>> 	 "unbound variable"
+FIXED>> 	 N_LABEL_TYPE
+FIXED>> Function: #<FSubr-SETQ: #193ba8>
+FIXED>> Arguments:
+FIXED>> 	 B3
+FIXED>> 	 (SEND XM_PUSH_BUTTON_WIDGET_CLASS :NEW :MANAGED RC_W :XMN_LABEL_TYPE :PIXMAP N_LABEL_TYPE :PIXMAP ABEL_TYPE :PIXMAP :XMN_LABEL_PIXMAP (XM_GET_PIXMAP "menu_cascade" "white" "DarkSlateGrey"))
+FIXED>> Function: #<FSubr-PROGN: #192eba>
+FIXED>> Arguments:
+FIXED>> 	 (SETQ B1 (SEND XM_PUSH_BUTTON_WIDGET_CLASS :NEW :MANAGED RC_W :XMN_LABEL_TYPE :PIXMAP :XMN_LABEL_PIXMAP (XM_GET_PIXMAP "background" "white" "DarkSlateGrey")))
+FIXED>> 	 (SETQ B2 (SEND XM_PUSH_BUTTON_WIDGET_CLASS :NEW :MANAGED RC_W :XMN_LABEL_TYPE :PIXMAP :XMN_LABEL_PIXMAP (XM_GET_PIXMAP "25_foreground" "white" "DarkSlateGrey")))
+FIXED>> 	 (SETQ B3 (SEND XM_PUSH_BUTTON_WIDGET_CLASS :NEW :MANAGED RC_W :XMN_LABEL_TYPE :PIXMAP N_LABEL_TYPE :PIXMAP ABEL_TYPE :PIXMAP :XMN_LABEL_PIXMAP (XM_GET_PIXMAP "menu_cascade" "white" "DarkSlateGrey")))
+FIXED>> 	 (SETQ B10 (SEND XM_PUSH_BUTTON_WIDGET_CLASS :NEW :MANAGED RC_W :XMN_LABEL_TYPE :PIXMAP :XMN_LABEL_PIXMAP (XM_GET_PIXMAP "menu_checkmark" "white" "DarkSlateGrey")))
+FIXED>>
+------------------------------------------------------------------------------

@@ -1,0 +1,544 @@
+\begindata{text,538511220}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\center{\bold{\bigger{Internal Data Structures in ELI, the Embedded Lisp 
+Interpreter}
+
+by Bob Glickstein
+
+29-May-1988}}
+
+
+\heading{Introduction}
+
+This document presents a discussion of the data structures at work inside ELI, 
+the Embedded Lisp Interpreter.  The hierarchy of data structures in ELI is 
+particularly complex but has its own internal logic.  An understanding of 
+these structures is necessary to programmers who wish to include the ELI 
+library in an application.
+
+
+\heading{Presenting the Types}
+
+There are four kinds of Lisp objects in ELI: cons lists, symbols, strings and 
+integers.  Each of these objects is represented by a different data structure 
+at the source level of ELI.  These are the \typewriter{EliCons_t}, 
+\typewriter{EliSym_t}, \typewriter{EliStr_t} and \typewriter{long int} types, 
+respectively.  In addition to these types, there is a very important structure 
+called \typewriter{EliSexp_t}; this structure can hold any one of the four 
+kinds of "symbolic expressions" (or s-expressions, or sexps for short; a sexp 
+is a single Lisp object of any type).  We will present first these data 
+structures, then discuss the several other support structures that exist in 
+ELI.
+
+
+\heading{But first}
+
+Before discussing these basic data types, it is necessary to mention the 
+memory-management scheme used in ELI.  (Note: The scheme presented here is an 
+option, though usually the preferable one; it is possible to select a more 
+simplistic memory-management scheme by passing the argument "e_mem_malloc" to 
+EliInit instead of e_mem_pool.  See the entry for EliInit in libcalls.pgr.)
+
+
+Most proliferating data structures in ELI have associated with them a 
+"reference count" which contains the number of objects that refer to the given 
+object.  For example, when a new cons cell is allocated, its reference count 
+starts out as zero; if another cons cell is made to point to it, its reference 
+count will increase to one.  When something causes an object's reference count 
+to go down to zero, that object is de-allocated.  It is therefore clear that 
+maintaining a proper reference count is extremely important.  Fortunately, 
+most ELI functions maintain the reference count properly, and those that don't 
+are ones that you probably don't need anyway.
+
+
+Most objects are also allocated in the following way: when the first one of a 
+certain type of object is requested, ELI actually allocates a block of these 
+objects and links them together into a free list of objects of that type. 
+ Subsequent requests to allocate single objects simply pluck the head element 
+off of this freelist until the list is exhausted.  When this happens, a new 
+block is allocated.  A more complete discussion of the memory-management 
+scheme appears later in this document.
+
+
+\heading{Integers}
+
+Integers in ELI are the simplest data types.  An integer is simply a C "long 
+int".
+
+
+\heading{String Nodes}
+
+String nodes are an unusual case in ELI.  ELI does not store strings simply as 
+pointers to characters.  Instead, a special type--the string node--exists to 
+hold pointers to characters.  This mechanism allows the saving of a great deal 
+of space.  Because strings are stored in nodes with their own reference 
+counts, it is not necessary to store more than one copy of the same string. 
+ For instance, if you are running bglisp and type
+
+
+\example{(setq a "Hello there")
+
+(setq b "Hello there")}
+
+
+then the string \typewriter{"Hello there"} will be placed in a string node and 
+both the symbols \typewriter{a} and \typewriter{b} will point to the same 
+node.  Here's how this works: when ELI sees
+
+
+\example{(setq a "Hello there")}
+
+
+it looks in a hash table (the string table) for a string node containing the 
+string \typewriter{"Hello there"}.  When it does not find it, it creates a new 
+node with the string \typewriter{"Hello there"} and places it in the hash 
+table.  This node is then bound to the symbol \typewriter{a}.  Next, when ELI 
+sees
+
+
+\example{(setq b "Hello there")}
+
+
+it again checks the hash table, this time finding the string 
+\typewriter{"Hello there"}.  The node containing this string is then also 
+bound to the symbol \typewriter{b}.  The reference count of the string node 
+will reflect the fact that two objects point to it.
+
+
+Here is what a string node looks like:
+
+
+\example{typedef union EliStr_t \{
+
+    EliStr_t *freelink;
+
+    struct \{
+
+        int refcount;
+
+        char *string;
+
+    \} data;
+
+\} EliStr_t;}
+
+
+The "freelink" part of the union is used when the string node is not in use; 
+it has been malloc'd (with eliStr_GetNewBlock [see libcalls.pgr]) but is still 
+sitting in a free list.  When the client requests this node, its freelink is 
+invalidated and the "data" part of the union is initialized.  The reference 
+count ("refcount") is initially set to zero and "string" points to a new copy 
+of the string for this node, created with malloc.  (When you call 
+EliStr_GetNew, you pass in the string to copy to the "string" field.)  Note 
+also that allocation of a new string node causes it to be immediately placed 
+into the string hash table.  Since the string node serves as both the datum 
+and its own key in this table, the reference count will jump automatically to 
+two.  For this reason, the node is de-allocated when the reference count goes 
+back down to two, rather than when the reference count goes to zero.  However, 
+this fact is not crucial to understanding how to use a string node.
+
+
+\bold{Important things to know about string nodes}: Allocate a string node 
+with "EliStr_GetNew"; access the actual string contained in this node with 
+"EliStr_GetString"; see also EliStringTable_Find, EliStringTable_FindOrMake 
+and EliStringTable_Make in libcalls.pgr.  Once a string is bound to a string 
+node, do not modify the string.  Also note that a string node has a string 
+assigned to it exactly once; namely, at allocation time.  A string node's 
+string cannot be exchanged for a new string.
+
+
+\heading{Symbol Nodes}
+
+ELI symbols have the following properties: they have a name, which is a 
+reference to a string node (as opposed to just a string); they have a "scope 
+type", a discussion of which follows later in this document; they have a value 
+field, which can be any sexp; and they have a function-value field, which can 
+be any Lisp function.  Of course, they also have a reference count.
+
+
+When a symbol node is allocated (with EliSym_GetNew_String or 
+EliSym_GetNew_StrNode), it is passed a string or a string node which contains 
+the string which will serve as the symbol's name.  Note that all alphabetic 
+characters in such a string must be all-caps.
+
+
+The process of allocation also creates an empty sexp node 
+(\typewriter{EliSexp_t}) and an empty function node (EliFn_t) which are bound 
+to the symbol's value and function-value fields, respectively.  More about 
+each later.
+
+
+A symbol initially has the scope type \typewriter{e_sym_unknown}.  The scope 
+type determines where the symbol should be stored.  Symbols which are created 
+with SETQ or DEFUN, for instance, are "globally" available (within a given 
+state variable).  Such symbols have the scope type \typewriter{e_sym_global} 
+and are stored in the primary symbol hash table.  Symbols which only appear 
+within, say, a function definition, are not globally available but they are 
+"known", and hence have the scope type \typewriter{e_sym_known}.  These 
+symbols are stored in a secondary symbol table, where they can be found and 
+moved to the primary table if they ever become globally known via a SETQ or 
+DEFUN (etc.).  Don't worry about this now; it will be taken up in some detail 
+later in this document.
+
+
+Here is what a symbol node looks like:
+
+
+\example{typedef union EliSym_t \{
+
+    EliSym_t *freelink;
+
+    struct \{
+
+        eliSymScopes_t type;
+
+        int refcount;
+
+        EliStr_t *name;
+
+        EliSexp_t *val;
+
+        EliFn_t *fnval;
+
+    \} data;
+
+\};}
+
+
+\bold{Important things to know about symbol nodes}: Bind a function value to a 
+symbol with EliSym_BindFn; bind a value to a symbol with EliSym_BindSexp; 
+access the function value of a symbol with EliSym_GetFn; access the string 
+node containing a symbol's name with EliSym_GetName [note that, to get the 
+actual string containing the symbol's name, it is necessary to do an 
+\typewriter{EliStr_GetString(EliSym_GetName(symbol))}]; allocate a new symbol 
+with \typewriter{EliSym_GetNew_String} or \typewriter{EliSym_GetNew_StrNode}; 
+access the value of a symbol with \typewriter{EliSym_GetSexp}.  See also 
+EliSymTab_Find, EliSymTab_FindOrMake, EliSymTab_FindOrMakeAndBind, 
+EliSymTab_Make and EliSymTab_MakeAndBind in libcalls.pgr.
+
+
+\heading{Cons cells}
+
+Cons cells have a car and a cdr, each of which can be any sexp.  A basic 
+discussion of how cons cells work can be found in many good books on Lisp; 
+nevertheless, a brief overview is presented here.
+
+
+The list \typewriter{(a b c)} has the car \typewriter{a} and the cdr 
+\typewriter{(b c)}.  This is represented by the single cons cell
+
+
+\begindata{zip,539484168}
+%ViewWidth 256
+%ViewHeight 87
+*A;995,479
+T(b c)
+MCM
+*A;-589,-479
+Ta
+MCM
+*C;-218,462
+>256,462
+*C;-578,475
+>-578,-38
+*C;-411,668
+>-411,334
+*G;-783,693
+>-64,308
+*D;-1000,1400
+N8.5X11
+>-1000,1400
+
+\enddata{zip,539484168}
+\view{zipview,539484168,1734,0,89}
+
+Of course, the list \typewriter{(b c)} is its own cons list, with car 
+\typewriter{b} and cdr \typewriter{(c)}.  Finally, the list \typewriter{(c)} 
+has car \typewriter{c} and cdr \typewriter{()}.  The overall picture is
+
+
+\begindata{zip,540314888}
+%ViewWidth 256
+%ViewHeight 138
+*A;368,-221
+Tc
+MCM
+*A;-356,-233
+Tb
+MCM
+*A;-1142,-233
+Ta
+MCM
+*C;945,196
+>1081,196
+*C;896,245
+>1130,245
+*C;1007,368
+>1007,257
+*C;614,393
+>1007,393
+*C;-122,380
+>233,380
+*C;-896,393
+>-540,393
+*C;368,393
+>368,-12
+*C;-380,405
+>-380,0
+*C;-1142,380
+>-1142,-24
+*C;479,515
+>479,282
+*C;-270,515
+>-270,282
+*C;-1031,515
+>-1031,294
+*G;239,552
+>743,257
+*G;-521,552
+>-42,257
+*G;-1265,552
+>-810,270
+*D;-1000,1400
+N8.5X11
+>-1000,1400
+
+\enddata{zip,540314888}
+\view{zipview,540314888,1735,0,140}
+
+It is easy to detrmine such a diagram for a more complex list.  Consider the 
+list \typewriter{((a b) c)}.  It looks like
+
+
+\begindata{zip,540315144}
+%ViewWidth 256
+%ViewHeight 169
+*A;466,-49
+Tc
+MCM
+*A;-331,-700
+Tb
+MCM
+*A;-1105,-700
+Ta
+MCM
+*C;184,-356
+>405,-356
+*C;110,-307
+>466,-307
+*C;282,-61
+>282,-307
+*C;-135,-61
+>282,-61
+*C;1044,221
+>1191,221
+*C;982,294
+>1240,294
+*C;1105,577
+>1105,319
+*C;749,577
+>1105,577
+*C;466,601
+>466,147
+*C;-356,-61
+>-356,-491
+*C;-1117,-49
+>-1117,-491
+*C;-872,-61
+>-503,-61
+*C;-884,601
+>319,601
+*C;-1117,589
+>-1117,147
+*C;601,773
+>601,503
+*C;-257,98
+>-257,-196
+*C;-1019,110
+>-1019,-184
+*C;-1019,749
+>-1019,479
+*G;325,792
+>878,460
+*G;-484,116
+>-29,-214
+*G;-1252,129
+>-785,-202
+*G;-1265,773
+>-786,454
+*D;-1000,1400
+N8.5X11
+>-1000,1400
+
+\enddata{zip,540315144}
+\view{zipview,540315144,1736,0,171}
+
+Of course, this is a simplistic diagram; the car of a cons cell never points 
+simply to "a"; it points to a sexp node, which in turn points to a symbol 
+node, which points to a string node containing the name "a".  The cdr of a 
+cons cell similarly points to subsequent cons cells only indirectly; there is 
+an intervening sexp node.  Note that although this allows the cdr of a cons 
+cell to point to any type of Lisp object, the current implementation only 
+supports cdrs which point to other cons cells or to nothing at all.  (For 
+those who understand cons cells well, this means that there are no dotted 
+pairs in ELI.)
+
+
+Cons cells always have an initialized sexp node in their cars and cdrs, even 
+when newly allocated.  New cons cells have empty sexp nodes in their cars and 
+cdrs (sexp type e_data_none).  A cons cell at the end of a list also has an 
+empty sexp node in its cdr.  If 
+\typewriter{EliSexp_GetType(EliCons_GetCdr(consCell))} is e_data_none, then 
+consCell is the end of a list.  If both 
+\typewriter{EliSexp_GetType(EliCons_GetCar(consCell))} and 
+\typewriter{EliSexp_GetType(EliCons_GetCdr(consCell))} are e_data_none, then 
+consCell is the list \typewriter{()}, i.e. it is NIL.
+
+
+Here is what a cons cell looks like:
+
+
+\example{typedef union EliCons_t \{
+
+    EliCons_t *freelink;
+
+    struct \{
+
+        int refcount;
+
+        EliSexp_t *car, *cdr;
+
+    \} data;
+
+\};}
+
+
+\bold{Important things to know about cons cells}: Bind a sexp to the car of a 
+cons cell with EliCons_BindCar; bind a sexp to the cdr of a cons cell with 
+EliCons_BindCdr (never bind a sexp which is neither empty [type e_data_none] 
+nor another cons list [type e_data_list]); access the sexp in the car of a 
+cons cell with EliCons_GetCar; access the sexp in the cdr of a cons cell with 
+EliCons_GetCdr; allocate a new cons cell with EliCons_GetNew.
+
+
+\heading{Sexp nodes}
+
+Sexp nodes (type \typewriter{EliSexp_t}) are a means for providing a single 
+data structure to contain any one of the preceding four types.  Sexp nodes 
+contain a referrent and a field describing the type of the referrent. 
+ Possible types are e_data_none (if there is no referrent; i.e. it is an empty 
+node), e_data_integer, e_data_symbol, e_data_string, e_data_list, and 
+e_data_fn (for when the referrent is a function node, described later).  Sexp 
+nodes also have their own reference count.
+
+
+Here is what a sexp node looks like:
+
+
+\example{typedef union EliSexp_t \{
+
+    EliSexp_t *freelink;
+
+    struct \{
+
+        int refcount;
+
+        eliDataTypes_t type;
+
+        eliSexpUnion_t datum;
+
+    \} data;
+
+\};}
+
+
+and here is what an "eliSexpUnion_t" looks like:
+
+
+\example{typedef union eliSexpUnion_t \{
+
+    long intval;
+
+    EliStr_t *strval;
+
+    EliSym_t *symval;
+
+    EliCons_t *consval;
+
+    EliFn_t *fnval;
+
+\};}
+
+
+\bold{Important things to know about sexp nodes}: Test the equality of two 
+nodes' referrents with EliSexp_Eq or EliSexp_Equal (see libcalls.pgr for the 
+definition of "equality"); get a cons cell from a node (if the node's 
+referrent is indeed a cons cell) with EliSexp_GetCons; get a function node 
+from a node (if the node's referrent is indeed a function node) with 
+EliSexp_GetFn; get a long int from a node (if the node's referrent is indeed 
+an integer) with EliSexp_GetInt; allocate a new node with EliSexp_GetNew; get 
+a string node from a node (if the node's referrent is indeed a string node) 
+with EliSexp_GetStr; get a symbol node from a node (if the node's referrent is 
+indeed a symbol node) with EliSexp_GetSym; get the type of a node's referrent 
+with EliSexp_GetType (returns e_data_none, e_data_integer, e_data_string, 
+e_data_symbol, e_data_list or e_data_fn); bind a cons cell to a node with 
+EliSexp_SetCons; bind a function node to a node with EliSexp_SetFn; bind a 
+long integer to a node with EliSexp_SetInt; bind a string node to a node with 
+EliSexp_SetStr; bind a symbol node to a node with EliSexp_SetSym.
+
+
+\heading{As you can see...}
+
+This document is incomplete.  It will not remain this way.  Meanwhile, for 
+help in programming ELI, see Bob Glickstein (bobg@andrew.cmu.edu).
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1738,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,538511220}

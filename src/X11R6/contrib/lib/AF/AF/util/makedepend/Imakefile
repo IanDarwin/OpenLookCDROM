@@ -1,0 +1,57 @@
+#
+# If you have source for cpp...
+#
+#if CppSourcesPresent
+    SRCS = include.c main.c parse.c pr.c cppsetup.c cpp.c cpy.y
+    OBJS = include.o main.o parse.o pr.o cppsetup.o cpp.o cpy.o
+ CPPDEFS = -DCPP
+  CPPSRC = CppSources
+#else
+#
+# But if you don't have cpp source...
+#
+    SRCS = include.c main.c parse.c pr.c cppsetup.c
+    OBJS = include.o main.o parse.o pr.o cppsetup.o
+#endif
+
+INCLUDES = -I$(CONFIGSRC)
+ DEFINES = $(CPPDEFS) '-DINCLUDEDIR="/usr/include"' $(SIGNAL_DEFINES)
+ DEPLIBS =
+
+all:: makedepend
+
+#undef InstallManPage
+#define InstallManPage(file,dest) /* as nothing */
+ComplexProgramTarget(makedepend)
+
+InstallManPageLong(mkdepend,$(MANDIR),makedepend)
+
+
+#if CppSourcesPresent
+cpy.c: cpy.y yylex.c
+	yacc cpy.y
+	sed -e '/^# *line/d' < y.tab.c > cpy.c
+	$(RM) y.tab.c
+
+cpy.y: $(CPPSRC)/cpy.y
+	$(RM) $@
+	$(LN) $(CPPSRC)/cpy.y .
+
+yylex.c: $(CPPSRC)/yylex.c
+	$(RM) $@
+	sed -e 's/#if pdp11 | vax | mc68000/& | ns16000 | ibm032/' \
+		$(CPPSRC)/yylex.c > yylex.c
+
+cpp.c: $(CPPSRC)/cpp.c cpp.ed
+	$(RM) cpp.c
+	/lib/cpp $(CPPSRC)/cpp.c \
+		| cb \
+		| sed -e '/^$$/d' -e '/^#/d' -e 's/	/ /g' > cpp.c
+	sed -e '/^#/d' < cpp.ed | ed - cpp.c
+
+cpp.o: cpp.c
+cpy.o: cpy.c
+
+clean::
+	$(RM) cpp.c cpy.? yylex.c
+#endif

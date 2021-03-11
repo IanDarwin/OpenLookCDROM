@@ -1,0 +1,95 @@
+#!/bin/csh -f
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+
+%include pobbconfig.defs
+#
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+
+%ifdef pobb_NNTPIn
+
+#
+# This daemon handles the purging of old entries from the NNTP duplicate
+# DBM database.
+#
+# It will kill the NNTPPOLL daemon, use FlushOld to purge the old
+# entries & restart the NNTPPOLL daemon.
+#
+# The daemon will do this sometime during the hour specified by
+# the variable ``when''.
+#
+
+set logname = "<critical:NNTP-PURGE>"
+set when = 10
+set pname = nntppoll
+
+while (1)
+
+    set hour = `date`
+    if ($$#hour != 0) then
+	set hour = $$hour[4]
+	set now = `echo $$hour | awk -F: '{ print $$1 }'`
+	if ($$now == $$when) then
+	    set pid = `ps awwx | egrep $$pname | egrep -v egrep`
+	    @ nopid = 0
+	    while ($$#pid == 0 && $$nopid < 5)
+		@ nopid ++
+		sleep 10
+		set pid = `ps awwx | egrep $$pname | egrep -v egrep`
+	    end
+
+	    # Has this happened too often ??
+	    if ($$nopid >= 10) then
+		/usr/ucb/mail -s "No NNTP pid" ?[PostmasterName]+ < /dev/null
+	    else
+		set pid = $$pid[1]
+		echo $$logname Killing process $$pid > /dev/console
+		kill -9 $$pid
+		sleep 30
+		echo $$logname Flushing NNTP entries > /dev/console
+		?[SmallLocalDir]/FlushOld ?[NNTPSuffix]
+		echo $$logname Restarting NNTPPOLL > /dev/console
+
+		@ vdown = 1
+		while ($$vdown <= 10)
+		    if ($$vdown != 1) sleep 600
+		    @ vdown ++
+		    cd ?[NNTPPollHome]
+		    if ($$status != 0) continue
+		    ?[BigLocalDir]/nntppoll -N ?[DuplicateDB]/?[NNTPSuffix] -d ?[NetDatabaseRoot]/ReadyBox -h ?[NetDatabaseRoot]/Hold -t ?[NetDatabaseRoot]/temp -i ?[NNTPPollSleepTime] -l ?[NNTPPollHome]/last_time -s ?[NNTPhost] -f ?[DaemonLog]/nntppoll.log -A '?[NetworkAuthentication]' -n 'control,?[arrlist(NNTPGroups, ".*,")].*' -L '<?[arrlist(NNTPDists, ",")],?[arrlist(NNTPGroups, ",")]>'
+		    if ($$status == 0) break
+		end
+		if ($$vdown > 10) then
+		    /usr/ucb/mail -s "Can\'t restart NNTPPOLL" ?[PostmasterName]+
+		    exit
+		endif
+	    endif
+	endif
+    endif
+
+    sleep 3600
+
+end
+
+%endif pobb_NNTPIn

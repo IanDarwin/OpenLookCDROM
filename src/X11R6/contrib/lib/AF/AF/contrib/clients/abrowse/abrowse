@@ -1,0 +1,297 @@
+#!/usr/local/bin/wish -f
+#
+# abrowse
+#
+#	Audio file browser demonstration.
+#
+#	Andrew Payne
+#	payne@crl.dec.com
+#
+
+#----------------------------------------------------------------------------
+#  Create a frame and pack into its parent.
+#----------------------------------------------------------------------------
+proc mkFrame {w {pack {top expand fill}}} {
+	frame $w
+	pack append [winfo parent $w] $w $pack
+	return $w
+}
+
+#----------------------------------------------------------------------------
+#  Create a new button
+#----------------------------------------------------------------------------
+proc mkButton {w label command {pack {left padx 10 pady 10}}} {
+	button $w -text $label -command $command
+	pack append [winfo parent $w] $w $pack
+	return $w
+}
+
+#----------------------------------------------------------------------------
+#  Create a new menubutton
+#----------------------------------------------------------------------------
+proc mkMenubutton {w label menu {pack left}} {
+	menubutton $w -menu $menu -text $label
+	pack append [winfo parent $w] $w $pack
+	return $w
+}
+
+#----------------------------------------------------------------------------
+#  Create a listbox with scrollbar and pack into parent.  Return path to 
+#  list widget.
+#----------------------------------------------------------------------------
+proc mkListbox {w {pack {top expand fill}} {geometry 80x20}} {
+	frame $w
+	pack append $w \
+		[scrollbar $w.scroll -command "$w.list yview"] {right filly} \
+		[listbox $w.list -yscroll "$w.scroll set" -relief raised \
+			-geometry $geometry] {left expand fill}
+
+	pack append [winfo parent $w] $w $pack
+	return $w.list
+}
+
+#----------------------------------------------------------------------------
+#  Make a label and pack into parent.
+#----------------------------------------------------------------------------
+proc mkLabel {w {text ""} {pack {top fillx}}} {
+	label $w -text $text
+	pack append [winfo parent $w] $w $pack
+	return $w
+}
+
+#----------------------------------------------------------------------------
+#  Make a labeled entry and pack into parent.
+#----------------------------------------------------------------------------
+proc mkLabelEntry {w {text ""} {pack {top fillx}}} {
+	frame $w
+	pack append $w \
+		[label $w.label -text $text] {left fillx}  \
+		[entry $w.entry -relief sunk -width 40] {right expand fillx}
+
+	pack append [winfo parent $w] $w $pack
+	return $w.entry
+}
+
+#-----------------------------------------------------------------------------
+# Make a text object with a scrollbar.  Return name of text object
+#-----------------------------------------------------------------------------
+proc mkText {w {pack {top filly}} {height 25} {width 80}} {
+	frame $w
+        pack append $w \
+                [scrollbar $w.scroll -relief flat -command "$w.text yview"] \
+                        {right filly} \
+                [text $w.text -bd 2 -relief raised -yscrollcommand "$w.s set" \
+                        -width $width -height $height -font "fixed" -wrap none] \
+                                {expand fill}
+
+        pack append [winfo parent $w] $w $pack
+        return $w.text
+}
+
+#-----------------------------------------------------------------------------
+#  Show a help box
+#-----------------------------------------------------------------------------
+proc mkHelp {} {
+	set w .helpwindow
+	catch {destroy $w}
+	toplevel $w
+        wm title $w "Help for abrowse"
+
+	set t [mkText $w.text]
+	$t configure -font -*-courier-*-r-*-*-*-120-*-*-*-*-*-*
+	$t insert insert {\
+Abrowse Help
+------------
+
+abrowse is an audio file browser.  
+
+Double-click on filenames to play audio files.  Double-click on directories
+to open them.
+
+Enter files to be played (or directories to move to) in the "File Name:" box.
+
+Andrew Payne
+payne@crl.dec.com
+}
+	mkButton [mkFrame $w.frame].close " Close " "destroy $w" \
+		{right padx 10 pady 10}
+}
+
+#----------------------------------------------------------------------------
+#  Set the current working directory
+#----------------------------------------------------------------------------
+proc setdir {dir} {
+	global dirlabel filelist
+
+	cd $dir
+	$dirlabel configure -text [pwd]
+	$filelist delete 0 end
+	set files [lrange [split [exec ls -al] "\n"] 1 end]
+	eval "$filelist insert 0 $files"
+}
+
+#-----------------------------------------------------------------------------
+#  Returns the currently selected filename for a list
+#-----------------------------------------------------------------------------
+proc current-file {list} {
+	set t [$list get [lindex [$list curselection] 0]]
+	regexp {[^ ]*$} $t filename
+	return $filename
+}
+	
+#-----------------------------------------------------------------------------
+#  Select the specified directory or file
+#-----------------------------------------------------------------------------
+proc select-file {file} {
+	global output_device file_encoding
+
+	if [file exists $file] {
+		if [file isdirectory $file] {
+			setdir $file
+		} {
+			exec aplay -d $output_device -e $file_encoding $file &
+			exec true
+		}
+	}
+}
+
+#----------------------------------------------------------------------------
+#  Build output devices menu:  use aset to count the number of devices
+#----------------------------------------------------------------------------
+
+set device 0
+set type_names(MU255)   "u-law"
+set type_names(LIN16)   "16-bit linear"
+set channel_names(1)    "Mono"
+set channel_names(2)    "Stereo"
+
+proc device-desc {num type rate channels} {
+        global type_names channel_names
+
+        set tname "(unknown sample type)"
+        catch {set tname $type_names($type)}
+
+        set cname "$channels channels"
+        catch {set cname $channel_names($channels)}
+
+        return "Device $num:  $cname $tname at $rate"
+}
+
+proc make-device {menu num in out} {
+	scan $in "%d %s %d %s %d %s %d %d %d %d %d" device junk ninputs \
+                inmask nphonein type inrate inchannels inmin incur inmax
+        scan $out "%s %d %s %d %s %d %d %d %d %d" junk noutputs outmask \
+                nphoneout type outrate outchannels outmin outcur outmax
+
+	$menu add radio -label [device-desc $num $type $outrate $outchannels] \
+		-value $num -variable output_device
+}
+
+proc build-device-menu {m} {
+	global output_device
+
+	set output_device 1
+	set dinfo [split [exec aset -b q] "\n"]
+	set ndevices [expr [llength $dinfo]/2]
+
+	set m [menu $m.dmenu]
+	for {set i 0} {$i < $ndevices} {incr i} {
+		make-device $m $i [lindex $dinfo 0] [lindex $dinfo 1]
+		set dinfo [lreplace $dinfo 0 1]
+	}
+	return $m
+}
+
+proc GetEncs {} {
+  set encs {}
+  set info [split [exec sh -c "aplay -e xxx 2>&1;exit 0" ]]
+  set looking 3
+  for {set i 0} {$i < [llength $info]} {incr i} {
+    set word [lindex $info $i]
+    if {$looking == 3 && $word == "encoding"} {set looking 2} \
+    elseif {$looking == 2 && $word == "types"} {set looking 1} \
+    elseif {$looking == 1 && $word == "are:"} {set looking 0} \
+    elseif {$looking == 0 && [string length $word] > 0} {
+      lappend encs "$word"
+    }
+  }
+  return $encs
+}
+
+proc make-enc {menu num enc} {
+	global file_encoding
+	$menu add radio -label $enc \
+		-value $enc -variable file_encoding
+}
+
+proc build-enc-menu {m} {
+	global file_encoding
+
+	set file_encoding "ulaw"
+	set einfo [GetEncs]
+	set nencs [llength $einfo]
+
+	set m [menu $m.emenu]
+	for {set i 0} {$i < $nencs} {incr i} {
+		make-enc $m $i [lindex $einfo $i]
+	}
+	return $m
+}
+
+#----------------------------------------------------------------------------
+#  Set up main window
+#----------------------------------------------------------------------------
+set f [mkFrame .frame]
+
+set mframe [mkFrame $f.mframe {top fillx frame w}]
+
+mkMenubutton $mframe.file File $mframe.file.menu
+set m [menu $mframe.file.menu]
+$m add cascade -label "Output Device -->" -menu [build-device-menu $m]
+$m add cascade -label "File Encoding Format -->" -menu [build-enc-menu $m]
+$m add separator
+$m add command -label "Exit" -command "exit"
+
+mkMenubutton $mframe.help Help $mframe.help.menu right
+set m [menu $mframe.help.menu]
+$m add command -label "Help" -command "mkHelp"
+
+set dirlabel [mkLabel $f.dir ""]
+$dirlabel configure -font -*-courier-*-r-*-*-*-120-*-*-*-*-*-*
+
+set filelist [mkListbox $f.list]
+$filelist configure -font -*-courier-*-r-*-*-*-120-*-*-*-*-*-*
+
+bind $filelist <Control-c> 		{destroy .}
+bind $filelist <Double-Button-1>	{select-file [current-file %W]}
+bind $filelist <B1-Motion>		{}
+bind $filelist <Button-1> {
+	%W select from [%W nearest %y]
+	%W select to [%W nearest %y]
+	$fileentry delete 0 end
+	$fileentry insert 0 [current-file %W]
+}
+
+set fileentry [mkLabelEntry $f.filename "File name:" {top pady 20 frame w}]
+$fileentry configure -font -*-courier-*-r-*-*-*-120-*-*-*-*-*-*
+
+bind $fileentry <Return>		{select-file [%W get]}
+
+wm title . "Audio Browser"
+wm minsize . 100 100
+
+#----------------------------------------------------------------------------
+# Set the current directory
+#----------------------------------------------------------------------------
+
+set dir [pwd]
+catch {set dir $env(SOUND_PATH)}
+if {$argc > 0} {
+	set dir [lindex $argv 0]
+} else {
+	set p [string first ":" $dir]
+	if {$p > 0} {
+		set dir [string range $dir 0 [expr $p-1]]
+	}
+}
+setdir $dir

@@ -1,0 +1,303 @@
+@begin(header)
+author: ackerman@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+node_expert: ackerman=ag@ics.uci.edu
+expiration_date: 06/25/93
+last_modifier: ackerman@ics.uci.edu
+last_mod_date: 06/25/91
+mod_num: 2
+@end(header)
+@begin(Q)
+After reading and rereading (ad infinitum) the 1-page section (10.4)
+on accelerators in the Xt doc, I think I'm finally starting to
+understand them.  The documentation is rather opaque, so I'm not
+sure about this, but tell me if I have this right.
+
+An accelerator is simply a registered set of translations
+which can be exported to other widgets.  For instance, a
+menu widget might include a translation like "<Ctrl>X: itemX()"
+to indicate that hitting Ctrl-X invokes the itemX() function.
+
+This accelerator can be used after it has been installed in
+other widgets, using XtInstallAccelerators().  The destination
+widget, after this call, will have all the mappings of the
+accelerators of the source widget available.  Thus, if I
+say "XtInstallAccelerators(textEditingWidget, menuWidget)",
+then all my accelerators for the menu widget will now be available
+from within the context of the text-editing widget.
+
+Do I have it right so far?
+
+OK, assuming I do..  What does it mean to "display" an accelerator?
+Why would a widget want to display its accelerators?
+What exactly does the display_accelerator function do?
+
+There is a variable used by some programs, XtInheritDisplayAccelerator,
+which is mentioned in the Xt doc, but not described.
+This variable is the only reference to accelerators I've found
+in _any_ of the X11 code.  Makes it hard to learn by looking
+at examples..  Does anyone actually use accelerators?
+
+My other concern is the design of accelerators in general.
+My thought is that it would be better to allow have widgets
+make public (within the application) those functions that
+can be associated with accelerators.  Then, any widget which
+wants to use an accelerator can bind to that action in a way
+similar to other translations, ie:
+	program*textEditingWidget.translations: #override\
+		<Ctrl>X: program*menuWidget*itemX()
+
+This would allow different widgets to use different accelerators
+to access a function -- for instance, one widget could use
+"<Key>?" to pop up a help widget, whereas another could use
+"<Ctrl>H".  To make an accelerator available to all widgets,
+you could simply say:
+	program*translations: #augment\
+		<Ctrl>X: program*menuWidget*itemX()
+
+This method seems to me to be more general, and it also fits within
+the structure of normal translations..
+@end(Q)
+
+@begin(A)
+>This accelerator can be used after it has been installed in
+>other widgets, using XtInstallAccelerators().  The destination
+>widget, after this call, will have all the mappings of the
+>accelerators of the source widget available.  Thus, if I
+>say "XtInstallAccelerators(textEditingWidget, menuWidget)",
+>then all my accelerators for the menu widget will now be available
+>from within the context of the text-editing widget.
+>
+>Do I have it right so far?
+
+So far, so good.
+
+>OK, assuming I do..  What does it mean to "display" an accelerator?
+>Why would a widget want to display its accelerators?
+>What exactly does the display_accelerator function do?
+
+Often times a widget will want to display in itself some representation of
+the accelerator.  For example, if you have a menu item accessible through
+the ^C accelerator, you might want to display the string "^C" in your menu
+item.  The display_accelerator function gets called when a widget's
+accelerator is installed, and gets passed a text representation of the
+accelerator.  It can do anything it wants with it, including ignoring it.
+
+>There is a variable used by some programs, XtInheritDisplayAccelerator,
+>which is mentioned in the Xt doc, but not described.
+>This variable is the only reference to accelerators I've found
+>in _any_ of the X11 code.  Makes it hard to learn by looking
+>at examples..  Does anyone actually use accelerators?
+
+The built-in widgets (Core, Composite...) are basically prototypes; they
+normally have no actions, and thus, no accelerators.  Displaying
+accelerators is meaningless for them, so they have NULL
+display_accelerator functions.  XtInheritDisplayAccelerator, like other
+XtInherit values, specifies that a widget should inherit its parent's
+display_accelerator function.
+
+>My other concern is the design of accelerators in general.
+>My thought is that it would be better to allow have widgets
+>make public (within the application) those functions that
+>can be associated with accelerators.  Then, any widget which
+>wants to use an accelerator can bind to that action in a way
+>similar to other translations, ie:
+>	program*textEditingWidget.translations: #override\
+>		<Ctrl>X: program*menuWidget*itemX()
+
+What you specify for the toolkit is
+	program*menuWidget.accelerator: <Ctrl>X:itemX()
+and install the accelerator for menuWidget in some other widget (e.g.
+textEditingWidget) in your code.
+
+>This would allow different widgets to use different accelerators
+>to access a function -- for instance, one widget could use
+>"<Key>?" to pop up a help widget, whereas another could use
+>"<Ctrl>H".  To make an accelerator available to all widgets,
+>you could simply say:
+>	program*translations: #augment\
+>		<Ctrl>X: program*menuWidget*itemX()
+
+One design aim was that a particular widget instance should always have
+the same accelerator anywhere it is available -- you don't want people to
+type one accelerator sequence one place and another one someplace else.
+You may disagree with this, but it seems a laudible goal.
+
+	-paul asente
+@end(Q)
+@begin(Q)
+>
+>How do accelerators work?
+>
+>Can anyone give me a real example of how to use one in real life, i.e. "put
+>this into a resource spec, and then when you press ... you will get ..."?
+>
+>(I've read the various docs until I'm blue in the face, and sill have no
+>idea.  
+
+1)  Pick some widget that you want to define an accelerator for.  Let's
+say you pick the findFile widget in your favorite text editor.
+
+2)  Pick the accelerator sequence you want for this widget.  Let's say you
+want control-x control-v.
+
+3)  Find out (from looking in the documentation, if there is any!) what
+the name of the appropriate action procedure in the widget you want to
+accelerate is. Let's say the findFile widget is of class MenuEntry and has
+an action procedure Notify that does what you want.
+
+4)  Manage somehow to get the accelerators resource set for your widget.
+The best way is in an .Xdefaults file, or, if you are writing an
+application and want some accelerators by default, in the applications
+default file.  The value of the resource should be a translation table
+with your accelerator sequence on the left, and the action procedure on
+the right:
+
+myProgram*findFile.accelerators: Ctrl<Key>x, Ctrl<Key>v : Notify()
+
+5)  Now you've specified what the accelerator should be.  You need to
+inform the intrinsics where the accelerator is valid.  Conscientious
+applications will do this already, but if it doesn't, you'll have to
+modify the program, adding a call to XtInstallAccelerator.
+
+6)  XtInstallAccelerator(destWidget, srcWidget) tells the intrinsics to
+find the accelerator for srcWidget and make it work if the left hand side
+of the translation table is activated in destWidget.  Note that the
+parameters are widget ids, not widget names.
+
+7)  More useful is XtInstallAllAccelators(destWidget, srcWidget).  This
+tells the intrinsics to look for all descendents of srcWidget, both popup
+and normal, and install all of their accelerators in destWidget.  A common
+use is to install all the accelerators in the whole application, by
+specifying the application shell as the srcWidget, into some destination.
+
+Caveat:  if you happen to be using the DEC widget set (XUI) it does
+accelerators slightly differently; check the documentation.
+
+Hope this helps.
+
+	-paul asente
+@end(Q)
+
+@begin(A)
+> I have a command widget whose notify() routine I wish to envoke when a
+> specific key is pressed and the pointer is anywhere in the application window.
+
+> Has anyone got any example code?
+
+Suppose the instance name of the command widget is "commandName" and the 
+specific key is "a".
+
+To set the accelerator resource for a command widget, write a resource
+specification. If you are writing this application, and intend to supply 
+some default accelerator bindings,  you could put the resource specification 
+in the application-specific class resource file (app-defaults file):
+
+*commandName.accelerators: <Key>a: notify()
+
+If you aren't writing the application, you could put the resource specification
+in the file where the rest of your own X default resources are given:
+
+programName*commandName.accelerators: <Key>a: notify()
+
+The value of the accelerator resource specification is an accelerator table,
+which gives a mapping from events such as key presses to the widget's or
+the application's action routines.  See Appendix B of the Xt documentation
+for Translation Table Syntax if you have questions about writing translations.
+(Accelerator tables are nearly identical to translation tables; see Xt
+section 10.4).  Actions are documented by the widget or application presenting 
+them. 
+
+The application must direct the Intrinsics to install the accelerator
+table of the command widget onto other widget(s) in order for you to be able
+to use accelerators.  Ideally, any application will do this, so that 
+users can write private accelerator resources.  If you are writing an
+application, you can use XtInstallAccelerators(destID, srcID), which 
+installs the accelerator table of a source widget onto a destination widget.
+
+Or, use XtInstallAllAccelerators(destID, srcID) which installs the accelerator
+table of the source widget, and the acclerator table of any descendant of
+the source widget, onto the destination widget.  It is common to give a
+widget near the top of the widget tree as the source widget, installing all
+the accelerators of the application onto some widget which makes up a large
+part of the `surface' of the application.
+
+Donna Converse
+@end(A)
+
+@begin(Q)
+> Can anyone give me a real example of how to use one in real life,
+
+Apply the modification (patch) at the end of this message to
+x11r3/examples/Xaw/xboxes.c and add the following resource to
+your favorite resource file:
+
+	Demo*quit.accelerators: Ctrl<Key>c: set() notify()
+
+then notice that ^C anywhere in the top-level window activates the
+'quit' button.
+
+*** /u1/X/src/examples/Xaw/xboxes.c
+--- f.c
+***************
+*** 54,59 ****
+--- 54,60 ----
+      char **argv;
+  {
+      Widget viewport, box, box1, box2, box3;
++     Widget q;
+  
+      static XtCallbackRec callbackList[] = { {callback, NULL}, {NULL, NULL} };
+      static Arg viewArgs[] = { {XtNallowVert, True}, {XtNallowHoriz, True} };
+***************
+*** 94,103 ****
+--- 95,106 ----
+      XtCreateManagedWidget("label2", labelWidgetClass, box2, NULL, ZERO);
+      XtCreateManagedWidget("label3", labelWidgetClass, box3, NULL, ZERO);
+  
++     q =
+      XtCreateManagedWidget("quit", commandWidgetClass, box1, arg, ONE);
+      XtCreateManagedWidget("command2", commandWidgetClass, box2, NULL, ZERO);
+      XtCreateManagedWidget("command3", commandWidgetClass, box3, NULL, ZERO);
+      
++     XtInstallAccelerators(toplevel, q);
+      XtRealizeWidget(toplevel);
+      XtMainLoop();
+  }
+@end(A)
+@begin(Q)
+A few months back Ralph Swick posted an instructional example of how to use
+accelerators.  The example was a modification to x11r3/examples/Xaw/xboxes.c,
+and showed how to attach Ctrl-c as an accelerator to the "quit" button of
+this sample Xaw program.  The modification was real simple:  Just add:
+
+        XtInstallAccelerators(toplevel, q);     /* q = the quit PushButton */
+
+prior to realizing the widget hierarchy, and adding:
+
+        Demo*quit.accelerators: Ctrl<Key>c: set() notify()
+
+to your resources.
+
+I have found two problems in trying to repeat, and modify, this example.
+
+1) I was able to get the accelerator to work only if I installed it on the
+   top-most box widget in the widget hierarchy, but not if I installed it
+   on toplevel (as shown) or on the viewport which is toplevel's child and
+   the box widget's parent.  I can't figure out any obvious reason for
+   this, as I would have expected the keyboard event to have been passed
+   up the hierarchy, even to toplevel, until it found a widget with a
+   translation for this event.  Am I missing something here?
+
+2) An installed accelerator works even when the source widget is
+   insensitive.  The Intrinsics documentation doesn't appear to address
+   this issue, but the behavior displayed (at least by the MIT Intrinsics
+   implementation) seems counterintuitive.  If a button is insensitive,
+   and therefore not dispatching to action procedures, wouldn't you expect
+   not to be able to dispatch to those same action procedures via an
+   accelerator?  Must I put an extra check into all widget action
+   procedures, to check for widget sensitivity?
+@end(Q)
+
+

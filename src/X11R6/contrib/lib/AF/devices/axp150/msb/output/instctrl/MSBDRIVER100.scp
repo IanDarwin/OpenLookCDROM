@@ -1,0 +1,158 @@
+#!/sbin/sh
+#
+# @DEC_COPYRIGHT@
+#
+# Subset control program for the Microsoft Sound Board driver
+#
+# HISTORY
+# 09-Nov-1993	hrt	Created
+#
+
+# Begin here
+
+SubSet=MSBDRIVER100
+SubSetPath=$ROOTPATH/usr/sys/kits/Digital/msb
+
+Desc="Microsoft Sound Board device driver"
+kroot=usr/opt/MSB100
+
+PROGNAME=$0
+ROOTPATH=
+
+CONFIGPATH=$ROOTPATH/sys/conf
+
+SUBSETPATH=$SubSetPath
+
+CONFIGFRAGPATH=$SUBSETPATH
+CONFIGFRAGFILE=$CONFIGFRAGPATH/config.file
+		
+case X_$ACT in
+	X_M)
+
+	break;;
+
+	X_PRE_L)
+		if [ ! -d /usr/sys/kits ]
+		then
+			mkdir /usr/sys/kits
+			mkdir /usr/sys/kits/Digital
+			mkdir /usr/sys/kits/Digital/msb
+		elif [ ! -d /usr/sys/kits/Digital ]
+		then
+			mkdir /usr/sys/kits/Digital
+			mkdir /usr/sys/kits/Digital/msb
+		elif [ ! -d /usr/sys/kits/Digital/msb ]
+		then
+			mkdir /usr/sys/kits/Digital/msb
+		fi
+	break;;
+
+	X_POST_L)
+		############################################
+		#
+		# Do the kreg to register the driver
+		#
+		############################################
+
+		PWD=`pwd`
+		cd $ROOTPATH/
+		$ROOTPATH/sbin/kreg -l Digital $SubSet $SubSetPath
+		cd $PWD
+		############################################
+		#
+		# Done with the kreg, edit eisa_options_data.c
+		#
+		############################################
+		cp /sys/data/eisa_option_data.c /sys/data/eisa_option_data.c.sav
+		ed > /dev/null 2>& 1 <<***
+r /sys/data/eisa_option_data.c
+/%%%/
+.+3
+i
+    { "ISA2000", "AUD",        "msb",    0,      1,   'C',    0}, /* Microsoft Sound Board */
+.
+w /sys/data/eisa_option_data.c
+Q
+***
+		
+		############################################
+		#
+		# Do a config of the system kernel
+		#
+		############################################
+		EDITOR=vi
+		export EDITOR
+		$ROOTPATH/usr/sbin/doconfig
+		if [ X_$? != "X_0" ] ; then
+			echo "Kernel was not created by doconfig -- exit"
+			exit
+		fi
+		KERNELDIR=`ls -t $ROOTPATH/sys | awk '/conf/ { next } { print ; exit }'`
+		if [ -d $ROOTPATH/sys/$KERNELDIR ] ; then
+			if [ ! -f $ROOTPATH/sys/$KERNELDIR/vmunix ] ; then
+				echo "No new kernel was found in $ROOTPATH/sys/$KERNELDIR -- exit"
+				exit
+			fi
+		else
+			echo "No $ROOTPATH/sys/$KERNELDIR directory -- exit"
+			exit
+		fi
+
+		############################################
+		#
+		# Done with config of the system kernel
+		#
+		############################################
+		
+		
+		############################################
+		#
+		# Instruct the user
+		#
+		############################################
+echo
+echo
+		############################################
+		#
+		# Installation completed
+		#
+		############################################
+	break;;
+	X_POST_D)
+		############################################
+		#
+		# Do the kreg
+		#
+		############################################
+		PWD=`pwd`
+		cd $ROOTPATH/
+		$ROOTPATH/sbin/kreg -d $SubSet
+		cd $PWD
+		############################################
+		#
+		# Done with the kreg
+		#
+		############################################
+
+		ed >/dev/null 2>&1 <<***
+r /sys/data/eisa_option_data.c
+/ISA2000/
+d
+w /sys/data/eisa_option_data.c
+Q
+***
+
+echo
+echo "Please rebuild the kernel since some kernel subsets were deleted."
+echo
+	break;;
+
+	X_V)
+		###########################################
+		#
+		# Verification
+		#
+		###########################################
+
+	break;;
+esac

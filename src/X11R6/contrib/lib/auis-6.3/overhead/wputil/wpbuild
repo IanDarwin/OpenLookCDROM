@@ -1,0 +1,615 @@
+#!/bin/csh -f
+# **********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+#        For full copyright information see:'andrew/config/COPYRITE'     *
+# **********************************************************************
+#
+# /* $Header: /afs/cs.cmu.edu/project/atk-dist/auis-6.3/overhead/wputil/RCS/wpbuild,v 5.30 1993/10/26 21:31:24 gk5g Exp $ */
+#
+# $Disclaimer: 
+# Permission to use, copy, modify, and distribute this software and its 
+# documentation for any purpose is hereby granted without fee, 
+# provided that the above copyright notice appear in all copies and that 
+# both that copyright notice, this permission notice, and the following 
+# disclaimer appear in supporting documentation, and that the names of 
+# IBM, Carnegie Mellon University, and other copyright holders, not be 
+# used in advertising or publicity pertaining to distribution of the software 
+# without specific, written prior permission.
+# 
+# IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+# DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+# SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+# BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+# DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+# WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+# ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+# OF THIS SOFTWARE.
+#  $
+# This script updates the White Pages for an AFS cell.
+# It takes as input a passwd file, stored in $PWFile or $PWHome/passwd.
+
+set nonomatch
+
+# Set default values for some csh variables that configure this script.
+
+# PWFile is the name of the file containing the "passwd" information.
+# If PWFile is set, it overrides the PWHome variable.
+# PWHome is the directory in which the input "passwd" file is published.
+# If neither is set, default to /etc/passwd for the PWFile variable.
+if ( ! ${?PWFile} ) then
+	if ( ${?PWHome} ) then
+		set PWFile=${PWHome}/passwd
+	else
+		set PWFile=/etc/passwd
+	endif
+endif
+
+# AffilSrc is the file containing affiliations for each user.  If it exists,
+#   it contains lines of the form userid:affilabbr, where affilabbr is a space-separated
+#   list of affiliations.  (We don't default the definition here.)
+# AffilMap is the file mapping those affiliation names to full names
+#   (for example, the full names for departments).  If it exists, it contains
+#   lines of the form ``affilabbr:full affiliation name''.  (This definition
+#   is also not defaulted here.)
+
+# WPWorkDir is the directory where the work will be done.
+# This directory must contain the subdirectories "hist" and "names",
+# in which state will be maintained between wpbuild runs.
+if ( ! ${?WPWorkDir} ) set WPWorkDir=/usr/andrew/wp/build
+
+# wpbuildOpts is -f if we want makeboth to find ~/.forward files;
+# it is -F if we don't want to bother with ~/.forward files.
+if ( ! ${?wpbuildOpts} ) set wpbuildOpts="-F"
+
+# WPBackupDir is a directory for keeping consistent snapshots
+# (in the form of tar files) of the white pages database and the
+# state files that describe its contents.
+if ( ! ${?WPBackupDir} ) set WPBackupDir=/usr/andrew/wp/backup
+
+# WPIChangesDir, if defined, is a directory into which approved
+# update requests from the interactive White Pages updater
+# procedure are placed.  (This definition is not defaulted here.)
+
+# AMDSDomain, if defined, is the local cell name.  It is used to clean
+# up WPI requests to ``forward'' mail to oneself.
+
+set and_dir=/usr/andrew
+if ( ${?ANDREWDIR} ) then
+	set and_dir=$ANDREWDIR
+endif
+
+# These two variables say where the "makeboth" and "nickgen"
+# programs are to be found.
+if ( ! ${?MakeBothPgm} ) set MakeBothPgm=${and_dir}/etc/makeboth
+if ( ! ${?NickGenPgm} ) set NickGenPgm=${and_dir}/etc/nickgen
+
+# Try to get to the FS command.
+set FS=echo
+set FSSET=0
+if ( -x ${and_dir}/bin/fs ) then
+	set FS=${and_dir}/bin/fs
+	set FSSET=1
+endif
+
+# WPDestFile is the file in WPDestDir that will be the root of
+# the White Pages b-tree.
+if ( ! ${?WPDestFile} ) set WPDestFile=wp
+
+# Default the read-write mount point for the White Pages directory.
+if ( ! ${?WPDestDir} ) then
+    if ( ! ${?ThisCellName} ) then
+	if ( -f /usr/vice/etc/ThisCell ) then
+	    set ThisCellName=`cat /usr/vice/etc/ThisCell`
+	else
+	    echo "White Pages destination not given, and /usr/vice/etc/ThisCell not readable."
+	    exit (1)
+	endif
+    endif
+    set WPDestDir=/afs/.${ThisCellName}/service/${WPDestFile}
+endif
+if ( -d ${WPDestDir} && ! -f ${WPDestDir}/${WPDestFile} ) then
+	echo "Attempting to create a new White Pages from scratch as ${WPDestDir}/${WPDestFile}"
+	${and_dir}/etc/newbt ${WPDestDir}/${WPDestFile} 40000
+endif
+if ( ! -d ${WPDestDir} || ! -f ${WPDestDir}/${WPDestFile} ) then
+	echo "White Pages destination (${WPDestDir}/${WPDestFile}) not available."
+	exit (1)
+endif
+
+echo wpbuild starting.
+# Next, do some command-line-option processing.
+# (Options are generally given only while debugging.)
+set MBOPTS=""
+set DOtheRUN=1
+while ( ${#argv} != 0 )
+	set OPT=$argv[1]
+	if ( "${OPT}" == "-N" ) then
+		echo "Using makeboth option ${OPT} to zip through the existing passwd entries."
+		set MBOPTS="-N ${MBOPTS}"
+	else if ( "${OPT}" == "init" ) then
+		echo "Not doing the actual makeboth run"
+		set DOtheRUN=0
+	else
+		echo "Using makeboth option ${OPT}"
+		set MBOPTS="${MBOPTS} ${OPT}"
+	endif
+	shift argv
+end
+
+# Announce the configuration results.
+echo "Expecting to use the passwd file: ${PWFile}"
+if ( ${?AffilSrc} ) then
+	echo "Using affiliations from file: ${AffilSrc}"
+	if ( ${?AffilMap} ) then
+		echo "Also using affiliation mappings from file: ${AffilMap}"
+	endif
+else
+	echo "Not using affiliations file."
+endif
+echo "Working in directory: ${WPWorkDir}"
+if ( ${?WPIChangesDir} ) then
+	echo "Absorbing changes to passwd.chg from directory root: ${WPIChangesDir}"
+else
+	echo "Not absorbing changes into passwd.chg."
+endif
+echo "Will archive completed snapshots in directory: ${WPBackupDir}"
+echo "Updating the White Pages with root: ${WPDestDir}/${WPDestFile}"
+echo "Using makeboth option ${wpbuildOpts} to control the reading of .forward files"
+echo "Will run makeboth from: ${MakeBothPgm}"
+echo "Will run nickgen from: ${NickGenPgm}"
+if ( ${FSSET} != 0 ) echo "Can run the FS command from: $FS"
+# Begin the work.  Pre-process the source files.
+cd ${WPWorkDir}
+rm -f LastMakebothSnafu
+set nonomatch
+set WorkFiles=`ls -t *Z* hist/*Z*`
+set Ix=1
+while ( ${Ix} <= ${#WorkFiles} )
+	if ( -r $WorkFiles[${Ix}] ) then
+		if ( ${Ix} > 7 ) then
+			echo "Removing old obsolete file $WorkFiles[${Ix}]"
+			rm -f $WorkFiles[${Ix}]
+		endif
+	endif
+	@ Ix++
+end
+
+# begin multiple passes
+rm -f wpoutZ$$ wperrZ$$
+set PASS=0
+while ( ${PASS} == 0 )
+  if ( ${?AffilSrc} ) then
+      if ( -f ${AffilSrc} ) then
+	if ( ${?AffilMap} ) then
+	    if ( -f ${AffilMap} ) then
+		echo 'BEGIN {' > /tmp/$$.awk
+		awk -F: '{if ($1 != "" && $2 != "") print "	dept[\"" $1 "\"] = \"" $2 "\""}' ${AffilMap} >> /tmp/$$.awk
+		echo '}' >> /tmp/$$.awk
+		echo '{if ($2 != "") {xx=$2; if (strlen(dept[$2]) > 0) xx = dept[$2]; print $1 ":Af:+ :" xx ":1"; print $1 ":A2:+ :" $2 ":1"}}' >> /tmp/$$.awk
+		awk -F: -f /tmp/$$.awk ${AffilSrc} > hist/pwchg.adminZ$$
+		rm -f /tmp/$$.awk
+	    else
+		echo "Affiliations-map file (${AffilMap}) is not readable."
+		exit (1)
+	    endif
+	else
+		awk -F: '{print $1 ":Af:+ :" $2 ":1"}' ${AffilSrc} > hist/pwchg.adminZ$$
+	endif
+	set foo=`ls -l ${AffilSrc}`
+	set size5=$foo[4]
+      else
+	echo "Affiliations file (${AffilSrc}) is not readable."
+	exit (1)
+      endif
+  else
+	cp /dev/null hist/pwchg.adminZ$$
+	set size5=0
+  endif
+  if ( ${?WPIChangesDir} ) then
+    if ( -d ${WPIChangesDir}/newreq ) then
+# snap all the finished requests into place
+	cat > /usr/tmp/glom.sh << GLOM-SH
+#!/bin/sh
+cd ${WPIChangesDir}/holdreq
+(
+# gather up the old and new information
+	cat ${WPWorkDir}/hist/passwd.chg f* |
+# sort the info by time within field within user
+	sort -t: +0 -1 +1 -2 +4n -5 |
+# eliminate the duplicates
+	awk -f /usr/tmp/filter_dups.awk > ${WPWorkDir}/hist/passwd.chg.newZ$$
+) &&
+
+# flush the new file out, to see if it made it
+${FS} flush ${WPWorkDir}/hist/passwd.chg.newZ$$ &&
+
+# check the old and new file sizes
+set \`cat  ${WPWorkDir}/hist/passwd.chg | wc -l\` &&
+OLDSIZE=\`expr \\( \$1 \\* 8 \\) / 10\` &&
+
+set \`cat  ${WPWorkDir}/hist/passwd.chg.newZ$$ | wc -l\` &&
+NEWSIZE=\$1 &&
+
+# the new should be at least as big
+if test \$NEWSIZE -ge \$OLDSIZE
+then
+# good, we're done
+	cp ${WPWorkDir}/hist/passwd.chg ${WPWorkDir}/hist/passwd.chg.old &&
+	mv ${WPWorkDir}/hist/passwd.chg.newZ$$ ${WPWorkDir}/hist/passwd.chg &&
+# remove all the consumed requests
+	rm -f f*
+else
+# oops!
+	echo "WPI failure:  old is larger than new: lines(${WPWorkDir}/hist/passwd.chg)==\$OLDSIZE; lines(${WPWorkDir}/hist/passwd.chg.newZ$$)==\$NEWSIZE"
+fi
+GLOM-SH
+	cat > /usr/tmp/filter_dups.awk << FILTER-DUPS
+BEGIN	{FS = ":"; OFS = ""; ORS = "\n";
+	User = ""; Fld = ""; DestVal = ""; Time = "";
+}
+{
+# Pre-sort with: sort -t: +0 -1 +1 -2 +4n -5
+	if (substr(\$1, 1, 1) == "#") {		# allow comments
+		print \$0;
+	} else {
+		if (User != \$1 || Fld != \$2 || \$3 != "*") {
+			if (Time != "") print User ":" Fld ":*:" DestVal ":" Time;
+			Time = "";
+		}
+		if (\$3 == "*") {
+			User = \$1;
+			Fld = \$2;
+			DestVal = \$4;
+			Time = \$5;
+FILTER-DUPS
+	if ( "${?AMDSDomain}" ) then
+	    if ( "${AMDSDomain}" != "" ) then
+	cat >> /usr/tmp/filter_dups.awk << FILTER-DUPS
+			if ( Fld == "Fwd" ) {
+				Dflt = User "++@${AMDSDomain}";
+				if ( DestVal == Dflt ) DestVal = "+ ";
+			}
+FILTER-DUPS
+    endif
+endif
+	cat >> /usr/tmp/filter_dups.awk << FILTER-DUPS
+		} else {
+			if (Time != "") print User ":" Fld ":*:" DestVal ":" Time;
+			Time = "";
+			print \$1 ":" \$2 ":" \$3 ":" \$4 ":" \$5;
+		}
+	}
+}
+END	{
+	if (Time != "") print User ":" Fld ":*:" DestVal ":" Time;
+}
+FILTER-DUPS
+	pushd ${WPIChangesDir}/newreq
+	mv f* ../holdreq
+	set mvstat=${status}
+	popd
+	if ( ${mvstat} == 1 ) then
+		pushd ${WPIChangesDir}/holdreq
+		foreach foo (f*)
+			if ( -e ${foo} ) then
+				set mvstat=0;
+				break;
+			endif
+		end
+		popd
+	endif
+	if ( ${mvstat} == 0 ) then
+		chmod +x /usr/tmp/glom.sh
+		sh /usr/tmp/glom.sh
+		set xstat=${status}
+		if ( ${xstat} ) then
+		    echo "glom.sh: exited with status ${xstat}"
+		    exit (${xstat})
+		endif
+	endif
+	rm -f /usr/tmp/glom.sh /usr/tmp/filter_dups.awk
+    endif
+  endif
+  echo "sort -t: +0 -1 +4n hist/passwd.chg hist/pwchg.adminZ$$ -o hist/passwd.chgZ$$"
+  sort -t: +0 -1 +4n hist/passwd.chg hist/pwchg.adminZ$$ -o hist/passwd.chgZ$$
+  set xstat=${status}
+  if ( ${xstat} ) then
+      echo "Exited with status ${xstat}"
+      exit (${xstat})
+  endif
+  if ( ${FSSET} != 0 ) then
+	sleep 3
+	$FS flush hist/passwd.chgZ$$
+  endif
+  set foo=`ls -l hist/passwd.chg`
+  set size1=$foo[4]
+  set size4=`expr $size1 + $size5`
+  rm -f hist/pwchg.adminZ$$
+  set foo=`ls -l hist/passwd.chgZ$$`
+  set size2=$foo[4]
+  if ( $size2 == 0 && $size4 != 0 ) then
+      echo "Zero-length" hist/passwd.chgZ$$ "file"
+      exit (1)
+  endif
+  if ( $size4 > $size2 ) then
+      echo "Sum of sizes of hist/passwd.chg and affil-src ($size4) gtr than size of hist/passwd.chgZ$$ ($size2)"
+      exit (1)
+  endif
+  echo "set oldwd=${cwd}"
+  set oldwd=${cwd}
+  set CopyPWFile=${PWFile}
+  set CopyPWDir=${CopyPWFile:h}
+  set CopyPWFN=${CopyPWFile:t}
+  echo "pushd ${CopyPWDir}"
+  pushd ${CopyPWDir}
+  set foo=`ls -l ${CopyPWFN}`
+  set size1=$foo[4]
+  if ( $size1 == 0 ) then
+	echo "Zero-length ${CopyPWFN} file."
+	exit (1)
+  endif
+  echo "tar chvf ${oldwd}/ppppZ$$ ${CopyPWFN}"
+  tar chvf ${oldwd}/ppppZ$$ ${CopyPWFN}
+  set xstat=${status}
+  if ( ${xstat} ) then
+      echo "Exited with status ${xstat}"
+      exit (${xstat} )
+  endif
+  if ( ${FSSET} != 0 ) then
+	sleep 3
+	$FS flush ${oldwd}/ppppZ$$
+  endif
+  set foo=`ls -l ${oldwd}/ppppZ$$`
+  set size2=$foo[4]
+  if ( $size2 == 0 ) then
+      echo "Zero-length" ${oldwd}/ppppZ$$ "file"
+      exit (1)
+  endif
+  echo "popd"
+  popd
+  echo "tar xvf ppppZ$$"
+  tar xvf ppppZ$$
+  set xstat=${status}
+  if ( ${xstat} ) then
+      echo "Exited with status ${xstat}"
+      exit (${xstat})
+  endif
+  echo "rm -f ppppZ$$"
+  rm -f ppppZ$$
+  if ( ${FSSET} != 0 ) then
+	sleep 3
+	$FS flush ${CopyPWFN}
+  endif
+  set foo=`ls -l ${CopyPWFN}`
+  set size2=$foo[4]
+  if ( $size2 == 0 ) then
+      echo "Zero-length new passwd file"
+      exit (1)
+  endif
+  echo "mv ${CopyPWFN} hist/lastpassZ$$"
+  mv ${CopyPWFN} hist/lastpassZ$$
+  set xstat=${status}
+  if ( ${xstat} ) then
+      echo "Exited with status ${xstat}"
+      exit (${xstat})
+  endif
+  if ( ${FSSET} != 0 ) then
+	sleep 3
+	$FS flush hist/lastpassZ$$
+  endif
+  set foo=`ls -l hist/lastpassZ$$`
+  set size2=$foo[4]
+  if ( $size2 == 0 ) then
+      echo "Zero-length" hist/lastpassZ$$ "file"
+      exit (1)
+  endif
+  if ( $size1 != $size2 ) then
+      echo "${PWFile} and hist/lastpassZ$$ sizes differ: $size1 $size2"
+      exit (1)
+  endif
+  if ( -f hist/Snapshot.PW ) then
+	echo "Found old hist/Snapshot.PW: using it"
+	rm -f hist/lastpassZ$$
+	set ExtraOpts=" -N"
+  else
+	echo "mv hist/lastpassZ$$ hist/Snapshot.PW"
+	mv hist/lastpassZ$$ hist/Snapshot.PW
+	set xstat=${status}
+	if ( ${xstat} ) then
+	    echo "Exited with status ${xstat}"
+	    exit (${xstat})
+	endif
+	set PASS=1
+	set ExtraOpts=""
+  endif
+  echo "cat hist/Snapshot.PW hist/passwd.add > hist/passwd.totZ$$"
+  cat hist/Snapshot.PW hist/passwd.add > hist/passwd.totZ$$
+  set xstat=${status}
+  if ( ${xstat} ) then
+      echo "Exited with status ${xstat}"
+      exit (${xstat})
+  endif
+  if ( ${FSSET} != 0 ) then
+	sleep 3
+	$FS flush hist/passwd.totZ$$
+  endif
+  set foo=`ls -l hist/Snapshot.PW`
+  set size1=$foo[4]
+  set foo=`ls -l hist/passwd.add`
+  set size2=$foo[4]
+  set foo=`ls -l hist/passwd.totZ$$`
+  set size3=$foo[4]
+  set size4=`expr $size1 + $size2`
+  if ( $size3 == 0 ) then
+      echo "Zero-length" hist/passwd.totZ$$ "file"
+      exit (1)
+  endif
+  if ( $size4 != $size3 ) then
+      echo "Sum of sizes of hist/Snapshot.PW and hist/passwd.add, size of hist/passwd.totZ$$ differ: $size4 $size3"
+      exit (1)
+  endif
+  echo "sort -t: +0 -1 +2n -3 +4 hist/passwd.totZ$$ -o hist/newpasswdZ$$"
+  sort -t: +0 -1 +2n -3 +4 hist/passwd.totZ$$ -o hist/newpasswdZ$$
+  set xstat=${status}
+  if ( ${xstat} ) then
+      echo "Exited with status ${xstat}"
+      exit (${xstat})
+  endif
+  if ( ${FSSET} != 0 ) then
+	sleep 3
+	$FS flush hist/newpasswdZ$$
+  endif
+  set foo=`ls -l hist/passwd.totZ$$`
+  set size1=$foo[4]
+  set foo=`ls -l hist/newpasswdZ$$`
+  set size2=$foo[4]
+  if ( $size2 == 0 ) then
+      echo "Zero-length" hist/newpasswdZ$$ "file"
+      exit (1)
+  endif
+  if ( $size1 != $size2 ) then
+      echo "hist/passwd.totZ$$ and hist/newpasswdZ$$ sizes differ: $size1 $size2"
+      exit (1)
+  endif
+  echo "rm -f hist/passwd.totZ$$"
+  rm -f hist/passwd.totZ$$
+
+  echo "(${MakeBothPgm} -d -W -M3 -P8 -c wp.cfg -s ${WPDestFile} ${wpbuildOpts} ${MBOPTS} ${ExtraOpts} ${WPDestDir} hist/passwd.chgZ$$ hist/passwd.outchgZ$$ hist/oldpass hist/newpasswdZ$$ >> wpoutZ$$ ) >>& wperrZ$$"
+  if ( ${DOtheRUN} == 0 ) exit (0)
+  ( ${MakeBothPgm} -d -W -M3 -P8 -c wp.cfg -s ${WPDestFile} ${wpbuildOpts} ${MBOPTS} ${ExtraOpts} ${WPDestDir} hist/passwd.chgZ$$ hist/passwd.outchgZ$$ hist/oldpass hist/newpasswdZ$$ >> wpoutZ$$ ) >>& wperrZ$$
+  set mwpstat=${status}
+  if ( ${FSSET} != 0 ) then
+	sleep 3
+	$FS flush ${WPDestDir}/${WPDestFile}
+	$FS flush hist/passwd.outchgZ$$
+  endif
+  set foo=`ls -l ${WPDestDir}/${WPDestFile}`
+  set size2=$foo[4]
+  if ( $size2 == 0 ) then
+      echo "Zero-length" ${WPDestDir}/${WPDestFile} "file"
+      set mwpstat=99
+  endif
+  set foo=`ls -l hist/passwd.outchgZ$$`
+  set size2=$foo[4]
+  if ( $size2 == 0 ) then
+      echo "Zero-length" hist/passwd.outchgZ$$ "file"
+      set mwpstat=101
+  endif
+
+  if ( ${mwpstat} ) then
+    echo 'Makeboth run FAILED at' `date` 'with status' ${mwpstat} 
+    echo 'Makeboth run FAILED at' `date` 'with status' ${mwpstat} > mwperrZ$$
+    echo 'Std error output:' >> mwperrZ$$
+    cat wperrZ$$ >> mwperrZ$$
+    echo '' >> mwperrZ$$
+    echo 'Std output:' >> mwperrZ$$
+    cat wpoutZ$$ >> mwperrZ$$
+    mv mwperrZ$$ LastMakebothSnafu
+    echo "wpbuild terminating abnormally."
+    exit ${mwpstat}
+
+  else
+
+  echo "Makeboth run succeeded at" `date` "-- installing new files."
+  if ( { cmp -s hist/oldpass hist/newpasswdZ$$ } ) then
+      echo "  hist/oldpass file unchanged."
+      rm -f hist/newpasswdZ$$
+  else
+      echo "  hist/oldpass file changed: installing new one."
+      cp hist/oldpass hist/oldpass.BAK
+      mv hist/newpasswdZ$$ hist/oldpass
+  endif
+
+  awk -F: '{if ($5 >= 100 || substr($1, 1, 1) == "#") print $0}' hist/passwd.outchgZ$$ > hist/passwd.ochZ$$
+  set xstat=${status}
+  if ( ${xstat} ) then
+      echo "...error in AWK run: ${xstat}"
+      exit (${xstat})
+  endif
+  if ( ${FSSET} != 0 ) then
+	sleep 3
+	$FS flush hist/passwd.ochZ$$
+  endif
+  rm -f hist/passwd.outchgZ$$
+  if ( { cmp -s hist/passwd.chg hist/passwd.ochZ$$ } ) then
+      echo "  hist/passwd.chg file unchanged."
+      rm -f hist/passwd.ochZ$$
+  else
+      echo "  hist/passwd.chg file changed: installing new one."
+      set foo=`ls -l hist/passwd.chg`
+      set size2=$foo[4]
+      if ( $size2 != 0 ) then
+	cp hist/passwd.chg hist/passwd.chg.BAK
+      else
+	echo "  hist/passwd.chg is ZERO LENGTH; leaving backup hist/passwd.chg.BAK alone."
+      endif
+      mv hist/passwd.ochZ$$ hist/passwd.chg
+  endif
+  rm -f hist/passwd.chgZ$$
+
+  mv hist/lastpass hist/lastpass.BAK
+  mv hist/Snapshot.PW hist/lastpass
+end
+# end of multiple passes
+
+cp hist/wpadd.old hist/wpadd.old.BAK
+cp hist/wpadd hist/wpadd.old
+set xstat=${status}
+if ( ${xstat} ) then
+    echo "cp wpadd Exited with status ${xstat}"
+    exit (${xstat})
+endif
+
+cp names/override names/override.old
+set xstat=${status}
+if ( ${xstat} ) then
+    echo "cp override Exited with status ${xstat}"
+    exit (${xstat})
+endif
+cp names/nickmap names/nickmap.old
+set xstat=${status}
+if ( ${xstat} ) then
+    echo "cp nickmap Exited with status ${xstat}"
+    exit (${xstat})
+endif
+${NickGenPgm} -n names/givenmap | sort -u | awk -f names/nickbun.awk | sort -u -o names/nickmap.NEW
+set xstat=${status}
+if ( ${xstat} ) then
+    echo "nickgen pipe Exited with status ${xstat}"
+    exit (${xstat})
+endif
+set foo=`ls -l names/nickmap.NEW`
+set size2=$foo[4]
+if ( $size2 == 0 ) then
+    echo "Zero-length" names/nickmap.NEW "file"
+    exit (3)
+endif
+if ( { cmp -s names/nickmap names/nickmap.NEW } ) then
+    echo "  names/nickmap file unchanged."
+    rm -f names/nickmap.NEW
+else
+    echo "  names/nickmap file changed: installing new one."
+    cp names/nickmap names/nickmap.BAK
+    mv names/nickmap.NEW names/nickmap
+endif
+
+echo "Copying backups of ${WPDestDir}."
+mv ${WPBackupDir}/newer.tar ${WPBackupDir}/older.tar
+# Make a copy as a shell variable, since the original could be just an environment variable.
+set copyWPDestDir=${WPDestDir}
+pushd ${WPDestDir}
+    cd ${copyWPDestDir:h}
+    tar cvf ${WPBackupDir}/newer.tar ${copyWPDestDir:t} -C ${WPWorkDir} hist names
+    set xstat=${status}
+popd
+if ( ${xstat} ) then
+	echo "Can't create prime backup: status ${xstat}"
+	exit (${xstat})
+endif
+
+mv wpoutZ$$ LastMakebothOut
+mv wperrZ$$ LastMakebothErr
+echo "wpbuild terminating OK."
+exit 0
+endif

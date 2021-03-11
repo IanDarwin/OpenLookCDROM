@@ -1,0 +1,53 @@
+#!/bin/sh
+## ###################################################################### ##
+##         Copyright IBM Corporation 1988,1991 - All Rights Reserved      ##
+##        For full copyright information see:'andrew/config/COPYRITE'     ##
+## ###################################################################### ##
+# $Disclaimer: 
+# Permission to use, copy, modify, and distribute this software and its 
+# documentation for any purpose is hereby granted without fee, 
+# provided that the above copyright notice appear in all copies and that 
+# both that copyright notice, this permission notice, and the following 
+# disclaimer appear in supporting documentation, and that the names of 
+# IBM, Carnegie Mellon University, and other copyright holders, not be 
+# used in advertising or publicity pertaining to distribution of the software 
+# without specific, written prior permission.
+# 
+# IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+# DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+# SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+# BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+# DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+# WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+# ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+# OF THIS SOFTWARE.
+#  $
+
+ALMOST=$1
+SDPOOLBASEFILE=$2
+
+# Figure out how much "s" space is already taken
+SDUSEDSTR="`size $ALMOST \
+	| sed -n -e '/ \.s/p' -e '/ \.lit/p' \
+	| sed -e 's/^[^0-9]*\([1-9][0-9]*\).*$/\1 + /'` 0"
+
+SDUSED=`expr $SDUSEDSTR`
+
+# Subtract 4 bytes for ourselves and 4k bytes for rounding and "common" symbols
+SDPOOLSIZE=`expr 65536 - 4096 - $SDUSED`
+
+# Make the ".c" file with the GP free poll declarations
+# Subtract 4 bytes for ourselves and 16 bytes for rounding
+cat > ./${SDPOOLBASEFILE}.c  <<END
+unsigned long int sdpool[(($SDPOOLSIZE&~0xF)>> 2)-5] ;
+unsigned short int sdpoolstart = 0 ;
+unsigned short int sdpoolend = sizeof sdpool ;
+END
+
+
+# Compile and link it with everything in .sbss
+cc -c -g -G 65535 ${SDPOOLBASEFILE}.c -o ${SDPOOLBASEFILE}.x \
+&& rm -f ${SDPOOLBASEFILE}.c \
+&& ld -r -d -G 65535 ${SDPOOLBASEFILE}.x -o ${SDPOOLBASEFILE}.o \
+&& rm -f ${SDPOOLBASEFILE}.x

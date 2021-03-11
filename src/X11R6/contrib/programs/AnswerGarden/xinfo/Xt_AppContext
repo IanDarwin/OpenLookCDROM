@@ -1,0 +1,179 @@
+@begin(header)
+author: ackerman@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+node_expert: ackerman=ag@ics.uci.edu
+expiration_date: 06/25/93
+last_modifier: ackerman@ics.uci.edu
+last_mod_date: 06/25/91
+mod_num: 1
+@end(header)
+
+@begin(Q)
+I am trying to write a toolkit application which opens windows on
+several displays ( not several screens on the same display ).  As a
+first iteration I wrote a simple program that opens command buttons on
+two screens of the same display.  When you press the left mouse button
+in one, it gets unmapped and the command button on the other screen gets
+mapped.  It works fine.
+
+Then I changed the code only in the following respect.  I open
+connections to two displays, and attempt to have the same behavior on
+two servers as opposed to two screens.  Enclosed is the code and the
+error generated.  The code breaks when I attempt to create a managed
+child on the remote server.  There seems to be no problem with creating
+the applicationShell on the remote server.  Any insights?  Thanks in
+advance. 
+@end(Q)
+@begin(A)
+Your test case also works for me when I simply refer to
+a screen that my particular display understands:
+
+***************
+*** 157,163 ****
+
+      /* create two top level shells, one on each screen */
+      /* come up on screen one of my machine */
+!     scrn = ScreenOfDisplay(dpy1, 1);
+
+      num_args=0;
+
+--- 158,164 ----
+
+      /* create two top level shells, one on each screen */
+      /* come up on screen one of my machine */
+!     scrn = ScreenOfDisplay(dpy1, 0);
+
+      num_args=0;
+
+but you're actually failing due to a known bug in Xt.  If your
+two screens have different depths you'll win, otherwise you
+have a high probability of failing unless the two servers happen
+to be running very similar code.  There is no convenient work-around.
+
+	- Ralph Swick
+@end(A)
+@begin(Q)
+> I ran a small test program where I wrote a single approximately 20
+> character long string to the peer socket. I expected the procedure
+> to be called once and the character string read. Upon running the
+> the test program, the character string was successfully read.
+> However, instead of proceeding on with the rest of the test program,
+> an infinite loop was entered with the "proc" procedure being called
+> over and over.
+
+
+	I experienced a similar problem and realized that I had closed the
+end of the socket that was writing before I exited the Xt main loop. When
+you do this, you get an infinite loop because its waiting for an EOF.
+Try keeping the socket open until you exit your X program. 
+
+Tom Pusateri
+Duke Medical Center
+Nanoline Duke Bldg.
+Room 384A
+681-3048
+
+pusateri@nbsr.mc.duke.edu
+@end(Q)
+
+@begin(Q)
+Just what are applications contexts for?
+@end(Q)
+@begin(A)
+Well, although the data type XtAppContext is opaque,
+if you look at it, you'll find it does have a pointer
+to a list of displays, allowing the programmer to 
+bring up widgets/windows on multiple displays.  (See
+the example) It also has a resources pointer, 
+meaning each AppContext could have different resource 
+specifications.  Beyond that, they still mystify me.
+
+@end(A)
+@begin(A)
+>> Just what are applications contexts for?
+>
+>Well, although the data type XtAppContext is opaque,
+>if you look at it, you'll find it does have a pointer
+>to a list of displays, allowing the programmer to 
+>bring up widgets/windows on multiple displays.  (See
+>the example) It also has a resources pointer, 
+>meaning each AppContext could have different resource 
+>specifications.  Beyond that, they still mystify me.
+
+Well, if you think of an application context as a list of displays, you
+aren't too far off.  Why might you want more than one of them?
+
+The idea is to allow multiple logical applications to coexist in one
+address space.  Some things, like the resource cache and the widget class
+records, can be shared among the logical applications (this is the only
+good reason to try to do this at all, really).  Other things, like the
+display(s) each application has open, the resource database, and the
+alternate event sources (timeouts, input, work procedures) are specific to
+each logical application.  The application context provides a place for
+the toolkit to store the per-application data.
+
+These logical applications can act pretty much independently of each
+other.  The only time the program needs to know that there are multiple
+logical applications is when it does event dispatching.  It obviously
+can't go into XtAppMainLoop for one application context, since that would
+never return and the other applications would starve.  You would need to
+write your own customized event loop that looked in each application
+context for an event and dispatched them appropriately.
+
+This is hard to do at present since there are no intrinsics routines which
+allow you to block pending input on any of a list of application contexts.
+This is a deficiency.
+
+If we ever get good shared library support including shared data, multiple
+application contexts will be a big win.  Also, if you have a multithreaded
+system, application contexts (even without the multiplexing event
+handlers) will win for you there, too.  The intrinsics will have to be
+changed to do locking on shared data structures in that case, though...
+
+	-paul asente
+
+@end(A)
+@begin(Q)
+     Not only do I not understand what they're good for, but using routines
+     that require them doesn't seem to work!
+@end(Q)
+@begin(A)
+From: Ralph R Swick 
+
+They're mostly good as a start to allow Xt to be implemented as a shared
+library.  They also make it possible for a single process to portray itself
+to the user as multiple semi-independent applications, if it so desires.
+
+Very few applications will be interested in having more than one context.
+
+@begin(Q)
+     Widgets are created under it and we walk into XtAppMainLoop().
+     Zilch. No window(s) are mapped, deaf and dumb.
+
+     Ok, so we go back and decide to do it the R2 way with XtInitialize()
+     and XtMainLoop(). Voila! Everything comes up! Hmmm.. What gives?
+@end(Q)
+@begin(A)
+Editor's note:  The following is true in only R3.
+From: Ralph R Swick 
+
+I can't tell from your description what might be going wrong.  We do
+have applications that use these routines successfully.  There _is_
+a known bug having to do with registering type converters in application
+contexts.  Depending on the widget library, this bug may or may not bite
+you.  It's definitely a problem with Xaw (i.e. for now, if you're using
+Xaw, use XtInitialize).  The symptoms are manifest as "no type converter
+registered..." error messages, which I assume you would have mentioned
+if you were seeing them.  [We have a fix for this bugs in the works.]
+
+@begin(Q)
+     Will things like XtMainLoop() quietly go away, making this mandatory?
+@end(Q)
+
+@begin(A)
+From: Ralph R Swick
+
+I don't see any good reason to ever remove appendix C from the specification.
+There's certainly no proposal to that effect on the table.
+@end(A)

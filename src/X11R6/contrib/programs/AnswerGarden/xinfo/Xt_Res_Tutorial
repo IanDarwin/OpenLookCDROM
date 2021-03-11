@@ -1,0 +1,314 @@
+@begin(header)
+author: Mark S. Ackerman
+show_author: ShowNone
+author_organization: MIT Center for Coordination Science
+node_expert: ackerman=ag@ics.uci.edu
+expiration_date: 12/31/93
+last_modifier: ackerman@ics.uci.edu
+last_mod_date: 06/25/91
+mod_num: 2
+@end(header)
+
+		       Using and Specifying X Resources
+
+				  Jim Fulton
+                               MIT X Consortium
+
+	     Copyright 1988 Massachusetts Institute of Technology
+
+Permission to  use, copy, modify,   and distribute this  documentation  for any
+purpose and without  fee  is hereby granted,  provided that the above copyright
+notice appear in  all copies and   that  both that  copyright  notice  and this
+permission  notice  appear in  supporting documentation,  and  that the name of
+M.I.T.  not be used in advertising  or publicity pertaining to  distribution of
+the software without specific, written prior permission.
+
+				    * * * *
+
+
+The Xlib Resource Manager provides a set of tools for specifying and
+manipulating user preferences (e.g. geometry, colors, fonts).  Simple
+programming interfaces to it are provided by the X Toolkit and by the Xlib
+routine XGetDefault.
+
+Resources, also refered to as "defaults" in older versions of X, are simply
+<name,value> pairs that are frequently used to control the appearence or
+function of particular program or subsystem.  They provide a convenient way to
+tailor whole collections of applications with a minimal amount of work.
+
+In previous versions of X, defaults were stored in a .Xdefaults file in each
+user's home directory, on every machine.  In addition to requiring duplicate
+copies of the defaults, it did not lend itself to conditional specifications
+(particularly if the user used both monochrome and color displays).
+
+In X11, these problems are solved by using the window property mechanism in the
+X protocol to store resources in the server, where they are available to all
+clients.  As a result, defaults may now be dynamically specified based on the
+particular display being used.  This is particularly useful in setting up
+different defaults for monochrome and color displays.  Furthermore, a new
+convention for specifying resources from the command line has been established
+(and is supported by all clients of the X Toolkit).
+
+Resources are usually as "program.name.subname.etc: value", one per line in
+resource files, or one per -xrm argument.  Names are hierarchies, usually
+corresponding to major structures within an application (where structures are
+often objects like windows, panels, menus, scrollbars, etc.).  The various
+subnames are called components and are specified left to right from most
+general to least general.
+
+If we take the "xmh" application as an example, we can see that its display
+is made up of sections called "panes", some of which in turn contain
+command buttons.  The "include" button (used to retreive new mail) in the
+"toc" (table of contents) pane could be named as follows:
+
+	program		pane		object group	subobject
+	name		name		name		name
+
+	xmh		toc		buttons		include
+
+An object's fully specified name (such as "xmh.toc.buttons.include" in the 
+example above) is called the "instance" name for that object.  In addition,
+each component belongs to a collection of similar components (such as the set
+of all panes, the set of all buttons, etc.) that can be specified using a 
+"class" name.  In the above example, if we assume that the xmh program is
+one of possibly several "Xmh" types of programs (just as "gnuemacs" and
+"microemacs" might be thought of as instances of the class of "Emacs"
+programs), we could build the following class name:
+
+	application	top level	second level	third level
+	type		area type	object type	object type
+
+	Xmh		VPaned		Box		Command		...
+
+By convention, instance name components begin with lowercase letters and class
+name components begin with uppercase letters.  Components that are made up of
+more than one word have the succeeding words capitalized and concatentated
+without any spaces.  Thus, an instance of an icon pixmap might be called
+"iconPixmap" whereas the class of icon pixmaps would be called "IconPixmap".
+The capitalization is important because resource names may contain both
+instance and class name components within the same specification
+(for example, "gnuemacs.VPaned.cursorColor: blue").
+
+Class names allow default values to be specified for all versions of given
+object.  Instance names allow a value for a particular version to be given
+that overrides the class value, and can be used to specify exceptions to the
+rules outlined by the class names.  For example, we could specify that
+that all command buttons in button boxes in vertical panes should have a 
+background color of blue, except for "include", which should be red: with
+
+	*VPaned.Box.Command.Background:  blue
+	xmh.toc.buttons.include.background:  red
+
+Furthermore, resource name hierarchies do not have to be fully specified.  In
+the preceeding example, we listed each of the individual components; however,
+this can be quite cumbersome.  Instead of having to give a full specification
+for each set of objects (there might be slider bars, or edit windows, or any
+number of other types), we can just "wildcard", or omit, the intervening
+components by using the "*" separator in place of the "." separator.  In
+general, it is a good idea to use the "*" instead of "." in case you've
+forgotten any intervening components or in case new levels are inserted into
+the middle of the hierarchy.
+
+	Xmh*VPaned*Background:  blue
+	xmh*toc.buttons.include.background: red
+
+The distiction between classes and instances is important.  For example,
+many text applications have some notion of background, foreground, border, 
+pointer, and cursor or marker color.  Usually the background is set to one
+color, and all of the other attributes are set to another so that they may be
+seen on a monochrome display.  To allow users of color displays to set any or
+all of them, the colors may be organized into classes as follows:
+
+	instance name		class name
+
+	background		Background
+	foreground		Foreground
+	borderColor		Foreground
+	pointerColor		Foreground
+	cursorColor		Foreground
+
+Then, to configure the application to run in "monochrome" mode, but using
+two colors, you would only have to use two specifications:
+
+	obj*Background:  blue
+	obj*Foreground:  red
+
+Then, if you decided that you wanted the cursor to be yellow, but the pointer
+and the border to remain the same as the foreground, you would only need one
+new resource specification:
+
+	obj*cursorColor: yellow
+
+Because class and instance names are distinguishable by case, both types of
+names may be given in a single resource specification.  Section 10.11 of the
+Xlib manual gives the following additional examples (note, the "xmh" program
+may use other names, these are for example only):
+
+	xmh*background:                      red
+	*command.font:                       8x13
+	*command.background:                 blue
+	*Command.Foreground:                 green
+	xmh*toc*Command.activeForeground:    black
+
+The resource hierarchy "xmh.toc*Command.activeForeground" specifies a
+particular color resource (in this case, the active foreground color) of all
+components of class Command that are contained within the "toc" in the xmh
+application.  Although this is very powerful, figuring out that this can be
+specified at all, let alone how, is currently a problem with the documentation
+for many of the more complex clients of the Resource Manager.  Eventually,
+widgets should be documented just as commands are today: there should be
+descriptions of the instance names, class names, and allowable values for each
+of the widget's resources.  Application documentation would then only need to
+describe how widgets are combined.  Until then, the best places to look for
+information on which resources may be specified are:
+
+	1. the manual pages for the application
+	2. any documentation for the widgets used by the application
+	3. any application resource files in /usr/lib/X11/app-defaults/
+	4. any XtResource tables in the the application or the widget sources
+
+Under X11, you have a lot of flexibility as to where defaults are defined.  The
+Resource Manager obtains resource specifications from the following places:
+
+	1. from any application-specific resource files, usually stored in
+	   /usr/lib/X11/app-defaults/.
+
+	2. from any application-specific resources files in the directory
+	   named by the environment variable XAPPLRESDIR (default value
+	   is $HOME) for programs written using the X Toolkit.
+
+	3. from the RESOURCE_MANAGER property on the root window of screen 0;
+	   these are stored using the xrdb program.  If this property is not
+	   defined, then $HOME/.Xdefaults will be read to provide compatibility
+	   with X10 (although the resource specification format has
+	   changed somewhat).
+
+	4. from any user-specific defaults stored in a file whose name is set
+	   in the environment variable XENVIRONMENT.
+
+	5. from the -xrm command line option (for programs written with the
+	   X Toolkit).
+
+
+Resources are usually loaded from a file into the RESOURCE_MANAGER property
+using the "xrdb" program from whatever script you use to start up X.  Sites
+that use the xdm Display Manager will most likely provide for loading in
+user-specified resources automatically.  See your system manager for details.
+
+I have a script called "xsetup" on every machine that I use that starts up the
+appropriate programs for that machine (terminal emulators, a mailbox on my home
+machine, clocks, load average monitors, etc.).  For example, I use the
+following on my desktop workstation to get my base environment going:
+
+	#!/bin/sh
+	xrdb -load $HOME/.Xresources
+	stty erase '^?'
+	xmodmap -p $HOME/.xmodmap
+	xset b 100 400 c 50 s 1800
+	uwm &
+	xclock -geometry 48x48-1+1 &
+	xload -geometry 48x48-1+100 &
+
+The xrdb program reads my global defaults from $HOME/.Xresources.  This is
+where I define resources that I want to have used by clients on every machine:
+
+	bitmap*Dashed:  off
+	XTerm*multiScroll:  on
+	XTerm*jumpScroll:  on
+	XTerm*reverseWrap:  on
+	XTerm*curses:  on
+	XTerm*font:  6x10
+	emacs*Geometry:  80x65-0-0
+	emacs*Background:  #5b7686
+	emacs*Foreground:  white
+	emacs*Cursor:  white
+	emacs*BorderColor:  white
+	emacs*Font:  6x10
+
+I put machine-specific defaults (usually colors so that I can easily
+distinguish windows on various machines) in a file called ~/.Xenv and
+set the XENVIRONMENT variable in my .login to point to that file.  For 
+example, I use the following defaults on my desktop workstation:
+
+	XTerm*Background:  black
+	XTerm*Foreground:  green
+	XTerm*BorderColor:  white
+	xclock*analog:  on
+	xclock*borderWidth: 0
+	xclock*padding: 2
+	xclock*Background: black
+	xclock*Foreground: red
+	xload*Background: black
+	xload*Foreground: cyan
+
+For consistency, I create an xsetup script and a .Xenv file (if I want any
+machine specific defaults) on each of the machines that I commonly use.  This
+allows me to just login, type "xsetup", and get right to work.  Continuing
+the example started above, here is the xsetup file that I use on my server:
+
+	#!/bin/sh
+	xterm -geometry 80x55+0+0 &
+	xterm -geometry 80x65+488+1 &
+	xterm -geometry 80x20+0-0  &
+	xload =48x48-1+150 &
+	xbiff -rv =48x48-1+50 &
+
+and the corresponding .Xenv file:
+
+	XTerm*Foreground:  white
+	XTerm*Background:  #c00
+	XTerm*BorderColor:  white
+	tinyxterm*Font: 3x5
+	tinyxterm*Geometry: 80x24
+	bigxterm*Font: 9x15
+	bigxterm*Geometry:  80x55
+	xload*Background: black
+	xload*Foreground: red
+	xbiff*borderWidth: 0
+	xbiff*Background: white
+	xbiff*Foreground: blue
+	xbiff*reverseVideo: on
+
+Note the use of the alternative instance names "tinyxterm" and "bigxterm".
+This allows me to quickly get a different "flavor" of xterm by simply 
+invoking "xterm -name tinyxterm" or "xterm -name bigxterm".
+
+The xrdb program uses the C preprocessor to provide conditionals based on
+the configuration of the server being used.  This is very useful if you 
+commonly use different types of servers (such as monochrome and color) 
+from the same account.  See the xrdb(1) manual page for more details.
+
+
+
+Summary
+
+X11 gives you many choices as to how to organize your screen, specify your
+defaults, and start up various programs.  I frequently have 5 xterms, 1 clock,
+2 load average monitors, 1 mailbox, an emacs, and uwm all running at once.
+The scheme outlined above is somewhat of a brute force approach, but works
+well for me.
+
+The highlights are:
+
+	1.  Use the Display Manager xdm.  It is very flexible and can be 
+	    tailored to provide any sort of default environment.
+
+	2.  Create X startup scripts that run the appropriate programs to set
+	    up your environment (start your window manager, load defaults, 
+	    etc.).  I call these scripts "xsetup" on each machine.
+
+	3.  Put global resources in one file that you run xrdb on from your
+	    X startup script.  I call this file ~/.Xresources.  In general, 
+	    you should use "*" instead of "." to separate components.
+
+	4.  Put machine-specific resources in another file and set the 
+	    XENVINRONMENT variable to point to it.  I call this file ~/.Xenv.
+	    Use "*" instead of "." to separate components.
+
+
+
+Where to look for more information:
+
+	X(1), xrdb(1), Section 10.11 of the Xlib manual, XGetDefault(3X), 
+	Section 4.2 of the X Toolkit manual, application manual pages
+

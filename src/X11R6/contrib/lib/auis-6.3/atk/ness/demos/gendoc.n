@@ -1,0 +1,946 @@
+\begindata{text,538386776}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\define{paramname
+menu:[Font~1,Paramname]
+attr:[FontFace Italic Int Set]}
+\define{classname
+menu:[Font~1,Classname]
+attr:[FontFace Italic Int Set]}
+\define{funcname
+menu:[Font~1,Funcname]
+attr:[FontFace Italic Int Set]}
+\define{fixedtext
+menu:[Region~4,Fixedtext]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{fixedindent
+menu:[Region~4,Fixedindent]
+attr:[LeftMargin LeftMargin Cm 83230]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{fieldheading
+menu:[Region~4,Fieldheading]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace Bold Int Set]
+attr:[FontFamily AndySans Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{fieldtext
+menu:[Region~4,Fieldtext]
+attr:[LeftMargin LeftMargin Cm 83230]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFamily AndySans Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+-- format.n
+
+--
+
+-- 	written 7-28-89 by George Baggott and Fred Hansen
+
+--
+
+--	Generate a documentation skeleton from a .ch file
+
+--
+
+--	To run this type 
+
+--		nessrun gendoc.n [ -qr ] \italic{<name(s) of .ch file(s)>}
+
+-- 	If the name of the .ch file is xxx.ch, the documentation skeleton will
+
+--	by stored in xxx.doc.  If the -qr option is specified the output will be in
+
+--	"quick reference" format, listing the names and arglists for the
+
+--	methods in alphabetical order.  In this case, the output will have a .qr
+
+--	suffix instead of a .doc
+
+--
+
+--	The format of the output is determined by the files docheader.d, docbody.d,
+
+--	qrheader.d, qrbody.d.  They are first sought in $HOME/nesslib/  and
+
+--	then in $ANDREWDIR/lib/ness/demos/.    To customize the output format, 
+
+--	simply edit these two files.
+
+
+
+marker CurTok	-- current token about to be processed
+
+
+
+	-- the set which may start a word
+
+marker Letters:= "qwertyuiopasdfghjklzxcvbnm_"
+
+		~ "QWERTYUIOPASDFGHJKLZXCVBNM"
+
+
+marker IdChars := Letters ~ "0123456789"	-- the set of characters that may 
+appear in words
+
+
+marker mode	-- "doc" for normal mode, "qr" for quick reference.
+
+
+marker body 	-- the body template read in from docbody.d or qrbody.d
+
+marker header	-- the header template from docheader.d or qrheader.d
+
+
+marker andrewdir	-- $ANDREWDIR
+
+marker home	-- $HOME
+
+
+
+
+function AddDecl(classname, category)
+
+	marker funcname
+
+	marker functype
+
+	marker comment
+
+	marker m
+
+	marker nxt
+
+	marker args
+
+	integer depth
+
+
+	-- get funcname
+
+	funcname := CurTok
+
+	if funcname = "\}" or funcname = "data" then
+
+		CurTok := ""
+
+		return ""
+
+	end if
+
+
+	printline("formatting " ~ funcname)
+
+
+	-- get args
+
+	CurTok := tokens_getC(CurTok)
+
+	depth := 1
+
+	args := newbase()
+
+	
+
+	-- add self arg if necessary
+
+	if category /= "classprocedures"  and category /= "macros" then
+
+		if mode /= "qr" then
+
+			args ~:= "\\n"
+
+		end if
+
+		args ~:= "struct " ~ classname ~ " *" ~ classname
+
+
+		if tokens_getC(CurTok) /= ")" then
+
+			if mode = "qr" then
+
+				args ~:= ", "
+
+			else
+
+				args ~:= ",\\n"
+
+			end if
+
+		end if
+
+	end if
+
+
+
+	-- read through argument list
+
+	while depth > 0 do
+
+		CurTok := tokens_getC(CurTok)
+
+
+		if CurTok = "(" then
+
+			depth := depth + 1
+
+		else if CurTok = ")" then
+
+			depth := depth - 1
+
+		end if end if
+
+
+		if depth > 0 then
+
+			if 	CurTok = "," then
+
+					if mode = "qr" then
+
+						args ~:= ", "
+
+					else
+
+						args ~:= ",\\n"
+
+					end if
+
+			else if 	search(letters, first(CurTok)) /= ""
+
+				and tokens_GetC(CurTok) /= ","
+
+				and tokens_GetC(CurTok) /= ")" then
+
+					args ~:= CurTok ~ " "
+
+			else
+
+				args ~:= CurTok
+
+			end if end if
+
+		end if
+
+	end while
+
+
+	-- get functype and skip to end of declaration
+
+	if category = "macros" or category = "macromethods" then
+
+		functype := ""
+
+		CurTok := search(finish(CurTok), "\\n")
+
+		while previous(CurTok) = "\\\\" do
+
+			CurTok := search(finish(CurTok), "\\n")
+
+		end while
+
+		CurTok := tokens_getC(CurTok)
+
+	else
+
+
+		CurTok := tokens_getC(CurTok)	-- get token after ")"
+
+		-- CurTok is either ";" or "returns"
+
+		if CurTok = "returns" then
+
+			functype := newbase()
+
+			CurTok := tokens_getC(CurTok)	-- get token after "returns"
+
+			while CurTok /= ";" do
+
+				if 	search(letters, first(CurTok)) /= ""
+
+					and tokens_GetC(CurTok) /= ","
+
+					and tokens_GetC(CurTok) /= ")" then
+
+
+					functype ~:= CurTok ~ " "
+
+				else
+
+					functype ~:= CurTok
+
+				end if
+
+				CurTok := tokens_getC(CurTok)
+
+			end while
+
+		else
+
+			functype := "void"
+
+		end if
+
+
+		if search(letters, last(functype)) /= "" then
+
+			functype := functype ~ " "
+
+		end if
+
+
+		-- now CurTok is ";".  skip it 
+
+		-- 	and load trailing comment into tokens_PreSpace()
+
+		CurTok := tokens_getC(CurTok) 
+
+	end if
+
+
+	-- get comment
+
+	comment := tokens_PreSpace()
+
+	m := search(comment, "/*")
+
+	if m = "" or extent(m, comment) = "" then
+
+		comment := "<no comment was found>"
+
+	else
+
+		-- strip comment to the part between /* and */
+
+		comment := extent(next(m), comment)
+
+		m := search(comment, "*/")
+
+
+		-- skip whitespace preceding */
+
+		while search("\\n \\t", previous(m)) /= "" do
+
+			m := previous(m)
+
+		end while
+
+		comment := extent(comment, start(m))
+
+	end if
+
+
+	-- capitalize category and remove trailing 's'
+
+	category := next(search("aAAbBBcCCdDDeEEfFFgGGhHHiIIjJJkKKlLLmMM" 
+
+			~ "nNNoOOpPPqQQrRRsSStTTuUUvVVwWWxXXyYYzZZ", 			first(category)))
+
+		~ extent(next(first(category)), previous(last(category)))
+
+
+	-- format args
+
+	m := tokens_getC(start(args))
+
+	while m /= "" do
+
+		nxt := tokens_getC(m)
+
+		if nxt = "," or nxt = "" then
+
+			addstyles(m, "\paramname{paramname}")
+
+		end if
+
+		m := nxt
+
+	end while
+
+
+	if mode = "qr" then 
+
+		m := "\\n-\\n" ~ funcname ~ "\\n"
+
+	else
+
+		m := newbase()
+
+	end if
+
+
+-- The following messes up the styles:
+
+--	return   replaceMulti (body,
+
+--		"<classname>" ~ classname ~
+
+--		"<funcname>" ~ funcname ~
+
+--		"<functype>" ~ functype ~
+
+--		"<args>" ~ args ~
+
+--		"<category>" ~ category ~
+
+--		"<comment>" ~ comment) 
+
+
+	m := copy(body)
+
+	replaceAll(m, "<classname>", classname)
+
+	replaceAll(m, "<funcname>", funcname)
+
+	replaceAll(m, "<functype>", functype)
+
+	replaceAll(m, "<args>", args)
+
+	replaceAll(m, "<category>", category)
+
+	replaceAll(m, "<comment>", comment)
+
+
+	return  "\\n-\\nName: " ~ funcname ~ "\\n" ~ m
+
+
+end function
+
+
+
+function AddSection(s, classname, category)
+
+	marker tok1, tok2
+
+	marker m
+
+	marker result := newbase()
+
+	tok1 := tokens_getC(start(s))	-- get first token
+
+	tok2 := tokens_getC(tok1)		-- get second token
+
+	if tok2 /= ":" then
+
+		CurTok := tok1
+
+	else 
+
+		CurTok := tokens_getC(tok2)
+
+	end if
+
+
+	while CurTok /= "" and extent(CurTok, s) /= "" do
+
+		result ~:= AddDecl(classname, category)
+
+	end while
+
+	return result
+
+end function
+
+
+
+
+-- SectionStart(t)
+
+--	finds the next section start after the end of text
+
+--	a section start is a colon preceded by one of the words
+
+--		methods  overrides  classprocedures  macromethods  data
+
+--
+
+function SectionStart(s)
+
+	marker w
+
+	marker colon
+
+	while True do
+
+
+		colon := search(finish(s), ":")
+
+		if colon = "" then return s end if
+
+		-- find word before the colon
+
+		s := colon
+
+		w := previous(s)
+
+		while search(" \\t\\r\\n", w) /= "" do  s := w;  w := previous(w) end while
+
+		while search(Letters, w) /= "" do w := previous(w) end while
+
+
+--		printline("SS: '" ~ extent(finish(w), start(s)) ~ "'")
+
+
+		if search(" methods overrides classprocedures macromethods macros data ",
+
+				" " ~ extent(finish(w), start(s)) ~ " ") /= "" then 
+
+			-- bingo
+
+			return extent(finish(w), colon)
+
+		end if
+
+		s := colon
+
+	end while
+
+end function
+
+
+
+-- NextSection(text)
+
+--	returns the next section following the argument, which must be a section
+
+--	a Section extends from one keyword-colon until just before the next
+
+function NextSection(text)
+
+	marker m
+
+	text := SectionStart(finish(text))
+
+	if text = "" then return allnext(start(text)) end if	-- everything after the 
+arg section
+
+	m := SectionStart(finish(text))
+
+	if m = "" then 
+
+		return allnext(start(text))		-- everything after the arg section
+
+	else
+
+		return extent(text, start(m))		-- from one keyword to the next
+
+	end if
+
+end function
+
+
+
+function doFile(filename)
+
+	marker outname
+
+	marker outtext
+
+	marker text
+
+	marker ClassName
+
+	marker keyword
+
+	marker m
+
+	marker x
+
+
+	m := last(filename)
+
+	while m /= "" and m /= "/" and m /= " " and m /= "\\t" do
+
+		m := previous(m)
+
+	end while
+
+	outname := extent(finish(m), filename)
+
+	m := extent(previous(previous(last(outname))), outname)  -- last 3 characters
+
+	if m /= ".ch" then
+
+		outname := outname ~ "." ~ mode		-- append .doc or .qr
+
+	else 
+
+		outname := extent(outname, start(m)) ~ "." ~ mode  -- change .ch to .doc or 
+.qr
+
+	end if
+
+
+	text := readfile(filename)
+
+	if text = "" then
+
+		printline("empty input file: " ~ filename)
+
+		exit function
+
+	end if
+
+
+	keyword := findClassName(text)
+
+	if keyword /= "" then
+
+		ClassName := token(finish(keyword), IdChars)
+
+	else
+
+		-- use filename as classname
+
+		classname := start(filename)
+
+		m := search(classname, "/")
+
+		while m = "/" and extent(m, filename) /= "" do
+
+			classname := finish(m)
+
+			m := search(classname, "/")
+
+		end while
+
+		ClassName := span(ClassName, IdChars)
+
+		keyword := start(text)	-- for NextSection() below
+
+	end if
+
+
+	printline("format: " ~ filename ~ " -> " ~ outname 
+
+			~ "   Class: " ~ ClassName)
+
+
+	outtext := copy(header)
+
+	replaceAll(outtext, "<classname>", ClassName)
+
+
+	m := finish(keyword)
+
+	while True do 
+
+		m := NextSection(finish(m))
+
+		keyword := token(m, Letters)
+
+
+		if m = "" or keyword = "" then exit while end if
+
+
+--		printline("Found section: " ~ keyword)
+
+
+		if search(" methods overrides macromethods macros classprocedures ",
+
+			 " " ~  keyword ~ " ") /= "" then
+
+			outtext ~:= AddSection(m, ClassName, keyword)
+
+--			printline("<")
+
+		end if
+
+	end while
+
+
+	if mode = "qr" then
+
+		outtext := sort_records_per_flags("", outtext, "f")
+
+		stripSortTags(outtext)
+
+	else 
+
+		printline("sorting . . .")
+
+		outtext := sort_records("Name", outtext);
+
+		stripRecordMarks(outtext);
+
+	end if
+
+
+	writefile(outname, outtext)
+
+end function
+
+
+function stripSortTags(s)
+
+	marker start, fin
+
+	while true do
+
+		start := search(s, "\\n-\\n")
+
+		if start = "" then exit function end if
+
+		fin := search(finish(start), "\\n")
+
+		replace(extent(start, fin), "")
+
+	end while
+
+
+end function
+
+
+function stripRecordMarks(s)
+
+	s := start(base(s))
+
+	while true do
+
+		s := search(s, "\\n-\\n")
+
+		if s = "" then exit function end if
+
+		s := replace(extent(s, search(finish(s), "\\n")), "")
+
+	end while
+
+end function
+
+
+function fetchtemplate(fnm)
+
+	marker m 
+
+	marker path 
+
+	path := home ~ "/nesslib/" ~ fnm
+
+	m := system("file " ~ path)
+
+	if search(m, "No such") = "" then
+
+		return readfile(path)
+
+	end if
+
+	path := andrewdir ~ "/lib/ness/demos/" ~ fnm
+
+	m := system("file " ~ path)
+
+	if search(m, "No such") = "" then
+
+		return readfile(path)
+
+	end if
+
+	printline("Cannot find " ~ path)
+
+	return ""
+
+end function
+
+
+function main(args)
+
+	marker filename
+
+	home := system("echo $HOME")
+
+	home := extent(start(home), start(last(home)))
+
+	andrewdir := system("echo $ANDREWDIR")
+
+	andrewdir := extent(start(andrewdir), start(last(andrewdir)))
+
+	if andrewdir = "" then andrewdir := "/usr/andrew" end if
+
+
+	if search(args, "-qr") = "" then
+
+		mode := "doc"
+
+	else
+
+		mode := "qr"
+
+	end if
+
+
+	body := fetchtemplate(mode ~ "body.d")
+
+	header := fetchtemplate(mode ~ "header.d")
+
+	if header = "" or body = "" then
+
+		exit function
+
+	end if
+
+
+	filename := token(args, IdChars ~ "./-")
+
+	while filename /= "" do
+
+		if filename /= "-qr" then
+
+			doFile(filename)
+
+		end if
+
+		filename := token(finish(filename), IdChars ~ "./-")
+
+	end while
+
+end function
+
+
+function findClassName(text)
+
+	text := start(text)
+
+	while True do
+
+		text := tokens_getC(text)
+
+		if text = "" or text = "class" or text = "package" then
+
+			return text
+
+		end if
+
+	end while
+
+end function
+
+ 
+
+function replaceAll(text, key, new)
+
+	marker m, t
+
+
+	m := search(text, key)
+
+	while m /= "" do
+
+		t := replace(finish(m), new)
+
+		replace(match(m, key), "")
+
+		m := search(extent(finish(t), text), key)
+
+	end while
+
+end function
+
+
+
+-- replaceMulti is specialized for a 'table' with elements beginning with a 
+word in 
+
+--	< > and followed by a replacement value:
+
+--		<classname>name<funcname>name...
+
+--	in the algorithm, text is continually reduced to the part not yet checked
+
+function replaceMulti(text, table)
+
+	marker m		-- cycles thru text looking for '<'
+
+	marker r		-- result
+
+	marker s		-- value in table
+
+	r := newbase();
+
+	m := search(start(text), "<")
+
+	while m /= "" and extent(m, text) /= "" do
+
+		r ~:= extent(text, start(m));
+
+		m := extent(m, search(start(m), ">"))
+
+		if m = "" or extent(m, text) = "" then exit while end if
+
+		text := extent(finish(m), text)
+
+
+		s := search(table, m)
+
+		if s = "" then
+
+			r ~:= m
+
+		else
+
+			r ~:= extent(finish(s), start(search(toend(finish(s)), "<")))
+
+		end if
+
+
+		m := search(finish(m), "<")
+
+	end while
+
+	return r ~ text
+
+end function
+
+
+
+-- 
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,68,0,0}
+
+-- Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{-- $Disclaimer: 
+
+-- Permission to use, copy, modify, and distribute this software and its 
+
+-- documentation for any purpose is hereby granted without fee, 
+
+-- provided that the above copyright notice appear in all copies and that 
+
+-- both that copyright notice, this permission notice, and the following 
+
+-- disclaimer appear in supporting documentation, and that the names of 
+
+-- IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+-- used in advertising or publicity pertaining to distribution of the software 
+
+-- without specific, written prior permission.
+
+-- 
+
+-- IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+-- DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+-- ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+-- SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+-- BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+-- DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+-- WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+-- ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+-- OF THIS SOFTWARE.
+
+--  $
+
+}}\enddata{text,538386776}

@@ -1,0 +1,582 @@
+\begindata{text,538292516}
+\textdsversion{12}
+\template{default}
+-- vp2scribe.n
+
+
+--	Conversion of Ventura Print files to Scribe format
+
+--
+
+--	Tailored for the help system.
+
+
+-- Usage:
+
+--	nessrun   vp2scribe.n  <filename>.txt
+
+--
+
+--	The file will be converted and stored in the same directory 
+
+--	under the name <filename>.mss
+
+--	If there was a <filename>.mss file, it is moved to <filename>.mss.BAK
+
+--	(If there was not a <filename>.mss, a spurious error message appears.
+
+--	Ignore it.)
+
+
+--	If this file is loaded from a .xyzinit file, it adds the menu entry
+
+--	VP to Scribe on the File menu card.  Choosing this option will
+
+--	convert the currently selected text.
+
+
+--	A ness function may call vp2scribe_convert(text).  The value returned
+
+--	will be a converted copy of the argument.
+
+
+
+--
+
+--  CONVERSIONS DONE BY THIS PROGRAM
+
+--
+
+--	For paragraphs beginning with one of the entries in string 'Conversion',
+
+--	the translation is @name[...], where the name is the second portion of
+
+--	the Conversion line.
+
+--
+
+--	PAGE BREAK is converted to @newpage
+
+--
+
+--	consecutive paragraphs of @LEFT INDENT = are combined within a single
+
+--	@begin[leftindent] ... @end[leftindent]
+
+
+--	
+
+--  <B>text<D>	to  @b[text]
+
+--  <BU>text<D>	to  @bu[text]
+
+--  <BO>text<D>	to  @bu[text]	! not in original spec
+
+--  <MI>text<D>	to  @i[text]
+
+--  <N>   to <N>			???
+
+--  <MO>   to <MO>		???
+
+
+
+--  NOTE: Many @PAGE BREAK commands have index items associated with
+
+--  them, as in
+
+--  
+
+--      @PAGE BREAK = <$Itext>
+
+--  
+
+--  The index item is moved to before the @newpage so the index
+
+--  terms are associated with the correct page.  
+
+--  (If the index entry is for the next page, I would say that Scribe had a 
+bug.)
+
+
+
+-- Remaining tasks:
+
+--
+
+--	convert index entries
+
+--
+
+--	take care of the case 
+
+--		@2LEFT INDENT = [ ] * . \\   
+
+--	it generates a square bracket within a Scribe group delimited by square 
+brackets
+
+--
+
+--	probably ought to deal with square brackets and at-signs anywhere in text
+
+--
+
+--	numerous error conditions are not treated carefully;  
+
+--	this can result in lose of a text character in such places as 
+
+--	after an '=' or before an @
+
+--	A blank  line is not recognized if it contains any whitespace
+
+
+
+--  Here's how the index items should be translated:
+
+--  
+
+--  <$Itext>	    to  @Index[text]
+
+--  
+
+--  <$Itext1;text2>	    to	@IndexSecondary[Primary="text1",
+
+--  				Secondary="text2"]
+
+--  
+
+--  <$Itext1;see text2> to	@See[Primary="text1",
+
+--  				Other="text2"]
+
+
+
+
+marker Conversion := 	-- table of conversions of paragraph styles
+
+		"MAJOR HEADING = chapter;" ~
+
+		"MINOR HEADING = section;" ~
+
+		"SUB HEADING = subsection;" ~
+
+		"LEFT INDENT = leftindent;" ~
+
+		"2LEFT INDENT = 2leftindent;" ~
+
+		"2 LEFT INDENT = 2leftindent;" ~
+
+		"BULLET = itemize;" ~
+
+		"LAST BULLET = itemize;" ~
+
+		"FLUSHLEFT = flushleft;" ~
+
+		"NO BULLET = leftindy;" ~
+
+		"LAST NOBULLET = leftindy;" ~
+
+		"NAMES = names;" ~
+
+		"COPYRIGHT = address;" ~
+
+		"EDITION = edition;" ~
+
+		"PAGE BREAK = %;"
+
+
+marker StyleConv :=	-- conversions for inline text styles
+
+		"<B>@b[  <BU>@bu[  <MI>@i[  <BO>@bu["
+
+
+
+-- convert the paragraph styles listed in 'Conversion'
+
+--	the \\n\\n after each paragraph is retained in the output
+
+--
+
+function convertpara(text)
+
+	marker new, m, p, t
+
+
+	new := newbase()
+
+	p := start(text)
+
+	if front(text) = "@" then 
+
+		m := front(text)
+
+	else
+
+		m := last(search(p, "\\n@"))
+
+	end if
+
+	while m /= "" do
+
+		-- at this point, m refers to an "@" at the beginning of a line 
+
+		--	 p points to the beginning of the preceding plain text
+
+		--	'new' has the translation of everything before p
+
+
+		-- output to new the segment starting at p
+
+		new ~:= extent(p, start(m))
+
+
+		-- set t to the translation of the style code in m
+
+		m := extent(next(m), search(finish(m), " ="))
+
+		t := search(Conversion, m)
+
+
+		-- set m to the text under the style
+
+		-- (skip the character after the '=',  
+
+		--    fail to recognize blank line containing spaces)
+
+		m := extent(next(next(m)), 
+
+				previous(search(finish(m), "\\n\\n")))
+
+
+		-- translate the style
+
+		if next(next(t)) = "%" then
+
+			-- translate PAGE BREAK
+
+			-- output text from rest of line and then @newpage
+
+			new ~:= m ~ "@newpage\\n\\n"
+
+		elif t /= "" then
+
+			-- translate some other style
+
+			t := extent(next(next(t)), 
+
+					start(search(start(t), ";")))
+
+
+			-- t is the translation of the style name
+
+			-- m is the text that is going to be styled
+
+			--
+
+			-- XXX ought to check that 'm' does not contain "]"
+
+			--
+
+			new ~:= "@" ~ t ~ "[" ~ m ~ "]\\n\\n"
+
+
+		end if
+
+		if t /= "" then 
+
+			-- start next segment after \\n\\n
+
+			p := next(next(next(m)))
+
+			if p = "@" then
+
+				m := p
+
+			else
+
+				m := last(search(start(p), "\\n@"))
+
+			end if
+
+		else
+
+			m := last(search(finish(m), "\\n@"))
+
+		end if
+
+	end while
+
+	-- output to new the segment starting at p
+
+	new ~:= extent(p, base(p))
+
+	return base(new)
+
+end function
+
+
+-- convert the < ... > style indications
+
+--
+
+function convertstyle(text)
+
+	marker m, p, new, t
+
+
+	p := start(text)
+
+	new := newbase()
+
+	m := search(p, "<")
+
+	while m /= "" do
+
+		-- at this point, p refers to an unconverted section
+
+		-- new contains the conversion of everything prior to p
+
+		-- m refers to a < somewhere after p
+
+
+		-- output the segment to p
+
+		new ~:= extent(p, start(m))
+
+
+		-- find style item and its translation
+
+		m := extent(m, search(start(m), ">"))
+
+		t := search(StyleConv, m)
+
+		if t /= "" then
+
+			-- convert style
+
+			m := extent(next(m), start(search(start(m), "<D>")))
+
+			new ~:= extent(next(t), search(start(t), "[")) 
+
+					~ m ~ "]"
+
+			p := nextn(m, 4)
+
+		elif match(m, "<$I") /= "" then
+
+			-- index entry
+
+			--
+
+			-- XXX need to convert index entry
+
+			--
+
+			new ~:= m
+
+			p := next(m)
+
+		else
+
+			-- not a recognized style, output unchanged
+
+			new ~:= m
+
+			p := next(m)
+
+		end if
+
+		m := search(start(p), "<")
+
+	end while
+
+	-- output to new the segment starting at p
+
+	new ~:= extent(p, base(p))
+
+	return base(new)
+
+end function
+
+
+
+-- collapse is very stupid.  It only checks for and collapses adjacent 
+@leftindent[] paragraphs
+
+-- 	it converts all @leftindent[] to use @begin[]...
+
+function collapse(text)
+
+	marker new, m, q
+
+	marker p		-- start of segment to put out
+
+
+	new := newbase()
+
+	p := start(text)
+
+	m := search(p, "@leftindent[")
+
+	while m /= "" do
+
+		-- here m refers to an initial @leftindent[
+
+		-- p refers to the start of the prior segment
+
+		-- new has all text prior to p
+
+		new ~:= extent(p, start(m)) ~ "@begin[leftindent]"
+
+		p := finish(m)
+
+		m := search(p, "]\\n\\n")
+
+		q := match(finish(m), "@leftindent[")
+
+
+		-- now convert all subsequent @leftindent paragraphs
+
+		while q /= "" do
+
+			new ~:= "\\n" ~ extent(p, start(m)) ~ "\\n"
+
+			p := finish(q)
+
+			m := search(p, "]\\n\\n")
+
+			q := match(finish(m), "@leftindent[")
+
+		end while
+
+
+		new ~:= "\\n" ~ extent(p, start(m)) ~ "\\n@end[leftindent]\\n\\n"
+
+		p := finish(m)
+
+		m := search(p, "@leftindent[")
+
+	end while
+
+	new ~:= extent(p, base(p))
+
+	return base(new)
+
+end function
+
+
+
+function vp2scribe_convert(text)
+
+	return collapse(convertstyle(convertpara(text)))
+
+end function
+
+
+
+extend "view:textview"
+
+	on menu "File,VP to Scribe"
+
+		marker sel
+
+		sel := currentselection(currentinset)
+
+		replace (sel, collapse(convertstyle(convertpara(sel))))
+
+	end menu
+
+end extend
+
+
+
+function main(args)
+
+	marker filename, outname, text, ext
+
+
+	filename := token(args, "qwertyuiopasdfghjklzxcvbnm"
+
+			~ "QWERTYUIOPASDFGHJKLZXCVBNM"
+
+			~ "~./0123456789")
+
+	ext := extent(nextn(finish(filename), -4), filename)
+
+	if ext /= ".txt" then
+
+		printline("File name is '" ~ filename ~ "' and ends with '" 
+
+				~ ext ~ "' instead of  .txt  as it should")
+
+		exit function
+
+	end if
+
+	outname := extent(filename, first(ext)) ~ "mss"
+
+
+	printline("vp2scribe: " ~ filename ~ " -> " ~ outname)
+
+	text := readfile(filename)
+
+	text := convertpara(text)
+
+	text := convertstyle(text)
+
+	text := collapse(text)
+
+	system("mv " ~ outname ~ " " ~ outname ~ ".BAK")
+
+	writefile(outname, text)
+
+end function
+
+
+-- 
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,37,0,0}
+
+-- Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{-- $Disclaimer: 
+
+-- Permission to use, copy, modify, and distribute this software and its 
+
+-- documentation for any purpose is hereby granted without fee, 
+
+-- provided that the above copyright notice appear in all copies and that 
+
+-- both that copyright notice, this permission notice, and the following 
+
+-- disclaimer appear in supporting documentation, and that the names of 
+
+-- IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+-- used in advertising or publicity pertaining to distribution of the software 
+
+-- without specific, written prior permission.
+
+-- 
+
+-- IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+-- DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+-- ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+-- SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+-- BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+-- DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+-- WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+-- ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+-- OF THIS SOFTWARE.
+
+--  $
+
+}}\enddata{text,538292516}

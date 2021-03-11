@@ -1,0 +1,108 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+ *        For full copyright information see:'andrew/config/COPYRITE'     *
+\* ********************************************************************** */
+
+/*
+	$Disclaimer: 
+*Permission to use, copy, modify, and distribute this software and its 
+*documentation for any purpose is hereby granted without fee, 
+*provided that the above copyright notice appear in all copies and that 
+*both that copyright notice, this permission notice, and the following 
+*disclaimer appear in supporting documentation, and that the names of 
+*IBM, Carnegie Mellon University, and other copyright holders, not be 
+*used in advertising or publicity pertaining to distribution of the software 
+*without specific, written prior permission.
+*
+*IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+*DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+*ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+*SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+*BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+*DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+*WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+*ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+*OF THIS SOFTWARE.
+* $
+*/
+
+DependTargetFiles(globalrefs._h)
+
+NormalObjectRule()
+NormalAsmPPRule()
+
+#ifdef RESOLVER_ENV
+RESOLVER_LIB = $(RESOLVLIB)
+LIBC_RESOLVER_LIST = gethostnamadr.o gethostent.o res_comp.o res_debug.o res_init.o res_mkquery.o res_send.o sethostent.o res_search.o
+RESOLVER_SPLIT_CMD = /bin/sh -c 'if test $(RESOLVER_LIB); \
+	then ar x $(RESOLVER_LIB); fi; exit 0';
+LIBC_RESOLVER_HACK = /bin/sh -c 'if test $(RESOLVER_LIB); \
+	then ar d libcx.a $(LIBC_RESOLVER_LIST); fi; exit 0';
+#endif
+
+all:: 		globals.o entry.o doload.o
+
+all:: 		dofix.o
+
+globals.o:  	globals.spp globalrefs._h
+
+globalrefs._h:	libc.eplist aixfix
+		$(AWK) '{printf "%s\n", $$2}' libc.eplist | \
+		./aixfix >,globalrefs._h
+		$(MV) ,globalrefs._h globalrefs._h
+
+#ifdef __HIGHC__
+entry.o:  	entry.spp
+	XCOMM hc removes spaces after preprocessing...
+		-$(RM) entry.o entry.s ,entry.c
+		$(CP) entry.spp ,entry.c
+		$(CC) -E -I. $(LOCALINCLUDES) $(CFLAGS) ,entry.c | \
+			sed 's/\.globl/ \.globl/; s/\.ClassEntry/ \.ClassEntry/; s/_ClassEntry/ _ClassEntry/' > ,entry.s
+		$(AS) -o entry.o ,entry.s
+		$(RM) ,entry.c ,entry.s
+#endif
+
+libc.eplist:	$(CLIB) /lib/librts.a $(CRT0PATH) $(RESOLVER_LIB) ${GNULIB} getlist.awk
+		$(RM) libhack.a
+		$(AR) libhack.a $(CRT0PATH)
+		$(NM) -ex $(RESOLVER_LIB) /lib/librts.a $(CLIB) ${GNULIB} libhack.a | \
+			$(AWK) -f nmfix.awk | \
+			$(TR) ":" " " | \
+			$(AWK) -f getlist.awk | \
+			grep -v "__X" > ,libc.eplist
+		$(MV) ,libc.eplist libc.eplist
+		$(RM) libhack.a
+
+InstallLibrary(libcx.a, $(DESTDIR)/lib)
+InstallCshScript(makedo.csh, $(DESTDIR)/bin/makedo)
+
+#ifdef GNU_ENV
+ ARCHIVE_COM = ar x ${GNULIB} ;
+#endif /* GNU_ENV */
+
+all::		libcx.a
+
+DelList._:	libc.eplist
+		$(AWK) '{print $$1}' libc.eplist | $(SORT) -u > ,DelList._
+		$(MV) ,DelList._ DelList._
+
+libcx.a:		/lib/librts.a $(CLIB) $(CRT0PATH) $(RESOLVER_LIB) ${GNULIB} DelList._
+		rm -rf new
+		mkdir new
+			cd new ; \
+		  	$(RESOLVER_SPLIT_CMD) \
+			$(CP) $(CRT0PATH) crt0.o ; \
+			ar x $(CLIB) ; $(ARCHIVE_COM) \
+			cp /lib/librts.a ,libcx.a ; \
+			$(CHMODW) ,libcx.a ; \
+			ar q ,libcx.a *.o
+		mv new/,libcx.a libcx.a
+		-ar d libcx.a `cat DelList._`
+		$(LIBC_RESOLVER_HACK)
+		rm -rf new
+
+clean::
+		$(RM) DelList._ libc.eplist globalrefs._h ,* libcx.a
+
+clean::
+		rm -fr new libhack.a aixfix

@@ -1,0 +1,1159 @@
+\begindata{text,538511220}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\define{footnote
+
+attr:[Flags OverBar Int Set]
+attr:[FontSize PreviousFontSize Point -2]}
+\define{tempindentneg1
+}
+
+
+\chapter{1	Administrating the White Pages}
+
+
+\section{1.1	About this document}
+
+
+This document provides instructions for maintaining a White Pages 
+installation.  It describes the function and format of the various White Pages 
+source files, and provides instructions for updating and tuning a WP database. 
+ You should have already created a White Pages database by following the 
+instructions in the White Pages installation document (WP.ins), and be 
+familiar with the concepts presented in the overview of the White Pages 
+(WP.ovr).  
+
+
+If you are using EZ to read this document, you can open an interactive Table 
+of Contents window by choosing \bold{Table of Contents} from the \italic{Page} 
+menu card.  Clicking on a heading in the Table of Contents window that appears 
+scrolls this document to bring the heading into view.
+
+
+Throughout this document, the term "system White Pages" is used to refer to 
+the White Pages database that is consulted when it is accessed by programs 
+acting on the behalf of users.  "Source White Pages" refers to the database 
+sources, from which the system White Pages are built and updated.
+
+
+To make changes to the White Pages, you will need to know where the system 
+White Pages and White Pages source files are installed at your site, as well 
+as the name of the environment-setting shell script (installed as 
+SAMPLE.driver) that calls the wpbuild shell script that actually performs 
+White Pages updating.
+
+
+This document presents an overview of the rebuilding/updating process, then 
+provides instructions for doing common White Page administration tasks, and 
+finally discusses WPI, the White Pages Interactive mail-based service.
+
+
+\section{1.2	About White Pages administration}
+
+
+A White Pages database contains information about all the users (and, 
+optionally, mail addresses) at a site.  From time to time, the White Pages 
+will need to be updated to reflect the arrival of new users, the departure of 
+old users, name changes, departmental reassignments, etc.  Other information, 
+such as common nickname mappings, department name abbreviations, and phonetic 
+nicknames may require less frequent updating.
+
+
+\subsection{1.2.1	The rebuilding process}
+
+
+The mechanism for updating the White Pages database is not obvious; you do not 
+edit the system database itself.  When you want to make modifications to the 
+White Pages, you edit source files which reside in a directory chosen at 
+installation time.  To have the changes made in the sources take effect, you 
+"rebuild" the system White Pages.  The rebuilding does not build the system 
+database from scratch (which would be expensive and time-consuming for a large 
+White Pages), but instead performs only incremental updates. 
+
+
+The rebuilding process carries out four "passes" on the source files, ensuring 
+that the database is always in a consistent state and is usable by 
+applications, even during the rebuild process.  The four passes, and the 
+source files involved in  each pass are as follows:
+
+
+1.  /etc/passwd, hist/oldpasswd, hist/passwd.chg, (dept.affils, affils.map), 
+(newreq/f* from wpi)
+
+2.  hist/wpadd, hist/wpadd.old
+
+3.  names/override, names/override.old
+
+4.  names/nickmap, names/nickmap.old
+
+
+The last three passes are conceptually simple.  They compare the sorted 
+contents of old and new files.  If an entry is in the new source and not in 
+the old source, it is added to the White Pages.  If an entry is in the old 
+source but not in the new source, it is deleted from the White Pages.  If an 
+entry is in both the new and old source, the rebuild process ensures that it 
+is in the White Pages.
+
+
+The first pass is a variation on that mechanism.  It compares the sorted 
+contents of old and new passwd files, adding or deleting or ensuring that an 
+entry exists as appropriate.  It then applies the sorted passwd.chg requests 
+to the White Pages.  The passwd.chg file goes through some pre-processing 
+
+ 
+
+The entire rebuilding process is done by an environment-setting script which 
+runs another script called wpbuild, which in turn calls the main White Pages 
+rebuilding program makeboth and the phonetic nickname generator nickgen. 
+ These tools were installed into the \italic{ANDREWDIR}/etc directory when the 
+Andrew software was built at your site.  
+
+
+The White Pages can be rebuilt by running this script by hand, or the rebuild 
+process can be set up as a cron(8) daemon entry.  
+
+
+\subsection{1.2.2	Backups and disaster recovery}
+
+
+The rebuilding process creates complete backups of the White Pages source 
+files and system database as tar files in the directory specified by 
+\italic{WPBackupDir} in the script that runs the rebuild.  You can unpack the 
+archive in a fresh directory and then rebuild a new database using the 
+extracted .old sources, the extracted database and any new (unextracted) 
+source files you have added to.  For example, you might keep your current 
+wpadd, override and nickmap sources, but use the extracted wpadd.old, 
+override.old and nickmap.old and the extracted White Pages database.
+
+\begindata{bp,539692872}
+\enddata{bp,539692872}
+\view{bpv,539692872,1714,0,0}
+\section{1.3	User entries}
+
+
+User entries come exclusively from /etc/passwd (although possible 
+modifications to these entries often come from other sources), while non-user 
+entires are specified by the wpadd source file explained in the next section.
+
+
+\subsection{1.3.1	Adding a user entry}
+
+
+To add a new user entry to the White Pages database, simply add the user to:
+
+
+\typewriter{/etc/passwd}
+
+
+unless a different file is specified in the environment-setting script by 
+either \italic{PWHome}/passwd, or \italic{PWFile.  }The format of the passwd 
+file is described in the passwd(5) man page.  After the user entry has been 
+added to the passwd file, the next rebuild automatically picks up the change 
+and adds the new user entry to the White Pages database.  
+
+
+\subsection{1.3.2	Deleting a user entry}
+
+
+To delete a user entry from the White Pages database, simply remove the user's 
+entry in:
+
+
+\typewriter{/etc/passwd}
+
+
+or the file specified in the environment-setting script by 
+\italic{PWHome}/passwd, or \italic{PWFile.  }After the user entry has been 
+removed from the passwd file, the next rebuild automatically picks up the 
+change and deletes the obsolete user entry from the White Pages database. 
+
+
+\subsection{1.3.3	Changing user entries}
+
+
+Different White Pages fields are modified in different source files, which are 
+all eventually integrated into a file called passwd.chg before Pass 1 
+incorporates changes into the White Pages.   A complete list of White Pages 
+fields is in the Overview document (WP.ovr).  What follows here are 
+descriptions of different source files and which fields they modify.
+
+
+\paragraph{1.3.3.1	/etc/passwd}
+
+
+The following fields have passwd equivalents, and should be changed by editing 
+the corresponding field in /etc/passwd:
+
+
+WP:	passwd:		Example:
+
+$N	pw_gecos		Craig F. Everhart
+
+$ID	pw_name		cfe
+
+$NI	pw_uid		469
+
+$GI	pw_gid		10
+
+$PW	pw_passwd
+
+$HD	pw_dir		/afs/andrew.cmu.edu/usr0/cfe
+
+$Sh	pw_shell		/bin/sh
+
+
+After making the modification, the next rebuild of the White Pages will turn 
+the change into a line in passwd.chg and incorporate the change into the White 
+Pages.
+
+
+\paragraph{1.3.3.2	Affiliations}
+
+
+If you have affiliations associated with users, you can change it in 
+\italic{AffliSrc}, or change an affiliation mapping in \italic{AffliMap}. 
+ Affiliations are described in detail in a subsequent section.  
+
+
+After making the affiliations modification, the next rebuild of the White 
+Pages will turn the change into a line in passwd.chg and incorporate the 
+change into the White Pages.
+
+
+\paragraph{1.3.3.3	passwd.chg}
+
+
+To modify fields that are not determined by /etc/passwd or by AffliSrc you 
+must make entries in the passwd.chg file directly.   The remaining entries 
+are:
+
+
+WP:	Name:		Example:
+
+$WN	Whole Name	Craig Fulmer Everhart
+
+$Fwd	Fwd address	Everhart@nic.ddn.mil
+
+$HA	Home address	131 Wellseley Road, Pgh PA
+
+$HP	Home phone	412-441-8888
+
+$CA	Campus address	UCC 263
+
+$CX	Campus extension	x6700
+
+$OA	Office address	ITC, CMU, Pgh PA 15213
+
+$OP	Office phone	412-268-6700
+
+
+There are two ways to make modifications to these entries for existing users. 
+ You can make changes to the file:
+
+
+\typewriter{\italic{WPWorkDir}/hist/passwd.chg}
+
+
+where \italic{WPWorkDir} is set in the environment-setting script that starts 
+White pages builds, or you can use software tools that will modify the file 
+for you.  The tools are WPI (White Pages Interactive), a mail-based White 
+Pages updating service, described in detail in a later section.
+
+
+The entries in passwd.chg are of the form:
+
+
+\typewriter{userid:wpfield:oldvalue:newvalue:chg-order}
+
+
+where \typewriter{userid }is the userid to which the modification refers 
+(e.g., cfe), \typewriter{wpfield }is the one or more letter name of the White 
+Pages field to be modified (e.g., WN), \typewriter{oldvalue }and 
+\typewriter{newvalue }are the old and new values for the White Pages field 
+that is to be changed, and \typewriter{chg-order }is an integer 100 or greater 
+used to order successive changes to the same field of the same userid.  All 
+five fields and four colons must be present.  A completely empty field is 
+represented by the digraph "\typewriter{+ }" (plus-space), an embedded colon 
+by "\typewriter{+=}", and an embedded plus sign by "\typewriter{++}".  An 
+asterisk (\bold{*}) in the \typewriter{oldvalue} field is a wildcard, and will 
+match whatever the actual "old" contents of field are.   The lines may be in 
+any order you wish.
+
+
+\bold{Example: Changing a forwarding address.}
+
+The White Pages field for forwarding addresses is \typewriter{Fwd}.  So, if 
+user jbRo wanted to have mail arriving at jbRo@andrew.cmu.edu forwarded to 
+jello@transarc.com, the following line in passwd.chg would make the 
+appropriate White Pages change: 
+
+
+\typewriter{jbRo:Fwd:+ :jello@transarc.com:100}
+
+
+The "\typewriter{+ }" in the \typewriter{oldvalue} field means that jbRo 
+probably did not have a forwarding address earlier.  If he did, the field is 
+still considered empty.
+
+
+Note that the Fwd field is actually a comma separated list, per RFC 822.
+
+
+\bold{Example.  Changing a Whole Name.}
+
+The White Pages field for alternate names is \typewriter{WN}.  Alternate names 
+are useful for when people change their names or are known by a different 
+name.  For example, if Josaphine Biafra (jbRi) gets married to Sid Viscose, 
+people then assume that she may have changed her name to Josaphine Viscose. 
+ The following line in passwd.chg would make a change to the White Pages so 
+that both Viscose and Biafra are recognized as last names for Josaphine:
+
+
+\typewriter{jbRi:WN:Josaphine Biafra:Josaphine Viscose:100}
+
+
+Note that the \typewriter{oldvalue} is "Josaphine Biafra" due to the WN 
+special case rule: the \typewriter{oldvalue} for a \typewriter{WN} change is 
+the contents of the \typewriter{N} (full-name) field for the user, not the 
+(always empty) "old" contents of the \typewriter{WN} field.  This feature 
+makes the diagnostic output in \typewriter{\italic{WPWorkDir}/LastMakebothOut} 
+more readable, and prevents typos in the \typewriter{userid }field from adding 
+WN values to the wrong user.
+
+
+Josaphine can have more than one alternate name by adding another name, 
+separated by a semi-colon to the \typewriter{newvalue} filed, as in the 
+following: 
+
+
+\typewriter{jbRi:WN:Josaphine Biafra:Josaphine Viscose;Josaphine 
+Biafra-Viscose:100}
+
+
+\bold{Example.  Using Change Order.}
+
+It is safest to leave old changes in passwd.chg, and bump up the 
+\typewriter{chg-order}  field to make a further change to the same field.  For 
+example, if Sid Viscose (svP2) changes his full name in the White Pages to 
+"Sod Viscose" the passwd.chg line would be: 
+
+
+\typewriter{svP2:WN:Sid Viscose:Sod Viscose:100}
+
+
+If he then has his print-name changed again, this time to "Sad", the 
+passwd.chg line would be: 
+
+
+\typewriter{svP2:WN:Sod Viscose:Sad Viscose:101}
+
+
+Note the chg-order field is 101, instead of 100.  This means that the line 
+with 101 in the chg-order will be processed after the line with 100 as the 
+chg-order value.  He could have tried the following line, changing directly 
+from the first to the third name:
+
+
+\typewriter{svP2:WN:Sid Viscose:Sad Viscose:100}
+
+
+but if the "Sid" to "Sod" entry had taken effect, "Sid Viscose" would not be a 
+valid value for the \typewriter{oldvalue} field.  By doing the change in two 
+steps with the chg-order field, the maintainer can be sure that the correct 
+information will end up in the system White Pages. As an added benefit, if the 
+site passwd file must be restored from a backup copy, a more "verbose" 
+passwd.chg will allow a more complete rebuild of the White Pages from the 
+older site passwd file. 
+
+\begindata{bp,539692808}
+\enddata{bp,539692808}
+\view{bpv,539692808,1715,0,0}
+\section{1.4	Non-user entries}
+
+
+If your site is running the Andrew Message Delivery System (AMDS), you can 
+create useful non-user White Pages entries that do not refer to actual 
+accounts.  Instead of user accounts, the entries are mail addresses that can 
+be processed an a number of different ways, based on the value of the White 
+Pages DK (Delivery Kind) and DP (Delivery Parameter) fields.  A description of 
+all the possible DK and DP values are in a subsequent section.  Simple 
+examples of the most common types of non-user entries are explained in this 
+section.
+
+
+To add or modify a non-user White Pages entry, edit the file called:
+
+
+\typewriter{\italic{WPWorkdir}/wpadd}
+
+
+This file contains all the non-user entries that have been added to the White 
+Pages.    An entry is a collection of lines in this file.  Entries are 
+separated by $$ on a line by itself.   Each line begins with a $, followed by 
+the White Pages field name, followed by a space, then the desired contents of 
+the field.  For historical reasons, this format is called "grits".  A list of 
+the fields that can be present in a wpadd entry is included at the end of this 
+document, but creation of several typical non-user entries is explained here. 
+ You can add a new entry in this file, or make changes to an existing entry.
+
+
+\subsection{1.4.1	Distribution lists and mailinglists}
+
+
+An example of a common non-user entry is a distribution or mailinglist entry. 
+ It usually consists of two non-user entries: one for a request address where 
+requests to be added or removed from a mailinglist are sent, and one for the 
+actual mailinglist itself.  For example, these entries are for a distribution 
+list about soccer maintained by user jbRo:
+
+\typewriter{
+}\typewriter{$ID soccer-request
+
+$N Soccer Request
+
+$SI 1005
+
+$EK 2
+
+$PW *
+
+$Fwd jbRo+@andrew.cmu.edu
+
+$$
+
+$ID soccer
+
+$N Soccer
+
+$SI 1004
+
+$EK 2
+
+$PW *
+
+$DK DIST
+
+$DP /afs/andrew.cmu.edu/usr10/jbRo/dlists/soccer.dl
+
+$$}
+
+
+The first entry would make sure that mail to "soccer-request@andrew.cmu.edu" 
+would be sent to jbRo's account, so he could add them to the distribution 
+list.   The second entry would send mail addressed to "soccer@andrew.cmu.edu" 
+to all the recipients listed in the distribution list located in the file 
+specified by the DP field.  The format of distribution list files is explained 
+in the \italic{ dlists}  on-line help document.
+
+
+The SI field for each of the entries needs to be unique; no entries in wpadd 
+can have the same SI field.  The SI field is what distinguishes this type of 
+entry from a user entry.  User entries have an NI field instead of an SI 
+field.  An NI field corresponds to a pw_uid value; one of the supported White 
+Pages operations is to find an entry given a pw_uid value.  Thus, "ls -l" can 
+find a user id via the White Pages given a file-owner number (NI).
+
+
+The EK field should be "2" for all wpadd entries.   This specifies that the 
+field is processed during Pass 2 of the rebuild process.
+
+
+The PW field for non-user entries should be "*" so that no one can ever log in 
+as that user.  This is important only if your login program uses the White 
+Pages for its getpwent(3) routines. 
+
+
+The Fwd field specifies where mail should be forwarded to, and the DK and DP 
+fields are used by the Andrew Message Delivery system.  
+
+
+\paragraph{1.4.1.1	Delivery Kind and Parameter fields: DK and DP}
+
+
+The following values are recognized for White Pages DK and DP fields by the 
+Andrew Message Delivery System:
+
+\begindata{table,540317960}
+\cols 99 116 244
+-	-	-
+| ^DK	| ^DP	| ^Explanation	| 
+-	-	-
+| NNTP	| not needed	| \begindata{text,538478712}
+\textdsversion{12}
+mail sent via "nntpxmit" program, named in "nntpxmit" mailconf variable.\
+\enddata{text,538478712}
+	| 
+-	-	-
+| DIST	| dist list file	| \begindata{text,538511576}
+\textdsversion{12}
+\define{italic
+}
+Equivalent to +dist+\italic{dist-list-file}@local.do.main.\
+\enddata{text,538511576}
+	| 
+-	-	-
+| PGMFMT	| prog-invocation	| \begindata{text,538364152}
+\textdsversion{12}
+\define{italic
+}
+See Note 1, below.\
+\enddata{text,538364152}
+	| 
+-	-	-
+| PGMSTRIP	| prog-invocation	| \begindata{text,539974504}
+\textdsversion{12}
+See Note 1, below.\
+\enddata{text,539974504}
+	| 
+-	-	-
+| OTHER	| text	| \begindata{text,538496684}
+\textdsversion{12}
+See Note 2, below.\
+\enddata{text,538496684}
+	| 
+-	-	-
+\enddata{table,540317960}
+\view{spread,540317960,1716,0,0}
+
+\bold{Note 1. PGMFMT and PGMSTRIP. } Mail is delivered by modifying the 
+prog-invocation string in a given manner, then using it as the name of a 
+subprogram to be executed.  Mail will be delivered by sending the message text 
+to that subprocess's standard input; mail will be considered to be 
+successfully delivered if the subprocess exits with status 0.
+
+
+In the prog-invocation string, printf-like replacements are done before 
+spawning the subprocess, using "%" as the escape character.  The replacements 
+are:
+
+
+%%	a single %
+
+%r	the current return-path
+
+%d	a string representation of the current destination
+
+%4	the "for" information--how the mail got to be here
+
+%a	the authentication string: in general, "nid;domain;personname" where 
+\italic{nid} is a numeric file owner in \italic{domain}, whose name happens to 
+be \italic{personname}.
+
+
+The string has a layer of quoting applied to it before being passed to 
+popen(), which uses /bin/sh.  Thus, a DP field of
+
+	
+
+\typewriter{/usr/bin/dogbreath %r -a %d}
+
+
+might cause
+
+	
+
+\typewriter{/usr/bin/dogbreath \\<cfe+@andrew.cmu.edu\\> -a 
+postman+@cs.cmu.edu}
+
+
+to be invoked.
+
+
+The only difference between PGMSTRIP and PGMFMT is that mail sent to PGMFMT 
+will be sent with ATK formatting, if present, while mail sent to PGMSTRIP will 
+be assumed to not normally receive ATK-formatted mail, and thus such 
+formatting will be stripped off unless it contains the "If-type-unsupported: 
+send" mail header.
+
+
+\bold{Note 2.  OTHER.  "}Delivery" of such messages is simply the composition 
+and dropoff of a return-to-sender message.  The DP field controls only the 
+content of that message.  There are three cases for the value of the DP field:
+
+
+value:		return message:
+
+\italic{empty-string}	The addressee has no electronic mailbox, but may be 
+reached via \italic{DefaultSurfaceAddress}.
+
+NONE		The addressee has no electronic mailbox and has no forwarding address.
+
+\italic{other}		The addressee has no electronic mailbox, but may be reached 
+via \italic{other}.
+
+
+Here, \italic{DefaultSurfaceAddress} stands for the value of the mailconf 
+and/or AndrewSetup variable \italic{DefaultSurfaceAddress}, which at CMU is 
+"Campus Mail, Carnegie Mellon, Pittsburgh, PA 15213" and elsewhere defaults to 
+"Anytown, Anywhere".  For example, a DP value of:
+
+
+\typewriter{$DP his parents in Missouri.}
+
+
+would cause a message to the address to reject with the message: "The 
+addressee has no electronic mailbox, but may reached via his parents in 
+Missouri."
+
+
+\subsection{1.4.2	Anonymous user}
+
+
+AFS uses the file owner 32766 (2^16 - 2) for files that have been stored by 
+the pseudo-user "anonymous," that is, for files that have been written by 
+unauthenticated users, so it can be useful to have a White Pages entry for 
+that user:
+
+
+\typewriter{$ID Anonymous
+
+$N Anonymous
+
+$NI 32766
+
+$EK 2
+
+$Fwd Postmaster
+
+$$
+
+
+}The Fwd field specifies that mail addressed to Anonymous should be forwarded 
+to the site's Postmaster.  
+
+\begindata{bp,539692744}
+\enddata{bp,539692744}
+\view{bpv,539692744,1717,0,0}
+\section{1.5	Affiliations}
+
+
+Departmental affiliations, the \typewriter{Af} field in a White Pages entry, 
+are handled by two files: \italic{AffilMap} and \italic{AffilSrc}, as defined 
+in the environment-setting script that calls wpbuild in the environment 
+variables .  If you don't need user affiliations in your White Pages, simply 
+leave \italic{AffilMap} and \italic{AffilSrc} undefined.  
+
+
+\subsection{1.5.1	AffilSrc}
+
+
+\italic{AffilSrc} maps userids with department name abbreviations.  It is 
+formatted in lines, simply:
+
+
+\typewriter{userid:dept-name}
+
+
+For example, the following is a portion of the Carnegie Mellon 
+\italic{AffilSrc} file: 
+
+
+\typewriter{ab03:hl 
+
+ab07:stat 
+
+ab0i:phi 
+
+ab0o:gsia 
+
+ab0q:supa 
+
+ab10:gsia 
+
+ab1r:csw88s01}
+
+
+Users who have no departmental or other affiliation are not listed in 
+\italic{AffilSrc}.   The \italic{AffilSrc} file can be used to hold all of the 
+affiliations information, but if you have many users with the same 
+affiliation, you can save a good deal of disk space by using the 
+\italic{AffilMap} file to map the short-hand department name used in 
+\italic{AffliSrc} to a longer name.
+
+
+To make a change in a user's affiliation, simply edit the \italic{AffilSrc} 
+file.  The change will be incorporated into the White Pages after the next 
+rebuild.
+
+
+\subsection{1.5.2	AffilMap}
+
+
+ \italic{AffilMap} is a list of \typewriter{dept-name} to full department name 
+mappings, in a similar format: 
+
+
+\typewriter{dept-name:dept-full-name}
+
+
+For example, the following is a portion of the Carnegie Mellon 
+\italic{AffilMap} file:
+
+
+\typewriter{eng:English 
+
+epp:Engineering and Public Policy 
+
+gsia:Graduate School of Industrial Administration 
+
+hl:Hunt Library 
+
+itc:Information Technology Center}
+
+
+You can omit the \italic{AffilMap} file if you wish; simply do not define the 
+\italic{AffilMap} environment variable in the wpbuilding script. 
+
+
+To add or change an affiliation mapping, simply edit the \italic{AffilMap} 
+file.  The change will be incorporated into the White Pages after the next 
+rebuild.
+
+\begindata{bp,539692680}
+\enddata{bp,539692680}
+\view{bpv,539692680,1718,0,0}
+\section{1.6	Nickname mappings }
+
+
+You may find that the supplied nickname mappings do not adequately cover the 
+possible nicknames for users at your site.  To add a new nickname, first 
+decide whether the nickname is of the phonetic kind or override kind.  A 
+\bold{phonetic} White Pages nickname is a mapping from a phonetically-spelled 
+name to a slightly different phonetically-spelled name.  When an application 
+searches through the database for entries with a certain name and cannot find 
+any, phonetic nickname mappings will be consulted to try slightly different 
+names for searching.  Phonetic nicknames are essentially an attempt to make 
+searching the White Pages for a certain name slightly "fuzzy."
+
+
+For example, say a search is looking for the name "Catie" but cannot find it. 
+ The search then looks for any names that begin with the same sounds as 
+"Catie."  If the search for names that start with the same sound is 
+unsuccessful, the search looks to see if a phonetic nickname mapping is 
+available.  If a phonetic nickname mapping has been added to the database that 
+maps the supplied name ("Catie") to a different name that is not an 
+abbreviation (like the phonetic spelling of "Catherine"), the search will 
+continue, this time looking for a name that can be shortened to a word with 
+the same phonetic spelling as "Catherine."  If no names can be found with the 
+phonetic nickname, the search gives up. 
+
+
+An \bold{override} nickname maps a nickname to a name where the nickname and 
+name do not sound similar, such as "Dick" to "Richard," or for those nicknames 
+that are so common they should be tried first.  Override mappings, where 
+present, take precedence over ("override") phonetic mappings.  An override 
+mapping should therefore be entered into the database only when the nickname 
+is highly common or cannot reasonably be considered a shortened version of a 
+name.  For example, the nickname "Dick" almost always refers to a "Richard," 
+so an override mapping from "Dick" to "Richard" is reasonable. 
+
+
+\subsection{1.6.1	Phonetic nicknames}
+
+
+To add phonetic nickname mappings, edit the file names/givenmap in the White 
+Pages source directory.  Here are some example lines from this file:
+
+
+\typewriter{amanda mandie mandy
+
+amara mara
+
+amelia ameline amy
+
+amelinda linda melinda
+
+amy aimee amie}
+
+
+The general format of lines in this file is:
+
+
+\typewriter{given-name nickname1 nickname2 ... nicknameN}
+
+
+where \typewriter{given-name} is a common name for the space-separated list of 
+nicknames \typewriter{nickname1 nickname2 ... nicknameN}.  The 
+\typewriter{given-name} is usually the most "common" version of the nicknames 
+in the list that follows, so that the nickname will produce the largest number 
+of successful searches.  Note that the shipped names/givenmap file is quite 
+large; before you add a new nickname mapping, check through the file to ensure 
+that the nickname you want is not already in place.  However, you will not 
+break anything by adding duplicates. 
+
+
+Once you have made changes to the names/givenmap file, the next rebuild of the 
+White Pages sources will incorporate your changes into the system White Pages.
+
+
+\subsection{1.6.2	Override nicknames}
+
+
+To add override nickname mappings, edit the file names/override in the White 
+Pages source directory.  The shipped override file consists of the following 
+mappings:
+
+
+\typewriter{bill	william
+
+bob	robert
+
+chuck	charles
+
+dick	richard
+
+gene	eugene
+
+jack	john
+
+jim	james
+
+judy	judith
+
+mike	michael
+
+rick	richard} 
+
+
+The general format of lines in this file is: 
+
+
+\typewriter{nickname name}
+
+
+Note that an override nickname only maps to one name. 
+
+
+Once you have made changes to the names/override file, the next rebuild of the 
+White Pages sources will incorporate your changes into the system White Pages.
+
+
+\begindata{bp,539692616}
+\enddata{bp,539692616}
+\view{bpv,539692616,1719,0,0}
+\section{1.7	Using WPI}
+
+
+White Pages Interactive (WPI) is a collection of programs working in concert 
+to provide controlled, validated access to some of the White Pages fields in 
+the passwd.chg file.  It provides a few user interfaces which communicate 
+change requests via authenticated electronic-mail to a special address.
+
+
+Mail processed from this special address is validated once more, and if all 
+the changes are acceptable, those changes are recorded in a file which will be 
+included into the passwd.chg file.
+
+
+How to configure WPI services is explained in the White Pages installation 
+document (WP.ins).
+
+
+\subsection{1.7.1	How is WPI invoked?}
+
+
+Typically, a user will run one of the interface programs (wpi, wpedit, or 
+forward) which will ask them what change(s) they would like to make, and 
+formats and sends the mail off.  It is acceptable to bypass the interface 
+programs, and send mail directly to the special address, by the syntax is 
+arcane (and prone to error), and feedback will be delayed because the mail 
+will have to be processed before errors will be found.
+
+
+The user interface programs all accept a "-A" command line switch which tells 
+the program to believe that the user is a White Pages administrator.  This is 
+necessary since some fields (e.g. alternate names) may be modifiable only by a 
+White Pages administrator.  If a user lies about being an administrator, the 
+mail will be bounced if it contains change requests permissable from only an 
+administrator.  Which fields are considered modifiable by whom (and how to 
+specify them) is described below.
+
+
+\subsection{1.7.2	How does wpi work?}
+
+
+At Andrew, the special address set up at configuration time is 
+"wd00+WPI-UPDATE-REQUEST", and mail sent to that address end up in 
+~wd00/Mailbox.  A cui daemon (a fast Mailbox polling daemon) is also 
+configured to periodically check for new mail in ~wd00/Mailbox (among others). 
+ The presence of mail addressed to the special address causes wd00's 
+.AMS.flames file to process that message as a request.
+
+
+The Flames file first determines the authenticated sender of the message, and 
+then determines if the sender is a White Pages administrator (at Andrew, it 
+performs that check by looking for membership in the AFS group wd00:wpadmins). 
+ It then invokes /usr/andrew/etc/wpiupdat as a mail-based service.
+
+
+The wpiupdat program will re-validate the requests, and if all goes well, will 
+record the change in ~wd00/wpi/newreq, as a filename starting with the letter 
+'f'.  Finally, a confirmation goes out to the sender of the message and to the 
+org.wp.audit bboard.
+
+
+The newreq/f* files are atomically renamed out of the newreq directory into 
+the holdreq directory, where they are concatenated and added to passwd.chg, as 
+part of the rebuild process.  Duplicate elimination is performed at this 
+stage, so multiple requests are ok.  Since all WPI requests have a timestamp, 
+the last request made will be the one incorporated into the white pages.
+
+
+\subsection{1.7.3	What happens if something goes wrong?}
+
+
+If the piece of mail requests an administrative change, and the sender is not 
+an administrator, the mail is forwarded to a special address (at CMU, a 
+bulletin board called org.wp.authreq) for administrative consideration.  An 
+administrator merely needs to resend the message to the update request address 
+to effect approval.
+
+
+If the piece of mail is badly formed, or contains bogus requests, the mail 
+will be bounced to the sender and also to the org.wp.failures bboard. 
+ Messages that end up here could have been generated by a confused user, or 
+perhaps even a malicious one.
+
+
+Finally, if mail is sent to wd00, but not tagged with "WPI-UPDATE-REQUEST", it 
+gets posted to another address (at CMU, a bulletin board called 
+org.wp.fodder), which is where confused or complaining user's mail will 
+appear.
+
+
+\subsection{1.7.4	What programs, files, and directories does it use?}
+
+
+The ~wd00/.AMS.flames file comes from 
+andrew/overhead/pobbconf/wpi.config.pobb.  So, if that file is broken, and is 
+installed, WPI processing will break.
+
+
+Also, ~wd00/.AMS.flames uses /usr/andy/lib/flames/mailservices.flames, which 
+in turn uses flib.flames, which uses /usr/andy/lib/eli/elilib.eli.  If any of 
+these files are broken, then WPI processing will break.
+
+
+The /usr/andrew/etc/wpiupdat will work only if postman has access to 
+~wd00/wpi/newreq.  It creates a working file in that directory (a filename 
+starting with the letter 't', for temporary), which it renames into place 
+(with a filename starting with the letter 'f', for finished).  You should 
+occaisionally check this directory for old t* files, which indicate a failure 
+of wpiupdat to rename the file into place (new t* files are probably requests 
+in progress).  If you wish, you can try placing the contents of this file into 
+a mail message, preceded by the lines "version: 1", "cell:andrew.cmu.edu", 
+addressed to the special address, to effect reprocessing of this request.
+
+
+\subsection{1.7.5	Which White Pages fields are modifiable and by whom?}
+
+
+Users may modify the following field:
+
+
+WP:	Name:		Example:
+
+$Fwd	Fwd address	Everhart@nic.ddn.mil
+
+
+Administrators may modify any other fields which are not generated, but it is 
+advised that they not modify fields that are set either in /etc/passwd, or in 
+the Affiliation sources, leaving the following fields:
+
+
+WP:	Name:		Example:
+
+$WN	Whole Name	Craig Fulmer Everhart
+
+$HA	Home address	131 Wellseley Road, Pgh PA
+
+$HP	Home phone	412-441-8888
+
+$CA	Campus address	UCC 263
+
+$CX	Campus extension	x6700
+
+$OA	Office address	ITC, CMU, Pgh PA 15213
+
+$OP	Office phone	412-268-6700
+
+
+Administrators can als specify which fields are modifiable and by whom.  There 
+are two ways they can do this: the first is a user-interface classification 
+and the second pertains to validation as the mail request is processed by 
+wpupdat.  Both types of classifcations are made in the file 
+ANDREWSRCDIR/overhead/wpi/wpilib.c.
+
+
+\paragraph{1.7.5.1	User interface classification}
+
+
+This classification is used only by the user interfaces of the user agent 
+programs (which make the request on behalf of the user), like wpi or wpedit. 
+  Fields can be classified in this manner as "user modifiable," 
+"administrative only," or "programmatic only."   Possible classifications 
+ are:
+
+
+ALLOW_MODIFY
+
+\leftindent{to make a field available for any user to change.}
+
+
+PRIVILEDGED_MODIFY 
+
+\leftindent{to make a field available only to administrators (like "wpi -A").}
+
+
+GENERATED_FIELD 
+
+\leftindent{to make a field never available to any user. }
+
+
+So, if changing a forwarding address is something you think users should be 
+allowed to do, it should be classified as ALLOW_MODIFY.  Then, when a user 
+types "wpi," they will be prompted to change their forwarding address.
+
+
+\paragraph{1.7.5.2	Validation classification }
+
+
+The second place an administrator can specify the modifiability of a field 
+during the validation process.  There is a table, in WPI_Validate (in 
+wpilib.c) which maps fields to a validation function. There are three 
+validation functions which parallel the flags above:
+
+
+constant_cool
+
+\leftindent{always unconditionally approves the requested change (parallels 
+ALLOW_MODIFY).  A validate result of "cool" for a field causes wpiupdat to 
+record the change in passwd.chg which takes effect at the end of the next 
+White Pages rebuild.
+
+}
+constant_drag
+
+\leftindent{always signals that administrative approval is required (parallels 
+PRIVILEDGED_MODIFY).   In the case of an administrator's request, a validate 
+result of "drag" causes the change to be recorded as for constant_cool.  In 
+the case of a non-administrator's request, the request is forwarded to the 
+White Pages administrators for approval.}
+
+
+constant_uncool
+
+\leftindent{always unconditionally denies the change (parallels 
+GENERATED_FIELD).   A validate result of "uncool" is not recorded in 
+passwd.chg, and in fact will indicate an error in the request (since that 
+request should not have been made in the first place).}
+
+
+A field which is set to constant_uncool (or left unnamed) will never, ever, be 
+changed by wpiupdat.  
+
+
+You can write your own validation functions as long as the behave as follows: 
+when a validation function is handed a fieldname, the new (requested) value, 
+and (effectively) the old value, the function makes a decision about the 
+acceptability of the requested value based on this information and then 
+accepts, defers, or rejects the (possibly modified) requested change. 
+
+
+\tempindentneg1{\bold{Example.}  T}o change the processing of the OP (Office 
+Phone) field, so that no one may change it, you would change the "OP" line in 
+the xlate_table from: 
+
+ 
+
+\typewriter{\{ "OP", "Office phone", "(412) 268-2000", ALLOW_MODIFY,
+
+    "Global telephone number."\},}
+
+
+to: 
+
+  
+
+\typewriter{\{ "OP", "Office phone", "(412) 268-2000", GENERATED_FIELD,
+
+    "Global telephone number."\},}
+
+
+and also change the "OP" line in the vfuncs table from: 
+
+
+\typewriter{\{"OP", constant_cool\},}
+
+
+to: 
+
+
+\typewriter{\{"OP", constant_uncool\},}
+
+
+or just delete the "OP" line in the vfuncs table in wpilib.c entirely. 
+
+
+\paragraph{1.7.5.3	Specifying administrators}
+
+
+There are two ways the .AMS.flames file in the White Pages user account knows 
+an authenticated sender of a message is a White Pages Administrator (and thus 
+authorized to make "drag" changes automatically):  by inclusion in a list, or 
+by membership in an AFS group.  
+
+If \italic{AFS30_ENV} was set at Andrew configuration time, in 
+andrew/config/site.h, for the whole Andrew build, you have to specify to 
+pobbconf an AFS group name for White Pages administrators that is checked by 
+the Flames file.   If AFS30_ENV was not defined, you have to specify to 
+pobbconf a list of administrators that is checked by the Flames file.
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1721,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,538511220}

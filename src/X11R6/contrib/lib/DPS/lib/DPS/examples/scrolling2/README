@@ -1,0 +1,113 @@
+This directory contains an alternative version of the scrolling application
+described in Chapter 10.  It uses the Display PostScript scrolling widget
+from the DPS toolkit to implement all of its scrolling.
+
+The first thing to notice is that this application has about 2/3 as
+many lines of code as the original application.  The DPS scrolling widget
+replaces the complex scrolling code implemented in the file ScrollView.c.
+
+The "Scrolling Strategies" section of the interface replaces the original
+set of options.  There are a set of toggles to control the operation of
+the scrolling widget:
+
+Use Pixmap:  When this toggle is set, the widget stores the drawing in a
+	backing pixmap so that it can be refreshed more efficiently.  When 
+	this toggle is clear, there is no backing pixmap so the window
+	contents must be regenerated whenever they are needed.
+
+Use Big Pixmap:  This is only meaningful when the "Use Pixmap" toggle is set.
+	When this toggle is set, the widget uses a backing pixmap
+	that is the size of the document.  When this toggle is clear, the
+	widget uses a backing pixmap that is the size of the window.  There
+	is a maximum size enforced by the widget; if magnification would
+	cause the page to exceed this size the widget automatically falls
+	back to a window-sized pixmap.  You can change the maximum page
+	size by setting the XtNpixmapLimit and XtNabsolutePixmapLimit
+	resources of the scrolling widget; see the scrolling widget
+	documentation.
+
+Watch Progress:  This is only meaningful when the "Use Pixmap" toggle is set.
+	When this toggle is set, the widget draws to the window and
+	copies the result to the backing pixmap.  When this toggle is clear,
+	the widget draws to the backing pixmap and copies the result to the
+	window.
+
+Minimal Drawing:  This is only meaningful when the "Use Pixmap" toggle is
+	set, the "Use Big Pixmap" toggle is set, and the "Watch Progress"
+	toggle is clear.  If this toggle is set, the widget draws the
+	backing pixmap in two stages:  first the parts that are currently
+	visible in the window, and then the parts that are not currently
+	visible.  If there are complex parts of the drawing that are
+	currently not visible, using minimal drawing makes the visible
+	portion appear more quickly, but the overall time to draw the entire
+	drawing is usually longer.
+
+Incremental Drawing:  When this toggle is set, the application draws some
+	number of the picture elements and then returns control to the
+	system.  The widget then calls the application repeatedly to draw
+	more of the picture.  When this toggle is clear, the application
+	draws the entire picture at once.  Enabling incremental drawing
+	allows the user to interact with the application by scrolling or
+	setting options without waiting for the entire picture to finish
+	drawing.
+
+
+The "Incremental Drawing" section of the interface allows the user to modify
+the incremental drawing algorithm, and only take effect when the "Incremental
+Drawing" toggle is set:
+
+Items to draw:  This value is the number of picture elements that the
+	application draws each time the widget asks it to draw something.
+	Low numbers improve interactive response to actions like scrolling,
+	but increase the overhead involved in calling the application.  High
+	numbers eliminate the overhead, but adversely effect interactivity.
+	Drawing 10 items each time avoids most of the overhead while still
+	providing good interactive response.  
+
+Abort Partial Drawing:  When the user scrolls a partially-drawn picture,
+	the scrolling widget calls the application and tells it to either
+	finish drawing the picture or abort drawing the picture.  This
+	toggle controls whether the scrolling application responds to this
+	by finishing or by aborting.  If the application finishes, the
+	scrolling widget adds the part of the picture that was just drawn
+	to the list of areas known to be finished.  If the application
+	aborts, the scrolling widget returns the part of the picture
+	currently being drawn to the list of areas that need to be drawn.
+	The effect of this toggle can be seen by quickly scrolling the
+	picture several times.  If the toggle is clear, each strip
+	exposed by the scrolling will be drawn completely before the next
+	strip is started.  If the toggle is set, the application will
+	start drawing the first exposed strip, abort that drawing, and
+	then draw the combined strip.
+
+The Scrolling application has a static incremental drawing policy as set
+by the controls in the Incremental Drawing area, but real applications
+would do better to make dynamic decisions about the number of items to
+draw and whether to finish or abort the current drawing.  The number of
+items to draw in each increment should depend upon what is being done.
+Potentially lengthy operations like images and downloading fonts should
+always occur by themselves.  Multiple quick operations like drawing user
+paths can occur in a single increment.  Similarly, the application should
+take into consideration the amount and nature of the drawing yet to be
+done when deciding whether to finish or abort.  If the drawing is just
+started, or if there is a complex element like an image yet to come,
+aborting is the best choice.  If the drawing is almost done, or if a
+complex element like an image has already been drawn, finishing is
+appropriate.
+
+
+The final change to the application is that the timer field in the lower
+right corner of the controls window has been replaced with a pair of timer
+fields.  The field labelled "Time (last)" shows the number of milliseconds
+taken by the most recent redraw.  The field labelled "Time (total)" shows
+the elapsed time since the last time the user asked for a refresh (either
+by changing the options or by clicking the "Redraw Image" button).
+This is important for gauging the effect of Minimal Drawing and Watch
+Progress, since both of these can cause the widget to call the application
+to draw the picture in multiple pieces.  With Minimal Drawing, the widget
+first calls the application to fill in the area that will be visible in
+the window, and then the area that is currently clipped.  With Watch
+Progress, the widget first calls the application to draw in the window,
+and then calls the application to draw any areas of the backing pixmap
+that were not visible in the window.  The total drawing time field shows
+the cumulative time taken by these multiple calls.

@@ -1,0 +1,287 @@
+@begin(header)
+author: ackerman@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+expiration_date: 07/03/93
+last_modifier: ackerman@ics.uci.edu
+last_mod_date: 07/03/91
+mod_num: 1
+@end(header)
+@begin(M)
+From: Donna Converse
+Subject: Re: help (with a popup prompt design)
+Organization: X Consortium, MIT Laboratory for Computer Science
+
+
+> I want to have a generic warning routine, call it display_warning(),
+> that when invoked will popup and display a warning message
+> (under the Xt instrinics) and require the user to select a proceed or 
+> cancel button.  The problem
+> is that I want display_warning() to return a value depending on the 
+> user's selection. How do I get display_warning() to wait until a selection
+> has been made before returning?.
+
+I think the programming model for control flow needs to be changed from a
+computational one to an event driven model.  The user is out there doing 
+stuff that causes your program to get notification of events.  Your program 
+cannot control or anticipate the order of events, or the timing between events.
+Instead, your code is a collection of responses to events, with callbacks and 
+client data and some global variables as "chewing gum and paperclips" holding 
+it all together.
+
+When you (the application programmer) popup the warning, you can't block 
+at the next line of code waiting for the user to press a button.  You 
+probably already understand this, at least intuitively.  Consider how the
+application processes events -- XtAppMainLoop, usually.  After you popup the
+warning, let the control return to the main loop.  Otherwise, what is going to
+process the event of the user pushing a button in the popup?
+
+The problem of knowing which button was pressed can be solved by registering
+a different callback procedure with each button in the popup, or by giving
+each button different data to pass to a single callback.  The confirm
+callback can actually do the body of the computation, the work requested.
+
+
+Donna Converse
+@end(M)
+
+@begin(M)
+From: Donna Converse
+Subject: Re: help (with a popup prompt design) 
+
+
+	My problem is that I am trying to separate the functionality 
+	of my application as much as possible from the interface. The 
+	"model" of control flow that I want is one of poll and wait. I guess
+	it should have been fairly intuitive that an event driven interface
+	does not support this.
+
+Ok, I'll take you up on this.  
+
+With regard to the poll & wait model of control flow vs the messages (events 
+and their resultant callbacks) and objects (user interface abstractions) of 
+widget programming: in what way does poll & wait improve the separation of
+functionality and interface over widget programming, or in what way does 
+widget programming violate the abstraction?   I don't understand your
+objection.
+
+My second point is that you *can* get poll and wait semantics in X if you
+program your own event processing loop.  You can put the loop
+right in line in your code, at the point where the popup goes up, inside of
+the display_warning routine, effectively blocking on the user inside of the
+event processing loop, and breaking out of the loop only when the user
+responds to the popup. Poll and wait is exactly what XtAppNextEvent does.
+@end(M)
+
+@begin(M)
+From: Duane Voth
+Organization: MCC, Austin, TX
+Subject: Re: help (with a popup prompt design)
+
+> 
+> > I want to have a generic warning routine, call it display_warning(),
+> > that when invoked will popup and display a warning message
+> > (under the Xt instrinics) and require the user to select a proceed or 
+> > cancel button.  The problem
+> > is that I want display_warning() to return a value depending on the 
+> > user's selection. How do I get display_warning() to wait until a selection
+> > has been made before returning?.
+
+I ran into this same problem.  A function like display_warning() forces
+the user to focus his attention on a very specific point.  The application
+is basically helpless until the user deals with the warning.  In addition,
+the warining popup focuses input thus severely restricting the kinds
+of "application" events that occur.   So why force returning all the
+way back to the main event handler.
+
+
+Bottom line is: the application code looks MUCH nicer if a function like
+display_warning() can return a 1 or a 0.
+
+The way I did this is as follows:
+
+
+#define WAITING 0
+#define PROCEED 1
+#define CANCEL  2
+
+static int warning_response;
+
+proceed_button_callback()
+{
+	warning_response = PROCEED;
+}
+
+cancel_button_callback()
+{
+	warning_response = CANCEL;
+}
+
+display_warning()
+{
+	XEvent event;
+
+	/* popup warning window... */
+
+	warning_response = WAITING;
+	while (warning_response == WAITING) {
+		XtAppNextEvent(appContext, &event);
+		XtDispatchEvent(&event);
+	}
+
+	/* popdown and cleanup */
+
+	return(warning_response);
+}
+
+
+Clean, efficient, functional.
+
+duane
+@end(M)
+
+@begin(M)
+From: Dean Anderson
+Organization: Open Software Foundation
+Subject: Re: help (with a popup prompt design)
+
+I think the point of what Donna Converse was originally trying to say
+has been missed.  Instead of trying to force flow of control, you
+should adopt a model in which the program takes actions in response to
+"external" events whose order the program has no control over.
+
+For example, If you want to force the user to respond to a dialog, try
+popping up the dialog menu with a pointer grab.  When the user responds,
+take whatever action is necessary in the callback (possibly save the
+response data for use in modifying the actions for other events, etc).
+ 
+Motif includes facilities for modal dialog widgets which do exactly
+what it is I think that you want to do:  Make the user respond before any
+further processing within the application.
+
+            Dean
+@end(M)
+
+@begin(M)
+Subject:  Re:  help (with a popup prompt design)
+
+Actually, there may be a very good reason to nest an event loop.
+
+Say you need to implement a command-driven style of interaction within a
+toolkit application.  I know we are trying to avoid this at all costs in
+the Brave New World of the future, but there are some large, monolithic,
+command-driven applications out there that people are converting to X.
+Often a first step in the conversion is to provide GUI front ends to a
+subset of the functionality, and provide a command-driven escape hatch (for
+example, a DECWindows Command widget) for the non-converted functionality.
+
+In this scenario, the application will want the main thread to be blocked
+on a command read until a command is actually entered.  The way to do the
+block is to nest an event loop (NOT XtMainLoop, naturally-- as you said,
+how will it return?) in the procedure that does the read from the command
+widget.  The event loop would terminate when a command is entered.  (It
+probably detects this using a semaphore that is set by the command widget's
+commandEntered callback).
+
+Tony Parisi
+BBN Software Products
+Cambridge, MA
+@end(M)
+
+@begin(M)
+From: Dick Schoeller 
+Organization: Digital Equipment Corporation, Maynard, Massawhat?
+Subject: Re:  help (with a popup prompt design)
+
+> Actually, there may be a very good reason to nest an event loop.
+> 
+> Say you need to implement a command-driven style of interaction within a
+> toolkit application.  I know we are trying to avoid this at all costs in
+> the Brave New World of the future, but there are some large, monolithic,
+> command-driven applications out there that people are converting to X.
+> Often a first step in the conversion is to provide GUI front ends to a
+> subset of the functionality, and provide a command-driven escape hatch (for
+> example, a DECWindows Command widget) for the non-converted functionality.
+> 
+> In this scenario, the application will want the main thread to be blocked
+> on a command read until a command is actually entered.  The way to do the
+> block is to nest an event loop (NOT XtMainLoop, naturally-- as you said,
+> how will it return?) in the procedure that does the read from the command
+> widget.  The event loop would terminate when a command is entered.  (It
+> probably detects this using a semaphore that is set by the command widget's
+> commandEntered callback).
+> 
+
+Command driven applications are the easiest to port to event driven
+(after all, events are just graphical commands  8^{).  There is really
+no need to go through all the above mess about blocking and multiple
+threads.   There is usually no reason to use some other looping structure
+than XtMainLoop either. 
+
+The simplest approach is to take the routines that would have been called
+in response to the original command and put them in the callback for the
+applicable widget.  If there are any operations which have not been moved
+to a specific widget, you simply parse them out in the callback from a
+command entry widget.
+
+The applications that ARE hard to deal with in the X Toolkit are AST driven
+applications or application driven users.  These are the situations where
+XtMainLoop falls short.  (Esp. AST driven since Xt is not AST re-entrant).
+
+Dick Schoeller			
+Digital Equipment Corporation	
+@end(M)
+
+@begin(M)
+Subject: help (with a popup prompt design)
+
+There are cases where the user should not be allowed to do anything except
+respond to the popup. I have popup's that block all input in the case when
+a malloc has failed - the popup is to notify the user that such a condition
+has arisen and inform them that cleanup is about to occur and that a "safe"
+state in the application is to be returned to.
+
+I also have popups that don't block all other processing and are "well
+behaved" with respect to other users of the server.
+
+The fact that conditions arise with varying degrees of severity indicates
+that atleast two types of popups are needed and should be planned for
+when building and designing the UI for an application. 
+
+Phil Stanhope                                       
+Gold Hill Computers, Inc.                           
+Cambridge, MA.                                      
+@end(M)
+
+@begin(M)
+From: der Mouse 
+Subject: Re:  help (with a popup prompt design)
+
+> There are cases where the user should not be allowed to do anything
+> except respond to the popup.
+
+Perhaps, but I don't think this is it.  The only case where I can see
+any excuse for hijacking all user input is when the entire window
+system, not just one application, is threatening to be unusable.  For
+example, a window manager popping up an alert "ill-behaved application
+on the rampage, do you want to XKillClient or let it run?".
+
+> I have popup[']s that block all input in the case when a malloc has
+> failed - the popup is to notify the user that such a condition has
+> arisen and inform them that cleanup is about to occur and that a
+> "safe" state in the application is to be returned to.
+
+So why force the user to respond?  There's nothing they can do about
+it; why not simply make *your application* freeze until the popup is
+responded to?  I certainly know I might well want to switch to another
+window and look at a doc file, or run gcore...or perhaps even trash the
+whole program.  I would be most annoyed if I had to go find a terminal
+and log in again to get a chance to look at something - probably enough
+so that I'd either trash the program entirely or fix it before
+proceeding further.
+
+					der Mouse
+
+@end(M)
+
+

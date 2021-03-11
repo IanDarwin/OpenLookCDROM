@@ -1,0 +1,152 @@
+-- Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+-- $Disclaimer: 
+-- Permission to use, copy, modify, and distribute this software and its 
+-- documentation for any purpose is hereby granted without fee, 
+-- provided that the above copyright notice appear in all copies and that 
+-- both that copyright notice, this permission notice, and the following 
+-- disclaimer appear in supporting documentation, and that the names of 
+-- IBM, Carnegie Mellon University, and other copyright holders, not be 
+-- used in advertising or publicity pertaining to distribution of the software 
+-- without specific, written prior permission.
+-- 
+-- IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+-- DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+-- ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+-- SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+-- BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+-- DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+-- WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+-- ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+-- OF THIS SOFTWARE.
+--  $
+
+marker letters := "qwertyuiopasdfghjklzxcvbnm"
+		~ "QWERTYUIOPASDFGHJKLZXCVBNM"
+		~ "_"
+
+-- scan text t and discard all strings of the form "{{Future:"..."}}"
+--
+function DiscardFuture(t)
+	marker m, e;
+	m := search(start(t), "{{Future:");
+	while m /= "" do
+		e := search(finish(m), "}}");
+		while previous(m) = "\n" do
+			m := previous(m)
+		end while
+		m := search(replace(extent(m,e), ""), "{{Future:");
+	end while
+end function;
+
+
+-- spanEntry(upa)
+--	span across one index entry and remove the marker characters from the text
+--	When called, 'upa' must mark an uparrow (^) in the text
+--	An index entry is one of
+--		^word		(remove ^)
+--		^word( ... )   	(remove ^)
+--		^{ ... }		(remove ^, {, and })
+--	the entry does not cross 'nextnewline'
+--	
+function spanEntry(upa, nextnewline)
+	marker t
+	if next(upa) = "{" then
+		t := search(extent(upa, nextnewline), "}")
+		replace (t, "")
+		replace(extent(upa, next(upa)), "")
+		return extent(upa, t)
+	else
+		t := span(finish(upa), letters)
+		if t /= "" and next(t) = "(" then 
+			t := extent(t, search(extent(finish(t), nextnewline), ")"))
+		end if
+		if t /= "" then  replace(upa, "")   end if
+		return t
+	end if
+end function
+
+
+--BuildIndex
+--	search through text for "^"
+--	the following word is an index entry
+--	If the index entry word is immediately followed by a left parenthesis,
+--		the entry extend through the following right parenthesis
+--	retain section number from lines beginning with digits and dots
+--	insert index at position:  {{Index}}
+function BuildIndex(text)
+	marker indexloc := search(text, "{{Index}}")
+	if indexloc = "" then exit function end if
+
+	marker index := copy("\n-\n")    -- beginning of first record
+	marker currentsection  := ""
+	marker nextnewline := search(text, "\n")
+	marker nextindexentry := search(text, "^")
+	marker t
+
+	-- In the following loop we search for index entries and lines beginning
+	--   with digits and dots.  The latter reset the currentsection.
+
+	while nextindexentry /= ""  do
+		if extent (nextnewline, nextindexentry) /= "" then
+			-- the next newline is sooner
+			-- extract section number, if any
+			t := span(finish(nextnewline), ".0123456789")
+			if t /= "" and next(t) = " " then
+				currentsection := t
+			end if
+			nextnewline := search(extent(finish(nextnewline), text), "\n")
+		else
+			-- the next item is an index entry
+			-- add it to index and remove marker
+			t := spanEntry(nextindexentry, nextnewline)
+			if t /= "" then  
+				index ~:= t ~ "^" ~ currentsection ~ "\n-\n"
+			end if
+			nextindexentry := search(extent(finish(nextindexentry), text), "^")
+		end if
+	end while
+
+	printline("sorting index")
+	index := sort_records_per_flags("", base(index), "fd")
+
+	while True do
+		-- delete "-\n" from each entry and move section number to start of entry
+		marker m
+		index := search(index, "-\n")
+		if index = "" then exit while end if
+		m := search(finish(index), "^")
+		t := search(finish(m), "\n")
+		replace (index, extent(finish(m), start(t)) ~ "\t")
+		replace (extent(m, start(t)), "")
+		index := finish(index)	
+	end while
+
+	replace (indexloc, base(t))
+end function
+
+function main(args)
+	marker filename, outname, text
+
+	filename := token(args, letters ~ "./0123456789")
+	outname := search(filename, ".")
+	text := search(finish(outname), ".")
+	while text /= "" do
+		outname := text
+		text := search(finish(outname), ".")		
+	end while
+	if outname = "" or search(finish(outname), "/") /= ""
+			or extent(next(outname), filename) = "doc" then
+		outname := filename ~ ".doc"
+	else 
+		outname := extent(filename, outname) ~ "doc"
+	end if
+
+	printline("present: " ~ filename ~ " -> " ~ outname)
+	text := copy(readfile(filename))
+	system("if test -f "~outname ~  ";"
+		~ "then mv " ~ outname ~ " " ~ outname ~ ".BAK;fi")
+	DiscardFuture(text)
+	BuildIndex(text)
+	writefile(outname, text)
+end function
+

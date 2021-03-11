@@ -1,0 +1,353 @@
+@begin(header)
+author: ackerman@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+node_expert: ackerman=ag@ics.uci.edu
+expiration_date: 06/25/93
+last_modifier: ackerman@ics.uci.edu
+last_mod_date: 07/02/91
+mod_num: 2
+@end(header)
+@begin(M)
+Date: 11 Apr 89 17:40:16 GMT
+From: (Benjamin Ellsworth)
+Organization: Hewlett-Packard Co., Corvallis, OR, USA
+
+
+>    Is there something more I have to do beyond declaring the Converter
+> to the Toolkit at class-initialization?  I have included source code
+> below.
+
+There is no implicit converter call for arglist elements.  The 
+intrinsics assume that the programmer has the wherewithal to provide 
+the right type of data in an arglist.  You'll have to call a converter
+routine on the data yourself before you load the arglist.
+@end(M)
+
+@begin(M)
+Date: Mon, 24 Apr 89 15:15:47 EDT
+From: Chris D. Peterson 
+
+>   In my application, I'm trying to set a widgets arguments given a
+> string containing the ascii representation. (They user typed in the 
+> value.) XtSetValues() doesn't do me any good since it wants the value
+> and not its printed representation...
+
+Use XtConvert() to get the value in the right format then XtSetValues() to set
+the value into the widget.
+@end(M)
+
+@begin(M)
+Date: Fri, 18 Aug 89 11:29:06 -0400
+
+
+> I want to specify a background pixmap for a widget in a resource
+> file.
+
+You can't, the intrinsics do no define a StringToPixmap converter.  Unless
+the widget or application specifically defines this converter then you are
+out of luck.
+
+						Chris D. Peterson     
+						MIT X Consortium 
+
+@end(M)
+
+@begin(M)
+Date: Thu, 17 Aug 89 12:43:04 -0400
+
+
+When using XtSetArg you must pass in the correct pixel value, not the name
+of the color.  You will have to get the pixel value yourself.  Here is
+one way to get that pixel value from a string.
+
+						Chris D. Peterson     
+						MIT X Consortium 
+
+----------------------------------------------------------------
+
+/*	Function Name: ConvertColor
+ *	Description: This converts a string into a color.
+ *	Arguments: color_name - name of the color.
+ *	Returns: a pixel value for that color.
+ */
+
+static Pixel
+ConvertColor(w, color_name)
+Widget w;
+char * color_name;
+{
+  XrmValue from, to;
+
+  from.size = sizeof(color_name);  
+  from.addr = color_name;
+
+  XtConvert(w, XtRString, (XrmValuePtr) &from, XtRPixel, (XrmValuePtr) &to);
+  if (to.addr == NULL) exit(1);
+
+  return( (Pixel) *(to.addr) );
+}
+ 
+@end(M)
+
+@begin(M)
+Date: Tue, 12 Dec 89 07:54:28 EST
+From: Ralph R. Swick
+
+    Date: Mon, 11 Dec 89 17:04:28 -0700
+    From: Dirk Grunwald
+
+    If I pass a floating point number in XtSetArg, it doesn't work.
+
+Yes, it will; but you have to jump through hoops to get the
+C compiler to refrain from doing the courtesy of coercing
+your float to an int.  The best way we've been able to figure
+out to do this is with a union containing a float and a long.
+
+    I'd like to be
+    able to e.g. pass a string and have it parsed by the converter.
+
+You'll be able to do this with an R4-compliant Xt via a new
+additional set of interfaces.
+@end(M)
+
+@begin(M)
+Date: 24 Jul 89 22:05:07 GMT
+
+>> I'm trying to convert strings to the appropriate argument types to be
+>> put into the ArgList to be passed to XtCreateWidget() or
+>> XtAppCreateShell(), so I don't have a widget yet to pass to XtConvert().
+>> Can I pass it a NULL?
+> 
+> No.  When creating a widget the right thing is usually to pass in some
+> other widget on the same display, usually the new widget's parent.  If
+> you're creating the very first widget in the application you can't do
+> conversions; create the widget then use XtSetValues.
+
+I have a related problem: I've written a widget which needs to use
+floats in it's resource list, but I can't get it to work quite right:
+
+The initialize procedure assigns the correct default values, but when I
+try to do a set_values after realizing the widget on the float resource
+I get garbage (0).  And yet a parallel resource which I kludged into
+using strings (manually converted into floats) for the same purpose
+works fine. 
+
+So, okay, I'm new to Xt -- what am I missing? Should I be declaring a
+Converter? If so, _why_? I've R'ed the FM, and found no help.  And there
+aren't any other widgets that use floats to look at for a hint.  Is
+there something wierd about floats, or have I made a mistake in my code
+somewhere [minimal test case +150 lines, too long to include here]?
+@end(M)
+
+@begin(M)
+Date: Wed, 26 Jul 89 01:05:04 EDT
+From: Ralph R. Swick
+
+
+> The initialize procedure assigns the correct default values, but when I
+> try to do a set_values after realizing the widget on the float resource
+> I get garbage (0).
+...
+> Is
+> there something wierd about floats, or have I made a mistake in my code
+
+Yeah, there's something wierd about floats.  If you try
+to pass floats by value rather than by reference and assign
+a float value to an arglist entry in one of the normal ways,
+the C compiler will cleverly convert the float to a long.
+
+You have to do some ugly stuff with unions to convince the
+compiler not to convert the value when storing it in the arglist.
+
+@end(M)
+
+@begin(M)
+>> Now perhaps you can understand why there are no examples of widgets
+>> which use float resources.  :-(
+>
+>When float resources are used, a pointer to a float is stored into the
+>argument value instead of a literal float.  The Xaw scroll bar widget at
+>least (which has XtRFloat resources) works quite well.
+>
+>Or am I missing something?
+
+Alas, you're missing something.  Or more to the point, the people who
+didn't check that floats didn't work missed something.
+
+The float resource will not automatically be converted to a pointer.
+No way, no how.  If you want to do this, you have to do it explicitly
+(something that I ended up doing when I ran across this problem) by
+giving the pointer to XtSetArg, and having your widget expect pointers
+to floats.
+
+The Xaw scroll bar widget does not work.  I looked closely at what was
+happening with it myself when I started having problems with my
+widgets.  When you pass the scroll bar a float with XtSetArg, it
+truncates the percentage to an integer (giving a 0) and then, within
+the scrollbar code, it looks at the zero and converts it to the
+default.  In other words, unless you pass a 1.0 with the XtSetArg, you
+will always get the default value for XtNshown or XtNtop.
+
+The scrollbar widget gets around this by having the
+XtScrollbarSetThumb procedure, so it looks like it works to the user.
+It doesn't, though.
+
+			-- SLPster
+
+@end(M)
+
+@begin(M)
+Date: 20 Jul 89 17:18:11 GMT
+From: Paul Asente
+Organization: DEC Western Software Lab
+
+
+>The (R3) doc for XtConvert() says it takes a widget argument which
+>"specifies the widget to use for additional arguments (if any are
+>needed)."  What does this mean?  What extra arguments?
+
+Some conversions need more information than just the source value.  String
+to font, for example, needs the display connection to fetch the font from
+and string to pixel needs a display and a colormap.  These extra convert
+arguments are extracted from the widget you pass to XtConvert.
+
+>I'm trying to convert strings to the appropriate argument types to be
+>put into the ArgList to be passed to XtCreateWidget() or
+>XtAppCreateShell(), so I don't have a widget yet to pass to XtConvert().
+>Can I pass it a NULL?
+
+No.  When creating a widget the right thing is usually to pass in some
+other widget on the same display, usually the new widget's parent.  If
+you're creating the very first widget in the application you can't do
+conversions; create the widget then use XtSetValues.
+
+>Or is there some way I can find the appropriate
+>resource converter myself so I can call XtDirectConvert()?
+
+Nope.
+
+@end(M)
+
+@begin(M)
+Date: Mon, 25 Sep 89 10:53:41 EDT
+From: Ralph R. Swick
+
+> I don't quite understand
+> how the result of a call to XtConvert() (a caddr_t) can be placed into
+> an argument to e.g. XtSetValues().
+
+In general, it can't; you have to hard-code some knowledge about
+the C datatype of the result of the conversion; i.e. the specific
+type of object pointed to by result.addr.  E.g. if you "know"
+the result of the conversion is an int, you can say
+
+   XtSetArg (args[n], XtNsomething, *(int *)result.addr);
+
+In the special case of ArgLists, you can get away with just looking
+at the size of the returned conversion result, since that determines
+how it is "widened" to an XtArgVal.
+
+> Do I really have to
+> write a switch statement with one case for each possible destination type
+> (like the ugly switch in CopyFromArg() in lib/Xt/Resources.c)?
+
+For a higher-level generic interface, unfortunately yes.
+
+@end(M)
+@begin(M)
+Date: Tue, 19 Sep 89 07:43:12 EDT
+From: Ralph R. Swick 
+
+> Is there any reasonable way to get the converter pointer from the toolkit
+> which I have overlooked ?
+
+No, not really.  And no specific work has been done to change
+this in the just-published revision document.
+
+> Note, XtConverts needs a widget (to scan resource database), and in my
+> converter I don't have one - and I don't want to pass one, since this
+> would trash any caching if I understand it right.
+
+Actually, XtConvert uses the widget principally to identify the
+application context and thereby lookup the currently-registered
+converter.  You are correct that passing a widget id as a
+conversion argument would effectively disable caching for that
+conversion.
+@end(M)
+
+@begin(M)
+Date: Mon, 12 Dec 88 16:56:35 EST
+From: Chris D. Peterson 
+
+
+> 1) I need to switch over a resource type....
+
+My knowledge of quarks is a bit shaky, but here goes...
+
+Yes, using quarks might be advantagous for you as string comparisons
+tend to be fairly slow.  Since the conversion from string to quark and
+back again is also quite slow, unless you are doing a large number of
+comparisons the effort is probabally not worth it.  There are other
+reasons for using quarks, however, such as space considerations.
+There is reasonable documenation on converting strings to quarks in
+the X11R3 X manual pp. 215-7.
+
+NOTE: this may be useful as a code simplifier:
+
+#define streq((a), (b))     (strcmp( (a), (b) ) == 0)
+
+> 2)   According to the `X Toolkit Intrinsics' manual the C-type.
+
+The manual is right, there is no restriction that a resource value
+must fit into an XtArgVal.
+
+>   3)  XtSetValues() does not signal an error if the ArgList...
+
+No, this would cause terrible performance problems, although perhaps
+there should be a debugging mode that makes these checks, would you
+like to impliment it?
+
+>       3a)  Is the following statement true?
+
+I believe that it is not an error, it just will not do anything useful.
+ Unless, of course, this resource is on the constraint list of this
+widget's parent.  For instance the resource XtChainLeft does not mean
+anything to a label widget unless it's parent is a form.
+
+>   4)  Resource converters are called automatically when a resource...
+
+>       Is it right that in this case application programmers can
+>       call the resource converter explicitly? 
+
+No, use XtConvert(), or make the conversion yourself.
+
+>       Is there a way to
+>       find out if there exists a converter for a given source/destination
+>       type other than calling XtConvert() and inspecting the result?
+
+There is a list of known type conversions that exist in the XToolkit
+Intrinsics Manual pp 87.  
+
+>       4a)  Is the following statement true?
+
+>            A resource type T1 can be converted to the type T2
+>            by a call to XtConvert(w,...) iff there exists an
+>            entry in the resource list of XtClass(w) with a
+>            resource_type of T2 and a default_type of T1.
+
+No, I don't believe that XtConvert checks to make sure that the widget
+in question actually needs that type of conversion.  The widget
+argument is only used if the conversion needs additional information
+to make the conversion.
+
+
+						Chris D. Peterson     
+@end(M)
+
+
+
+
+
+
+

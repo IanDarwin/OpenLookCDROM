@@ -1,0 +1,195 @@
+/*
+ * Copyright 1993 Network Computing Devices, Inc.
+ *
+ * Permission to use, copy, modify, distribute, and sell this software and
+ * its documentation for any purpose is hereby granted without fee, provided
+ * that the above copyright notice appear in all copies and that both that
+ * copyright notice and this permission notice appear in supporting
+ * documentation, and that the name Network Computing Devices, Inc. not be
+ * used in advertising or publicity pertaining to distribution of this 
+ * software without specific, written prior permission.
+ * 
+ * THIS SOFTWARE IS PROVIDED `AS-IS'.  NETWORK COMPUTING DEVICES, INC.,
+ * DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING WITHOUT
+ * LIMITATION ALL IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ * PARTICULAR PURPOSE, OR NONINFRINGEMENT.  IN NO EVENT SHALL NETWORK
+ * COMPUTING DEVICES, INC., BE LIABLE FOR ANY DAMAGES WHATSOEVER, INCLUDING
+ * SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES, INCLUDING LOSS OF USE, DATA,
+ * OR PROFITS, EVEN IF ADVISED OF THE POSSIBILITY THEREOF, AND REGARDLESS OF
+ * WHETHER IN AN ACTION IN CONTRACT, TORT OR NEGLIGENCE, ARISING OUT OF OR IN
+ * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * 
+ * $NCDId: @(#)NetAudio.tmpl,v 1.19 1994/06/01 23:10:43 greg Exp $
+ */
+
+#if WantAutoSharedAudioLibrary
+#define NormalLibAudio          NormalLibX
+#define SharedLibAudio          SharedLibX
+#define DebugLibAudio           DebugLibX
+#define ProfileLibAudio         ProfileLibX
+#else
+#define NormalLibAudio		YES
+#define SharedLibAudio		NO
+#define DebugLibAudio		NO
+#define ProfileLibAudio		NO
+#endif
+
+/*
+ * Enable the next line if <NetAudio.tmpl> and audio include files/libraries
+ * are installed for normal use via installed imake or xmkmf into the 
+ * installed X11 area.  
+ */
+#if 0
+#define AuUseInstalled YES
+#endif
+
+/*
+ * _AuUse - makes a choice based on AuUseInstalled.
+ */
+#ifndef _AuUse
+#ifdef AuUseInstalled
+#define _AuUse(a,b) a
+#else
+#define _AuUse(a,b) b
+#endif
+#endif
+
+/*
+ * _AuUseCat - combination of _AuUse and Concat.
+ *           exists to avoid problems with some preprocessors
+ */
+#ifndef _AuUseCat
+#if __STDC__ && !defined(UnixCpp)
+#ifdef AuUseInstalled
+#define _AuUseCat(a,b,c) a##c
+#else
+#define _AuUseCat(a,b,c) b##c
+#endif
+#else
+#ifdef AuUseInstalled
+#define _AuUseCat(a,b,c) a/**/c
+#else
+#define _AuUseCat(a,b,c) b/**/c
+#endif
+#endif
+#endif
+
+         AUSRC = $(TOP)/lib/audio
+
+#if SharedLibAudio
+/*
+ * Shared library support is unfortunatly different on every machine
+ */
+#ifndef SharedAudioRev
+#define SharedAudioRev 2.0
+#endif
+    SOAUDIOREV = SharedAudioRev
+/* 
+ * If not AuUseInstalled, search audio source area before installed area.
+ * That way, the binary will use the source area library if invoked
+ * from the source area for testing, and the installed version
+ * if invoked elsewhere.
+ */
+
+#ifdef SunArchitecture
+      DEPAULIB = 
+#if SystemV4	/* Solaris 2 */
+/* 
+ * Solaris 2.3 standard imake config files omits the -R$(USRLIBDIR) option, so 
+ * supplying it here helps ease installation on such systems.
+ */
+ LOCAL_LDFLAGS = _AuUse(-L$(USRLIBDIR) -R$(USRLIBDIR), -L$(AUSRC) -R$(AUSRC) -L$(USRLIBDIR) -R$(USRLIBDIR))
+         AULIB = -laudio
+#else		/* SunOS 4 */
+ LOCAL_LDFLAGS = _AuUse(-L$(USRLIBDIR), -L$(AUSRC) -L$(USRLIBDIR))
+         AULIB = -laudio
+#endif
+#else /* SunArchitecture */
+
+/* place #ifdef's for other architectures around these lines */
+ LOCAL_LDFLAGS = _AuUse(-L$(USRLIBDIR), -L$(AUSRC) -L$(USRLIBDIR))
+      DEPAULIB =
+         AULIB = -laudio
+
+#endif /* SunArchitecture */
+
+
+#else /* SharedLibAudio */
+ LOCAL_LDFLAGS =
+      DEPAULIB = _AuUseCat($(USRLIBDIR),$(AUSRC),/libaudio.a)
+         AULIB = LoaderLibPrefix _AuUse(-laudio,$(DEPAULIB))
+#endif /* SharedLibAudio */
+
+  AUDIODEPLIBS = $(DEPAULIB) $(DEPXTOOLLIB) $(DEPXLIB)
+     AUDIOLIBS = $(AULIB) $(XTOOLLIB) $(XLIB) -lm
+  BUILDINCROOT = $(TOP)/usr.include
+   BUILDINCDIR = $(BUILDINCROOT)
+EXTRA_INCLUDES = -I$(BUILDINCROOT)
+    INCLUDESRC = $(TOP)/usr.include
+        INCDIR = $(INCROOT)/audio
+ IMAKE_DEFINES = -I$(TOP)/config -I../$(TOP)/config -I../../$(TOP)/config
+    WIDGET_DIR = $(TOP)/clients/audio/widgets
+    WIDGET_LIB = $(WIDGET_DIR)/libwidgets.a
+    WIDGET_INC = -I$(WIDGET_DIR)
+
+
+#if ProjectX < 5 	/* override search order for X11R4 */
+   ALLINCLUDES = $(INCLUDES) $(EXTRA_INCLUDES) $(TOP_INCLUDES) $(STD_INCLUDES)
+     LDOPTIONS = $(CDEBUGFLAGS) $(CCOPTIONS) $(EXTRA_LDOPTIONS) $(LOCAL_LDFLAGS)
+#endif
+
+#if SystemV4 && !defined(SGIArchitecture) && !defined(SunArchitecture) && !defined(LabtamArchitecture)
+     SYS_LIBS = -lc /usr/ucblib/libucb.a
+#endif
+
+/*
+ * Rules
+ */
+
+#undef InstallManPage
+#define	InstallManPage(file,destdir)					    @@\
+install.man:: file.man							    @@\
+	MakeDir($(DESTDIR)destdir)					    @@\
+	@(rel=`cat $(TOP)/RELEASE`; \					    @@\
+	 sed "\/^\.TH/ s/\"\"$$/\"$$rel\"/" < file.man > file.tmp)	    @@\
+	$(INSTALL) -c $(INSTMANFLAGS) file.tmp $(DESTDIR)destdir/file.$(MANSUFFIX) @@\
+	@$(RM) file.tmp
+
+#define SingleAudioProgram(program)					    @@\
+	InstallProgram(program,$(BINDIR))				    @@\
+	InstallManPage(program,$(MANDIR))				    @@\
+	SingleProgramTarget(program, program.o, $(AUDIOLIBS), $(SYS_LIBS))
+
+#define SimpleAudioProgram(program)					    @@\
+	AudioProgram(program, program.c, program.o)
+
+#define AudioProgram(program, srcs, objs)				    @@\
+        DEPLIBS = $(AUDIODEPLIBS)					    @@\
+LOCAL_LIBRARIES = $(AUDIOLIBS)						    @@\
+  SYS_LIBRARIES = $(SYS_LIBS) 						    @@\
+           SRCS = srcs							    @@\
+           OBJS = objs							    @@\
+									    @@\
+ComplexProgramTarget(program)
+
+#define SimpleAudioXtProgram(program)					    @@\
+	AudioXtProgram(program, program.c, program.o)
+
+#define AudioXtProgram(program, srcs, objs)				    @@\
+        DEPLIBS = $(AUDIODEPLIBS) $(WIDGET_LIB) XawClientDepLibs	    @@\
+LOCAL_LIBRARIES = $(AUDIOLIBS) $(WIDGET_LIB) XawClientLibs		    @@\
+  SYS_LIBRARIES = $(SYS_LIBS) 						    @@\
+       INCLUDES = $(WIDGET_INC)						    @@\
+           SRCS = srcs							    @@\
+           OBJS = objs							    @@\
+									    @@\
+ComplexProgramTarget(program)
+
+#define BuildReleaseHeader()						    @@\
+release.h: $(TOP)/RELEASE				    		    @@\
+	@echo "static char *release = \"@(#)`cat $(TOP)/RELEASE`\";" > $@   @@\
+						    			    @@\
+depend:: release.h				    			    @@\
+						    			    @@\
+clean::			    			    			    @@\
+	$(RM) release.h

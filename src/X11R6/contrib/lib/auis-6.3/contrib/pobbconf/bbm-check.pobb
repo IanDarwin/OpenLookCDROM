@@ -1,0 +1,108 @@
+%include pobbconfig.defs
+%ifdef pobb_AutoPost
+#!/bin/csh -f
+# Copyright 1992 Carnegie Mellon University.  All rights reserved.
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+#
+# HERE WE GOOOOOOOOOOOOOOOOOOO
+#
+if ( -d /usr/log ) then
+	set TMPLOGDIR=/usr/log
+else
+	set TMPLOGDIR=/usr/tmp
+endif
+	set DATE=?[arpadatepgm]
+	set SUBJECT="Number of messages in bboard Mailboxes at $${DATE}"
+	set TO="?[DaemonBB].bbcount@?[WorkstationCell]"
+	set MAILTO="?[DaemonBB].bbcount@?[WorkstationCell]"
+################ NOW LETS SETUP THE TEMPORARY FILES ################
+set POST=$${TMPLOGDIR}/POST$$
+echo "Date: `$$DATE`" >& $$POST
+echo "From: BBD daemon <?[PostmasterName]+@?[WorkstationCell]>" >>& $$POST
+echo "Subject: $$SUBJECT" >>& $$POST
+echo 'X-Andrew-ScribeFormat: 10' >>& $$POST
+echo "To: $$TO" >>& $$POST
+echo "" >>& $$POST
+echo '\begindata{text, 1446804}\
+\textdsversion{11}\
+\template{scribe}' >>& $$POST
+echo "\center{===================================}" >>& $$POST
+
+#### FILE COUNT IN BBOARD MAILBOXES ####
+	set localhigh = (?[arrlist(CUILocalHighBoxes)])
+%ifdef pobb_NNTPIn
+	set netnews = (?[arrlist(CUINetnewsBoxes)])
+        set hold = (`ls ?[NetDatabaseRoot]/Hold`)
+%endif pobb_NNTPIn
+	set locallow = (?[arrlist(CUILocalLowBoxes)])
+	set extnonetnews = (?[arrlist(CUIExtBoxes)] ?[arrlist(CUIDJBoxes)])
+	echo "\majorheading{Bboard Mailboxes that contained mail at `$$DATE`}" >>& $$POST
+
+    foreach mailbox ($$localhigh)
+        set i = `ls $$mailbox |wc -l`
+	if $$i > 0 then
+		echo "$${mailbox} = `ls $${mailbox} |wc -l`">>& $$POST
+	endif
+    end
+
+    foreach mailbox ($$extnonetnews)
+        set i = `ls $$mailbox |wc -l`
+	if $$i > 0 then
+	    echo "$${mailbox} = $$i">>& $$POST
+        endif
+    end
+
+%ifdef pobb_NNTPIn
+    foreach mailbox ($$netnews)
+	set i = `ls $$mailbox |wc -l`
+	if $$i > 0 then
+	    echo "$${mailbox} = $$i">>& $$POST
+	endif
+     end
+   if $$hold != 0 then 
+   foreach queue ($$hold)
+       set i = `ls /usr/net/Hold/$${queue} |wc -l`
+       if $$i > 0 then
+           echo "/usr/net/Hold/$${queue} = $$i">>& $$POST
+       endif
+    end
+ endif
+%endif pobb_NNTPIn
+
+    foreach mailbox ($$locallow)
+	set i = `ls $$mailbox |wc -l`
+	if $$i > 0 then
+	    echo "$${mailbox} = $$i" >>& $$POST
+        endif
+    end
+    echo "All other bboard mailboxes were empty at `$$DATE`" >>& $$POST
+################ TIE UP THE PACKAGE AND SEND IT AWAY ################
+	echo "\center{===================================" >>& $$POST
+	echo "Run ended: `$$DATE`" >>& $$POST
+	echo "}" >>& $$POST
+	echo '\enddata{text, 1446804}' >>& $$POST
+	?[queuemail] -f $$POST -a $$MAILTO
+################ CLEAN UP TEMPORARY FILES ################
+	rm -f $$POST 
+exit 0
+
+%endif pobb_AutoPost
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]

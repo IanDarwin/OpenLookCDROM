@@ -1,0 +1,937 @@
+\begindata{text,539034464}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\define{indentexp
+menu:[Region~4,IndentExp]
+attr:[LeftMargin LeftMargin Cm 124846]
+attr:[Indent LeftMargin Cm -124846]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]}
+\define{footnote
+
+attr:[Flags OverBar Int Set]
+attr:[FontSize PreviousFontSize Point -2]}
+\chapter{\center{Figobj: A general class for objects in Fig}}
+
+
+The figobj is the object used for the contents of a figure. Subclasses of 
+figobj include figorect (rectangle), figotext (text block), figoins (ATK 
+inset), and figogrp (group of objects). (Before you get excited, note that 
+figoins and figogrp function with a lot of support from the figure and 
+figview; you can't write figobjs that neat on your own.)
+
+To allow generalized object-connection and object-reshaping routines, the 
+figobj may provide a set of standard handles and parts. 
+
+Handles are a set of zero or more points, generally corners or endpoints of 
+the object; usually, the handles are the points highlighted when the object is 
+selected. Handles are numbered starting at 0; the constant figobj_NULLREF 
+(defined in figobj.ch) refers to no handle. (figobj_NULLREF should not be 
+confused with figure_NULLREF, which refers to no figobj (even though they are 
+the same in the current implementation.)) Handles can be moved with the 
+figobj_MoveHandle() routine, or via the _Reshape(), _AddParts(), and 
+_DeleteParts() methods that are called by the toolset.
+
+Some figobjs also designate a list of body parts, also numbered from 0 up. No 
+body part is also labelled 
+figobj_NULLREF.\footnote{\
+\begindata{fnote,539315976}
+\textdsversion{12}
+\define{italic
+menu:[Font~1,Italic~11]
+attr:[FontFace Italic Int Set]}
+Stick \italic{that} in your pipe and parse it.\
+\enddata{fnote,539315976}
+\view{fnotev,539315976,803,0,0}} Body parts cannot be manipulated by methods, 
+only by the _Reshape(), _AddParts(), and _DeleteParts() calls. 
+
+
+\section{Quick Reference}
+
+
+\indentexp{figobj_ToolName(struct figtoolview *v, long rock) returns char *;
+
+figobj_ToolModify(struct figtoolview *v, long rock); 
+
+figobj_Instantiate(struct figtoolview *v, long rock) returns struct figobj *; 
+ 
+
+figobj_WriteBody(FILE *fp);
+
+figobj_ReadBody(FILE *file, boolean recompute) returns long;
+
+figobj_Draw(struct figview *v); 
+
+figobj_DrawAttachments(struct figview *v);
+
+figobj_Sketch(struct figview *v);
+
+figobj_Select(struct figview *v);
+
+figobj_ClearAttachments(struct figview *v);
+
+figobj_PrintObject(struct figview *v, FILE *file, char *prefix);
+
+figobj_SetNumHandles(long num);
+
+figobj_Build(enum view_MouseAction action, struct figview *v, long x, long y, 
+long clicks) returns enum figobj_Status;
+
+figobj_HitMe(long x, long y, long delta, long *ptref) returns enum 
+figobj_HitVal;
+
+figobj_BasicHitMe(long x, long y, long delta, long *ptref) returns enum 
+figobj_HitVal;
+
+figobj_Reshape(enum view_MouseAction action, struct figview *v, long x, long 
+y, boolean handle, long ptref) returns boolean;
+
+figobj_AddParts(enum view_MouseAction action, struct figview *v, long x, long 
+y, boolean handle, long ptref) returns boolean;
+
+figobj_DeleteParts(enum view_MouseAction action, struct figview *v, long x, 
+long y, boolean handle, long ptref) returns boolean;
+
+figobj_MoveHandle(x, y, ptref);
+
+figobj_Reposition(long xd, long yd);
+
+figobj_InheritVAttributes(struct figattr *attr, unsigned long mask);
+
+figobj_UpdateVAttributes(struct figattr *attr, unsigned long mask) returns 
+unsigned long;
+
+figobj_RecomputeBounds();
+
+figobj_ComputeSelectedBounds();
+
+figobj_GetBounds(struct figview *vv) returns struct rectangle *;
+
+figobj_GetSelectedBounds(struct figview *vv) returns struct rectangle *;
+
+figobj_UpdateParentBounds();
+
+figobj_SetParent(long parentref, struct *figure ancestor);
+
+figobj_GetHandleType(int ptref) returns enum figobj_HandleType;
+
+figobj_GetCanonicalHandles() returns long *;
+
+figobj_StabilizeAttachments(boolean keepproport);
+
+figobj_GetParent();
+
+figobj_GetParentRef();
+
+figobj_GetAncestorFig();
+
+figobj_IsGroup();
+
+figobj_IsInset();
+
+figobj_AttributesUsed();
+
+figobj_GetHandles();
+
+figobj_GetNumHandles();
+
+figobj_GetHandleX(long num);
+
+figobj_GetHandleY(long num);
+
+figobj_SetHandle(long num, long x, long y);
+
+figobj_PosX();
+
+figobj_PosY();
+
+figobj_SetBoundsRect(long left, long top, long width, long height);
+
+figobj_GetVAttributes();
+
+figobj_GetIVAttributes();
+
+figobj_GetReadOnly();
+
+figobj_IsAttachmentActive(int num);
+
+figobj_SetAttachmentActive(int num, boolean val);
+
+figobj_SetAttachmentPosX(int num, long pos);
+
+figobj_SetAttachmentOffX(int num, long offset);
+
+figobj_GetAttachmentPosX(int num);
+
+figobj_GetAttachmentOffX(int num);
+
+figobj_SetAttachmentPosY(int num, long pos);
+
+figobj_SetAttachmentOffY(int num, long offset);
+
+figobj_GetAttachmentPosY(int num);
+
+figobj_GetAttachmentOffY(int num);
+
+}
+
+\section{Class Procedures}
+
+
+The following ought to be class procedures, but they require inheritance, so 
+they're methods instead. The toolset (figtoolview) creates a "dummy" instance 
+of each figobj that it uses, and uses those dummies as subjects for these 
+calls. 
+
+Certain figobj classes, such as figoplin, exist in the toolset tool panel 
+multiple times. The \italic{rock} argument for these procedures is used to 
+distinguish these tools.
+
+
+\indentexp{char *figobj_ToolName(dummy, v, rock)
+
+struct figobj *dummy;
+
+struct figtoolview *v;
+
+long rock;
+
+}
+This returns a string containing the name of the tool. The toolset uses this 
+to label the figobj's creation tool in its tool panel. By default it returns 
+the string "<no-name>".
+
+
+\indentexp{void figobj_ToolModify(dummy, v, rock) 
+
+struct figobj *dummy;
+
+struct figtoolview *v;
+
+long rock;
+
+}
+This procedure is called when a selected creation tool in the toolset is 
+clicked on a second time. By default it does nothing.
+
+
+\indentexp{struct figobj *figobj_Instantiate(dummy, v, rock) 
+
+struct figobj *dummy;
+
+struct figtoolview *v;
+
+long rock;
+
+}
+This procedure is called when the user begins building an object in the 
+figview window. By default, it returns a freshly created object of the same 
+class as \italic{dummy}.
+
+
+
+\section{Determining a Figobj's Class}
+
+
+The following macros are shortcuts; they work like the corresponding 
+class_IsTypeByName() calls, but faster.
+
+
+\indentexp{boolean figobj_IsGroup(struct figobj *self) }    [macro]
+
+
+Returns TRUE if \italic{self} is a figogrp or a subclass of figogrp.
+
+
+\indentexp{boolean figobj_IsInset(struct figobj *self)}     [macro]
+
+
+Returns TRUE if \italic{self} is a figoins or a subclass of figoins.
+
+
+\section{Displaying the Figobj
+
+}
+\indentexp{void figobj_Draw(self, v) 
+
+struct figobj *self;
+
+struct figview *v;
+
+}
+Redraw \italic{self} in its current location, in view \italic{v}. All drawing 
+will take place within the rectangle returned by figobj_GetBounds(self, v). 
+
+
+\indentexp{void figobj_Sketch(self, v) 
+
+struct figobj *self;
+
+struct figview *v;
+
+}
+Sketch \italic{self} in its current location, in view \italic{v}. The sketch 
+will be similar to self, but less detailed and faster. Furthermore, the sketch 
+will be drawn using XOR (invert) mode, so that a second call to 
+figobj_Sketch() will erase the sketch. All drawing will take place within the 
+rectangle returned by figobj_GetBounds(self, v). 
+
+
+\indentexp{void figobj_Select(self, v)
+
+struct figobj *self;
+
+struct figview *v;
+
+}
+Draw the selection handles or highlight for self, in view \italic{v}. The 
+drawing will be done using XOR (invert) mode, so that a second call to 
+figobj_Select() will erase it. All drawing will take place within the 
+rectangle returned by figobj_GetBounds(self, v), or within figview_SpotRad 
+pixels of it. 
+
+
+\indentexp{void figobj_DrawAttachments(self, v) 
+
+struct figobj *self;
+
+struct figview *v;
+
+}
+Draw the resizing attachments for self, in view \italic{v}. The drawing will 
+be done using XOR (invert) mode, so that a second call to 
+figobj_DrawAttachments() will erase it. All drawing will take place within the 
+rectangle returned by figobj_GetSelectedBounds(self, v), or within 
+figview_AnchRad+1 pixels of it. 
+
+
+
+\section{The Figobj's Position in the Group Hierarchy
+
+}
+\indentexp{void figobj_SetParent(self, parentref, ancestor)
+
+struct figobj *self;
+
+long parentref;
+
+struct figure *ancestor;
+
+}
+This method tells the figobj that it has been inserted in \italic{ancestor}, 
+in the group with reference \italic{parentref}. It should only be called by 
+figure_InsertObject() and figure_DeleteObject().
+
+
+\indentexp{struct figogrp *figobj_GetParent(struct figobj *self)}     [macro]
+
+
+This returns a pointer to the figogrp which contains \italic{self}.  If 
+\italic{self} is not inserted into a figure, it returns NULL.
+
+
+\indentexp{long figobj_GetParentRef(struct figobj *self) }    [macro]
+
+
+This returns a reference to the figogrp which contains \italic{self}. If 
+\italic{self} is not inserted into a figure, it returns figure_NULLREF.
+
+
+\indentexp{struct figure *figobj_GetAncestorFig(struct figobj *self)} 
+    [macro]
+
+
+This returns a pointer to the figure in which \italic{self} has been inserted. 
+If \italic{self} is not inserted into a figure, it returns NULL.
+
+
+\indentexp{void figobj_UpdateParentBounds(self)
+
+struct figobj *self;
+
+}
+This tells the figobj's parent group, all of its ancestor groups, and the 
+figure in which it is inserted that the figobj has changed size. It should 
+only be called by figobj methods such as figobj_MoveHandle() or 
+figobj_Reposition().
+
+
+\section{Getting Information About the Figobj's Location
+
+}
+\indentexp{enum figobj_HitVal figobj_HitMe(self, x, y, delta, ptref) 
+
+struct figobj *self;
+
+long x, y;
+
+long delta;
+
+long *ptref;
+
+}
+This method queries whether the point (\italic{x, y}) is in or near the figobj 
+\italic{self}. It returns one of the following values:
+
+
+\leftindent{figobj_HitHandle: (x, y) is within \italic{delta} of a handle of 
+the figobj. The handle reference is returned in \italic{ptref}.
+
+figobj_HitBody: (x, y) is within \italic{delta} of some part of the body of 
+the figobj. The body part reference is returned in \italic{ptref}. (The 
+reference may be figobj_NULLREF.)
+
+figobj_HitInside: (x, y) is in the interior of the figobj. Nothing is returned 
+in \italic{ptref}.
+
+figobj_Miss: None of the above is true. Nothing is returned in \italic{ptref}.
+
+}
+If \italic{ptref} is NULL, the handle / body part reference (if any) is not 
+returned.
+
+By default, this method simply calls figobj_BasicHitMe().
+
+
+\indentexp{enum figobj_HitVal figobj_BasicHitMe(self, x, y, delta, ptref) 
+
+struct figobj *self;
+
+long x, y;
+
+long delta;
+
+long *ptref;
+
+}
+This is a simple hit-detection algorithm, used by several figobj subclasses as 
+a first pass in HitMe(). It returns figobj_HitHandle if the point (\italic{x, 
+y}) is within \italic{delta} of a handle of the object; it returns 
+figobj_HitInside if the point is within \italic{delta} of the bounding box of 
+the object; and it returns figobj_Miss otherwise.
+
+
+\indentexp{struct rectangle *figobj_GetBounds(self, vv)
+
+struct figobj *self;
+
+struct figview *vv;
+
+}
+This returns a pointer to a struct rectangle which contains the entire drawn 
+image of the figobj, as it would be drawn in view \italic{vv}. This is in 
+figure coordinates, not screen coordinates. (Normally, an object will have the 
+same bounding box in every view; however, different displays may have slightly 
+different fonts available, which will affect this.)
+
+If \italic{vv} is NULL, the object will return its best guess as to its size. 
+This may be inaccurate for figotext objects or figogrps that contain figotext, 
+especially if the figure has never been displayed on any screen.
+
+The contents of the returned structure are used by other procedures, and 
+should not be overwritten or deallocated.
+
+
+\indentexp{struct rectangle *figobj_GetSelectedBounds(self, vv)
+
+struct figobj *self;
+
+struct figview *vv;
+
+}
+This returns a pointer to a struct rectangle which contains the entire drawn 
+image of the figobj plus its selection highlights and resizing attachments, as 
+it would be drawn in view \italic{vv}. This is in figure coordinates, not 
+screen coordinates. 
+
+
+\indentexp{void figobj_RecomputeBounds(self)
+
+struct figobj *self;
+
+
+}This method is used by some subclasses of figobj to recompute location and 
+bounding-box information. It should only be called by the internals of those 
+classes.
+
+
+\indentexp{void figobj_ComputeSelectedBounds(self)
+
+struct figobj *self;
+
+}
+This method recomputes the selected bounding box. It should be called whenever 
+the attachments of an object have been modified.
+
+
+\indentexp{figobj_SetBoundsRect(struct figobj *self, long left, long top, long 
+width, long height)}     [macro]
+
+
+This method is used by some subclasses of figobj to set the bounding-box 
+information. It should only be called by the internals of those classes.
+
+
+
+\section{Creating and Editing Figobjs From an Application
+
+}
+\indentexp{struct figobj *figobj_Create( ... )}
+
+
+Each subclass of figobj has a class procedure called Create(). This procedure 
+returns a freshly created object, which can then be inserted into a figure. 
+The parameters determine the shape and location of the object; their nature 
+depends on the class.
+
+
+\indentexp{figobj_GetNumHandles(struct figobj *self)}     [macro]
+
+
+This returns the number of handles on \italic{self}.
+
+
+\indentexp{figobj_GetHandles(struct figobj *self) returns struct point *;} 
+    [macro]
+
+
+This returns a pointer to the list of handles, stored as an array of struct 
+point.
+
+
+\indentexp{figobj_GetHandleX(struct figobj *self, long num)}     [macro]
+
+\indentexp{figobj_GetHandleY(struct figobj *self, long num)}     [macro]
+
+
+These return the position of the handle whose references is \italic{num}.
+
+
+\indentexp{void figobj_MoveHandle(self, x, y, ptref)
+
+struct figobj *self;
+
+long x, y, ptref;
+
+}
+This method moves the handle whose reference is \italic{ptref} to the position 
+(\italic{x, y}). The coordinates should be given in standard figure 
+coordinates.
+
+
+\indentexp{void figobj_Reposition(self, xd, yd)
+
+struct figobj *self;
+
+long xd, yd;
+
+}
+This method moves the figobj \italic{xd} to the right and \italic{yd} down. 
+Negative values can be used to move the object up and left. 
+
+
+\section{Building and Editing Figobjs Interactively
+
+}
+The following methods are generally called only by the toolset.
+
+
+\indentexp{enum figobj_Status figobj_Build(self, v, action, x, y, clicks)   
+
+struct figobj *self;
+
+struct figview *v;
+
+enum view_MouseAction action;
+
+long x, y; 
+
+long clicks;
+
+}
+This method is called repeatedly as the user creates a figobj. Each call 
+corresponds to some action (clicking, dragging, or releasing a mouse button) 
+at some point in the document. \italic{v} is the figview window in which the 
+action took place.
+
+\italic{action} specifies the type of action and which button was used. 
+(\italic{x, y}) is the location of the action; they should be given in figure 
+coordinates, not pixel coordinates. \italic{clicks} specifies whether the 
+action was a single click, double click, etc. 
+
+If the user requests to complete or abort the object by some method other than 
+the mouse, figobj_Build() will be called one final time with \italic{clicks} 
+set to 0. (\italic{action}, \italic{x}, and\italic{\italic{ }y} will be 
+undefined.) 
+
+The method returns one of these values (defined in figobj.ch):
+
+
+\leftindent{\italic{figobj_Done}: the object is complete; no more calls to 
+figobj_Build() should be made. If action was not a mouse-up action, further 
+mouse movements should be thrown away until the next mouse-up.
+
+\italic{figobj_NotDone}: the object is not yet done; further mouse actions 
+should be sent to figobj_Build().
+
+\italic{figobj_Failed}: the object has encountered an error and cannot be 
+completed. No more calls to figobj_Build() should be made, and the object 
+should be deleted and destroyed.
+
+}
+\indentexp{boolean figobj_Reshape(self, action, v, x, y, handle, ptref)
+
+struct figobj *self;
+
+enum view_MouseAction action;
+
+struct figview *v;
+
+long x, y;
+
+boolean handle;
+
+long ptref;
+
+}
+This method is called repeatedly as the user reshapes a figobj. Each call 
+corresponds to some action (clicking, dragging, or releasing a mouse button) 
+at some point in the document. \italic{v} is the figview window in which the 
+action took place.
+
+\italic{action} specifies the type of action and which button was used. 
+(\italic{x, y}) is the location of the action; they should be given in figure 
+coordinates, not pixel coordinates. \italic{clicks} specifies whether the 
+action was a single click, double click, etc. 
+
+\italic{handle} and \italic{ptref} specify which part of the figobj is being 
+reshaped. If \italic{handle} is TRUE, \italic{ptref} is a reference to the 
+handle which is being dragged. If \italic{handle} is FALSE, \italic{ptref} is 
+a reference to the body part which is being dragged.
+
+The method returns TRUE if the reshaping is legal and should continue. If it 
+returns FALSE, the reshaping is assumed to be illegal and no more calls to 
+figobj_Reshape() will be made.
+
+
+\indentexp{boolean figobj_AddParts(self, action, v, x, y, handle, ptref)
+
+struct figobj *self;
+
+enum view_MouseAction action;
+
+struct figview *v;
+
+long x, y;
+
+boolean handle;
+
+long ptref;
+
+}
+\indentexp{boolean figobj_DeleteParts(self, action, v, x, y, handle, ptref)
+
+struct figobj *self;
+
+enum view_MouseAction action;
+
+struct figview *v;
+
+long x, y;
+
+boolean handle;
+
+long ptref;
+
+}
+These methods are similar to figobj_Reshape(). They are called when the user 
+wishes to add or delete points to or from the figobj.
+
+
+\section{Changing a Figobj's Attributes}
+
+
+\indentexp{unsigned long figobj_AttributesUsed(struct figobj *self)} 
+\indentexp{ }    [macro]
+
+
+This returns a mask declaring which attributes (color, line width, font size, 
+etc) are used by the figobj.
+
+
+\indentexp{struct figattr *figobj_GetVAttributes(struct figobj *self) 
+}    [macro]
+
+
+This returns a pointer to the structure containing the figobj's attributes.
+
+
+\indentexp{unsigned long figobj_UpdateVAttributes(self, attr, mask)
+
+struct figobj *self;
+
+struct figattr *attr;
+
+unsigned long mask;
+
+}
+Assign the attributes stored in \italic{attr} to \italic{self}. The bits in 
+\italic{mask} determine which attributes are assigned and which are ignored. 
+The method returns a mask describing which attributes were actually used 
+(since not every figobj uses every attribute.)
+
+
+\indentexp{struct figattr *figobj_GetIVAttributes(struct figobj *self)} 
+    [macro]
+
+
+This returns a pointer to the structure containing the attributes that the 
+figobj inherits from its parent group. 
+
+
+\indentexp{void figobj_InheritVAttributes(self, attr, mask)
+
+struct figobj *self;
+
+struct figattr *attr;
+
+unsigned long mask;
+
+}
+This method is used to notify figobjs that the attributes they inherit from 
+parent groups have changed. This is called from the figobj internal routines; 
+there should be no need to call it anywhere else.
+
+
+\section{Editing a Figobj's Resizing Attachments}
+
+
+A figobj may have attachments set. These allow it to be automatically resized 
+if its parent group has doconstraints set TRUE, and the parent group is 
+resized. The root group is resized if doconstraints is TRUE and the figview is 
+resized. Thus, if all groups in a figure have doconstraints on and all objects 
+have attachments set properly, the entire thing will adjust beautifully every 
+time the window resizes. In practice, anything could happen. Wear your hard 
+hat.
+
+
+An attachment on a figobj goes with a particular handle. An attachment has a 
+position (PosX and PosY, each an integer from 0 to figogrp_Range) and an 
+offset (OffX and OffY, each an integer). When the group is resized, the 
+attachment is moved to a spot whose X and Y position in the group is 
+proportional to the PosX and PosY values (from 0 to figogrp_Range.) Then the 
+handle is moved to a position offset from the attachment by (OffX, OffY). Got 
+that? No? Well, say the group covers the rectangle ([X1..X2], [Y1..Y2]). Then 
+the attachment point will be at 
+
+(X1 + (X2-X1) * (PosX / figogrp_Range), Y1 + (Y2-Y1) * (PosY / figogrp_Range))
+
+so the handle will be at
+
+(OffX + X1 + (X2-X1) * (PosX / figogrp_Range), OffY + Y1 + (Y2-Y1) * (PosY / 
+figogrp_Range))
+
+
+Oh, never mind.
+
+
+\indentexp{figobj_IsAttachmentActive(struct figobj *self, int num)} 
+    [macro]
+
+
+This returns whether the attachment on handle \italic{num} is active or not.
+
+
+\indentexp{figobj_GetAttachmentPosX(struct figobj *self, int num)}     [macro]
+
+\indentexp{figobj_GetAttachmentPosY(struct figobj *self, int num)}     [macro]
+
+\indentexp{figobj_GetAttachmentOffX(struct figobj *self, int num)}     [macro]
+
+\indentexp{figobj_GetAttachmentOffY(struct figobj *self, int num) }    [macro]
+
+
+These return the position and offset of the attachment on handle \italic{num}. 
+If the attachment is inactive, these values are undefined.
+
+
+\indentexp{figobj_GetHandleType(struct figobj *self, int ptref) returns enum 
+figobj_HandleType;}     [macro]
+
+
+This returns a value declaring what kind of handle \italic{ptref} is. The 
+possible values are:
+
+
+\indentexp{enum figobj_HandleType \{figobj_None, figobj_ULCorner, 
+figobj_LLCorner, figobj_LRCorner, figobj_URCorner, figobj_MiddleLeft, 
+figobj_MiddleRight, figobj_MiddleTop, figobj_MiddleBottom, figobj_Center, 
+figobj_LeftEndpoint, figobj_RightEndpoint, figobj_InteriorPoint, 
+figobj_Point\};
+
+}
+\indentexp{long *figobj_GetCanonicalHandles(self)
+
+struct figobj *self;
+
+}
+This returns a pointer to an array of long values which is a "canonical" list 
+of handles for this object. That is, to effectively resize the object, it is 
+sufficient to move these handles and no others. (This is used, for example, in 
+the toolset's "Set Standard Anchors" command.) The array is terminated by 
+figobj_NULLREF.
+
+
+\indentexp{figobj_SetAttachmentActive(struct figobj *self, int num, boolean 
+val)}     [macro]
+
+
+This sets the attachment on handle \italic{num} to be active or inactive, 
+depending on \italic{val}.
+
+
+\indentexp{figobj_SetAttachmentPosX(struct figobj *self, int num, long pos)} 
+    [macro]
+
+\indentexp{figobj_SetAttachmentPosY(struct figobj *self, int num, long pos)} 
+    [macro]
+
+\indentexp{figobj_SetAttachmentOffX(struct figobj *self, int num, long offset)} 
+    [macro]
+
+\indentexp{figobj_SetAttachmentOffY(struct figobj *self, int num, long offset)} 
+    [macro]
+
+
+These set the position and offset of the attachment on handle \italic{num}. 
+You must also set the attachment to be active for these to have any effect. 
+After using any of these, you should call figobj_ComputeSelectedBounds() to 
+recompute the bounding box.
+
+
+\indentexp{void figobj_ClearAttachments(self)
+
+struct figobj *self;
+
+}
+This method sets inactive all attachments on the handles of \italic{self}.
+
+
+\indentexp{void figobj_StabilizeAttachments(self, keepproport)
+
+struct figobj *self;
+
+boolean keepproport;
+
+}
+This method normalizes the attachments on \italic{self}. This is useful if the 
+object has been moved or resized, so that the attachments are out of sync with 
+the position and size of the parent group.
+
+If \italic{keepproport} is TRUE, the offsets will be adjusted to match the 
+(proportional) positions. If FALSE, the proportional positions will be 
+adjusted to match the offsets.
+
+
+\section{Printing the Figobj}
+
+
+\indentexp{void figobj_PrintObject(self, v, file, prefix)
+
+struct figobj *self;
+
+struct figview *v;
+
+FILE *file;
+
+char *prefix;
+
+}
+This method writes out PostScript code for \italic{self}, to the file 
+\italic{file}. The string \italic{prefix} is written at the beginning of each 
+line of output.
+
+A pointer to the view doing the printing is provided, in case you want it. 
+It's probably not necessary.
+
+
+
+\section{Reading and Writing the Figobj
+
+}
+\indentexp{void figobj_WriteBody(self, fp)
+
+struct figobj *self;
+
+FILE *fp;
+
+}
+This writes out the figobj to a datastream, without the \\begindata and 
+\\enddata markers. (Which makes it much easier to subclass.) It is called by 
+figobj_Write(), so it need not be called anywhere else.
+
+
+\indentexp{long figobj_ReadBody(self, fp, recompute)
+
+struct figobj *self;
+
+FILE *fp;
+
+boolean recompute;
+
+}
+This reads in the figobj from a datastream, returning a standard 
+dataobject_Read() status code. If \italic{recompute} is TRUE, the object will 
+recompute its bounding box and location information; if not, it assumes it is 
+an inherited method and allows the subclass to do it.
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,805,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,539034464}

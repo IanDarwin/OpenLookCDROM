@@ -1,0 +1,231 @@
+@begin(header)
+@end(header)
+				 Font Metrics
+
+
+				  Jim Fulton
+			       MIT X Consortium
+
+
+
+In X11, text is printed by specifying an "origin" in (x,y) relative to which
+characters should be displayed.  The "baseline" of the font (the top-most row
+of pixels in any descenders) is laid on top of the y-coordinate and characters
+are drawn relative to this line.  Thus, characters that do not have descenders
+but which touch the baseline will illuminate pixels in row (y-1), but not in
+row y.
+
+For each character in the font, the following information is provided:
+
+    logical width		This is the horizontal distance from the
+				origin of this character to next character.
+				If the string "ab" where printed with its
+				origin at (x,y) and "a" had a logical width of
+				10 pixels, "b" would be printed at (x+10,y).
+				Well-designed fonts include a certain amount
+				of spacing in the logical width so that 
+				characters don't bunch up.  This value will
+				usually be positive for characters that are
+				read from left-to-right, and negative for
+				characters that are read right-to-left.
+
+    left bearing		This is the directed, horizontal distance from
+				the origin (x,y) at which a character is
+				printed to the left edge of the glyph raster
+				(which is the where the left-most pixel is
+				drawn).  Counting from zero at the origin, this
+				is the number of pixels to the left-most pixel.
+				Depending on whether this pixel appears to the
+				left, on, or to the right of the origin, this
+				value will be negative, zero, or positive,
+				respectively.
+
+    right bearing		This is the directed, horizontal distance from
+				the origin (x,y) at which a character is
+				printed to the right edge of the glyph raster
+				(which is one to the right of where the right-
+				most pixel is drawn).  Counting from zero at
+				the origin, this is the number of pixels to
+				just beyond the right-most illuminated pixel.
+				Depending on whether this pixel appears to the
+				left, on, or to the right of the origin, this
+				value will be negative, zero, or positive,
+				respectively.
+
+    ascent			This is the directed vertical distance from the
+				origin (x,y) at which a character is printed to
+				the top edge of the top-most pixel that is
+				illuminated when this character is drawn.
+				Counting from zero at the origin, this is the 
+				number of pixels to the top-most pixel.
+				Depending on whether the top-most pixel appears
+				above, on, or below the origin, this value will
+				be positive, zero, or negative, respectively
+				(note the assymmetry between this and the other
+				metrics).
+
+    descent			This is the directed, vertical distance from
+				the origin (x,y) at which a character is
+				printed to the bottom edge of the glyph raster
+				(which is one below where the bottom-most pixel
+				is drawn).  Counting from zero at the origin,
+				this is the number of pixels to just below the
+				bottom-most pixel.  Depending on whether this
+				pixel appears above, on, or below the baseline,
+				this value will be negative, zero, or positive.
+
+
+Fonts also have a font-ascent and a font-descent, defined the same as the
+character ascents and descents, that is used for determining inter-line
+spacing.  These two values are choosen by the font designer so that lines of
+text that are vertically spaced by (font-ascent + font-descent) look
+appropriate for the font.  
+
+When text is drawn at a point (x,y), the server paints the first glyph (call
+its metrics g, for short) such that:
+
+    left-most pixel		is in column (x + g.lbearing)
+
+    right-most pixel		is in column (x + g.rbearing - 1)
+
+    top-most pixel		is in row (y - g.ascent)
+
+    bottom-most pixel		is in row (y + g.descent - 1)
+
+
+The origin is then advanced to by the logical width of the first character
+(i.e. (x,y) becomes (x + g.width, y)), and the process is repeated for the
+next character in the string being printed.
+
+Normally, the only pixels which are touched are those that are set in the
+character glyph.  However, applications (such as terminal emulators) that would
+like a rectangle of "background color" painted behind each character can use a
+special type of text printing, called ImageText.  In this case, the server
+fills a rectangle before printing the character such that:
+
+    left side			is in column x
+
+    right side			is in column (x + logical_width - 1)
+
+    top side			is in row (y - font_ascent)
+
+    bottom side			is in row (y + font_descent - 1)
+
+
+Since the size of the rectangle (logical_width by font_ascent+font_descent)
+is determined by the font ascent and descent and not by the character font and
+descent, a character printed with ImageText may "stick out" beyond the
+rectangle as follows:
+
+    lbearing < 0		some pixels on left will have no background
+
+    rbearing >= width		some pixels on right will have no background
+
+    ascent > font_ascent	some pixels on top will have no background
+
+    descent >= font_descent	some pixels on bottom will have no background
+
+This is particularly common for characters with accents.  Fonts that have 
+been specially designed so that all of the characters have the same logical
+width and illuminate only those pixels that would appear within the ImageText
+background rectangle described above are called Character Cell fonts.  These
+are the only fonts that are truly suitable for use with terminal emulators
+and other programs that use ImageText.  Fonts in which all of the characters
+are of the same width, but which stick out beyond the background rectangle are
+called Monospaced fonts.  All other fonts are called Proportional fonts.  For
+more information, see the X Logical Font Description Conventions (XLFD) 
+document.
+
+The following example will show how the string "T-p" would be printed in the
+-adobe-helvetica-bold-r-normal--12-120-75-75-p-70-iso8859-1.  The glyphs
+"T", "-", and "p" have the images and character metrics shown below
+
+	########
+	...##...	width 8
+	...##...	lbearing 0, rbearing 8
+	...##...	ascent 9, descent 0
+	...##...
+	...##...
+	...##...
+	...##...
+	...##...
+
+
+	#####		width 8
+			lbearing 1, rbearing 6
+			ascent 4, descent -3
+
+
+	##.##.
+	###.##		width 7
+	##..##		lbearing 0, rbearing 6
+	##..##		ascent 7, descent 3
+	##..##
+	###.##
+	##.##.
+	##....
+	##....
+	##....
+
+
+Note that the width of "-" is 8 even though it only has 5 illuminated pixels.
+In this case, one blank pixel to the left and two pixels to the right are 
+considered to be part of the glyph.  This can seen clearly by padding the
+images out to their logical widths and their proper heights (the font-ascent
+and font-descent for this font are 11 and 3, respectively):
+
+
+               +---     ........    ........    .......
+               |        ........    ........    .......
+               |        ########    ........    .......
+               |        ...##...    ........    .......
+               |        ...##...    ........    ##.##..
+  font ascent  |        ...##...    ........    ###.##.
+      (11)     |        ...##...    ........    ##..##.
+               |        ...##...    .#####..    ##..##.
+               |        ...##...    ........    ##..##.
+               |        ...##...    ........    ###.##.
+ baseline ____ |        ...##...    ........    ##.##..
+               +===     ........    ........    ##.....
+ font descent  |        ........    ........    ##.....
+     (3)       |        ........    ........    ##.....
+               +---
+                        |           |           |
+                        origin      origin      origin
+
+
+Now, removing the illustration spaces between the images, we get:
+
+
+               +---     .......................
+               |        .......................
+               |        ########...............
+               |        ...##..................
+               |        ...##...........##.##..
+  font ascent  |        ...##...........###.##.
+      (11)     |        ...##...........##..##.
+               |        ...##....#####..##..##.
+               |        ...##...........##..##.
+               |        ...##...........###.##.
+ baseline ____ |        ...##...........##.##..
+               +===     ................##.....
+ font descent  |        ................##.....
+     (3)       |        ................##.....
+               +---
+                        |       |       |
+                        origin  origin  origin
+
+
+From this picture, we can compute the extents of the string as would be
+returned by XTextExtents:
+
+    width (total lit and unlit across)				23
+
+    lbearing (number crossed to left lit pixel)			0
+
+    rbearing (number crossed to beyond right lit pixel)		22
+
+    ascent (number crossed to top lit pixel)			9
+
+    descent (number crossed to below bottom lit pixel)		3
+

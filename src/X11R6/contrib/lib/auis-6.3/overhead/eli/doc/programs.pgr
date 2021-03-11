@@ -1,0 +1,348 @@
+\begindata{text,539484024}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\center{\bold{\bigger{Programming Examples in ELI, the Embedded Lisp 
+Interpreter}
+
+by Bob Glickstein
+
+27-May-1988}}
+
+
+\heading{Introduction}
+
+This document provides several examples illustrating the use of the ELI 
+library within an application.  It is suggested that the reader first gain an 
+understanding of the data structures within the ELI library by reading 
+types.pgr.  Also, the ELI library functions are fully documented in the 
+reference guide libcalls.pgr (and indexed in libcalls.idx).
+
+
+\heading{The Basics}
+
+Any program which incorporates the ELI library must declare a global variable 
+named \italic{EliProcessInfo}.  The type of this variable is EliProcessInfo_t. 
+ This structure contains "universal" information about the ELI process.
+
+
+ELI has the capability of maintaining separate data spaces for different 
+clients, simulating multiple distinct Lisp interpreters.  This is achieved by 
+maintaining a separate state variable for each data space.  The type of the 
+state variable is EliState_t, and the majority of ELI calls require a pointer 
+to such a variable.  The state variable is initialized by the function 
+EliInit.
+
+
+This is how a simple ELI client might begin:
+
+
+\example{#include "/usr/andrew/include/eli.h"
+
+
+EliProcessInfo_t EliProcessInfo;
+
+
+\bold{main}()
+
+\{
+
+    EliState_t state;
+
+
+    EliInit(&state, e_mem_pool);
+
+                    }\italic{/* An explanation of this 2nd argument appears 
+later */}\example{
+
+    ...
+
+\}
+
+}
+\heading{ELI Primitives}
+
+Elementary Lisp functions which cannot be defined in Lisp -- such as CAR and 
+CDR -- are called "primitives".  Primitives must be written in the source 
+language, declared with the function EliPrimDef, and compiled.  All ELI 
+primitives must be written as follows: the type of the function must be 
+"void", and the function must accept three arguments, whose types are 
+(respectively) (EliState_t *), (EliCons_t *) and (EliSexp_t *).  The first 
+argument is the state variable within which evaluation is to take place, the 
+second is the parameter list to the function, and the third is an initialized 
+sexp (usually obtained with EliSexp_GetNew) which, after a successful 
+evaluation, will hold the Lisp object which is the return value of the 
+primitive.  The second argument -- the parameter list -- is simply the cdr of 
+the entire list being evaluated.  Thus, if the full expression being evaluated 
+is \typewriter{(plus a b (+ 3 4))}, then Prim_PLUS will be called (via a 
+mechanism which is described later) with the parameter list \typewriter{(a b 
+(+ 3 4))}.  The primitive receives this argument list unevaluated, and it is 
+up to the primitive to evaluate the particular arguments that need to be 
+evaluated.  (Setq, for example, only evaluates the second of its two 
+arguments.)
+
+
+\heading{Let's Plunge In}
+
+The following is an example of how to define a simple Lisp primitive in ELI. 
+ This is the definition of the standard Lisp primitive SYMBOLP.  SYMBOLP 
+expects a single argument.  If this argument evaluates to a symbol, T is 
+returned, otherwise NIL is returned.  Without further ado, here it is.  A 
+discussion follows.
+
+
+\example{void            \bold{Prim_SYMBOLP}(st, arglist, resbuf)
+
+EliState_t     *st;
+
+EliCons_t      *arglist;
+
+EliSexp_t      *resbuf;
+
+\{
+
+    EliSexp_t      *args[1], *err;
+
+    eliDataTypes_t  typeV[1];
+
+    int             paramStat, evalV[1];
+
+
+    typeV[0] = e_data_symbol;
+
+    evalV[0] = TRUE;
+
+    paramStat = EliProcessList(st, arglist, 1, 1,
+
+                               args, &err, typeV,
+
+                               evalV);
+
+    if ((paramStat == -1) || (paramStat == -2)) \{
+
+        EliError(st, ELI_ERR_ARGLISTSIZE, err,
+
+                 "ELI-PRIMITIVE
+
+                      [SYMBOLP
+
+                          (checking arglist size)]");
+
+        return;
+
+    \}
+
+    if (paramStat == -1000) \{
+
+        EliSexp_SetSym(st, resbuf, EliNilSym(st));
+
+        return;
+
+    \}
+
+    if (paramStat < 0)
+
+        return;
+
+    EliSexp_SetSym(st, resbuf, EliTSym(st));
+
+\}
+
+}
+First, the function is declared as described above:
+
+
+\example{void            \bold{Prim_SYMBOLP}(st, arglist, resbuf)
+
+EliState_t     *st;
+
+EliCons_t      *arglist;
+
+EliSexp_t      *resbuf;}
+
+
+Next, a set of variables are declared to be used with the function 
+EliProcessList, which is essentially the heart of this primitive:
+
+
+\example{\{
+
+    EliSexp_t      *args[1], *err;
+
+    eliDataTypes_t  typeV[1];
+
+    int             paramStat, evalV[1];}
+
+
+EliProcessList will take this primitive's parameter list, evaluate its 
+elements, type-check them, and place the evaluated, type-checked sexps in the 
+array \italic{args}.  \italic{Err} is a pointer to a sexp which will be filled 
+in if EliProcessList encounters an error.  \italic{TypeV} is a vector 
+dictating the types of the sexps that EliProcessList should expect to 
+encounter while filling in \italic{args}.  \italic{EvalV} is a vector of truth 
+values that identifies the elements of arglist to evaluate and which to leave 
+unevaluated.  Since (in this case) the primitive expects only one argument, 
+each vector has length 1.
+
+
+\example{    typeV[0] = e_data_symbol;
+
+    evalV[0] = TRUE;}
+
+
+We set \italic{evalV[0]} to TRUE since we wish to evaluate the first argument; 
+we set \italic{typeV[0]} to e_data_symbol because we expect the first argument 
+to be a symbol.  We will know that it is not a symbol when EliProcessList 
+returns a "bad type" error, and this is what will enable us to determine the 
+result of this primitive.
+
+
+\example{    paramStat = EliProcessList(st, arglist, 1, 1,
+
+                               args, &err, typeV,
+
+                               evalV);}
+
+
+We call EliProcessList on these arguments, specifying 1 as both the minimum 
+and the maximum acceptable number of arguments in \italic{arglist}.  The 
+result is assigned to the integer variable \italic{paramStat}.
+
+
+\example{    if ((paramStat == -1) || (paramStat == -2)) \{}
+
+
+EliProcessList returns -1 if \italic{arglist} was shorter than 1 element, and 
+-2 if it was longer than 1 element.
+
+
+\example{        EliError(st, ELI_ERR_ARGLISTSIZE, err,
+
+                 "ELI-PRIMITIVE
+
+                      [SYMBOLP
+
+                          (checking arglist size)]");}
+
+
+We flag an error since the primitive SYMBOLP was called on the wrong number of 
+arguments.  We supply the state variable, an integer code (given by the macro 
+ELI_ERR_ARGLISTSIZE) identifying the type of error, the sexp which caused the 
+error in the first place (EliProcessList will have set \italic{err} to contain 
+\italic{arglist}), and a string describing the error.  \smaller{(The newlines 
+in the string are placed here strictly for readability, and normally should 
+not be present.)}
+
+
+\example{        return;
+
+    \}}
+
+
+Now that an error has been flagged, we can safely abort this primitive and 
+expect a higher-level function in ELI to handle the error.
+
+
+\example{    if (paramStat == -1000) \{}
+
+
+EliProcessList returns error code -(1000 + i) if the i\superscript{th} 
+parameter was not of the type specified by \italic{typeV[i]}.  In this case, i 
+can only be zero.
+
+
+\example{        EliSexp_SetSym(st, resbuf, EliNilSym(st));}
+
+
+EliNilSym returns a pointer to the special symbol NIL.  With EliSexp_SetSym, 
+we bind this symbol to \italic{resbuf}, thus supplying the return value for 
+this primitive.  EliProcessList has determined that the argument to this 
+primitive is not a symbol, so the return value must be NIL.
+
+
+\example{        return;
+
+    \}}
+
+
+Once we have determined the value for \italic{resbuf}, we may return from this 
+primitive.
+
+
+\example{    if (paramStat < 0)
+
+        return;}
+
+
+If EliProcessList doesn't return a bad-type error, it may still encounter an 
+error attempting to evaluate the argument in \italic{arglist} (e.g., it 
+encounters an unbound symbol).  If this is true, we do not need to flag an 
+error with EliError, since one will have already been flagged by the internals 
+of the evaluator.
+
+
+\example{    EliSexp_SetSym(st, resbuf, EliTSym(st));
+
+\}
+
+}
+Now we know that the argument is a symbol (since EliProcessList hasn't 
+complained about the type), and we know that no other errors have occurred. 
+ We can therefore bind an affirmative response to \italic{resbuf}.  This is 
+achieved by calling EliTSym, which returns the special symbol T, and binding T 
+to \italic{resbuf} with EliSexp_SetSym.
+
+
+\heading{As you can see...}
+
+This document is incomplete.  It will not remain this way.  Meanwhile, for 
+help in programming ELI, see Bob Glickstein (bobg@andrew.cmu.edu).
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1740,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,539484024}

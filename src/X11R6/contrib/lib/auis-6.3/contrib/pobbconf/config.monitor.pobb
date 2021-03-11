@@ -1,0 +1,120 @@
+#!/bin/csh -f
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+#
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+
+%include pobbconfig.defs
+#
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+
+%ifdef pobb_RunMachines
+
+setenv PATH /bin:/usr/bin:/etc
+rehash
+# Check to see that everything in this machine's configuration is running.
+# The startup scripts leave tag files in the config dir (?[BigLocalDir]/config).
+# The possibilities for files there:
+# queuemail daemons: 'qm.TAG' containing name of queue being serviced or O option for the outgoing daemon
+# nntppoll:	'nntppoll' containing 'nntppoll'
+# undigest:	'undigest' containing 'undigest'
+# cuin:		'cuin.TAG' containing name of script being run
+# oldsendmail:	'oldsendmail' containing 'oldsendmail'
+# reauth:		'reauth' containing 'reauth'
+# Always:	Venus (or afsd) and the queuemail servicing ?[LocalQueue].
+# Before believing the result from ``ps'' output, pause and look again to make sure.
+
+set nonomatch
+set reason=""
+%ifdef pobb_RunAMSDelivery
+set pid=`ps awwwwx | grep queuemail | grep ?[LocalQueue] | grep -v grep`
+if ( "$$pid" == "" ) then
+	sleep 4
+	set pid=`ps awwwwx | grep queuemail | grep ?[LocalQueue] | grep -v grep`
+endif
+if ( "$$pid" == "" ) then
+	sleep 4
+	set pid=`ps awwwwx | grep queuemail | grep ?[LocalQueue] | grep -v grep`
+endif
+if ( "$$pid" == "" ) then
+	set reason='No queuemail for ?[LocalQueue]'
+%ifdef pobbenv_AFS
+else
+	if ( ! -e ?[CellCommonPrefix]?[WorkstationCell]?[CellCommonSuffix] ) then
+		sleep 10
+		if ( ! -e ?[CellCommonPrefix]?[WorkstationCell]?[CellCommonSuffix] ) then
+			set reason='Venus/afsd not running.'
+		endif
+	endif
+%endif pobbenv_AFS
+endif
+%endif pobb_RunAMSDelivery
+if ( "$$reason" == "" ) then
+    cd ?[BigLocalDir]/config
+    if ( $$status != 0 ) exit
+    foreach FN ( * )
+      if ( "$${FN}" != "*" ) then
+	set cont=`cat $$FN`
+	set pid=`ps awwwwx | grep -e "$$cont" | grep -v grep`
+	if ( "$$pid" == "" ) then
+	    sleep 4
+	    set pid=`ps awwwwx | grep -e "$$cont" | grep -v grep`
+	endif
+	if ( "$$pid" == "" ) then
+	    sleep 4
+	    set pid=`ps awwwwx | grep -e "$$cont" | grep -v grep`
+	endif
+	if ( "$$pid" == "" ) then
+	    set reason="No $$FN (content $$cont)"
+	endif
+	if ( "$$reason" != "" ) break
+      endif
+    end
+endif
+# If there's no reason for a reboot, don't do one!
+if ( "$$reason" == "" ) then
+%ifdef pobbenv_AFS
+# Insist that there be something there by next time, though...
+	echo reauth >& ?[BigLocalDir]/config/reauth
+	chmod a+w ?[BigLocalDir]/config/reauth
+%endif pobbenv_AFS
+	exit(0)
+endif
+
+echo "<critical>(pid $$$$) Config: $$reason" > /dev/console
+echo "<critical>(pid $$$$) Running shutdown script in two minutes." > /dev/console
+echo Post office `/bin/hostname` attempting reboot at `date` because: $$reason >> ?[TempLog]/reboot.$$$$
+ps awwx >>& ?[TempLog]/reboot.$$$$
+sleep 120
+
+?[SmallLocalDir]/pobb.shutdown >& /dev/null
+sleep 240
+sync
+echo '<critical>(pid $$$$) Rebooting NOW' > /dev/console
+sync
+sleep 5
+sync
+(reboot)
+/etc/reboot
+
+%endif pobb_RunMachines

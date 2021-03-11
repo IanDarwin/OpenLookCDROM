@@ -1,0 +1,58 @@
+/*
+ * Copyright 1993 by Digital Equipment Corporation, Maynard, Massachusetts.
+ * 
+ * Permission to use, copy, modify, distribute, and sell this software and its 
+ * documentation for any purpose is hereby granted without fee, provided that 
+ * the above copyright notice appear in all copies and that both that 
+ * copyright notice and this permission notice appear in supporting 
+ * documentation, and that the name of Digital not be used in advertising or 
+ * publicity pertaining to distribution of the software without specific, 
+ * written prior permission.  Digital makes no representations about the 
+ * suitability of this software for any purpose.  It is provided "as is" 
+ * without express or implied warranty.
+ * 
+ * DIGITAL DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+ * ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL 
+ * DIGITAL BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+ * DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN 
+ * AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF 
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+#if !defined(lint) && !defined(SABER)
+static char write_c_rcsid[]="$Header: /crl/audio/AF/server/dda/mi/RCS/RB_ReadMono.c,v 1.1 1993/11/29 22:38:45 stewart Exp $";
+#endif
+
+#include "ringbuffer.h"
+#include <audio.h>
+#include <server/include/misc.h>
+
+/* ReadMono copies monophonic data from a ring buffer to an array 
+ * channel 0 is LEFT.
+ */
+void ReadMono(ring_buffer *from, int time, HSAMP *to, int count,
+	      int channel, double gain)
+{
+  int thistime, offset;
+  float ft;
+  float fg = gain;
+  HSAMP *pfrom;
+  while (count > 0) {
+    offset = (time - from->zeroTime) % from->size;
+    thistime = min(count, from->size - offset);
+    pfrom = ((HSAMP *) &from->buf[offset]) + channel;
+    count -= thistime;
+    time += thistime;
+    if (gain == 1.0) {
+      while (thistime-- > 0) {
+	*to++ = *pfrom;
+	pfrom += 2;
+      }
+    }
+    else {
+      while (thistime-- > 0) {
+	*to++ = GMOV(*pfrom);
+	pfrom += 2;
+      }
+    }
+  }
+}

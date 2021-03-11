@@ -1,0 +1,419 @@
+\begindata{text,539970000}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\center{\bold{\bigger{Regular Expressions in ELI, the Embedded Lisp 
+Interpreter}
+
+by Bob Glickstein
+
+9-Jun-1988}}
+
+
+\heading{Caveat}
+
+The regular expression package used by ELI has changed since the original 
+draft of this document.  Operators described here but no longer supported (or 
+now supported differently) by ELI are:
+
+
+\indent{\description{\bold{<} and \bold{>} are no longer "magic." 
+ Alternations need not be delimited with angle brackets.
+
+\bold{! - _ \{ \} ( )} are no longer magic when they follow a \bold{\\}. 
+ \bold{(} and \bold{)} replace the functionality of \bold{\\(} and \bold{\\)}.
+
+}}
+\heading{Introduction}
+
+To date, three ELI primitives -- \bold{RE-STRCONTAINS}, 
+\bold{RE-STRDECOMPOSE}, and \bold{RE-STRDECOMPOSE+} -- make use of strings 
+called "regular expressions".  These regular expressions have their own 
+internal syntax.  This document is an introduction to regular expressions and 
+also a tutorial and reference guide to the syntax of the regular expressions 
+available in ELI.
+
+
+\heading{What are Regular Expressions?}
+
+A regular expression, on the one hand, is a string like any other; enclosed 
+within quotes and containing a sequence of characters.  On the other hand, 
+special characters within the string have certain functions which make regular 
+expressions useful when trying to match portions of other strings.  In the 
+following discussion and examples, a string containing a regular expression 
+will be called the "pattern", and the string against which it is to be matched 
+is called the "reference string".
+
+
+It is often useful to know whether a string contains a certain substring.  For 
+instance, suppose I had written a program (in FLAMES, the mail-processing 
+language built upon ELI) to process my incoming mail, and I wanted that 
+program to perform a certain function if that mail was from Bill Cosby.  I 
+would extract the "From:" header from the message I was processing and test it 
+to see if it contained the string "Bill Cosby".
+
+
+Here's how it would work: Suppose \italic{fromLine} is a string that looks 
+like this:
+
+
+\display{From: whc@nbc.tv.com (Bill Cosby)}
+
+
+My mail-processing function would then do a test like this:
+
+
+\example{(strcontains "Bill Cosby" fromLine)}
+
+
+which would return T (truth), since the string in \italic{fromLine} does 
+indeed contain the string "Bill Cosby".  If \italic{fromLine} were the string
+
+
+\display{From: rc@cbs.tv.com (Robert Culp)}
+
+
+then the test
+
+
+\example{(strcontains "Bill Cosby" fromLine)}
+
+
+would return NIL (falsehood), since the string in \italic{fromLine} does 
+\italic{not} contain the string "Bill Cosby".
+
+
+Based on whether this call to strcontains returns T or NIL, I would then have 
+my program take or not take the action associated with mail from Bill Cosby.
+
+
+The question now arises: what if mail from Bill Cosby doesn't actually contain 
+the string "Bill Cosby"?  For instance, the "From:" header might look like 
+this instead:
+
+
+\display{From: whc@nbc.tv.com (William Cosby)}
+
+
+Suppose further that I have no advance information regarding how Mr. Cosby's 
+name would look in computer mail.  One might argue that although the first 
+name might be different, the last name will always be "Cosby", and I should 
+simply rely upon this test:
+
+
+\example{(strcontains "Cosby" fromLine)}
+
+
+However, my program would then incorrectly match a \italic{fromLine} like 
+this:
+
+
+\display{From: jqc@foo.bar.com (Joe Cosby)}
+
+
+What I need is a mechanism for matching only those messages which say either 
+that they are from "Bill Cosby" or "William Cosby".  One means of doing this 
+is:
+
+
+\example{(or (strcontains "Bill Cosby" fromLine)
+
+    (strcontains "William Cosby" fromLine))}
+
+
+But there's a simpler way: regular expressions.
+
+
+It is possible to create a single regular expression, or pattern, that matches 
+either "Bill Cosby" or "William Cosby".
+
+
+\example{(re-strcontains "<Bill Cosby|William Cosby>" fromLine)}
+
+
+does just that.  Re-strcontains is an augmented version of strcontains in 
+which the first argument is not a literal string to be found in the second 
+argument; rather, it is a pattern in which certain special "magic" characters 
+describe how to conduct the match.  One such magic character is the 
+"alternator" character "|".  The expression "<\italic{foo}|\italic{bar}>" 
+matches either the string \italic{foo} or the string \italic{bar}.  (The angle 
+brackets < and > must surround an alternation expression.)  Therefore, the 
+preceding call to re-strcontains will match \italic{fromLine} (and return T) 
+if \italic{fromLine} contains either the string "Bill Cosby" or the string 
+"William Cosby".
+
+
+We can simplify the above pattern by noting that in both the "Bill Cosby" and 
+the "William Cosby" cases, we must match against the literal string " Cosby"; 
+the only thing that may vary is the first name.  We can then "factor out" the 
+portion common to both cases, like so:
+
+
+\example{(re-strcontains "<Bill|William> Cosby" fromLine)}
+
+
+The pattern here says, "First, match either the string `Bill' or `William'; 
+when that is done, match a single blank space and the string `Cosby'".  In 
+regular expressions, any text that is not a magic character is matched 
+literally.  \smaller{(As a matter of fact, re-strcontains can work exactly 
+like strcontains in some cases.  If the pattern string contains no magic 
+characters, then a call to re-strcontains is exactly like a call to 
+strcontains.)}
+
+
+Let us complicate this example one step further, by noting that the "From:" 
+header may or may not contain Mr. Cosby's middle name, or even just his middle 
+initial.  If this is so, then our previous regular expression will not match 
+it.  That is, the pattern "<Bill|William> Cosby" does not account for the fact 
+that \italic{fromLine} might be
+
+
+\display{From: whc@nbc.tv.com (William Henry Cosby)}
+
+
+Our pattern expects to find "William" (or "Bill") followed by a space and the 
+string "Cosby", and in this case it is frustrated.  One could create a regular 
+expression like this:
+
+
+\example{"<Bill|William|Bill Henry|William Henry> Cosby"}
+
+
+or to cover the case where only the middle initial appears,
+
+
+\example{"<Bill|William|Bill Henry|William Henry|Bill H.|William H.> Cosby"}
+
+
+but this is needlessly complicated.  \smaller{(Note: the period (".") is 
+another magic character in regular expressions, and can't accurately be used 
+as it is in this example (that is, as a literal character).  For the sake of 
+simplicity, we will assume for the moment that it is \italic{not} a magic 
+character, and return to the topic later.)}  It is possible to create a 
+regular expression which matches first "Bill" or "William", followed by 
+anything that might (or might not) appear between the first and last names, 
+followed by the last name "Cosby".  Here is what such a pattern looks like:
+
+
+\example{"<Bill|William>.* Cosby"}
+
+
+Here's where we acknowledge the magic-ness of the period (".") character.  The 
+period, or dot, matches \italic{any single character}.  The asterisk ("*") 
+says, "Match any number of occurrences (including zero) of whatever came 
+before me."  Together, ".*" says "match zero or more of any character" -- in 
+other words, match absolutely anything.  The entire pattern, therefore, says, 
+"Match either `Bill' or `William', followed by any number of characters, as 
+long as \italic{that's} followed by a space and the string `Cosby'."  This 
+expression will now positively match against the following strings (among many 
+others):
+
+
+\display{Bill Cosby
+
+William Cosby
+
+Bill H. Cosby
+
+William H. Cosby
+
+Bill Henry Cosby
+
+William Henry Cosby
+
+Bill "Cliff Huxtable" Cosby
+
+William Frank Cosby
+
+Bill The Dot-and-Star Will Match Anything At All Cosby}
+
+
+Clearly, although this approach is a good one, it is not as accurate as 
+possible, in light of the last two strings.  Note also that our pattern does 
+not care what comes after the end of "Cosby"; for all we know, fromLine may 
+actually be
+
+
+\display{From: whc@nbc.tv.com (William Henry Cosbyovich)}
+
+
+Although our pattern will match this string, we clearly do not want it to.  We 
+will further refine the pattern for this example later on.
+
+
+\heading{Regular Expression Syntax}
+
+Here now is a description of the syntax of regular expressions, which 
+describes the magic characters and how they work.  First there is a detailed 
+specification of the syntax, followed by comments on the 14 rules presented.
+
+
+The following list of rules is slightly paraphrased from the manual entry for 
+the qed editor by David Tilbrook.
+
+
+\description{\bold{Rule 1}: Any single character except a magic character 
+matches itself.  The magic characters are: \bold{< [ .} and sometimes \bold{\\ 
+| > ^ * + $} depending on context.
+
+
+\bold{Rule 2}: A dot \bold{.} matches any single character.
+
+
+\bold{Rule 3}: A backslash \bold{\\} followed by any of the magic characters 
+in Rule 1 matches that magic character literally.  Further, a backslash 
+followed by any of the characters \bold{! - _ \{ \} ( )} or a single non-zero 
+numerical digit has a special meaning discussed below.
+
+
+\bold{Rule 4}: A backslash-exclamation point \bold{\\!} matches any single 
+control character except tab or newline.
+
+
+\bold{Rule 5}: Any sequence of characters \italic{s} appearing within square 
+brackets \bold{[ ]} matches any \italic{one} of the characters in the sequence 
+\italic{s}.  Within square brackets, backslash \bold{\\} has no magic meaning 
+(i.e., Rule 3 does not apply); and if \italic{s} is to contain the 
+right-square-bracket \bold{]}, then it must be the first character in 
+\italic{s}.  Further, a caret \bold{^} appearing immediately after the 
+left-square-bracket makes the expression match any character \italic{not} in 
+\italic{s}.  Finally, the subsequence \italic{a}\bold{-}\italic{b} within 
+\italic{s}, where \italic{a} and \italic{b} are any single characters, is a 
+shorthand for matching any character lexicographically between \italic{a} and 
+\italic{b}.  If \italic{s} is to contain the hyphen \bold{-}, the hyphen must 
+be the first or last character in \italic{s}.
+
+
+\bold{Rule 6}: A sequence of expressions surrounded by angle brackets \bold{< 
+>} and separated by the alternator operator \bold{|} matches any string which 
+is matched by any one of the expressions.  \bold{<}\italic{x}\bold{>}, where 
+\italic{x} is a regular expression as described in Rules 1-12, will match what 
+\italic{x} matches; 
+\bold{<}\italic{x\subscript{1}}\bold{|}\italic{x\subscript{2}}\bold{|}...\
+\bold{|}\italic{x\subscript{n}}\bold{>} will match a string matched by any one 
+of the \italic{x}'s.
+
+
+\bold{Rule 7}: A backslash \bold{\\} followed by a single non-zero numerical 
+digit \italic{n} matches a copy of the string matched by the 
+\italic{n}\superscript{th} subexpression (see Rule 11).  The 
+\italic{n}\superscript{th} subexpression is the one beginning with the 
+\italic{n}\superscript{th} \bold{\\(}.
+
+
+\bold{Rule 8a}: A regular expression \italic{x} as described in Rules 1-7 
+followed by an asterisk \bold{*} matches a sequence of zero or more copies of 
+what \italic{x} matches.
+
+
+\bold{Rule 8b}: A regular expression \italic{x} as described in Rules 1-7 
+followed by a plus \bold{+} matches a sequence of one or more copies of what 
+\italic{x} matches.
+
+
+\bold{Rule 9a}: A backslash-hyphen \bold{\\-} matches the longest possible 
+sequence of blanks and tabs, possibly empty.
+
+
+\bold{Rule 9b}: A backslash-underscore \bold{\\_} matches the longest possible 
+non-empty sequence of blanks and tabs.
+
+
+\bold{Rule 10a}: A backslash-left-brace \bold{\\\{} matches the empty string 
+at the beginning of an "identifier", where an identifier is defined as an 
+underscore or alphabetic letter, followed by zero or more underscores, 
+alphabetic letters or numerical digits.
+
+
+\bold{Rule 10a}: A backslash-right-brace \bold{\\\}} matches the empty string 
+at the end of an "identifier", where an identifier is defined as an underscore 
+or alphabetic letter, followed by zero or more underscores, alphabetic letters 
+or numerical digits.
+
+
+\bold{Rule 11}: A regular expression \italic{x} as described in Rules 1-12 
+surrounded by backslash-parentheses \bold{\\(} and \bold{\\)} matches what 
+\italic{x} matches and, where the \bold{\\(} is the \italic{n}\superscript{th} 
+\bold{\\(} appearing in the overall regular expression, records the string 
+matched by \italic{x} as the \italic{n}\superscript{th} subexpression.  If a 
+backslash-parenthesized expression appears inside an alternation (see Rule 6), 
+then each expression in the alternation must have the same nesting structure 
+with respect to the backslash-parentheses.  Finally, if a 
+backslash-parenthesized expression appears within an alternation, then that 
+alternation may not be iterated (see Rule 8).
+
+
+\bold{Rule 12}: A regular expression \italic{x} as described in Rules 1-12, 
+followed by a regular expression \italic{y} as described in Rules 1-11, 
+matches a string matched by \italic{x} followed by a string matched by 
+\italic{y}, where the match for \italic{x} is as long as possible while still 
+permitting a match for \italic{y}.
+
+
+\bold{Rule 13a}: A regular expression \italic{x} as described in Rules 1-12 
+preceded by a caret \bold{^} matches a string matched by \italic{x} if and 
+only if that string appears at the beginning of a line.
+
+
+\bold{Rule 13b}: A regular expression \italic{x} as described in Rules 1-12 
+followed by a dollar sign \bold{$} matches a string matched by \italic{x} if 
+and only if that string appears at the end of a line.
+
+
+\bold{Rule 14}: A regular expression as described in Rules 1-13 matches the 
+longest, leftmost possible match in a string.
+
+}
+\heading{As you can see...}
+
+This document is incomplete.  It will not remain this way.  Meanwhile, for 
+help with ELI regular expressions, see Bob Glickstein (bobg@andrew.cmu.edu).
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1757,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,539970000}

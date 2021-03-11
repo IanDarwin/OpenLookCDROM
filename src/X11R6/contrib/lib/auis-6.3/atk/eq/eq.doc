@@ -1,0 +1,1747 @@
+\begindata{text,539028584}
+\textdsversion{12}
+\template{default}
+\define{fixedtext
+menu:[Region~4,Fixedtext]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{fixedindent
+menu:[Region~4,Fixedindent]
+attr:[LeftMargin LeftMargin Cm 83230]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{fieldheading
+menu:[Region~4,Fieldheading]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace Bold Int Set]
+attr:[FontFamily AndySans Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{fieldtext
+menu:[Region~4,Fieldtext]
+attr:[LeftMargin LeftMargin Cm 83230]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFamily AndySans Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{paramname
+menu:[Font~1,Paramname]
+attr:[FontFace Italic Int Set]}
+\formatnote{\chapter{eq}}
+
+
+This module handles the data object for the equation inset.  It allows 
+reading, writing and insertion of formulae within the equation as well as 
+setting and removing marks and repositioning the cursor.  The distinction 
+between view and data is somewhat blurred in the current implementation of the 
+equation inset, so for clarity, this document will describe the implementation 
+as it is currently written.
+
+
+
+\section{About this section}
+
+
+In order to understand this module, the reader should be familiar with the 
+basics of ATK programming and inset development.  In particular, familiarity 
+with the dataobj and mark modules of the basic ATK library will be helpful. 
+ The eqv module describes the view object for the equation inset and is 
+related to this module.
+
+
+This document corresponds to ATK version 11.8 or higher, and application 
+version 1.0 or higher.
+
+
+
+\section{About eq}
+
+
+The eq class deals with equations, where an equation is an array of formulae 
+which is maintained by the eq methods.  This array has some number of elements 
+which are divided into three segments, p1, gap and p2.  The p1 elements of the 
+array contain valid information, the gap elements of the array contain 
+garbage, and the p2 elements of the array contain the remainder of the valid 
+information.  Thus p1 + p2 elements of the array are in use and constitute the 
+size of the equation, and the gap elements of the array are free.
+
+
+Each formula contains, among other things, a pointer to it's symbol.  Each 
+symbol has a general type and a specific type.  This two-level description 
+makes certain formatting operations easier.
+
+
+The files parse.y and symbols.c are also associated with the eq class.
+
+
+
+\section{Related classes}
+
+
+In order to use the eq class, the reader may also wish to look at the eqview 
+class as well as being familiar with the dataobj and mark classes and class 
+system as a whole.
+
+
+
+\section{\italic{eq} functions}
+
+
+See the sections below for details regarding the class procedures and methods 
+for the eq class.
+
+
+\begindata{bp,538271624}
+\enddata{bp,538271624}
+\view{bpv,538271624,1050,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_Read}
+
+				
+
+\majorheading{Reads data from a file}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eq_Read }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+FILE *\paramname{file},
+
+long \paramname{id});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Override}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function erases the current equation, updates the dataobject 
+id, sets the modified flag to false and then calls eq_ReadFILE to actually 
+parse the data.}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns dataobject_NOREADERROR.  It should probably 
+get a status value from eq_ReadFILE and return that instead.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function should be used to read data from a file into the 
+current buffer.  Generally, it is called by the parent data object when 
+reading an ATK file.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{Doesn't update properly when a new file is read in.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{dataobj_Read}
+
+
+
+
+
+\view{bpv,538271624,1051,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_Write}
+
+				
+
+\majorheading{Writes data to a file}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eq_Write }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+FILE *\paramname{file},
+
+long \paramname{writeid},
+
+long \paramname{level});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Override}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function checks to see whether the current data object has 
+already been written out.  If not, it updates the id, writes the begindata 
+information, calls eq_WriteFILE to write the actual eq datastream and then 
+writes the enddata information.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the UniqueID of the current data object.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function should be used to write data from the current buffer 
+to a file.  Generally it is called by the parent data object when writin an 
+ATK file.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{Doesn't set modified properly.  Will quit without having saved 
+changes and without asking user.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{dataobj_Write}
+
+
+
+
+
+
+
+\view{bpv,538271624,1052,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_Insert}
+
+				
+
+\majorheading{Inserts a formula into an equation at a specified position}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eq_Insert }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+long \paramname{pos},
+
+struct formula *\paramname{f});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function ensures that the current position is within the range 
+of the equation.  Then it ensures that the current formula is large enough to 
+accomodate the new formula.  Upon repositioning to the intended spot within 
+the equation, the new formula is inserted and the marks are updated. 
+ } \fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is only called from eq_InsertTokens.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{eq_InsertTokens}
+
+
+
+
+
+
+
+\view{bpv,538271624,1053,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_InsertTokens}
+
+				
+
+\majorheading{Inserts formulae into an equation at a specified position}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eq_InsertTokens }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+long \paramname{pos},
+
+char *\paramname{s});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function parses a string, calls eq_Lookup to find the 
+individual symbols in the symbol table and then calls eq_Insert to actually 
+insert the symbols into the equation.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the number of symbols which were inserted 
+into the equation.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is called when it is unnecessary to check for 
+zilches.  When it is uncertain whether symbols are being inserted next to a 
+zilch, eq_InsertTokensCarefully should be used instead.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{eq_InsertTokensCarefully}
+
+
+
+
+
+
+
+\view{bpv,538271624,1054,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_InsertTokensCarefully}
+
+				
+
+\majorheading{Inserts formulae into an equation at a specified position, 
+taking into account nearby zilches}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eq_InsertTokensCarefully }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+long \paramname{pos},
+
+char *\paramname{s});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function checks the symbols immediately before and after the 
+specified position and removes them if they are zilches.  Then it calls 
+eq_InsertTokens to insert the new symbols at the given position.  A zlich is 
+replaced if no symbol is inserted.}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the number of symbols added minus any zilches 
+that were removed.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used when inserting symbols in the probable 
+vicinity of a zilch.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{There are some problems with scripted zilches, especially with 
+replacing a scripted zilch and also with pasting a formula near a zilch.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{eq_InsertTokens
+
+eqv_Paste}
+
+
+
+
+
+
+
+\view{bpv,538271624,1055,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_Delete}
+
+				
+
+\majorheading{Deletes a formula from an equation}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eq_Delete }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+long \paramname{pos});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function removes a formula from the specified position and 
+then updates the marks.}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is called when it is unnecessary to replace the 
+removed formula with a zilch.  Typically this function is used only when 
+deleting a zilch or deleting structure information.  Whenever zilches may need 
+to be inserted, eq_DeleteCarefully should be used instead.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{eq_DeleteCarefully}
+
+
+
+
+
+
+
+\view{bpv,538271624,1056,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_DeleteCarefully}
+
+				
+
+\majorheading{Deletes a formula but preserves the structure}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eq_DeleteCarefully }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+long \paramname{start},
+
+long \paramname{stop});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function deletes a formula from the equation, being careful to 
+insert a zilch when necessary (when all other symbols have been removed from 
+that logical portion of the equation).  This function also takes care to 
+preserve the structure of the equation by checking the logical grouping of the 
+remaining equation for inconsistencies and correcting them.
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the beginning position of the region that was 
+deleted, which will become the new cursor position.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is called whenever an actual segment of the equation 
+is deleted.  The exception to this is when zilches are being deleted.  In that 
+case, eq_Delete may be called directly.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{Should allow deletion of formulas.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{eq_Delete}
+
+
+
+
+
+
+\view{bpv,538271624,1057,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_DoScript}
+
+				
+
+\majorheading{Looks for a specified script; if not found, one is created.}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eq_DoScript }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+long \paramname{pos},
+
+enum script *\paramname{script},
+
+char *\paramname{string});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function checks for the existence of a specified script 
+position (superscript, subscript, above, below).  If it finds that that script 
+already exists, it sets the cursor position to the end of the formula in the 
+script.  If the script does not exist, it is created within the structure of 
+the equation, a zilch is inserted and the cursor is set to the end of the new 
+formula (the zilch).
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the new cursor position at the end of the 
+script.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used when inserting a script into an equation.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{There are currently some sporadic problems with losing the cursor 
+position when deleting scripts.  Also, it is unclear whether zilches are added 
+and removed properly within scripts.  Some of the special scripts (bar, in 
+particular) are known to cause problems.}
+
+
+
+
+
+
+\view{bpv,538271624,1058,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_CreateMark}
+
+				
+
+\majorheading{Creates a mark in the equation and sets its attributes}
+
+______________________________________________________
+
+
+\fixedtext{struct mark *\bold{eq_CreateMark }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+long \paramname{pos},
+
+long \paramname{length});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function creates a new mark, sets its position and length and 
+adds it to the marklist.
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the newly created mark.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used to create the marks associated with the 
+current cursor postion.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{The mark should be part of the view, not part of the data object. 
+ Because of the way the datastream is currently represented, however, it is 
+infeasible to change this without redesigning the external data representation 
+and reorganizing major portions of the code.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{eq_RemoveMark
+
+mark.ih}
+
+
+
+
+
+
+\view{bpv,538271624,1059,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_RemoveMark}
+
+				
+
+\majorheading{Removes a mark from the equation}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eq_RemoveMark }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+struct mark *\paramname{mark});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function cleanly removes a mark from the marklist.}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is called when removing marks from the marklist.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{The mark should be part of the view, not part of the data object. 
+ Because of the way the datastream is currently represented, however, it is 
+infeasible to change this without redesigning the external data representation 
+and reorganizing major portions of the code.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{eq_CreateMark
+
+mark.ih
+
+
+}
+
+
+\view{bpv,538271624,1060,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_Erase}
+
+				
+
+\majorheading{Removes the entire contents of an equation}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eq_Erase }(}\fixedindent{
+
+struct eq *\paramname{eq});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function is used to quickly and easily remove the entire 
+contents of an equation.
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used when the contents of the equation need to be 
+removed, but the equation itself must remain, for example, when reading in a 
+new equation from a file.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{eq_Read}
+
+
+
+
+
+
+
+\view{bpv,538271624,1061,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_Access}
+
+				
+
+\majorheading{Get a formula from an equation}
+
+______________________________________________________
+
+
+\fixedtext{struct formula *\bold{eq_Access }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+long \paramname{n});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function is used to determine the formula that is located at 
+the given position within the equation.}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the formula found at the given position, if 
+any.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used when checking for a particular formula at a 
+certain location within the equation.
+
+
+}
+
+
+
+\view{bpv,538271624,1062,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_Size}
+
+				
+
+\majorheading{Determines the number of formulae within an equation}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eq_Size }(}\fixedindent{
+
+struct eq *\paramname{eq});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function uses the p1 and p2 attributes of the data object to 
+determine the size of a given equation in terms of the number of formulae 
+contained within that equation.}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the number of formulae contained within the 
+given equation}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function can be used when changing the cursor position or 
+writing the file, any time that the size of the equation needs to be known.}
+
+
+
+
+
+\view{bpv,538271624,1063,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_NextFormula}
+
+				
+
+\majorheading{Finds the next formula in a given equation}
+
+______________________________________________________
+
+
+\fixedtext{struct formula *\bold{eq_NextFormula }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+struct formula *\paramname{f});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function takes an equation and a formula and finds the next 
+formula in that equation}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the formula after the one given in the given 
+equation, if any.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used when drawing or formatting a group of 
+equations.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{eqview_Draw}
+
+
+
+
+
+
+
+\view{bpv,538271624,1064,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_GetTokens}
+
+				
+
+\majorheading{Converts to printable representation}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eq_GetTokens }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+long *\paramname{startp},
+
+long \paramname{stop},
+
+char *\paramname{string},
+
+long \paramname{size});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function uses eq_Access to create a printable representation 
+of the equation.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the length of the equation in bytes, 
+including the trailing null}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used when writing the equation to a file.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{eq_WriteFILE}
+
+
+
+
+
+
+\view{bpv,538271624,1065,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_FindEndGroup}
+
+				
+
+\majorheading{Finds the end of the group which contains the given position}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eq_FindEndGroup }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+long \paramname{i});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function walks forward through the logical structure of the 
+equation, looking at begin and end tokens, until it finds the end of the group 
+which contains the given position.}
+
+\fieldtext{
+}
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the position of the end of the group.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used in all of the movement commands.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{Movement commands in eqvcmds.c}
+
+
+
+
+
+
+\view{bpv,538271624,1066,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_FindBeginGroup}
+
+				
+
+\majorheading{Finds the beginning of the group which contains the given 
+position}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eq_FindBeginGroup }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+long \paramname{i});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function walks backward through the logical structure of the 
+equation, looking at begin and end tokens, until it finds the beginning of the 
+group which contains the given position.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the position of the beginning of the group.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used in all of the movement commands.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{Movement commands in eqvcmds.c}
+
+
+
+
+
+
+\view{bpv,538271624,1067,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_FindLeftSibling}
+
+				
+
+\majorheading{Finds left sibling in an equation}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eq_FindLeftSibling }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+long \paramname{i});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function finds the left sibling of the given group in an 
+equation.  It assumes that i points to a begin group.}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns a pointer to the begin group of the group 
+previous to the given group in the equation, if any.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used in all of the movement commands.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{Movement commands in eqvcmds.c}
+
+
+
+
+
+
+\view{bpv,538271624,1068,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_FindRightSibling}
+
+				
+
+\majorheading{Finds right sibling in an equation}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eq_FindRightSibling }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+long \paramname{i});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function finds the right sibling of the given group in an 
+equation.  It assumes that i points to a begin group.}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns a pointer to the begin group of the group 
+after to the given group in the equation, if any.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used in all of the movement commands.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{Movement commands in eqvcmds.c}
+
+
+
+
+
+\view{bpv,538271624,1069,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_WriteFILE}
+
+				
+
+\majorheading{Writes the external data representation to a file}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eq_WriteFILE }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+FILE *\paramname{f},
+
+long \paramname{start},
+
+long \paramname{stop},
+
+char \paramname{sep});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function walks through the logical structure of the equation 
+and writes the external data representation of each formula to the given 
+file.}\fieldtext{
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used when writing the equation to a file as well 
+as being used by the cut and copy functions.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{Should write the file using short lines.  Long lines cause problems 
+with network mailers.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{eq_Write
+
+eqview_Cut
+
+eqview_Copy}
+
+
+
+
+
+
+\view{bpv,538271624,1070,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_ReadFILE}
+
+				
+
+\majorheading{Reads the external data representation from a file}
+
+______________________________________________________
+
+
+\fixedtext{long \bold{eq_ReadFILE }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+FILE *\paramname{f},
+
+long \paramname{start});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function reads the external data representation from a file 
+and creates the logical structure of the equation.
+
+}
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the length of the equation that has been read 
+in.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used when reading an equation from a file as well 
+as when pasting an equation.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{eq_Read
+
+eqview_Paste}
+
+
+
+
+
+
+\view{bpv,538271624,1071,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_Dump}
+
+				
+
+\majorheading{Dumps the equation structure information for debugging}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eq_Dump }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+char *\paramname{name});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function writes the structure information for the current 
+equation to a file.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used strictly for debugging purposes.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{eqview_DumpAndWrite}
+
+
+
+
+
+
+\view{bpv,538271624,1072,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_Parse}
+
+				
+
+\majorheading{Used by yacc to write alternate equation representations}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eq_Parse }(}\fixedindent{
+
+struct eq *\paramname{eq},
+
+FILE *\paramname{file},
+
+long \paramname{w});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Method}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function is used by yacc to write c, troff, dvi and eqn 
+representations of the equation for printing and for comparison.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used when writing alternate representations of the 
+equation, particularly for creating 
+
+a printable representation of the equation.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{parse.y}
+
+
+
+
+
+
+\view{bpv,538271624,1073,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_InitializeObject}
+
+				
+
+\majorheading{Initializes the eq data object}
+
+______________________________________________________
+
+
+\fixedtext{boolean \bold{eq_InitializeObject }(}\fixedindent{struct eq 
+*\paramname{self});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Classprocedure}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function initializes the eq data object by allocating any 
+necessary resources and initializing all data variables.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns TRUE to indicate that the object has been 
+initialized correctly.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used to initialize a newly created eq data object.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{class.h}
+
+
+
+
+
+
+\view{bpv,538271624,1074,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_FinalizeObject}
+
+				
+
+\majorheading{Finalizes the eq data object}
+
+______________________________________________________
+
+
+\fixedtext{void \bold{eq_FinalizeObject }(}\fixedindent{struct eq 
+*\paramname{self});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Classprocedure}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function is used to finalize the eq data object, freeing any 
+resources that have been allocated for it.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{None.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used to finalize an eq data object that is about 
+to be removed.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{class.h}
+
+
+
+
+
+\view{bpv,538271624,1075,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_Lookup}
+
+				
+
+\majorheading{Looks up symbols in the symbol table}
+
+______________________________________________________
+
+
+\fixedtext{struct symbol *\bold{eq_Lookup }(}\fixedindent{char 
+*\paramname{name});}
+
+
+\fieldheading{Category}
+
+\fieldtext{Classprocedure}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function looks up symbols by name in the symbol table for use 
+in the equation.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns the symbol if the symbol name was found. 
+ Otherwise, it returns NIL.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used to find the special symbols that are 
+requested by the user for insertion into the equation.
+
+}
+
+\fieldheading{Known Bugs}
+
+\fieldtext{Some error messages are reported to the console (stderr).  All 
+error messages should go to the message line.  This is another instance of a 
+fuzzy separation between data object and view.  Name completion should be used 
+for special symbols.  Add "partial", "del", "max", "contains" and "overbrace" 
+symbols and infix dot.  It is currently impossible to insert double primes. 
+ There should be a List Symbols menu item or a palette for choosing symbols.}
+
+
+
+\fieldheading{See Also}
+
+\fieldtext{symbol.c}
+
+
+
+
+
+
+\view{bpv,538271624,1076,0,0}
+______________________________________________________				
+
+
+\paragraph{eq_InitializeClass}
+
+				
+
+\majorheading{Initializes the eq class}
+
+______________________________________________________
+
+
+\fixedtext{boolean \bold{eq_InitializeClass }(}\fixedindent{);}
+
+
+\fieldheading{Category}
+
+\fieldtext{Classprocedure}
+
+
+
+\fieldheading{Description}   
+
+\fieldtext{This function initializes the eq class by defining some class 
+constants.}
+
+
+
+\fieldheading{Return Value}
+
+\fieldtext{This function returns TRUE to indicate that the class has been 
+initialized correctly.}
+
+
+
+\fieldheading{Usage}
+
+\fieldtext{This function is used once to initialize the class.
+
+}
+
+\fieldheading{See Also}
+
+\fieldtext{class.h}
+
+
+
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1078,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,539028584}

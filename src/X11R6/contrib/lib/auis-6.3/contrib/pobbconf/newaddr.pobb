@@ -1,0 +1,236 @@
+#!/bin/csh -f
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+
+%include pobbconfig.defs
+%ifdef pobb_CaptureAddresses
+
+set nonomatch
+set BRISK=dogbreath
+if ( $$??ANDREWDIR != 0 ) then
+	set BRISK=$${ANDREWDIR}/etc/brisk
+endif
+if ( ! -x $${BRISK} ) set BRISK=?[POBBAndrewDir]/etc/brisk
+if ( ! -x $${BRISK} ) set BRISK=brisk
+cat > ?[AFSCaptureProcess]/Addrs/join.awk << JOIN-EOF
+BEGIN {
+	currLine = "";
+}
+{
+	FirstChar = substr(\$$0, 1, 1);
+	if (FirstChar == " " || FirstChar == "	") {
+		currLine = currLine \$$0;
+	} else {
+		if (currLine != "") print currLine;
+		currLine = \$$0;
+	}
+}
+END	{
+	if (currLine != "") print currLine;
+}
+JOIN-EOF
+
+cat > ?[AFSCaptureProcess]/Addrs/transl.awk << TRANSL-EOF
+BEGIN {
+	currDate = ""; currXDate = ""; currFrom = ""; currReply = ""; currOrg = "";
+}
+{
+	if (NF >= 6 && (\$$3 == "f" || \$$3 == "r")) {
+		xDate = substr(\$$2, 3, 15);
+		SameHeader = 1;
+		if ((xDate - currXDate) != 0) SameHeader = 0;
+		else if (currOrg != \$$5) SameHeader = 0;
+		else {
+			if (\$$3 == "f" && currFrom != "") SameHeader = 0;
+			else if (\$$3 == "r" && currReply != "") SameHeader = 0;
+		}
+		if (SameHeader != 0) {
+			currDate = \$$2;
+			currXDate = xDate;
+			if (\$$3 == "f") currFrom = \$$4;
+			else if (\$$3 == "r") currReply = \$$4;
+			if (\$$5 != "") currOrg = \$$5;
+		} else {
+			if (currDate != "") {
+				print "|" currDate "|" currFrom "|" currReply "|" currOrg "|";
+			}
+			currDate = \$$2;
+			currXDate = xDate;
+			currOrg = \$$5;
+			currFrom = "";
+			currReply = "";
+			if (\$$3 == "f") currFrom = \$$4;
+			else if (\$$3 == "r") currReply = \$$4;
+		}
+	}
+}
+END	{
+	if (currDate != "") {
+		print "|" currDate "|" currFrom "|" currReply "|" currOrg "|";
+	}
+}
+TRANSL-EOF
+
+cat > ?[AFSCaptureProcess]/Addrs/newaddr.awk << NEWADDR-EOF
+BEGIN {
+	currDate = ""; currFrom = ""; currReply = ""; currOrg = "";
+	currPersN = ""; currAddress = ""; currAffil = ""; currOther = "";
+}
+{
+	if (NF >= 6) {
+		if (currFrom != \$$3 || currReply != \$$4) {
+			if (currDate != "") {
+				print "|" currDate "|" currFrom "|" currReply "|" currOrg "|" currPersN "|" currAddress "|" currAffil "|" currOther "|";
+			}
+			currDate = \$$2;
+			currFrom = \$$3;
+			currReply = \$$4;
+			currOrg = \$$5;
+			currPersN = \$$6;
+			currAddress = \$$7;
+			currAffil = \$$8;
+			currOther = \$$9;
+		} else {
+			currDate = \$$2;	# update the most-recent-date
+			if (\$$3 != "") currFrom = \$$3;
+			if (\$$4 != "") currReply = \$$4;
+			if (\$$5 != "") currOrg = \$$5;	# preserve the most recent org name
+			if (\$$6 != "") currPersN = \$$6;
+			if (\$$7 != "") currAddress = \$$7;
+			if (\$$8 != "") currAffil = \$$8;
+			if (\$$9 != "") currOther = \$$9;
+		}
+	}
+}
+END	{
+	if (currDate != "") {
+		print "|" currDate "|" currFrom "|" currReply "|" currOrg "|" currPersN "|" currAddress "|" currAffil "|" currOther "|";
+	}
+}
+NEWADDR-EOF
+
+set NOW=`?[arpadatepgm] -n`;
+if ( $$status != 0 || $$NOW < 600000000 ) then
+	echo "Bad date: $$NOW"
+	exit (1)
+endif
+cat > ?[AFSCaptureProcess]/Addrs/merge.awk << MERGE-EOF
+BEGIN {
+	currDate = ""; currFrom = ""; currReply = ""; currOrg = "";
+	currPersN = ""; currAddress = ""; currAffil = ""; currOther = "";
+	OldMessage = ($$NOW - ?[CaptureLifetime]);
+}
+{
+	if (NF >= 6) {
+		if (\$$7 != "") {
+		    if (currAddress != \$$7) {
+			if (currDate != "" && currAddress != "") {
+			    if ((currDate - OldMessage) >= 0) {
+				print "|" currDate "|" currFrom "|" currReply "|" currOrg "|" currPersN "|" currAddress "|" currAffil "|" currOther "|";
+			    } else {
+				print "|" currDate "|" currFrom "|" currReply "|" currOrg "|" currPersN "|" currAddress "|" currAffil "|" currOther "|" >> "Expiring";
+			    }
+			}
+			currDate = \$$2;
+			currFrom = \$$3;
+			currReply = \$$4;
+			currOrg = \$$5;
+			currPersN = \$$6;
+			currAddress = \$$7;
+			currAffil = \$$8;
+			currOther = \$$9;
+		    } else {
+			currDate = \$$2;	# update the most-recent-date
+			if (\$$3 != "") currFrom = \$$3;
+			if (\$$4 != "") currReply = \$$4;
+			if (\$$5 != "") currOrg = \$$5;	# preserve the most recent org name
+			if (\$$6 != "") currPersN = \$$6;
+			if (\$$7 != "") currAddress = \$$7;
+			if (\$$8 != "") currAffil = \$$8;
+			if (\$$9 != "") currOther = \$$9;
+		    }
+		}
+	}
+}
+END	{
+	if (currDate != "" && currAddress != "") {
+	    if ((currDate - OldMessage) >= 0) {
+		print "|" currDate "|" currFrom "|" currReply "|" currOrg "|" currPersN "|" currAddress "|" currAffil "|" currOther "|";
+	    } else {
+		print "|" currDate "|" currFrom "|" currReply "|" currOrg "|" currPersN "|" currAddress "|" currAffil "|" currOther "|" >> "Expiring";
+	    }
+	}
+}
+MERGE-EOF
+
+cd ?[AFSCaptureProcess]/c-addr
+foreach foo ( CAPT*.X CAPT*.Y )
+	if ( -e $$foo ) then
+%ifdef pobbenv_AFS
+		fs flush $$foo
+%endif pobbenv_AFS
+		if ( -f $$foo ) then
+			if ( -z $$foo ) rm -f $$foo
+		endif
+	endif
+end
+foreach foo ( CAPT* )
+	if ( -e $$foo ) then
+		mv $$foo $${foo}.X
+		awk -f ?[AFSCaptureProcess]/Addrs/join.awk $${foo}.X > $${foo}.Y
+%ifdef pobbenv_AFS
+		fs flush $${foo}.Y
+%endif pobbenv_AFS
+		if ( ! -z $${foo}.Y ) then
+			rm $${foo}.X
+		endif
+		awk '-F|' -f ?[AFSCaptureProcess]/Addrs/transl.awk $${foo}.Y > ?[AFSCaptureProcess]/Addrs/$$foo
+%ifdef pobbenv_AFS
+		fs flush ?[AFSCaptureProcess]/Addrs/$$foo
+%endif pobbenv_AFS
+		if ( ! -z ?[AFSCaptureProcess]/Addrs/$$foo ) then
+			rm $${foo}.Y
+		endif
+	endif
+end
+cd ?[AFSCaptureProcess]/Addrs
+rm -f newaddr.CAPT join.awk transl.awk
+mkdir tempLoc
+rm -f tempLoc/*
+echo "" > newline
+sort '-t|' +2 -4 +1n -2 -T tempLoc CAPT* newline | awk '-F|' -f newaddr.awk | $${BRISK} -h /usr/spool/log/xxx > newaddr.CAPT
+%ifdef pobbenv_AFS
+fs flush newaddr.CAPT
+%endif pobbenv_AFS
+if ( -z newaddr.CAPT ) exit(1)
+rm -f Addrs.new Expiring
+sort '-t|' +6 -7 +1n -2 -T tempLoc Addrs newaddr.CAPT | awk '-F|' -f merge.awk > Addrs.new
+rmdir tempLoc
+%ifdef pobbenv_AFS
+fs flush Addrs.new
+%endif pobbenv_AFS
+if ( -z Addrs.new ) exit(1)
+mv Addrs.new Addrs
+rm -f CAPT* newaddr.CAPT newaddr.awk merge.awk newline
+
+%endif pobb_CaptureAddresses

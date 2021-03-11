@@ -1,0 +1,430 @@
+\begindata{text,539047252}
+\textdsversion{12}
+\template{be2guide}
+\define{global
+}
+\define{underline
+menu:[Font~1,Underline~41]
+attr:[Flags Underline Int Set]}
+\define{index
+menu:[Title,Index~91]
+attr:[FontFace Italic Int Set]}
+\define{indexi
+menu:[Title,InvisibleIndex~92]
+attr:[Script PreviousScriptMovement Point -2]
+attr:[Flags Hidden Int Set]
+attr:[FontFace Italic Int Set]}
+\define{fixedtext
+menu:[Region~4,Fixedtext]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{fixedindent
+menu:[Region~4,Fixedindent]
+attr:[LeftMargin LeftMargin Cm 83230]
+attr:[Justification LeftJustified Point 0]
+attr:[FontFace FixedFace Int Set]
+attr:[FontFamily AndyType Int 0]
+attr:[FontSize ConstantFontSize Point 10]}
+\define{paramname
+menu:[Font~1,Paramname]
+attr:[FontFace Italic Int Set]}
+\formatnote{\chapter{Event}}\indexi{Event}
+
+
+The Andrew Toolkit is an event-driven system:  The \italic{Interaction 
+Manager}, \italic{im}, uses the class \italic{event} to schedule events that 
+application programs generate. 
+
+
+\section{Using 'event' as an application program}
+
+
+If you want to generate events in the Andrew Toolkit system (e.g., you are 
+creating an event-driven simulation), you should enqueue events to the 
+\italic{im}, as described in this section.  Because the class \italic{event} 
+provides only one event queue, you should not use the class \italic{event} 
+directly nor should you subclass it, as doing so will interfere with the 
+\italic{im}'s use of it.  On the other hand, if you are building your own 
+interaction manager, then you may want to use \italic{event} directly, as 
+described in the section \italic{Building an Interaction Manager.}
+
+
+
+\section{Quick reference list for Event}
+
+
+
+\fixedtext{struct event *\bold{event_}Allocate }\fixedindent{();} 
+
+\fixedtext{void \bold{event_}Cancel }\fixedindent{(struct event 
+*\paramname{event});} 
+
+\fixedtext{void \bold{event_}Deallocate }\fixedindent{(struct event 
+*\paramname{self});} 
+
+\fixedtext{struct event *\bold{event_}Enqueue }\fixedindent{(long 
+\paramname{time}, procedure \paramname{proc}, char *\paramname{procdata});} 
+
+\fixedtext{long \bold{event_}FirstTime }\fixedindent{(long 
+\paramname{currentTime});} 
+
+\fixedtext{void \bold{event_}ForceNext }\fixedindent{();} 
+
+\fixedtext{long \bold{event_}HandleTimer }\fixedindent{(long 
+\paramname{currentTime});} 
+
+\fixedtext{long \bold{event_}Now }\fixedindent{();} 
+
+\fixedtext{void \bold{event_}StartTimer }\fixedindent{();} 
+
+
+
+
+\subsection{Overview of event}
+
+
+\paragraph{The event queue} \indexi{Event++Queue}
+
+
+The \italic{Interaction Manager} uses the event queue provided by the class 
+\italic{event}.  There are methods for creating an event and inserting it in 
+the queue and for canceling an event. 
+
+
+\paragraph{The event time} \indexi{Event++Time}
+
+Every event has a time, \italic{t}, that determines when the event occurs. 
+
+
+\paragraph{The event description} \indexi{Event++Procedure and data}
+
+
+Every event has an associated procedure and data that describes the event. 
+ The procedure is executed when the event occurs. 
+
+
+\subsection{Enqueueing and canceling events}
+
+
+\paragraph{Queueing an event} \indexi{Event++Enqueing}
+
+\indexi{ \italic{im_EnqueueEvent}}
+
+\example{struct event *im_EnqueueEvent(proc, procdata, t)
+
+int (*proc)();
+
+char *procdata;
+
+long t;} 
+
+
+\leftindent{\bold{Class procedure description.}  \italic{im_EnqueueEvent} 
+creates an instance of the class \italic{event} and inserts it into 
+\italic{im}'s event queue.  It will occur at time \italic{t} units from the 
+current time.  The second parameter, \italic{proc}, is a procedure name and 
+the third parameter, \italic{procdata} is the data for the procedure.  The 
+procedure \italic{proc} will be called with the data \italic{procdata} when 
+the event occurs. 
+
+
+\indexi{Event++Timer units}
+
+The values of time are in \italic{timer units}, 
+\italic{TU}s.\formatnote{@foot[A technical note:  Timer units are microseconds 
+shifted 6 (microsec >> 6).  The shift increases the time interval that it is 
+possible to express.]}  The following macros convert from normal time to 
+\italic{timer units}: 
+
+\description{
+event_SECtoTU(t)\formatnote{  --  }converts seconds to timer units. 
+
+
+event_USECtoTU(t)\formatnote{  --  }converts microseconds to timer units. 
+
+
+event_MSECtoTU(t)\formatnote{  --  }converts milliseconds to timer units. 
+
+}
+
+Although less useful, there are also corresponding macros for converting from 
+timer units to normal time:  event_TUtoSEC(tu), event_TUtoUSEC(tu), and 
+event_TUtoMSEC(tu).  Note that arguments to macros should not have side 
+effects.  The maximum value for seconds is 64000.  Times smaller than 64 
+millionth of a second will happen immediately. 
+
+
+\bold{Return value.}  A pointer to the new event.  Should be saved if the 
+event is going to be canceled. 
+
+
+\bold{Usage.}  Note that this is a call to an \italic{im} method, not an 
+\italic{event} method.  Application programs may wish to schedule \italic{im} 
+events for any number of reasons.  For example, when the user types an 
+extended command (^X), \bold{Ez} schedules an event to echo the ^X in the 
+message line 4 seconds later; \bold{Ez} cancels the event if the user types 
+the next part of the command before 4 seconds.  \bold{Ez} also uses events to 
+perform file checkpointing. 
+
+
+\bold{Example.}  The following call schedules a checkpoint to occur in 
+\italic{CkpInterval} seconds, where \italic{CkpInterval} defaults to 30 
+seconds: 
+
+\programexample{
+long CkpInterval;
+
+#define DEFAULTCKPINTERVAL 30
+
+struct event *e;
+
+
+CkpInterval = environ_GetProfileInt("CheckpointInterval",
+
+		DEFAULTCKPINTERVAL);
+
+
+e = im_EnqueueEvent(Checkpoint, 0, event_SECtoTU(CkpInterval))
+
+}
+}
+
+\paragraph{Canceling an event} \indexi{Event++Canceling}
+
+\indexi{ \italic{event_Cancel}}
+
+\example{void event_Cancel(e)
+
+struct event *e;} 
+
+
+\leftindent{\bold{Method description.  }\italic{event_Cancel} removes event 
+\italic{e} from the \italic{Interaction Manager}'s event queue and frees it. 
+
+
+\bold{Usage.}  Once an event is queued by the \italic{Interaction Manager}, 
+the only way to prevent the event from occurring is to call this method. 
+ However, the event to be canceled must be one that has not yet occurred.  Do 
+not try to cancel an already executed event.  The recommended way of canceling 
+an event is to have the procedure that executes when an event occurs set a 
+flag.  Before canceling the event, test the flag and do not cancel it if the 
+flag is set. 
+
+}
+
+\section{Building an Interaction Manager} \indexi{Interaction 
+manager++Building}
+
+
+This section is only of interest if you are programming an interaction 
+manager.  Because the class \italic{event} provides only one event queue, you 
+should use the class \italic{event} directly only if you are programming an 
+interaction manager; doing so otherwise will interfere with the \italic{im}'s 
+use of it. 
+
+
+\subsection{Creating and queuing events}
+
+
+\paragraph{Creating an instance of an event} \indexi{ \italic{event_New}}
+
+\example{event_New ( )
+
+}
+\leftindent{\bold{Class procedure description.  }  \italic{event_New} creates 
+a new instance of the class \italic{event}. 
+
+
+\bold{Usage.}  The normal way to create an event is to call 
+\italic{EnqueueEvent} which creates an \italic{event} and inserts it in the 
+event queue. 
+
+}
+
+\paragraph{Queueing an event} \indexi{ \italic{event_Enqueue}}
+
+\example{struct event *event_Enqueue( t, proc, procdata)
+
+long t;
+
+int (*proc)();
+
+char *procdata;} 
+
+
+\leftindent{\bold{Class procedure description.}  \italic{event_Enqueue} 
+creates an instance of the class \italic{event} and inserts it into the event 
+queue in order of the time, \italic{t}, at which it will occur.  The time is 
+in timer units.  The third parameter, \italic{proc}, is a procedure name cast 
+as an integer and the fourth parameter, \italic{procdata} is a pointer to data 
+for the procedure.  The procedure \italic{proc} will be called with the data 
+\italic{procdata} when the event occurs. 
+
+
+\bold{Return value.}  A pointer to the new event. 
+
+
+\bold{Usage.}  If you are creating an interaction manager, you will want to 
+provide a method, like \italic{im_EnqueueEvent} that provides a way for 
+applications to enqueue events.  \italic{im_EnqueueEvent} calls 
+\italic{event_Enqueue}. 
+
+}
+
+\subsection{Managing the event queue}
+
+
+\paragraph{Starting the event timer} \indexi{ \italic{event_StartTimer}}
+
+\example{void event_StartTimer( )
+
+}\leftindent{
+\bold{Class procedure description.}  \italic{event_StartTimer} starts the 
+event timer.  Units are timer units (microseconds >> 6).  Uses the 
+Unix\superscript{(TM) }system call \italic{gettimeofday (3)}. 
+
+
+\bold{Usage.}  Not used directly.  Called by \italic{event_Now} if the timer 
+has not been started. 
+
+}
+
+
+\paragraph{Causing an event to occur} \indexi{ \italic{event_HandleTimer}}
+
+\example{long event_HandleTimer(currentTime)
+
+    long currentTime;} 
+
+
+\leftindent{\bold{Class procedure description.  }  For the first event on the 
+event queue, if any, \italic{event_HandleTimer} causes the event to occur if 
+its time is within 10 milliseconds. 
+
+
+\bold{Return value.}  The time to wait until the next event. 
+
+
+\bold{Usage.}  If you are creating an interaction manager, then it should call 
+\italic{HandleTimer} in its interaction loop. 
+
+}
+
+\paragraph{Finding out what time it is now} \indexi{ \italic{event_Now}}
+
+\example{long event_Now( )
+
+}
+\leftindent{\bold{Class procedure description.  }  \italic{event_Now} finds 
+the current time, relative to the last call to\italic{ StartTimer}. 
+
+
+\bold{Return value.}  The current time, in timer units (microseconds >> 6). 
+
+
+\bold{Usage.}  \italic{event_Now} can handle time intervals up to one day. 
+ For applications requiring longer times (e.g., a server), there must be 
+occasional calls on \italic{StartTimer}. 
+
+}
+
+\paragraph{Getting the time until the next event} 
+\indexi{ \italic{event_FirstTime}}
+
+\example{long event_FirstTime( currentTime)
+
+long currentTime;} 
+
+
+\leftindent{\bold{Class procedure description.  }  \italic{event_FirstTime} 
+finds the time remaining until the first event on the queue is set to occur. 
+
+
+\bold{Return value.}  The time remaining, in timer units. 
+
+
+\bold{Usage.}  If the time to the next event is relatively short, it might not 
+be worth going to sleep until the next event. 
+
+}
+
+
+\paragraph{Forcing the next event to occur} \indexi{ \italic{event_ForceNext}}
+
+\example{void event_ForceNext( )
+
+}
+\leftindent{\bold{Class procedure description.  }  \italic{event_ForceNext} 
+sets the timer for the event queue so that the next event in the sequence will 
+occur immediately. 
+
+
+\bold{Side effect}.  Changes the value returned by the next call on 
+\italic{event_Now}. 
+
+
+\bold{Usage.}  This procedure alleviates the necessity for timing events 
+exactly.  Events may be set in a sequence by approximate time, then 
+\italic{ForceNext} can be called to make events occur when needed.  If the 
+time to the next event is relatively short, it might not be worth going to 
+sleep until the next event. 
+
+}
+
+
+
+
+
+
+
+
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1304,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,539047252}

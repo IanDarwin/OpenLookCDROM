@@ -1,0 +1,495 @@
+.\" ###################################################################### ##
+.\"         Copyright IBM Corporation 1988,1991 - All Rights Reserved      ##
+.\"        For full copyright information see:'andrew/config/COPYRITE'     ##
+.\" ###################################################################### ##
+.\" $Disclaimer: 
+# Permission to use, copy, modify, and distribute this software and its 
+# documentation for any purpose is hereby granted without fee, 
+# provided that the above copyright notice appear in all copies and that 
+# both that copyright notice, this permission notice, and the following 
+# disclaimer appear in supporting documentation, and that the names of 
+# IBM, Carnegie Mellon University, and other copyright holders, not be 
+# used in advertising or publicity pertaining to distribution of the software 
+# without specific, written prior permission.
+# 
+# IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+# DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+# SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+# BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+# DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+# WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+# ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+# OF THIS SOFTWARE.
+#  $Disclaimer: This software is part of version 5.2.0 of the 
+.\" Andrew User Interface System and is the 
+.\" property of IBM, Carnegie Mellon University, 
+.\" and the other copyright holders.  The source 
+.\" code of this version is for the sole use of 
+.\" members of the Andrew Consortium with 
+.\" memberships extending into calendar year 
+.\" 1993.  This source code is not to be distributed 
+.\" to non-members of the consortium nor beyond 
+.\" a fifty-mile radius from the membership address.  
+.\" Binary object code compiled or derived from 
+.\" these sources is not to be distributed to non-
+.\" members.  Members may have additional 
+.\" distribution rights granted by prior written 
+.\" permission of Carnegie Mellon University.
+.\" 
+.\" IBM, CARNEGIE MELLON UNIVERSITY, 
+.\" AND THE OTHER COPYRIGHT HOLDERS
+.\"  DISCLAIM ALL WARRANTIES WITH 
+.\" REGARD TO THIS SOFTWARE, INCLUDING 
+.\" ALL IMPLIED WARRANTIES OF MERCHANT-
+.\" ABILITY AND FITNESS. IN 
+.\" NO EVENT SHALL  IBM, CARNEGIE 
+.\" MELLON UNIVERSITY, OR ANY OTHER 
+.\" COPYRIGHT HOLDER BE LIABLE FOR 
+.\" ANY SPECIAL, INDIRECT OR CONSE-
+.\" QUENTIAL DAMAGES OR ANY DAMAGES 
+.\" WHATSOEVER RESULTING FROM LOSS OF
+.\" USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR
+.\" OTHER TORTIOUS ACTION, ARISING OUT 
+.\" OF OR IN CONNECTION WITH THE USE OR
+.\" PERFORMANCE OF THIS SOFTWARE.
+.\"  $
+.\"  $
+.ig
+	A complete rewrite of the texttroff macro package.
+	It would be loosely modelled after the -ms macros
+
+	main concept is to separate the elements of the page,
+	so a trap for the footer and a trap for the header separatly
+
+	Also all default values are in well known registers,
+	initialized by the .IZ macro
+..
+.\"
+.	\" IZ - initialize. Provide some default settings
+.de IZ
+.nr PS \n(.p	\" pointsize
+.nr VS \n(.v	\" linespacing
+.nr HM 1i	\" header margin
+.nr FM 1i	\" footer margin
+.nr LL \n(.l	\" line length
+.nr IN 36p	\" indent to allow outdenting headers
+.nr LT \n(.l-\n(INu	\" title length
+.\" trap setting
+.\"
+.\" for the top of page
+.wh 0 NP
+.\" for dealing with footnotes
+.wh 14i FO	\" footer trap, temp position
+.	\" to process footnote overflow, we fire this trap
+.	\" the trap for FO will be moved way up so we will fire
+.	\" this one when FO is putting the footnote out
+.wh -\\n(FMu Fx
+.	\" Now install FO on top of this position so it
+.	\" will be fired when no footnote needs to be processed
+.ch FO -\\n(FMu
+.\" for the bottom tittle
+.wh -\\n(FMu/2u BT
+..
+.\"
+.	\" TA - set tabstops
+.de TA
+.ta \\n(ENu +\\n(ENu +\\n(ENu +\\n(ENu +\\n(ENu +\\n(ENu +\\n(ENu +\\n(ENu +\\n(ENu +\\n(ENu +\\n(ENu +\\n(ENu
+..
+.\"
+.	\" RS - Reset.	Bring troff into a known state
+.de RS
+.ps \\n(PS
+.vs \\n(VSu
+.ll \\n(LLu
+.lt \\n(LTu
+.in \\n(INu
+.po \\n(POu
+.nr FS \\n(VSu/4u	\" footnote separation
+.nr F 0 1		\" for footnote numbering
+.ev 1
+.	\" where footnotes are processed
+.ps \\n(PS-2
+.vs (\\n(VSu-2p)u
+.ll \\n(LLu-\\n(INu
+.ev
+.ev 2
+.	\" where the table of contents is stored
+.ps \\n(PS
+.vs \\n(VSu
+.ev
+.TA
+..
+.\"
+.	\" string for footnote numebering. Note that the increment takes place here
+.	\" note that Fn is defined in texttroff to get the body font
+.ds * \v'-.3v'\\*(Fn\s-3\\n+F\s0\fP\v'.3v'
+.ig
+	Running headers & footers.
+	These will be called from the header & footer macro
+	halfway the current margins in the macros PT & BT by the macros
+	pT and bT respectively.
+	Note that we don't use the page counter (%) directly.
+	We stick the value in register PN.
+	This allows for changing the format of the page number with
+	the .af request without screwing up troff
+..
+.\"
+.	\" PT - Page Trap & Bottom Trap macro
+.de PT
+.if \\n(Tc=2 .br
+.po +\\n(INu
+.pc %
+.ie \\n(Tc=3 .nr PN \\n%-\\n(Pc
+.el .nr PN \\n%
+.nr Pn \\n%
+.pT
+.po
+..
+.	\" default footer string definitions 
+.po +\n(INu
+.	\" BT	-- Bottom trap handling
+.de BT
+.if \\n(Tc=2 \{\
+.	 nr HM 0.5i
+.\}
+.nr PF \\n(.f
+.nr PX \\n(.s
+.ft 1
+.ps \\n(PS
+.lt \\n(LTu
+.po +\\n(INu
+.bT
+.ft \\n(PF
+.ps \\n(PX
+.po
+.if \\n(Tc=2 \{\
+.	nr Pc \\n%
+.	nr Tc 3
+.	af PN i
+.\".	TC
+.\}
+..
+.	\" DP Duplex -- versus Simplex printing
+.	\" if register DP != 0, Simplex printing
+.	\"
+.	\" Si	-- silly macro, if called as .Simplex
+.	\" it will turn to simplex mode
+.	\" Ever seen this technique before?
+.de Si
+.if '\\$1'mplex' .nr DP 1
+..
+.     \" Du   -- silly macro, if called as .Duplex
+.     \" it will turn to duplex mode
+.de Du
+.if '\\$1'plex' .nr DP 0
+..
+.	\" OH	-- the recto (odd page) header or default header
+.de OH
+.tl '\\*(LT'\\*(CT'\\*(RT'
+..
+.	\" EH	-- the verso (even) page header, only in duplex mode
+.de EH
+.tl '\\*(RT'\\*(CT'\\*(LT'
+..
+.	\" pT	-- really do header
+.de pT
+.ie \\n(DP=0 \{\
+.	if o .if \\n(Pn>1 .OH
+.	if e .if \\n(Pn>1 .EH
+.\}
+.el .if \\n(Pn>1 .OH
+..
+.	\" bT	-- really do footer
+.de bT
+.ie \\n(DP=0 \{\
+.	if o .OB
+.	if e .EB
+.\}
+.el .OB
+..
+.	\" OB	-- the recto (odd) footer or default footer
+.de OB
+.tl '\\*(LB'\\*(CB'\\*(RB'
+..
+.	\" EB	-- the verso (even) footer, only in duplex mode
+.de EB
+.tl '\\*(RB'\\*(CB'\\*(LB'
+..
+.	\" no default header string definitions
+.ds CT - \\n(PN -
+.\"
+.\"
+.	\" NP - header macro
+.ig
+	print the header halfway the margins
+	only print when not on the first page
+..
+.de NP
+.\".tm in NP page \\n% PO \\n(PO .o \\n(.o
+.nr PF \\n(.f
+.nr PX \\n(.s
+.ft 1
+.ps \\n(PS
+'sp |\\n(HMu/2u
+.if !\\n%=0 .PT
+.ps \\n(PX
+.ft \\n(PF
+'sp |\\n(HMu
+.nr Fc 0 1	\" init footnote count
+.nr Fp 0-\\n(FMu	\" current footer place
+.ch FO -\\n(FMu	\" reset footer trap
+.if \\n(dn .Fz	\" proces left over footnote
+.ns	\" no space mode
+..
+.\"
+.	\" FO - footer macro
+.de FO
+.nr dn 0	\" zero last diversion size
+.if \\n(Fc \{\
+.	ev 1		\" expand footnotes in ev1
+.\".if '\\n(.z'Fy' .tm in overlow .i \\n(.i
+.in \\n(INu		\" set indentation to the one for the page
+.	nf		\" retain vertical size
+.	FN		\" dump the footnotes
+.			\" remove them; Don't put a comment on the next line
+.			\" with .rm, some troffs go into an infinite loop
+.	rm FN
+.\".if '\\n(.z'Fy' .tm in overlow .i \\n(.i
+.	if \\n(.zFy .di	\"end overflow diversion
+.	nr Fc 0		\" disable fx
+.	in 0		\" clear indentation
+.ev
+.\}
+.		\" pop environment
+'bp
+..
+."
+.\"	Fx - process footnote overflow
+.\"
+.de Fx
+.if \\n(Fc \{\
+.	\" the foonote didn't fit so
+.di Fy	\" divert the overflow into Fy (we are still in env 1, so nofill mode)
+.	\" since we are in nofill mode and head indentation set,
+.in 0	\" set no indentation, so we don't indent twice
+.\}
+..
+.\"
+.\"	FS - Footnote Start
+.de FS
+.da FN	\" divert (or append) footnote
+.ev 1	\" in environment 1
+.if \\n+(Fc=1 .FM	\" if first include seperator
+.fi	\" process in fill mode
+.if !\\n(Fo .FP	\" Footnote paragraph if not processing overflow
+..
+.\"
+.	\" FP - footnote paragraph
+.de FP
+.sp \\n(FSu
+\v'-.3'\s-3\\nF\s0\v'.3'\|\c
+..
+.\"
+.\"	FE - Footnote End
+.de FE
+.br		\" flush the output buffer
+.nr Sv \\n(.v	\" save baselinespacing of this env
+.ev		\" pop env
+.di		\" end the diversion
+.nr Fp -\\n(dn	\" new footer position
+.if \\n(Fc=1 .nr Fp -(\\n(.v-\\n(Sv)	\" For Separator
+.ch FO \\n(Fpu	\" change the trap, Fp is negative
+.	\" See whether the stuff really fits.
+.	\"if not change trap and we overflow
+.if (\\n(nl+1v)>(\\n(.p+\\n(Fp) .ch FO \\n(nlu+1v	\" it didn't fit,
+.	\" so fire the FO macro on the next line
+..
+.\"
+.	\" FM - footnote separator one inch line
+.de FM
+\l'1i'
+.br
+..
+.\"
+.\"	Fz - process footnote overflow
+.de Fz
+.nr Fo 1
+.FS
+.nf	\" is already processed, so keep size
+.Fy	\" where Fx put it
+.nr Fo 0
+.FE
+..
+.\"
+.\"	HE - next thing will be a header
+.\" minimalistic widow control in HE macro.
+.\" We aks for a couple of lines with the .ne statement, will trigger the
+.\" bottom of page trap on the moment when there is no space 
+.de HE
+.br
+.ne 3.1v
+..
+.de OC
+.br
+.ne 3.1v
+..
+.\"
+.\"	IC - in table of contents
+.\"	$1 type of header $3 number, $2 text
+.\"
+.de IC
+.nr Tc 1	\"flag that we have a contents
+.ev 2
+.if !'\\$3'NO' \{\
+.	nr Tx \w'\\$3\0'u
+.	if \\n(Tx>\\n(Ta .nr Ta \\n(Tx
+.\}
+.nr Tp \w'\0\\n(PN'u
+.da Tc
+\\!.xx "\\$1" "\\$2" \\$3 \\n(PN
+.br
+.di
+.ev
+..
+.\"
+.\"	An item in the table of contents
+.de xx
+.if \\$1=1 .sp .5
+.ie !'\\$3'NO' \\$3\t\\$2\a\t\\$4
+.el .ie \\n(Ta \&\t\\$2\a\t\\$4
+.el \&\\$2\a\t\\$4
+..
+.\"	EM
+.\" check for work at end of file
+.de EM
+.if \\n(Tc \{\
+\c
+.nr Tc 2
+.if  "\*(.T"ps" \{\
+.TC
+.\}
+.if  "\*(.T"psview" \{\
+.TC
+.\}
+.\}
+.\"tm EM called, Tc: \\n(Tc
+..
+.\" do the things we want at the end of the paper
+.de TC
+.\"tm TC called
+'bp
+.ft B
+.\".tm tabel of contents
+.ce
+.rs
+.sp
+.if  "\*(.T"ps" \{\
+.ti -\\n(INu
+\s+2Table des Matières\s0
+.\}
+.if  "\*(.T"psview" \{\
+.ti -\\n(INu
+\s+2Table des Matières\s0
+.\}
+.sp 2
+.ft R
+.nf
+.ev 2
+.	\" where the table of contents is stored
+.nf
+.nr Tb \\n(LLu-\\n(Tpu-\\n(INu
+.nr c \w'1.1.1.1\0'u
+.ie \\n(Ta .ta \\n(Tau \\n(Tbu \\n(LLu-\\n(INuR
+.el .ta \\n(Tbu \\n(LLu-\\n(INuR
+.in \\n(INu
+.Tc
+.ev
+..
+.\"
+.\"	set end macro
+.em EM
+.\"
+.\"	ix - index creation macros. Basic idea bwk
+.\"
+.\"	basic idea:	if	not in a diversion,
+.\"				 put the arguments on stndard error
+.\"			else
+.\"				call ix again (which will actually happen when
+.\"				the diverted string is read back)
+.\"			elif
+.de ix
+.ie '\\n(.z'' .tm ix: \\$1 \\$2 \\$3 \\$4 \\$5 \\$6 \\$7 \\$8 \\$9	\\n%
+.el \\!.ix \\$1 \\$2 \\$3 \\$4 \\$5 \\$6 \\$7 \\$8 \\$9
+..
+.\"
+.\"
+.\" Begin of the PSmacros, coutesy of fred hansen (I believe)
+.\"
+.nr zT 0
+'\"	CCH added next line for post printer type
+.if  "\*(.T"post"  'nr zT 1
+.if  "\*(.T"postscript"  'nr zT 1
+.if  "\*(.T"psc"  'nr zT 1
+.de PB
+'ne \\$2p
+'nr zw \\n(.l-\\n(.k-1m-\\$1p
+'nr zH \\n(.k
+'nr zV \\n(.d
+'if  \\n(zT  \\{\\
+'ie  !\\n(zw  \\{\\
+'nr zx \\n(.l-\\$1p-10m
+'nr zV \\n(zV+1v
+.sp 0
+\\v'-.25v'\\ \\v'+.25v'\\c\\}
+'el \\{\\
+'nr zx \\n(zw-10m
+\\v'-.25v'\\ \\v'+.25v'\\c\\}
+.sp |\\n(zVu
+'if ((\\n(zx<=0)&(\\$2p>0.25v)) \\x'\\$2p-0.25v'\\c
+\\!%
+\\!%!
+\\!	/saved save def
+\\!	currentpoint translate
+\\!	10 10 scale
+\\!	/showpage {} def
+'if \\n(.j=3 \\{\\
+\\!    /troffadjust { neg 2 idiv } def
+'ss\\}
+'if \\n(.j=5 \\{\\
+\\!    /troffadjust { neg } def
+'ss\\}
+'if \\n(.j<3 \\{\\
+\\!    /troffadjust { pop 0 } def
+'ss\\}\\}
+..
+.de PE
+'if \\n(zT \\{\\
+\\!	saved restore
+\\!.
+'ie \\n(zx \\{\\
+'if (\\$2p>0.25v) \\x'\\$2p-0.25v'\\c
+\\h'-\\n(.ku+\\n(zHu+\\$1p'\\c\\}
+'el  .br\\}
+'if !\\n(zT \\{\\
+'if  !\\n(zw  \\{\\
+ \\h'-\\n(.k'\\ \\h'-\\n(.w'\\c
+.sp -1\\}
+\\x'\\$2p-0.25v'\\v'-.25v'\\D'l \\$1p \
+0.0i'\\D'l 0.0i \\$2p'\\D'l -\\$1p 0.0i'\\D'l 0.0i \
+-\\$2p'\\v'+.25v'\\h'\\$1p'\\c\\}
+..
+.\"
+.\" End of PSmacros
+.\"
+.\"
+.\" If "\*(.T" is "ps", we're presumably using "groff"; set "zT" to 1,
+.\" and load up the "groff" version of the macros (which use "groff"
+.\" features, and, as such, might not be usable in a package that
+.\" Boring Old "troff" and "ditroff" also have to read).
+.\"
+.if "\*(.T"ps" \{\
+.	nr zT 1
+.	so /usr/andrew/lib/tmac/tmac.psatk
+.\}

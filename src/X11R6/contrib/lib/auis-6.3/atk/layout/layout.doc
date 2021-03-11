@@ -1,0 +1,327 @@
+\begindata{text,539034816}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+
+
+\chapter{LAYOUT}
+
+
+\italic{Layout} and its companion \italic{layoutview} provide a way to lay out 
+a combination of ATK objects in a single rectangle with arbitrary positions 
+and sizes.  Each object is given a fixed size and position.  Overlapping 
+objects will generally work, altthough there are a few cases of advanced 
+graphic operations which are not properly handled.
+
+
+This document describes the programmer's interface to layout.  The user 
+interface is described in the help file.
+
+
+
+\subsection{Layout (data object)}
+
+
+A layout is simply an ordered list of rectangular \bold{components}, which may 
+be empty or contain other data objects.  
+
+
+\paragraph{layout_CreateComponent} creates an empty component and returns a 
+pointer to it.
+
+
+\paragraph{layout_RemoveComponent}(self, c) deletes a component.
+
+
+\paragraph{layout_FillInComponent}(self, classname, c) fills in the contained 
+data object with a new instance of the named class.
+
+
+\paragraph{cData(c)} points to the data object associated with c.
+
+
+\paragraph{layout_SetComponentSize}(c, x, y, w, h) sets the \bold{size and 
+position} of a component.  Any of the four parameters may be zero to indicate 
+that the corresponding edge of the component should coincide with the 
+corresponding edge of the entire layout.
+
+
+\paragraph{cLeft}(c), \paragraph{cTop}(c), \paragraph{cRight}(c), 
+\paragraph{cBottom}(c), \paragraph{cWidth}(c), and \paragraph{cHeight}(c) give 
+the current size and position of the component.
+
+
+\paragraph{vLeft}(self, c), \paragraph{vTop}(self, c), 
+\paragraph{vRight}(self, c), \paragraph{vBottom}(self, c), 
+\paragraph{vWidth}(self, c), and \paragraph{vHeight}(self, c) test for zero 
+values and use the dimensions of the view where needed.  Note that these are 
+part of the view, not the data object.
+
+
+\bold{Ordering} is important when two components overlap - the earlier 
+component in the list appears in front of the later.
+
+
+\paragraph{layout_Promote}(c) moves a component in front of all other 
+components.
+
+
+\paragraph{layout_Demote}(c) moves a component behind all other components 
+which do not completely obscure it.
+
+
+\paragraph{layout_GetFirstComponent} is a pointer to the frontmost component. 
+ To iterate through all components front to back,  write:
+
+\example{
+struct component *c;
+
+forallcomponents(self, c) \{operate on c\}}
+
+
+Components may be marked \bold{fixed or variable}:  fixed objects are intended 
+to be like titling information, set by once and for all in authoring mode, 
+while variable objects are intended to be edited by the user.
+
+
+\paragraph{layout_MakeVariable}(c) allows user input to an component.
+
+
+\paragraph{layout_MakeFixed}(c) disallows input to a component except in 
+authoring mode.
+
+
+\paragraph{cVaries(c)} is TRUE for variable components.
+
+
+
+\subsection{Layout data stream}
+
+
+The layout data stream follows ATK standards, starting with a begindata and 
+ending with an enddata directive.  In between comes a sequence of components, 
+ordered front to back.  Each component starts with a line of the form:
+
+
+<left,top,width,height,V>
+
+
+where the first four items are decimal numbers giving the geometry of the 
+component, and the fifth is either the character 'V' ('*' is also accepted) 
+for a variable component or 'F' for a fixed component.  This line is followed 
+by the ATK representation for the component's dataobject.  A null component is 
+represented by omitting the ",V' and the data.
+
+
+
+
+\subsection{Layoutview}
+
+
+The current \bold{operating mode}, returned by 
+\paragraph{layoutview_Hitmode}(), may be:
+
+
+\leftindent{HIT_EXEC:  layout is in user mode; authoring operations are 
+disabled.  Input events are passed into the current selection.  Set by calling 
+\italic{layoutview_SetRunMode}().
+
+
+HIT_AUTHORING:  layout is in authoring mode but not doing anything special. 
+ Set by calling \italic{layoutview_SetAuthoringMode}().
+
+
+HIT_INITIALIZING:  layout is in authoring mode, but the current selection is 
+being given input events as in HIT_EXEC mode.  Set by calling 
+\italic{layoutview_SetInitMode}().
+
+
+HIT_DRAGGING:  layout is in authoring mode, a mouse button is down, and 
+something is being dragged.  Set and reset by mouse hits in authoring mode.
+
+
+HIT_CREATING:  layout is in authoring mode, a mouse button is down, and a new 
+component is being created.  Set and reset by mouse hits in authorign mode.
+
+}
+The \bold{create mode} determines how a newly created components will be 
+filled in.
+
+
+\paragraph{layoutview_SetCreateMode(self, mode)} sets the mode to one of three 
+possible values:
+
+
+\leftindent{CREATE_NULL does not initialize new components
+
+CREATE_FILLER initializes them with filler objects
+
+CREATE_PASTE initializes them by doing an immediate paste.
+
+}
+\paragraph{layoutview_Createmode} is the current create mode.
+
+
+The \bold{pointing granularity} aids users in aligning components by 
+restricting the position and size of the rubber-band box used to create, move, 
+and resize components to a grid.
+
+
+\paragraph{layoutview_SetGranularity}(self, granularity) sets the granularity 
+to an integer value (in pixel units).
+
+
+\paragraph{layoutview_ApplyGranularity}(self, v) adjusts v to the nearest 
+multiple of the granularity.
+
+
+The \bold{current selection} defines the component currently being worked on, 
+or is NULL if there is no current selection.  Mouse hits on a component 
+generally select it.
+
+
+\paragraph{layoutview_Selection}() is the current selection.
+
+
+\paragraph{layoutview_SetSelection}(self, c) sets the current selection; c may 
+be NULL. Do not change the selection while it is being resized or dragged.
+
+
+\paragraph{layoutview_SetSelectionSize}(self, rectangle) sets a new size and 
+position for the current selection, creating a new component if there is none. 
+ This is the only way to create a component in layoutview.
+
+
+\paragraph{layoutview_DestroyComponent}() destroys the current selection.
+
+
+\paragraph{layoutview_Paste} pastes into the current component.
+
+
+\paragraph{layoutview_SetChildByName}(self, char *dataname) inserts a new 
+dataobject from the named class into the current selection.
+
+
+\paragraph{layoutview_SetChild}() prompts for a class name, then uses it to 
+insert a new dataobject.
+
+
+\paragraph{layoutview_MakeVariable} makes the current selection variable.
+
+
+\paragraph{layoutview_MakeFixed} makes it fixed.
+
+
+\paragraph{layoutview_Promote}  promotes the current selection to the front. 
+ Layoutview always promotes components when they are moved or dragged, so that 
+the rubber-band outline of the moving component need never be obscured by 
+another component.
+
+
+\paragraph{layoutview_Demote}  demotes the current selection to the back.
+
+
+\paragraph{layoutview_MakeBackground} demotes the current selection to be back 
+and expands it to fill the entire view.
+
+
+As with any inset which contains other insets, it is necessary in the 
+layoutview object to maintain a mapping between the contained views and the 
+corresponding data object's component data objects.
+
+
+\paragraph{layoutview_FindSubview}(self, c) is the child view corresponding to 
+c.
+
+
+\paragraph{layoutview_RemoveSubview}(self, v) deletes the mapping entry for 
+child view v and returns a pointer to the corresponding component.
+
+
+A macro is provided to iterate through the current subviews; use:
+
+
+\example{struct viewlist *vl;
+
+forallsubviews(self, vl)
+
+    \{operate on view \bold{vChild(vl)} for component \bold{vComponent(vl)}\}}
+
+
+
+\subsection{Special Considerations}
+
+
+The update routine in layoutview uses clipping regions (not just rectangles) 
+to prevent behind components from overwriting in-front components.  As the 
+update runs down the component list, which is ordered front to back, it 
+accumulates a residual clipping region by subtracting out already drawn 
+components.  There is one case in which this fails:  text sometimes moves its 
+window up or down with a blt operation, not noticing that the source of the 
+blt isn't all there.  A redraw (control L) fixes this.
+
+
+
+
+Author:  John H Howard
+
+Last updated: 
+ \
+\begindata{writestamp,538756488}
+Datastream version: 1
+%o %A, %Y at %u:%M
+andysans12
+724628463
+\enddata{writestamp,538756488}
+\view{writestampview,538756488,673,0,0}
+
+
+
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,675,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,539034816}

@@ -1,0 +1,1095 @@
+\begindata{text,20052736}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+-- date module
+
+
+-- styles accepted:
+
+--	separator styles:
+
+--		slashes:	7/17/1989
+
+--		dashes:	7-17-1989
+
+--		periods:	1989.198
+
+--	month styles:
+
+--		digits:	7
+
+--		abbr:	Jul	(must have legal first 3 letters)
+
+--		full:	July
+
+--	year styles:
+
+--		digits:	89
+
+--		abbr:	'89	(a number with an apostrophe in front)
+
+--		full:	1989	(a number between 1970 and 2069)
+
+--	value styles:
+
+--		3 values:	7/17/1989	(month, day, year)
+
+--		2 values:	1989.198	(year, number days from 1/1)
+
+--		1 value:	726666	(number of days after 12/31/1BC)
+
+--	position styles:
+
+--		month day year:	July 17, 1989
+
+--		day month year:	17-July-1989	(month must be abbr or full)
+
+--		year day:		1989.198		(year must be abbr or full)
+
+--	extraneous text:
+
+--		ignores extraneous text before and after date
+
+--		takes leftmost combination of characters to form date
+
+--		text between the parts of the date can not contain numbers except a 
+time
+
+--		times must have parts separated by colons (no spaces in time allowed)
+
+--
+
+--	date limits:
+
+--		this module is not limited as to date
+
+--		when an assumption is necessary, it assumes the date is
+
+--		from 1/1/1970 - 12/31/2069, inclusive
+
+
+-- external routines
+
+--	integer function date_today()
+
+--		returns canonical integer representation for the current date
+
+--	integer function date_canonical(marker m):
+
+--		returns canonical integer representation for the date in the marker m.
+
+--		this canonical integer is the number of days from 1/1/1970.
+
+--		the canonical integer for 1/1/1970 is    1
+
+--	marker function date_text(int n):
+
+--		returns a text representation (eg:  July 17, 1989) for the canonical
+
+--		date given in the integer parameter n.
+
+--	marker function date_slashed(int n):
+
+--		returns a slashed representation (eg:  7/17/1989) for the canonical 
+date
+
+--		given in the integer parameter n.
+
+--	marker function date_dashed(int n):
+
+--		returns a dashed representation (eg:  7-17-1989) for the canonical date
+
+--		given in the integer parameter n.
+
+--	marker function date_julian(int n):
+
+--		returns a two-value representation (eg:  1989.198) for the canonical 
+date
+
+--		given in the integer parameter n (note:  format is year.day).
+
+
+-- Canonical date representation
+
+--	The canonical date representation is an integer giving the number of
+
+--	days from the beginning of a putative year zero.
+
+--	The counting uses only the Gregorian calendar scheme of leap years,
+
+--	so it assigns incorrect numbers to dates prior to the transition.
+
+--	Jan 1 of the putative year zero is day 1.  Year 0 is taken as a leap 
+year.
+
+--	(Since counting really began with year one, there will be no date
+
+--	to which the integers 1...366 are assigned.)
+
+--	
+
+--	For dates since the transition to the Gregorian calendar, the canonical 
+
+--	date integer is suitable for doing arithmetic to compute the number of 
+
+--	days between two dates.
+
+
+-- restrictions
+
+--	one and two digit year values 
+
+--		are taken to be within 50 years of the current year
+
+--	so years prior to 100 AD are not parsed properly
+
+
+
+boolean dateGotten := False	-- indicate if the next two are set yet
+
+integer ThisYear		-- current year
+
+integer todaysDate		-- canonical date for today
+
+
+integer ParsedYear		-- return values from IntToParsed and ParseDate
+
+integer ParsedMonth
+
+integer ParsedDay
+
+
+integer NoValue := -999999999	-- value if no value found
+
+marker Letters := "qwertyuiopasdfghjklzxcvbnm"
+
+	~ "QWERTYUIOPASDFGHJKLZXCVBNM"
+
+
+marker ndays_UpToMonth	-- total number of days prior to a certain month
+
+	:= "0   31  59  90  120 151 181 212 243 273 304 334 "
+
+
+marker whichmonth := 
+
+\typewriter{	  "0000000000000000000000000000000"	-- Jan
+
+	~ "1111111111111111111111111111"	-- Feb
+
+	~ "2222222222222222222222222222222"	-- Mar
+
+	~ "333333333333333333333333333333"	-- Apr
+
+	~ "4444444444444444444444444444444"	-- May
+
+	~ "555555555555555555555555555555"	-- Jun
+
+	~ "6666666666666666666666666666666"	-- Jul
+
+	~ "7777777777777777777777777777777"	-- Aug
+
+	~ "888888888888888888888888888888"	-- Sep
+
+	~ "9999999999999999999999999999999"	-- Oct
+
+	~ "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"	-- Nov
+
+	~ "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"	-- Dec
+
+}
+marker month_names		-- text name of the months
+
+	:= "1 January 2 February 3 March 4 April 5 May 6 June 7 July "
+
+		~ "8 August 9 September 10 October 11 November 12 December "
+
+
+marker month_abbr		-- abbreviated text name of the months
+
+	:= "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec "
+
+
+marker monthcodes :=
+
+	" jan Jan 1 feb Feb 2 mar Mar 3 apr Apr 4 may May 5 jun Jun 6"
+
+	~ " jul Jul 7 aug Aug 8 sep Sep 9 oct Oct 10 nov Nov 11 dec Dec 12"
+
+
+
+-- global variables
+
+
+marker where_int_was	-- used to keep track where an integer was found
+
+
+-- searches for and returns the the first integer found in the given text
+
+-- ignore times (integers with colons before or after them)
+
+--
+
+integer function \bold{FirstInt}(marker text)
+
+	integer t
+
+	where_int_was := start(text)
+
+	while True do
+
+		where_int_was := 
+
+			token( extent(finish(where_int_was), text),
+
+				"0123456789" )
+
+		if previous(where_int_was) /= ":" 
+
+			and next(where_int_was) /= ":" then
+
+		    exit while
+
+		end if
+
+	end while
+
+	t := parseint( copy(where_int_was) )
+
+	if whereItWas() = "" then   t := NoValue   end if
+
+	return t
+
+end function
+
+
+
+
+------------------------------------------
+
+-- MONTH FUNCTIONS
+
+
+-- monthIndex(day, leap)
+
+--	day is day of year,  leap indicates if it is a leap year
+
+--	returns an integer from 1 to 12 giving the month
+
+--	leap must be True for leap years
+
+--	The trick is to extract an index value from a huge string
+
+--	with one digit per day.
+
+--
+
+integer function \bold{monthIndex}(integer day, boolean leap)
+
+	marker m
+
+	if leap  and day > 31+28 then day := day-1 end if
+
+	m := nextn(start(whichMonth), day)
+
+	if m = "a" then return 11
+
+	elif m = "b" then return 12
+
+	else return 1+parseint(copy(m))
+
+	end if
+
+end function
+
+
+-- return the number of days prior to month index 
+
+--
+
+integer function \bold{daysBeforeMonth}(integer index, boolean leap)
+
+	marker m := nextn(front(ndays_UpToMonth), 4*(index-1))
+
+	integer r := parseint(extent(m, ndays_UpToMonth))
+
+	if leap and index > 2 then r := r + 1 end if
+
+	return r
+
+end function
+
+
+-- return the abbreviated name for the month
+
+--
+
+function \bold{monthAbbr}(integer index)
+
+	marker m := nextn(front(month_abbr), (index-1)*4)
+
+	return extent(m, nextn(m, 2))
+
+end function
+
+
+-- returns the full name of the given month
+
+--
+
+marker function \bold{monthFullName}(integer month)
+
+	marker m := search(month_names, textimage(month))
+
+	if m = "" then return "NoMonth"
+
+	else
+
+		return token(finish(m), Letters)
+
+	end if
+
+end function
+
+
+-- returns the integer value for a month found in the given text, or 0 if 
+none is found.
+
+-- looks for the abbreviated month text as key
+
+--
+
+integer function \bold{SearchMonth}(marker text)
+
+	marker w
+
+	while True do
+
+		w := token(text, Letters)
+
+		if w = "" then return NoValue end if
+
+		text := extent(finish(w), text)
+
+		if length(w) >= 3 then
+
+			w := search(monthcodes, extent(w, next(second(w))))
+
+			if w /= "" then
+
+				return FirstInt(extent(finish(w),
+
+					monthcodes))
+
+			end if
+
+		end if
+
+	end while
+
+end function
+
+
+
+-- return yy or yyyy 
+
+--	use the two digit form if within twenty years of the current year
+
+--
+
+function \bold{yeardigits}(integer year)
+
+	GetTodaysDate()
+
+	if year >= ThisYear - 20 and year <= ThisYear+20 then
+
+		year := year % 100
+
+	end if
+
+	if year < 10 then return "0"~textimage(year) end if
+
+	return textimage(year)
+
+end function
+
+
+-- return True if year is a leap year
+
+--
+
+boolean function \bold{IsLeap}(integer year)
+
+	return year /= NoValue and (year % 400 = 0 
+
+		or (year % 4 = 0 and year % 100 /= 0))
+
+end function
+
+
+
+--------------------------------------------------
+
+-- INTERNAL FUNCTIONS
+
+
+
+-- Set Parsed Year, ParsedMonth, and ParsedDay
+
+--
+
+marker function \bold{IntToParsed}(integer days)
+
+	integer t, y
+
+	boolean Leap
+
+
+	days := days - 366		-- year 1 is first year of cycle
+
+	y := 1			-- so remove year 0
+
+
+	t := days / 146097		-- 400 years: 97 leap years
+
+	days := days - t * 146097
+
+	y := y + 400 * t
+
+
+	t := days / 36524		-- 100 years: 24 leap years
+
+	days := days - t * 36524
+
+	y := y + 100 * t
+
+
+	t := days / 1461		-- 4 years: 1 leap year
+
+	days := days - t * 1461
+
+	y := y + 4 * t
+
+
+	t := floor((float(days) - .15) / 365.25) -- fudge to get day 1461 right
+
+	days := days - t * 365
+
+	y := y + t
+
+
+	ParsedYear := y
+
+	Leap := IsLeap(y)
+
+	ParsedMonth := monthIndex(days,  Leap)
+
+	ParsedDay := days - daysBeforeMonth(ParsedMonth, Leap)
+
+end function
+
+
+-- return an integer representation for the given year, month, and day.
+
+--	assume year zero has 366 days
+
+--	ignore change from Julian to Gregorian calendar
+
+--
+
+integer function \bold{DateToInt}(integer year, integer month, integer day)	
+
+	return   year* 365 + (year-1)/4 - (year-1)/100 + (year-1)/400 +1
+
+		 + daysBeforeMonth(month, IsLeap(year))  
+
+		+  day
+
+end function
+
+
+
+-- set the global ParsedXxxx variables 
+
+--	If year, month or day is not found, the value 0 is assigned.
+
+--	This function does nothing about filling in defaults.
+
+--
+
+function \bold{ParseDate}(date)
+
+	integer temp1, temp2, temp3
+
+	marker loc1		-- location of first integer
+
+
+	ParsedYear := NoValue
+
+	ParsedMonth := NoValue
+
+	ParsedDay := NoValue
+
+
+	-- get first number in date
+
+	temp1 := FirstInt(date)
+
+	if temp1 = NoValue then  -- invalid:  no numbers found
+
+		exit function
+
+	end if
+
+	loc1 := where_int_was
+
+
+	-- look for month text in front of the first number
+
+	temp2 := SearchMonth( extent( date, start(loc1)))
+
+	if temp2 /= NoValue then
+
+		-- month found before 1st number: year is next
+
+--		printline("mmm dd yyyy")
+
+		ParsedYear := FirstInt(extent(finish(loc1), date))
+
+		ParsedMonth := temp2
+
+		ParsedDay := temp1
+
+	else
+
+		-- month not found before first number
+
+		-- get next number
+
+		temp2 := FirstInt(extent(finish(loc1), date))
+
+		if temp2 = NoValue then
+
+			-- only one integer found: assume canonical date
+
+			ParsedDay := temp1
+
+--			printline("canon")
+
+		else
+
+			-- look for month text between 1st two numbers
+
+			temp3 := SearchMonth(extent(finish(loc1),
+
+					start(where_int_was)))
+
+			if temp3 /= NoValue then
+
+				-- month in middle
+
+				ParsedMonth := temp3
+
+				ParsedDay := temp1
+
+				ParsedYear := temp2
+
+--				printline("dd mmm yyyy")
+
+			else
+
+				-- no month text found:  get 3rd number
+
+				temp3 := FirstInt(extent
+
+					(finish(where_int_was), date))
+
+				if temp3 = NoValue then
+
+					-- no month: Julian date
+
+					ParsedYear := temp1
+
+--					printline("yyyy dd")
+
+				else
+
+					-- found month, day, and year
+
+					ParsedMonth := temp1
+
+					ParsedYear := temp3
+
+--					printline("mm dd yyyy")
+
+				end if
+
+				ParsedDay := temp2
+
+			end if
+
+		end if
+
+	end if
+
+end function
+
+
+
+-- return the canonical integer for today
+
+--
+
+function \bold{GetTodaysDate}()
+
+	if not dateGotten then
+
+		dateGotten := True
+
+		ParseDate(system("LANGUAGE=english export LANGUAGE ; date"))
+
+		ThisYear := ParsedYear
+
+		todaysDate := DateToInt(ParsedYear, 
+
+			ParsedMonth, ParsedDay)
+
+	end if
+
+	return todaysDate
+
+end function
+
+
+--------------------------------------------------
+
+-- EXTERNAL FUNCTIONS
+
+
+-- returns the canonical integer for today
+
+--
+
+integer function \bold{date_today}()
+
+	return GetTodaysDate()
+
+end function
+
+
+function \bold{date_DayOfWeek}(integer n)
+
+	-- day 1  (Jan 1, 0AD)  was a Saturday
+
+	marker m := start("Friday Saturday Sunday Monday Tuesday Wednesday 
+Thursday ")
+
+
+	n := n % 7
+
+	while n >= 0 do
+
+		m := token(finish(m), Letters)
+
+		n := n - 1	
+
+	end while
+
+	return m
+
+end function
+
+
+-- returns the slashed date  (mm/dd/yy)  for the canonical integer n
+
+--
+
+marker function \bold{date_slashed}(integer n)
+
+	IntToParsed(n)
+
+	return textimage(ParsedMonth) 
+
+		~ "/" ~ textimage(ParsedDay) 
+
+		~ "/" ~ yeardigits(ParsedYear)
+
+end function
+
+
+
+-- returns the dashed date  (mm-dd-yy)  for the canonical integer n
+
+--
+
+marker function\bold{ date_dashed}(integer n)
+
+	IntToParsed(n)
+
+	return textimage(ParsedMonth) 
+
+		~ "-" ~ textimage(ParsedDay) 
+
+		~ "-" ~ yeardigits(ParsedYear)
+
+end function
+
+
+
+-- returns the text date (Month dd, yyyy) for the canonical integer n
+
+--
+
+marker function \bold{date_text}(integer n)
+
+	IntToParsed(n)
+
+	return monthFullName(ParsedMonth) 
+
+		~ " " ~ textimage(ParsedDay) 
+
+		~ ", " ~ textimage(ParsedYear)
+
+end function
+
+
+
+-- returns the julian date  (yyyy.ddd)  for the canonical integer n
+
+--
+
+marker function \bold{date_julian}(integer n)
+
+	IntToParsed(n)
+
+	return  textimage(ParsedYear) ~ "." 
+
+		~ textimage(daysBeforeMonth(ParsedMonth,
+
+					 IsLeap(ParsedYear)) 
+
+				+ ParsedDay)
+
+end function
+
+
+
+-- returns the canonical integer representation for the date represented by 
+the given marker text
+
+--	If no day is found, returns 0.
+
+--	If one integer is found and it is greater than 366, 
+
+--		it is assumed to be a canonical date
+
+--	If two integers are found, they are assumed to be year and Julian day
+
+--	If year is less than 100, it is adjusted to be within fifty years of 
+this
+
+--		current year by adding an appropriate century
+
+
+integer function \bold{date_canonical}(marker date)
+
+	integer T		-- last two digits of current year
+
+	GetTodaysDate()
+
+	ParseDate(date)
+
+
+	if ParsedDay = NoValue then 
+
+		return 0
+
+	end if
+
+
+	if ParsedYear = NoValue then 
+
+		if ParsedDay > 366 then
+
+			-- must be a canonical date
+
+			return ParsedDay
+
+		end if
+
+		-- there is no year: assume current year
+
+		ParsedYear := ThisYear
+
+	end if
+
+
+	-- convert year to full, if necessary
+
+	if  ParsedYear >= 0 and ParsedYear < 100 then
+
+		T := ThisYear % 100	
+
+		if T < 50 and ParsedYear > T + 50 then
+
+			-- previous century
+
+			ParsedYear := ParsedYear + ThisYear - T - 100
+
+		elif T > 50 and ParsedYear < T - 50 then
+
+			-- next century
+
+			ParsedYear := ParsedYear + ThisYear - T + 100
+
+		else 	-- current century
+
+			ParsedYear := ParsedYear + ThisYear - T
+
+		end if
+
+	end if
+
+
+	if ParsedMonth = NoValue then
+
+		-- assume that days are Julian
+
+		boolean Leap := IsLeap(ParsedYear)
+
+		ParsedMonth := monthIndex(ParsedDay, Leap)
+
+		ParsedDay := ParsedDay 
+
+			- daysBeforeMonth(ParsedMonth, Leap)
+
+	end if
+
+	
+
+	-- return canonical integer representation
+
+	return DateToInt(ParsedYear, ParsedMonth, ParsedDay)
+
+end function
+
+
+
+------------------------------------------------
+
+-- TEST
+
+--
+
+function \bold{dumpday}(integer i)
+
+	printline(textimage(i) ~ "  " 
+
+		~ date_slashed(i) ~ "  " ~ date_dashed(i) ~ "  "
+
+		~ date_julian(i) ~ "  " ~ date_text(i) ~ "  "
+
+		~ date_DayOfWeek(i))
+
+end function
+
+function \bold{testCanonical}(d, integer c)
+
+	integer i := date_canonical(d)
+
+	if i /= c then print("\\n\\nXXX date_canonical failedXXX    ") end if
+
+	print(d ~ ":  ")
+
+	dumpday(i)
+
+end function
+
+
+function \bold{dumpyear}(integer days, integer expected)
+
+	IntToParsed(days)
+
+	if expected /= ParsedYear then print("  XXX IntToParsed failed:") end if
+
+	print ("   " ~ textimage(ParsedYear))
+
+end function
+
+
+function \bold{testIntToParsed}(integer year, integer Qleap)
+
+	integer days
+
+	days := year* 365 + (year-1)/4 - (year-1)/100 + (year+399)/400 
+
+	print (textimage(year) ~ ":   ")   dumpday(days+1)
+
+	printline("days before " ~ textimage(year)
+
+		~ " = " ~ textimage(days))
+
+	dumpyear(days-1, year-1)
+
+	dumpyear(days, year-1)
+
+	dumpyear(days+1, year)
+
+	dumpyear(days+365, year)	
+
+	dumpyear(days+366, Qleap)
+
+	dumpyear(days+367, year+1)
+
+	printline(" ")
+
+end function
+
+
+function \bold{main}()
+
+	integer today := date_today()
+
+printline("ParsedYear: " ~ textimage(ParsedYear))
+
+printline("ParsedMonth: " ~ textimage(ParsedMonth))
+
+printline("ParsedDay: " ~ textimage(ParsedDay))
+
+	print ("Today is ")
+
+	print(textimage(today) ~ "  ")
+
+	print(date_dayOfWeek(today) ~ "  ")
+
+	printline(date_text(today))
+
+printline("ParsedYear: " ~ textimage(ParsedYear))
+
+printline("ParsedMonth: " ~ textimage(ParsedMonth))
+
+printline("ParsedDay: " ~ textimage(ParsedDay))
+
+	dumpday(date_today())
+
+
+	testCanonical("July 17, 1989", 726666)
+
+	testCanonical("17 Jul 1989", 726666)
+
+	testCanonical("7-17-89", 726666)
+
+	testCanonical("7/17 '89", 726666)
+
+	testCanonical("Mon, 17 Jul 89 14:03:19 -0500 (EST)", 726666)
+
+	testCanonical("Tue Jul 17 17:34:09 EST 1989", 726666)
+
+	testCanonical("1989.198", 726666)
+
+	testCanonical("89.198", 726666)
+
+	testCanonical("'89.198", 726666)
+
+	testCanonical("726666", 726666)
+
+	testCanonical("July 17", 726666+3*365+1) -- assumes current year is 1992
+
+	testCanonical("31 Dec 1999", 730485)
+
+	testCanonical("1 Jan 2000", 730486)
+
+	testCanonical("1 Feb 2000", 730486+31)
+
+	testCanonical("1 Mar 2000", 730486+31+29)
+
+	testCanonical("31 Dec 2000", 730486+365)
+
+
+	testIntToParsed(0, 0) 
+
+	testIntToParsed(1, 2) 
+
+	testIntToParsed(2, 3)
+
+	testIntToParsed(3, 4)
+
+	testIntToParsed(4, 4)
+
+	testIntToParsed(1899, 1900)
+
+	testIntToParsed(1900, 1901)
+
+	testIntToParsed(1901, 1902)
+
+	testIntToParsed(1902, 1903)
+
+	testIntToParsed(1903, 1904)
+
+	testIntToParsed(1904, 1904)
+
+	testIntToParsed(1999, 2000)
+
+	testIntToParsed(2000, 2000)
+
+	testIntToParsed(2001, 2002)
+
+	testIntToParsed(2002, 2003)
+
+	testIntToParsed(2003, 2004)
+
+	testIntToParsed(2004, 2004)
+
+end function
+
+
+-- 
+\begindata{bp,19805888}
+\enddata{bp,19805888}
+\view{bpv,19805888,7,0,0}
+
+-- Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{-- $Disclaimer: 
+
+-- Permission to use, copy, modify, and distribute this software and its 
+
+-- documentation for any purpose is hereby granted without fee, 
+
+-- provided that the above copyright notice appear in all copies and that 
+
+-- both that copyright notice, this permission notice, and the following 
+
+-- disclaimer appear in supporting documentation, and that the names of 
+
+-- IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+-- used in advertising or publicity pertaining to distribution of the software 
+
+-- without specific, written prior permission.
+
+-- 
+
+-- IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+-- DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+-- ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+-- SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+-- BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+-- DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+-- WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+-- ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+-- OF THIS SOFTWARE.
+
+--  $
+
+}}\enddata{text,20052736}

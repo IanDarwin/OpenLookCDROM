@@ -1,0 +1,362 @@
+#!/bin/sh5
+# ############################################################################
+# Copyright (c) Digital Equipment Corporation, 1991, 1992 All Rights Reserved.
+# Unpublished rights reserved under the copyright laws of the United States.
+# The software contained on this media is proprietary to and embodies the
+# confidential technology of Digital Equipment Corporation.  Possession, use,
+# duplication or dissemination of the software and media is authorized only
+# pursuant to a valid written license from Digital Equipment Corporation.
+# RESTRICTED RIGHTS LEGEND Use, duplication, or disclosure by the U.S.
+# Government is subject to restrictions as set forth in
+# Subparagraph (c)(1)(ii) of DFARS 252.227-7013, or in FAR 52.227-19, as
+# applicable.
+# ############################################################################
+
+
+# set -vx
+
+# This next variable lists all the machines we can install on. 
+# Each string is matched against the output of "sizer -c"
+# You will want to add new machines here
+# DS5000 is the 3max, DS5000_100 is the 3min, DS5000_300 is the 3max+
+# DSPERSONAL_DECSTATION is the Maxine
+SUPPORTED_MACHINES="DS5000 DS5000_100 DS5000_300 DSPERSONAL_DECSTATION"
+
+# CheckMachineType
+#
+# Args: List of supported machine names.
+#
+# Checks that the machine type is one of the arguments given.
+
+CheckMachineType () {
+	for i
+	do
+		[ "$SYSTYPE" = "$i" ] && return 0
+	done
+
+	cat <<EOF
+The machine type $SYSTYPE is not supported for the BBA Base kit. 
+Aborting....
+EOF
+	exit 1
+}
+
+# DiskFull
+# Args: None.
+# Are we being run on a diskless workstation or not. Returns 0 for a
+# standalone, and 1 for diskless.
+
+DiskFull () {
+	if [ -z "$PWD" ]
+	then
+		echo "Error: DiskFull called without PWD being set. Aborting..."
+		exit 1
+	elif [ "$PWD" = "/" ]
+	then
+		return 0
+	fi
+
+	return 1
+}
+
+
+# MakeLogFile
+#
+# Args: $1 = list of directories to check.
+#
+# Locate a directory to put a log file. The device must have at least 100K free.
+# If it can't find space it aborts.
+
+MakeLogFile () {
+        if [ $# != 1 ]
+        then
+                echo "Error, MakeLogFile didn't get 1 argument."
+                exit 1
+        fi
+
+        for i in $1
+        do
+                LOGFILE=`df $i | awk 'NR == 3 && $4 > 100'`
+                [ ! -z "$LOGFILE" ] && {
+                        LOGFILE=$i/LFIBASE100.log
+			(date >> $LOGFILE) 2>/dev/null
+			[ -s "$LOGFILE" ] && return
+                }
+        done
+
+	cat <<'EOF'
+Can't locate a place big enough to put an approx. 8K logfile. You need to
+clean up your disks so that 100K is available in one of the partitions.
+
+EOF
+	exit 1
+}
+
+
+# ConfModify
+#
+# Args: None.
+#
+# Modify /usr/sys/machine/common/conf.c to include the entry points lofi
+#
+# We basically substitute lofi* for audio_b*
+
+ConfModify () {
+	cd ./usr/sys/machine/common 
+	[ -f conf.c ] || {
+		echo "Error. Can't find conf.c Aborting."
+		exit 1
+	}
+
+	if grep -s audio_b conf.c
+	then
+		rm -f $EDSCRIPT
+
+		cat > $EDSCRIPT <<'EOF'
+		/^#if[	 ]*NMMLP > 0/,/^#endif/{
+			/audio_b/d
+			/^#endif/a\
+			\
+			#include "bba.h"\
+			#if NBBA > 0\
+			int bbaopen(), bbaclose(), bbaioctl(), bbaselect();\
+			#else\
+			#define bbaopen		nodev\
+			#define bbaclose	nodev\
+			#define bbaread		nodev\
+			#define bbawrite	nodev\
+			#define bbaioctl	nodev\
+			#define bbaselect	nodev\
+			#endif\
+			
+		}
+		/^struct[ 	]*cdevsw[	 ]*cdevsw\[\]/,/^};/{
+			s/audio_b_open/bbaopen/
+			s/audio_b_close/bbaclose/
+			s/audio_b_read/nulldev/
+			s/audio_b_write/nulldev/
+			s/audio_b_ioctl/bbaioctl/
+			s/audio_b_stop/nodev/
+			s/audio_b_reset/nulldev/
+			s/audio_b_select/bbaselect/
+			s/audio_b_mmap/nodev/
+			s/audio_b_strat/0/
+		}
+EOF
+
+		sed -f $EDSCRIPT < conf.c > /tmp/conf.c.$$
+		mv conf.c conf.c.orig && cp /tmp/conf.c.$$ conf.c
+		rm -f /tmp/conf.c.$$
+	fi
+
+	cd $PWD
+}
+
+
+
+# FilesMipsModify
+# Args: None
+#
+# Modify /usr/sys/conf/mips/files.mips to include lofi.c 
+
+FilesMipsModify () {
+	cd ./usr/sys/conf/mips
+	[ -f files.mips ] || {
+		echo "Error: Can't locate ./usr/sys/conf/mips/files.mips. Aborting"
+		exit 1
+	}
+
+	cp files.mips files.mips.orig
+	egrep -v "bba\.c" files.mips >/tmp/files.mips.$$
+	echo 'io/tc/bba.c		optional bba device-driver Notbinary' 		>> /tmp/files.mips.$$
+	mv /tmp/files.mips.$$ files.mips
+
+	cd $PWD
+}
+
+
+# TcOptionModify
+# Args: None.
+#
+# Modify /usr/sys/data/tc_option_data.c to include the module names for lofi.
+
+TcOptionModify () {
+	cd ./usr/sys/data
+
+	rm -f $EDSCRIPT
+
+	cat > $EDSCRIPT <<'EOF'
+		/^struct tc_option tc_option \[\]/,/^};/{
+			/PMMM-A/s/\([ 	]*0,[ 	]*\)0,/\11,/
+			/PMMM-AC /s/mmlp/bba/
+			/PMMM-AC /s/PMMM-AC /BBA     /
+		}
+EOF
+
+	sed -f $EDSCRIPT < tc_option_data.c > /tmp/tc_option_data.c.$$
+	mv tc_option_data.c tc_option_data.c.orig && mv /tmp/tc_option_data.c.$$ tc_option_data.c
+
+	cd $PWD
+}		
+
+
+# ConfigModify
+#
+# Args: $1 == Machine name
+#
+# Modifies the config file to contain the Audio stuff.
+
+
+ConfigModify () {
+	if [ $# != 1 ]
+	then
+		echo "Error: ConfigModify called with $# arguments instead of 1."
+		exit 1
+	fi
+
+	CFG=$1
+	
+	cd /sys/conf/mips || {
+		echo "Can't cd to /sys/conf/mips from `/bin/pwd`"
+		exit 1
+	}
+
+	[ -f "$CFG" ] || {
+		echo "Error: Can't locate config file: $CFG. Aborting."
+		exit 1
+	}
+
+	cp $CFG /tmp/$CFG.$$
+
+	rm -f $EDSCRIPT
+
+	grep -s 'device[ 	][ 	]*bba' $CFG || {
+		echo '1' >> $EDSCRIPT
+		echo '/^device' >> $EDSCRIPT
+		echo 'i' >> $EDSCRIPT
+		echo 'device          bba0      at ibus?     vector bbaint' >> $EDSCRIPT
+	}
+
+	[ -s "$EDSCRIPT" ] && echo '.' >> $EDSCRIPT
+
+	echo 'w' >> $EDSCRIPT
+	echo 'q' >> $EDSCRIPT
+
+	ed - /tmp/$CFG.$$ < $EDSCRIPT > /dev/null 2>&1
+	mv $CFG $CFG.orig && cp /tmp/$CFG.$$ $CFG
+
+	cd $PWD
+}
+
+
+
+# CleanUp
+# Args: config file
+#
+# We don't need to clean up any other files other than the config file, we
+# clean this up by deleting the lines with lofi in them.
+
+CleanUp () {
+	if [ $# != 1 ]
+	then
+		echo "CleanUp not called with one argument."
+		exit 1
+	fi
+
+	CFG=$1
+
+	cd ./usr/sys/conf/mips ; 
+	mv $CFG $CFG.orig
+	sed -e '/^device[ 	]*bba/d' < $CFG.orig > $CFG
+	cd $PWD
+}
+
+
+# MakeDirs
+# Args: directory names
+#
+# Create directories which are required for the installation. They may or
+# may not exist.
+
+MakeDirs () {
+
+        for dir in $* ; do
+                [ -d $dir ] || mkdir $dir && continue
+                cat << EOF
+Error: Unable to create the directory $dir. Correct the problem and
+reinstall the subset.
+EOF
+                exit 1
+        done
+}
+
+
+
+
+Main () {
+	PWD=`/bin/pwd`
+	EDSCRIPT=/tmp/sed.script.$$
+	MakeLogFile "/usr/tmp /tmp /"
+	SYSTYPE=`sizer -c` 
+
+	echo "" >> $LOGFILE
+	echo "" >> $LOGFILE
+	echo "Stage: $ACT" >> $LOGFILE
+	/bin/date >> $LOGFILE
+
+	MACHINE=`/bin/hostname`
+	MACHINE=`echo $MACHINE | sed 's/\..*$//' | tr '[a-z]' '[A-Z]'`
+
+	case "$ACT" in
+		PRE_[AL])
+			if [ ! -f /usr/etc/subsets/UDTBASE425.lk ] 
+			   then
+			   echo "Warning: bba requires Ultrix V4.2a or later to be installed on your system."
+			fi
+			DiskFull && CheckMachineType $SUPPORTED_MACHINES
+			if [ -z "$MACHINE" ]
+			then
+				cat <<EOF
+
+Error: Don't know what your machine name is.  
+Either boot to multi user mode, or use /bin/hostname to set
+your system's name.  The name you set will be used in looking for the
+config file.
+EOF
+				exit 1 
+			fi
+			;;
+
+		POST_[AL])
+			FilesMipsModify
+			TcOptionModify
+			ConfModify 
+			ConfigModify $MACHINE
+
+			[ ! -f /dev/bba ] && {
+			/bin/mknod /dev/bba c 80 0 > /dev/null 2>&1
+			/bin/chmod +rw /dev/bba
+			}
+
+			cat <<EOF
+
+Installation of bba sources and modifications to files is complete.
+Please rebuild your kernel and reboot with the new kernel.
+
+EOF
+			rm -f $EDSCRIPT
+			;;
+
+		POST_D)
+			if DiskFull
+			then
+				CleanUp $MACHINE
+			fi
+			;;
+		V)
+
+	esac
+}
+
+
+Main

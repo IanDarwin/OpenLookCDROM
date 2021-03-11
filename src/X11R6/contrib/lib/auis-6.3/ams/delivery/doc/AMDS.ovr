@@ -1,0 +1,671 @@
+\begindata{text,539975024}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\define{p
+}
+\chapter{1	An Overview of the Andrew Message Delivery System}
+
+
+"The mail transport mechanism is trivial."
+
+
+		-- Jim Morris
+
+
+\section{1.1	About this document}
+
+
+This document is intended to provide a conceptual overview of the Andrew 
+Message Delivery System.  It also includes a fairly detailed description of 
+different parts of the AMDS, but is not meant to be either an installation or 
+administration manual, although the concepts presented are useful to both 
+installing the system and administrating it.
+
+
+If you are using EZ to read this document, you can open an interactive Table 
+of Contents window by choosing \bold{Table of Contents} from the \italic{Page} 
+menu card.  Clicking on a heading in the Table of Contents window that appears 
+scrolls this document to bring the heading into view.
+
+
+Throughout this document the terms "message" and "mail" are used 
+interchangeably; there is no technical distinction between them.
+
+\begindata{bp,539690504}
+\enddata{bp,539690504}
+\view{bpv,539690504,1516,0,0}
+\section{1.2	About the delivery system}
+
+
+The Andrew Message Delivery System (AMDS) is a mail transport system for an 
+Andrew installation, dedicated to the process of actually moving mail from one 
+user to another.  While it was originally developed to work with an Andrew 
+File System (AFS) installation as the local mail system, AMDS will also work 
+in a non-AFS installation.  Besides its ability to function well in an AFS 
+deployment, AMDS offers other features, such as integration with the very 
+flexible Andrew White Pages (WP), a high-quality distribution list mechanism, 
+an extensible local address format, and a mechanism for distributing Andrew 
+Toolkit (ATK) formatted mail.  When used in a multi-cell environment, AMDS can 
+be used to provide reliable, authenticated exchange of formatted mail across 
+AFS cell boundaries.
+
+
+The AMDS is a collection of small programs that service a set of mail queues, 
+moving messages in the queues closer to their final destination.  These 
+programs are usually run as background daemons on dedicated machines, often 
+workstation-class machines, referred to as "Post Offices."  
+
+
+This section describes the programs, queues, messages and parts of the White 
+Pages, while the interaction of these components--how messages get into, out 
+of, and move within the system--is explained in subsequent sections.
+
+
+\subsection{1.2.1	AMDS Programs}
+
+
+The AMDS proper consists of the following programs.  The location of each 
+program can be changed and re-specified in a site's AndrewSetup file.  See the 
+SetUp.ref document in /usr/andrew/doc for more information on AndrewSetup.
+
+
+\paragraph{1.2.1.1	Queuemail}
+
+
+The queuemail program, installed into ANDREWDIR/etc, generally run as a daemon 
+on ordinary workstations and Post Office machines.  It manages mail queues. 
+ Managing a mail queue entails calling a program (trymail or switchmail) to 
+perform a delivery attempt on each message in the queue and placing the 
+message into another queue if delivery fails.  
+
+
+\paragraph{1.2.1.2	Trymail and Switchmail}
+
+
+The trymail and switchmail programs, installed into ANDREWDIR/etc, are 
+versions of the same basic program.  They attempt to perform actual delivery 
+by writing a file into the addressee's Mailbox.  Trymail is used for local 
+delivery and sends error messages in the case of permanent errors (like an 
+address being non-local) back to the queuemail daemon, which can then place 
+the message into a different queue.  Switchmail is used for non-local outgoing 
+mail; in the case of permanent errors (like unreachable destinations) it sends 
+error messages back to the sender.
+
+
+\paragraph{1.2.1.3	Vicemail}
+
+
+The vicemail program, also installed into ANDREWDIR/etc, is currently used 
+only by queuemail, and only to deliver error reports to the administrator.
+
+
+\subsection{1.2.2	Mail Queues}
+
+
+A mail queue is a place where messages that have not been delivered are stored 
+until they can be delivered.   It is represented as a file-system directory. 
+ An AMDS installation has the following types of mail queues that together 
+help mail services to be available and reliable.  
+
+
+\paragraph{1.2.2.1	User Queues}
+
+
+Each user's home directory (in general, in AFS) contains a subdirectory that 
+is a mail queue used for quick injection of a message into the delivery 
+system.  The name of the user's mail queue subdirectory is given by the 
+AndrewSetup variable named \italic{OutgoingName}.   The default value is 
+".Outgoing".
+
+
+\paragraph{1.2.2.2	Central Queues}
+
+
+Each installation provides two collections of mail queues that are "centrally" 
+located in the file system, one that receives quick service and a holding 
+queue that receives more leisurely service.  These queues serve as backup 
+queues for mail that is not initially delivered locally out of a User Queue 
+because of network failures, if the message has a non-local destination, or 
+any number of other reasons.  The name of the fast and slow central queues in 
+the designated directory "/afs/.CELLNAME/service/mailqs" are specified during 
+installation by the pobbconf.c variables \italic{GlobalMailQueues} and 
+\italic{GlobalSlowMailQueues}, respectively.  The default values are "q1", 
+"q2", "q3", etc., for the faster queues and "sq1", "sq2", "sq3", etc., for the 
+slow queues.
+
+
+\paragraph{1.2.2.3	Workstation Queues}
+
+
+Each workstation has a mail queue on its local disk that is used as a last 
+resort if none of the other queues is accessible due to network failure.  The 
+name of the queue on the local disk of the workstation is given as the value 
+of the \italic{LocalQueue} variable in AndrewSetup, and its default value is 
+"/usr/spool/ViceMsgQueue".  (Vice is the previous name of the Andrew File 
+System.)
+
+
+\subsection{1.2.3	Pieces of Mail}
+
+
+Messages are represented in different ways when they are in the process of 
+being delivered and when they are available to users.
+
+
+\paragraph{1.2.3.1	Mail in Queues}
+
+
+A message in a mail queue is represented as three files whose names are 
+identical except for their first character.  The file with the name Qxxx is 
+the message to be delivered (complete with RFC822 header).  The corresponding 
+file named Sxxx (the one with the same value for "xxx") is the envelope for 
+that message, containing such information as the source address, the 
+destination address or addresses, the time of enqueueing, and the 
+authenticated sender.  The corresponding file named Gxxx is an empty file used 
+as a sychnronization device: its presence signifies that the corresponding 
+Sxxx and Qxxx files are fully written.
+
+
+In general, there are many such "triples" in a mail queue.
+
+
+\paragraph{1.2.3.2	Mail in Mailboxes}
+
+
+AMDS does not deliver mail to a separate spool disk area, but instead delivers 
+mail to a user by creating a single new file in a subdirectory of the user's 
+home directory, called a Mailbox directory.  Each user for a site has a 
+Mailbox directory named by the value of the variable \italic{MailboxName} in 
+AndrewSetup.  Its default value is "Mailbox".  The name for the file 
+corresponding to the individual piece of mail is arbitrary.
+
+
+\subsection{1.2.4	The White Pages}
+
+
+The White Pages describes all mail destinations within a local domain; thus it 
+replaces the mail functionality provided by /etc/passwd, /usr/lib/aliases and 
+all ~/.forward files.  Forwarding addresses, since they are not found in 
+~/.forward files, are changed by the forward utility program, in 
+ANDREWDIR/bin/forward. 
+
+
+\subsection{1.2.5	Post Office machines and daemons}
+
+
+A vital part of the delivery system is a set of dedicated workstations that 
+serve as Post O\p{ffice machines.  These ma}chines run daemon processes which 
+monitor the Central Queues and attempt to deliver any queued mail.  All 
+inter-network mail flows through the Post Offices, which operate as multiple 
+servers for a cell's Internet mail domain.  
+
+\begindata{bp,539690440}
+\enddata{bp,539690440}
+\view{bpv,539690440,1517,0,0}
+\section{1.3	Getting mail in: insertion}
+
+
+In general, mail is inserted into the AMS delivery system into one of the 
+different queues.  While it is in the queue, a delivery attempt is made on the 
+message by queuemail.  If the delivery attempt is successful, the message is 
+removed from the queue, and thus from the delivery system.  If the delivery 
+attempt is unsuccessful (for any number of reasons), the message remains 
+within the delivery system and is generally moved into a different queue.  The 
+insertion of a message into the delivery system is explained in this section. 
+ Subsequent shuffling of messages within the queues, should delivery be 
+unsuccessful, follows an algorithm explained in the following section. 
+ Getting mail out of the delivery system-- a successful delivery attempt--is 
+explained in a subsequent section.
+
+
+Mail sent by a local user is ready for insertion into the delivery system 
+after the recipient addresses have been validated by the user interface 
+program.  At that point, the dropoff routine is called from within the 
+interface program and the message is on its way into the delivery system.  
+
+
+Other mail is injected inot the delivery system by invoking queuemail in 
+non-daemon mode, i.e., acting not to service a queue, but to accept a piece of 
+mail.  This method of message injection is used to incorporate messages from 
+external sources, such as mail from off-site, as well as messages generated by 
+shell scripts or from other mail systems.  Once a message is inserted into the 
+delivery system, it does not matter how it got it.
+
+
+To summarize, there are two ways a piece of mail can be inserted into the 
+group of AMDS queues:  dropoff and non-daemon queuemail.   Dropoff is used by 
+AMS programs and non-daemon queuemail is used primarily on mail arriving from 
+off-site. 
+
+
+\subsection{1.3.1	Dropoff}
+
+
+Dropoff is a routine exported by the delivery system to be called from within 
+an AMS user interface program to insert a piece of mail into the delivery 
+system.  When called, it looks for the User Queue of the user sending the mail 
+(~/.Outgoing).  If this directory is non-existent, dropoff creates it, with 
+the appropriate AFS protection.  Dropoff attempts to write the message, 
+represented in the three-file format, into the User Queue.  If the Gxxx 
+file--the last file to be written--is stored, the mail has been safely put 
+into a mail delivery queue (specifically, the User Queue), and will eventually 
+be delivered.  Mail is not considered for delivery, and control is not 
+transferred back to dropoff's caller, until the GF file is written.   
+
+
+If the user's User Queue is unavailable for some reason, dropoff tries to 
+write the three message files into a fast Central Queue.  If that is 
+unavailable, it writes the three message files into the Workstation Queue.
+
+
+\subsection{1.3.2	Non-Daemon queuemail}
+
+
+Non-daemon queuemail accepts mailfrom a variety of sources, including mail 
+ coming from off-site via sendmail.  It performs a delivery attempt on a 
+message before trying to insert it into a queue.  If the delivery attempt 
+fails, the message is placed in a fast Central Queue, or a Workstation Queue 
+of a Post Office machine if the Central Queues are unavailable.
+
+
+Once the mail is in either a Workstation or Central Queue, it proceeds through 
+delivery attempts and queues in the same manner as mail inserted via dropoff, 
+as explained in the next section. 
+
+\begindata{bp,539690376}
+\enddata{bp,539690376}
+\view{bpv,539690376,1518,0,0}
+\section{1.4	Inside the delivery system}
+
+
+If dropoff is successfully in writing the three message files into a User 
+Queue, it tickles a queuemail daemon running on the user's workstation which 
+makes a delivery attempt on the message in the User Queue. 
+
+
+The "tickle" consists of the user id of the user and his or her current 
+tokens.  It tells queuemail to wake up and deliver all mail in the user's User 
+Queue for them.  The signal is sent as an unreliable datagram, which means 
+that there is a possibility that the signal will be lost before it can be 
+received by the queuemail daemon.  In many cases, loss of the datagram would 
+mean that the piece of mail would not be delivered.  To catch any mail 
+stranded by loss of its datagram, or by other events such as a workstation 
+crash, a "User Queue" queuemail daemon runs on one of the dedicated Post 
+Office machines, looking through all User Queues for just such undelivered 
+mail.  When the daemon finds such a piece of mail, it performs a delivery 
+attempt on it.  The User Queue daemon checks users' home directories 
+sequentially, starting at staggered positions in /etc/passwd.  It sleeps for 
+two hours between runs, and the length of the run varies depending on the 
+number of users a site has.
+
+
+If dropoff can not write the message into the User Queue--because the user's 
+home directory is unavailable due to AFS failure, network problems, or any 
+other reason--dropoff tries to write the message into one of the fast Central 
+Queues (/afs/CELLNAME/service/mailqs/q1, for example) using the same 
+three-file format.   A queuemail daemon running on a dedicated Post Office 
+machine takes a snapshot of that queue, performs delivery attempts on all the 
+messages in the queue at that point, and then waits two minutes before 
+processing the queue again.
+
+
+If dropoff can not write the message into a fast Central Queue--because the 
+directory is unavailable due to AFS failure, network problems, or any other 
+reason--dropoff writes the message into the Workstation Queue 
+(/usr/spool/ViceMsgQueue).   The queuemail daemon running on the local 
+workstation checks this queue on reboot, and once an hour thereafter for 
+messages and performs a delivery attempt on them.   If its delivery attempt 
+fails, the message is moved to a fast Central Queue.  The Workstation Queue is 
+preserved across reboots of the machine, so mail is not lost if the machine is 
+rebooted.
+
+
+Notice that the mail in a Workstation Queue is on local disk and so is 
+susceptible to tampering by unscrupulous users who have access to the 
+workstation.  Given this security hole, mail delivered from a Workstation 
+Queue is considered "unauthenticated" and is presented to the user with an "@" 
+symbol--"@???" if necessary.  For example an unauthenticated piece of mail 
+from Jello Biafra would look like: "Jello.Biafra@???", as opposed to 
+"Jello.Biafra" for authenticated mail.
+
+
+If the delivery attempt performed by the queuemail daemon servicing a fast 
+Central Queue fails, the message is moved to a slower Central Queue (like 
+/afs/CELLNAME/service/mailqs/sq1) where another queuemail daemon, also running 
+on a dedicated Post Office machine, manages the queue with a 15 minute 
+interval between service attempts.
+
+
+If a delivery attempt made on a message in a slow Central Queue fails, the 
+message is simply not removed from the queue.  Delivery attempts continue to 
+be made on the message until it is either delivered or it reaches a time cap. 
+  Periodically (nightly) a check is made on the contents of the queues and a 
+summary of their contents (not including messages that are undeliverable 
+because delivery would put the recipient over their AFS quota) are mailed to 
+the Postmaster.
+
+
+\subsection{1.4.1	Central Queue Time Caps}
+
+
+If a message has been in a slow Central Queue for over 8 days (or the 
+AndrewSetup value of \italic{AMS_ViceQueueLifetime}) the message is rejected 
+to the sender for "normal" reasons.  A recipient being over AFS quota and 
+unable to receive mail is considered a normal reason.  
+
+
+If a message has been in a slow Central Queue for more than 13 days, (or the 
+AndrewSetup value of \italic{AMS_ExtraViceQueueLifetime} added to 
+\italic{\italic{AMS_ViceQueueLifetime}}\italic{)} the mail is rejected to the 
+postmaster (not the sender) for "abnormal" reasons.   
+
+
+If a message appears to have been in a slow Central Queue for more than 26 
+days (or the AndrewSetup value of  \italic{AMS_ViceQueueLifetimeCap}) the 
+message is simply left in the queue.  So, if a file appears to have been in a 
+queue for ten years, it is more likely that there is a problem with a clock, 
+rather than with mail delivery. 
+
+
+\subsection{1.4.2	Summary}
+
+
+On the following page is an illustration that summarizes how mail moves 
+through queues, where delivery attempts (DA) are made, and what processes are 
+making the delivery attempts.
+
+\begindata{bp,539690312}
+\enddata{bp,539690312}
+\view{bpv,539690312,1519,0,0}
+\center{\bold{The Flow of Mail through Queues}
+
+\begindata{zip,539484168}
+%ViewWidth 489
+%ViewHeight 478
+*A;-1080,1018
+Fandy12b
+TDropoff
+MCM
+*A;-500,600
+Fandy12b
+TUser Queue
+MCM
+*A;200,-200
+Fandy12b
+TFast Central Queues
+MCM
+*A;200,-800
+Fandy12b
+TSlow Central Queues
+MCM
+*A;900,600
+Fandy12b
+TWorkstation Queue
+MCM
+*C;-800,1000
+>800,1000
+*O;800,1000
+>800,700
+*O;-500,1000
+>-500,700
+*O;200,1000
+>200,-100
+*O;200,-400
+>200,-700
+*A;-500,500
+Fandysans12i
+TDA by local queuemail
+MCM
+*A;900,500
+Fandysans12i
+TDA by local queuemail
+MCM
+*A;200,-300
+Fandysans12i
+TDA by PostOffice queuemail
+MCM
+*A;200,-900
+Fandysans12i
+TDA by PostOffice queuemail
+MCM
+*O;800,400
+>400,-100
+*O;-500,300
+>-100,-100
+*D;143,-995
+>157,-987;84,-1061;54,-1157;91,-1253;194,-1312;312,-1289;393,-1194;386,-1113
+*O;386,-1098
+>305,-980
+*A;-540,375
+Fandysans12i
+TDA by PostOffice User Queue daemon
+MCM
+*A;-800,1400
+Fandy12b
+TNon-Daemon Queuemail
+MCM
+*A;-800,1300
+Fandysans12i
+TDA by non-daemon queuemail
+MCM
+*C;-122,1400
+>793,1393
+*O;200,1400
+>200,1100
+*O;800,1400
+>800,1100
+
+\enddata{zip,539484168}
+\view{zipview,539484168,1520,491,480}
+}
+\begindata{bp,539690824}
+\enddata{bp,539690824}
+\view{bpv,539690824,1521,0,8}
+\section{1.5	Getting mail out: delivery attempts}
+
+
+The concept of a mail delivery attempt is central to AMDS.  In very general 
+terms, a mail delivery attempt is the attempt, by a process, to move a single 
+piece of mail closer to its final destination.  A successful delivery attempt 
+might result in the final delivery of a message to a user's Mailbox (in the 
+case of mail addressed to local users), or successful hand-off of a message to 
+an agent responsible for carrying it further (in the case of non-local users). 
+ An attempt to deliver a particular message to a given local or non-local user 
+may have one of three results: the attempt might be successful, it might 
+encounter a transient failure, or it might encounter a persistent problem. 
+ This last distinction is important: with a transient failure, the same 
+request when tried again later should eventually succeed, while with a 
+persistent problem, the same request is expected to fail regardless of when it 
+is attempted.
+
+
+\subsection{1.5.1	Delivery from User Queues} 
+
+
+As described in the previous section, delivery from a User Queue can be done 
+either by the  queuemail daemon running on the local workstation, or by the 
+User Queue queuemail daemon running on a Post Office machine looking for 
+stranded mail.
+
+
+When the either the queuemail daemon running on the local workstation is 
+tickled by dropoff, or the Post Office User Queue daemon finds stranded mail, 
+it uses trymail to make a delivery attempt.  
+
+
+\paragraph{1.5.1.1	Non-local mail} 
+
+
+A delivery attempt by trymail made on a message addressed to a non-local site 
+fails with transient status (as a design point).  The error message indicating 
+this transient failure is sent back to the queuemail daemon which then moves 
+the non-local message to the fast Central Queues.   
+
+
+\paragraph{1.5.1.2	Local mail}
+
+
+If the message is addressed to a local recipient (i.e. another Andrew site 
+user, or another user in a connected AFS cell running AMDS), the White Pages 
+are consulted for that account to look for (1) a forwarding address, (2) a 
+special local-delivery kind, (3) where the home directory for the account is.
+
+
+If the WP entry has a forwarding address, the delivery of mail to that account 
+is carried out (recursively) by delivering mail to all addresses given as the 
+forwarding address.  Because an account can forward mail to itself, loops can 
+result, which are resolved by delivering to all addresses in the forwarding 
+loop.
+
+
+If the WP entry has no forwarding address but does have a delivery kind field 
+(DK), delivery is carried out according to the value of the DK field.  For 
+example, a "DIST" DK value tells the delivery system that that address is a 
+distribution list and should be sent to all the addresses in the file 
+specified by the delivery parameter, DP, field.  These fields are explained in 
+the WP.adm document.
+
+
+If the WP entry has no forwarding address and no DK field, delivery is carried 
+out by creating a new arbitrarily named file in the addressee's Mailbox 
+directory.   The Mailbox directory is found by taking the HD field entry from 
+the White Pages and appending the site's Mailbox directory name to it.  The 
+new file written into the Mailbox is an RFC822 piece of mail, complete with 
+Return-Path: and other envelope information.
+
+
+If the mail is written into the recipient's Mailbox, the delivery attempt is 
+successful and delivery for that recipient is complete.  If the mail could not 
+be written in the Mailbox (possibly because of AFS problems, network problems, 
+or protection problems), the delivery attempt is is unsuccessful (although the 
+failure is temporary) and the mail is moved to a Central Queues.  
+
+
+AFS Mailbox directories have access lists that are typically set up so that 
+any other users on the system have "insert" access.  This means that any user 
+may insert files into them, but not delete or overwrite files.  This feature 
+makes it relatively easy to avoid having two users clobber each others 
+attempts to send mail by writing the same file in a Mailbox.  AFS also 
+supports the UNIX flock mechanism for advisory file locking, which the AMDS 
+uses to prevent mail-reading agents (e.g. the MessageServer) from reading 
+Mailbox files before the delivery system is done writing them.
+
+
+\subsection{1.5.2	Delivery from fast Central Queues}
+
+
+The queuemail daemons running on Post Office machines service the fast Central 
+Queues.   Instead of trymail, they use switchmail to make delivery attempts. 
+ Switchmail is basically the same as trymail, except for the case of permanent 
+errors (like unreachable destinations) it sends error messages back to the 
+sender.  On permanent errors, trymail passes these back by causing queuemail 
+to pass the message to a Central Queue.
+
+
+Switchmail also knows how to drop messages off to sendmail for remote 
+delivery.
+
+
+\paragraph{1.5.2.1	Non-local mail}
+
+
+If the message is addressed to an address that exists in the domain system, 
+the mail is handed off to sendmail for delivery off-site.   Any formatting is 
+stripped off at that point, according to the If-type-unsupported header value.
+
+
+If the message is addressed to a destination that does not seem to exist in 
+the domain system, the delivery attempt is not successful; the message is not 
+handed to sendmail and is passed along to the slow Central Queue.  If the 
+message is addressed to a destination that definitively does not exist, the 
+rejection message stating so is returned to the sender and the message is 
+removed from the queue.  This checking of domain names before handing the 
+message to sendmail is done so that formatted mail that is rejected for 
+permanent reasons does not get unformatted before rejection.
+
+
+\paragraph{1.5.2.2	Local mail}  
+
+
+Switchmail performs a delivery attempt, as with trymail.  If the delivery is 
+successful, the mail is removed from the queue.  If the delivery attempt fails 
+(due to the recipient being over quota, or AFS problems), queuemail moves the 
+message into a slow Central Queue.
+
+
+\subsection{1.5.3	Delivery from slow Central Queues}
+
+
+The slow Central Queues are also serviced by queuemail daemons running the 
+Post Office machines, and also use switchmail instead of trymail.
+
+
+Delivery attempt proceeds as for the fast Central Queues, except that messages 
+with transient failures remain in the Queue instead of being moved elsewhere. 
+ After a period of time, transient failures that keep occurring with delivery 
+attempts become "persistent transient failures" and are treated like permanent 
+errors; their rejection messages are sent back to the sender of the message.
+
+
+\subsection{1.5.4	Delivery from Workstation Queues}
+
+
+Delivery attempts by queuemail daemons on local workstations happen in the 
+same manner as delivery attempts from User Queues.
+
+
+\subsection{1.5.5	Delivery by non-daemon queuemail}
+
+
+Delivery attempts by non-daemon queuemail, as made on in-coming mail from 
+off-site, are made using trymail, as all of the addresses are local. 
+  Transient failures are passed to the fast Central Queues.
+
+\begindata{bp,537558784}
+\enddata{bp,537558784}
+\view{bpv,537558784,1523,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,539975024}

@@ -1,0 +1,163 @@
+-- type.tlx
+--	Token descriptions for Ness parser for ATK types
+
+-- **********************************************************
+-- 	Copyright 1992, Carnegie Mellon University.  All rights reserved.
+--	$Disclaimer: 
+-- Permission to use, copy, modify, and distribute this software and its 
+-- documentation for any purpose is hereby granted without fee, 
+-- provided that the above copyright notice appear in all copies and that 
+-- both that copyright notice, this permission notice, and the following 
+-- disclaimer appear in supporting documentation, and that the names of 
+-- IBM, Carnegie Mellon University, and other copyright holders, not be 
+-- used in advertising or publicity pertaining to distribution of the software 
+-- without specific, written prior permission.
+-- 
+-- IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+-- DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+-- ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+-- SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+-- BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+-- DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+-- WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+-- ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+-- OF THIS SOFTWARE.
+--  $
+-- **********************************************************
+
+
+tokenclass -errorhandler-
+{
+	int pos = tlex_RecentPosition(tlex, 0, NULL);
+	fprintf(stderr, "type:   token error  \"%s\"  on line %s.  Ignored.\n",
+			parm->msg, GetLineNumber(textBuf, pos));
+	return tlex_IGNORE;
+}
+
+-- whitespace:  control characters, space, DEL, and \200+ controls
+--
+tokenclass -none-
+	recognizer	ScanWhitespace
+	set		[\000-\040\177-\237]
+	charset 	continueset [\000-\040\177-\237]
+
+-- comments:   -- ... \n
+--
+tokenclass -none-
+	recognizer	ScanComment
+	seq		"/*"
+	char		*endseq		"*/"
+
+-- ignore macro definitions
+--
+tokenclass -none-
+	seq "#"
+	recognizer ScanString
+	char		*endseq		"\n"
+	char		*escapechar	"\\"
+{
+	return tlex_IGNORE;
+}
+
+-- id:  [a-zA-Z_] [a-zA-Z0-9_]*
+--	also catch reserved words here
+--
+tokenclass setID
+	set		[a-zA-Z_]
+	recognizer	ScanID
+	charset 	continueset  [a-zA-Z0-9_]
+{
+	struct toksym *s;  
+	boolean new;
+	int r;
+
+	s = toksym_TLocate(tlex_GetTokenText(tlex), toksymproto, 
+		garbageScope, &new);
+	if (new) 
+		s->toknum = tlex_GetTokenNumber(tlex);  /* setID */
+
+	r = s->toknum;
+	switch (r) {
+		case tokCLASS:
+		case tokPACKAGE:
+		case tokRETURNS:
+		case tokERRVAL:
+		case tokNULL:
+		case tokEXIT:
+			if (foldtnames)
+				r = setID;
+			break;
+
+		case tokOVERRIDES:
+		case tokMETHODS:
+		case tokCLASSPROCEDURES:
+		case tokMACROMETHODS:
+		case tokMACROOVERRIDES:
+		case tokMACROS:
+		case tokDATA: {
+			/* if followed by a colon, convert back to setID */
+			/* XXX fails if there is a comment before the colon */
+
+			long loc = tlex_CurrPos(tlex);
+			while (isspace(tlex_CurrChar(tlex)))
+				tlex_NextChar(tlex);
+			if (tlex_CurrChar(tlex) != ':')
+				r = setID;
+			tlex_BackUp(tlex, tlex_CurrPos(tlex) - loc);
+			break;
+		}
+	}
+
+	if (r == setID && ! foldtnames) {
+		struct type *loc;
+		loc = type_Lookup(ctypes.voidType, toksym_GetName(s));
+		if (loc != NULL) {
+			s = (struct toksym *)loc;
+			r = setTNAME;
+		}
+	}
+
+	tlex_SetTokenNumber(tlex, r);
+	tlex_SetTokenValue(tlex, (void *)s);
+	return tlex_ACCEPT;
+}
+
+-- numbers:	decimal: [1-9] [0-9]*
+--		hex: 0 x [0-9a-f]*
+--		octal: 0 [0-7]*
+--		real: ((.[0-9]+)|([0-9]+.[0-9]*))((e|E)(+|-)?[0-9]+)?
+--		quoted char: 'x' (with \ escapes)
+--		the syntax is coded in lexan_ParseNumber
+--		the handler may convert the tokennumber to setREALCON
+--
+tokenclass setINTCON
+	set	[0-9'.]
+	recognizer	ScanNumber
+	tokennumber	realtok     setREALCON
+{
+	struct toksym *t;	/* due to proto, the value will be a nesssym */
+	boolean new;
+
+	if ( ! parm->IsInt) {
+		tlex_SetTokenNumber(tlex, parm->realtok);
+		return tlex_ACCEPT;
+	}
+	t = toksym_TLocate(tlex_GetTokenText(tlex), toksymproto,
+		garbageScope, &new);
+	if (new) {
+		/* integer value   (or error) */
+		t->info.intval = parm->intval;
+		t->toknum = tlex_GetTokenNumber(tlex);
+	}
+	tlex_SetTokenValue(tlex, (void *)t);
+	return tlex_ACCEPT;
+}
+
+-- string	" ... "   escape is \
+--
+tokenclass setSTRINGCON
+	seq		"\""
+	recognizer	ScanString
+	char		*endseq		"\""
+	char		*escapechar	"\\"
+	char		*badchar 	"\n"

@@ -1,0 +1,94 @@
+#!/bin/csh -f
+#**********************************************************************
+#         Copyright IBM Corporation 1988,1991 - All Rights Reserved
+#         For full copyright information see: 'andrew/config/COPYRITE'
+#**********************************************************************
+# IBM, CARNEGIE MELLON UNIVERSITY, 
+# AND THE OTHER COPYRIGHT HOLDERS
+#  DISCLAIM ALL WARRANTIES WITH 
+# REGARD TO THIS SOFTWARE, INCLUDING 
+# ALL IMPLIED WARRANTIES OF MERCHANT-
+# ABILITY AND FITNESS. IN 
+# NO EVENT SHALL  IBM, CARNEGIE 
+# MELLON UNIVERSITY, OR ANY OTHER 
+# COPYRIGHT HOLDER BE LIABLE FOR 
+# ANY SPECIAL, INDIRECT OR CONSE-
+# QUENTIAL DAMAGES OR ANY DAMAGES 
+# WHATSOEVER RESULTING FROM LOSS OF
+# USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT 
+# OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+#  $
+# ?[POBBRunWarning]
+# ?[POBBRunNotice]
+
+%include pobbconfig.defs
+%ifdef pobb_WPUpdate
+
+set nonomatch
+
+echo Runmakeboth starting.
+# Use the cellular read/write dir.
+set wpDest=?[CellCommonPrefix].?[WorkstationCell]?[CellCommonSuffix]?[CellCommonWPDirSuffix]
+
+# Set environment variables for the /usr/andy/etc/wpbuild script.
+# Where to get the passwd file
+setenv PWFile '?[WPPasswdFileName]'
+# Where to get affiliation information
+if ( "?[WPAffilSrc]" != "" ) then
+	setenv AffilSrc '?[WPAffilSrc]'
+	if ( "?[WPAffilMap]" != "" ) then
+		setenv AffilMap '?[WPAffilMap]'
+	endif
+endif
+# What database to change
+setenv WPDestDir $${wpDest}
+# Where to work (where history is kept)
+setenv WPWorkDir '?[wpbuildDir]'
+# Where archives are kept
+setenv WPBackupDir '?[WPBackupDir]'
+%ifdef pobb_RunAMSDelivery
+%ifdef pobb_WPInteractive
+# Don't need .forward files!
+setenv wpbuildOpts '-F'
+%else pobb_WPInteractive
+# Use .forward files.
+setenv wpbuildOpts '-f'
+%endif pobb_WPInteractive
+%endif pobb_RunAMSDelivery
+# Where the programs are.
+setenv MakeBothPgm '?[makebothpgm]'
+setenv NickGenPgm '?[nickgenpgm]'
+%ifdef pobb_WPInteractive
+# Trigger the inclusion of approved requests.
+setenv WPIChangesDir '?[WPIWorkDir]'
+%ifdef pobb_RunAMSDelivery
+# Eliminate bogus forward-to-self records.
+setenv AMDSDomain ?[WorkstationCell]
+%endif pobb_RunAMSDelivery
+%endif pobb_WPInteractive
+
+cd ?[wpbuildDir]
+rm -f LastMakebothSnafu
+?[wpbuildscript] $$*
+set WPS=$${status}
+if ($${WPS}) then
+    if (-r LastMakebothSnafu) then
+	echo "Makeboth run FAILED at `date` with status $${WPS}"
+	echo "Date: `?[arpadatepgm]`" > mberrZ$$$$
+	echo "From: $${user}+@?[WorkstationCell]" >> mberrZ$$$$
+	echo 'Subject: Makeboth run failure' >> mberrZ$$$$
+	echo '' >> mberrZ$$$$
+	cat LastMakebothSnafu >> mberrZ$$$$
+	echo "?[queuemail] -f mberrZ$$$$ -a ?[WPErrorsAddress]"
+	?[queuemail] -f mberrZ$$$$ -a ?[WPErrorsAddress]
+	sleep 15
+	echo "Runmakeboth terminating abnormally."
+    endif
+    exit ($${WPS})
+endif
+exit 0
+
+%endif pobb_WPUpdate

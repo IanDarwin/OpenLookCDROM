@@ -1,0 +1,1744 @@
+\begindata{text,538387104}
+\textdsversion{12}
+\template{default}
+\define{global
+}
+\define{footnote
+
+attr:[Flags OverBar Int Set]
+attr:[FontSize PreviousFontSize Point -2]}
+\chapter{Installing the AMS Delivery System}
+
+
+\section{About the AMS Delivery System}
+
+
+The Andrew Message Delivery System (AMDS) is a mail transport system for an 
+Andrew installation.  While it was originally developed to work with an 
+Andrew File System (AFS) installation as the local mail system, AMDS will 
+also work in a non-AFS installation.  Besides its ability to function well 
+in an AFS deployment, AMDS offers other features, such as integration with 
+the very flexible Andrew White Pages (WP), a high-quality distribution list 
+mechanism, an extensibe local address format, and a mechanism for 
+distributing Andrew Toolkit (ATK) formatted mail.  In addition, when used 
+with AFS, AMDS provides reliable, authenticated mail transport with a given 
+cell.  When used in a mult-cell environment, AMDS can be used to provide 
+reliable, authenticated exchange of formatted mail across AFS cell 
+boundaries.
+
+
+As described in the Introduction to the Andrew Message System (AMDS.ovr), 
+the AMDS is a collection of small programs that service a set of mail 
+queues, moving messages closer to their final destination.  These programs 
+are usually run as background daemons on dedicated machines, often 
+workstation-class machines, referred to as "Post Offices."  The 
+installation process described in this document assumes such a dedicated 
+machine or machines are going to be used, and specifies how they are to be 
+configured so that they initiate the appropriate daemons upon startup.
+
+
+\section{About this document}
+
+
+This document describes how to build and install an Andrew Message Delivery 
+System.  It assumes that you are fimiliar with the material presented in 
+the overview of the Andrew Message Delivery System (AMDS.ovr). \
+
+
+
+This document is only one piece in the process of building a full-blown 
+Andrew Message system from scratch; it assumes that you have already built 
+the AMS user interfaces, the MessageServer, and now want to build a minimal 
+Delivery System.  It does not describe how to escalate the basic delivery 
+system into a complete bulletin board system, although the mechanisms for 
+doing so are similar to those for installing a minimal system.  There is 
+another document that describes how to install a bulletin board system 
+(Bboards.ins).
+
+
+If you are using EZ to read this document, you can open an interactive 
+Table of Contents window by choosing \bold{Table of Contents} from the 
+\italic{Page} menu card.  Clicking on a heading in the Table of Contents 
+window that appears scrolls this document to bring the heading into view.
+
+\begindata{bp,538210560}
+\enddata{bp,538210560}
+\view{bpv,538210560,0,0,0}
+\section{Instructions}
+
+
+This section is intended as a overview of the the tasks you will perform in 
+the installation procedure.  There is a more detailed discussion of the 
+steps following this overview.  The tasks should be performed in the order 
+presented.
+
+
+\leftindent{Meet prerequisites for AMDS installation. \
+
+
+
+Configure the system.  This amounts to defining site-specific variables 
+that are used by AMDS programs or scripts in the system's AndrewSetup file 
+or mailconf.c and srvcconf.c.  In addition, you also define site-specific 
+variables in the andrew/overhead/pobbconf source distribution directory 
+that select in broad strokes which full-AMS facilities are to be run (in 
+pobbconf.h), and then define more variables which amount to small-grain 
+decisions that support those selections (in pobbconf.c).  \
+
+
+
+Install the system.  This amounts to compiling and installing scripts from 
+the andrew/overhead/pobbconf directory and making sure the Post Office 
+machines reboot properly.
+
+
+Prepare the disks on each Post Office machine by editing two files on the 
+local disk of each machine and rebooting them again.
+
+
+Create the mail queue directories to turn on AMS delivery and reboot the 
+Post Office machines again. \
+
+
+
+Make some revisions to initial AMS configuration to account for the 
+delivery system.}
+
+\begindata{bp,538210624}
+\enddata{bp,538210624}
+\view{bpv,538210624,1,0,0}
+\section{Prerequisites}
+
+
+In order to install an Andrew Message delivery system you need the 
+following software and hardware.
+
+
+\subsection{Installation name}
+
+
+The AMDS requires that you choose a name for your installation.  If the 
+installation is an AFS cell, the installation name must be the name of the 
+cell, which in turn must be a fully-qualified domain name.  For example, a 
+cell at Toaster Corporation might be named "toaster.com".  \
+
+
+
+For non-AFS installations, the name of the installation is the value of the 
+ThisDomain field in AndrewSetup (which defaults to "*", which in turn 
+expands to the name of the machine gotten via the 
+\typewriter{gethostname(2)} system call and should be the fully-qulaified 
+domain name of the mail installation.)  In either the case of an AFS or 
+non-AFS installation, the fully-qualified domain name of the installation 
+corresponds to the fully-qualified documen name for mail, such that all 
+interpretation of "user@domainname" will be done solely by the AMDS for 
+your installation.
+
+
+\subsection{Hardware}
+
+
+AMDS requires daemon processes to be running continuously.  In a 
+single-machine environment this setup can be achieved in any number of 
+ways.  In an AFS environment, the typical way to ensure that the daemon 
+processes run is to dedicate some number of workstations to run them.  A 
+site's Post Office machines must meet the following criteria: \
+
+
+
+\leftindent{Every Post Office machine must be a workstation type that 
+supports AFS.
+
+
+One Post Office machine must have the same name as the AFS cell.  For 
+example one Post Office machine at Toaster Corporation (with cellname 
+toaster.com) must be named "toaster.com".
+
+
+All Post Office machines must be listed in the IP host tables.}
+
+
+A section below describes a method to determine how many Post Office 
+machines will be required at a site. ***
+
+
+\subsection{Postmaster Account}
+
+
+A system postmaster account must be established for your site.
+
+
+\subsection{White Pages}
+
+
+The installation site must have a White Pages database.  The WP for an 
+Andrew cell completely describes the set of mail addressees for that cell. 
+ AMDS uses the WP for information about "user" in "user@domainname" were 
+"domainname" is the name of the Andrew installation.  AMDS requires some 
+specific fields for each entry in the WP.  Specifically, it must be 
+possible to deliver mail to each WP entry, which means that each entry must 
+contain at least one of: a home directory, a forwarding address, or a 
+delivery kind.  See the White Pages installation guide (WP.ins) for 
+information on installing a White Pages database.
+
+
+\subsection{Software}
+
+
+\paragraph{Andrew  \
+
+
+
+}Andrew software at your site must have been compiled with the following 
+options specified in andrew/config/andyenv.h in order for the functionality 
+of the AMDS to be in place.  If the following options were not set, you 
+will need to recompile the entire Andrew System before installing the AMDS 
+and should refer to the installation instructions for the Andrew System.  \
+
+
+
+\italic{AMS_ENV
+
+}\leftindent{The Andrew Message System option.  This option must be defined 
+to build any part of the Andrew Message System.}
+
+
+\italic{AMS_DELIVERY_ENV
+
+}\leftindent{The AMS Delivery System option.  This option must be defined 
+to build any part of the AMS Delivery System.}
+
+
+\italic{RUN_AMDS_ENV
+
+}\leftindent{This option specifies that an AMS delivery system is running 
+at this site.  It affects the values of certain mail system configuration 
+variables in \typewriter{andrew/overhead/util/lib/svcconf.c} and 
+\typewriter{andrew/overhead/mail/lib/mailconf.c}.}
+
+
+\italic{WHITEPAGES_ENV
+
+}\leftindent{The White Pages Database option.  This option must be defined 
+for the White Pages database to be built.}
+
+
+\paragraph{Andrew Message System}  \
+
+
+
+In addition to having Andrew software installed, you need to have some of 
+the Andrew Message System installed and configured for your site.  \
+
+
+
+\paragraph{package}  \
+
+
+
+The installation process presumes that the way to configure a workstation's 
+local disks (the machine's local disks in particular) is to make a 
+"package" file that describes all the files that should appear on the local 
+disk of a workstation and where they should come from.  At Carnegie Mellon, 
+there is a \typewriter{package} utility that is used to maintain the local 
+disk configuration on AFS clients.   The files generated by the 
+configuration process can be used directly as components of a "package" 
+file, but they may also be used as an informal specification of what the 
+daemons will require in order to function.
+
+
+\paragraph{cron} \
+
+
+
+A specially modified cron is used to run daemons on each local Post Office 
+machine.  It uses the local input file /etc/crontab as well as 
+/usr/lib/crontab.
+
+
+\paragraph{su}
+
+
+A specially modified su is used to allow Post Office daemons to 
+authenticate as the cell's Postmaster.   It is modified to take a password 
+on the command line.
+
+
+\paragraph{sendmail} \
+
+
+
+sendmail is used as a long-haul transport agent for mail that is 
+transferred off site.
+
+
+\subsection{Testing software before installation}
+
+
+The instructions in this section are provided for you to test the basic 
+functioning of the programs queuemail, trymail, switchmail, and vicemail, 
+all of which are executed out of $\{DESTDIR\}/etc.
+
+
+All of these test procedures assume that your Andrew userid is 
+\italic{foo}.  Whenever the word foo is used in a script, you should 
+replace that word with your own Andrew userid.
+
+
+\paragraph{queuemail}
+
+
+The program DESTDIR/etc/queuemail is used whenever mail is entered in the 
+mail delivery system to be sent.  Test it by seeing if it delivers or 
+enqueues mail properly.  (Generally, to test whether mail was delivered, 
+you will have to be able to look in the destination Mailbox.  Thus, for the 
+most part, you'll have to test whether mail was delivered to yourself.)
+
+
+\bold{queuemail test 1.  }Type into a command window the command
+
+
+\example{/usr/andrew/etc/queuemail -f /.hostname foo; echo $status}
+
+
+You should see the digit 0 printed as the result status of this command, 
+and you should receive a very short piece of mail consisting of a 
+Return-Path: header line, a Received: header line (which may continue to 
+more than one physical line in the mail, as usual), and the name of the 
+workstation.
+
+
+\bold{queuemail test 2.}  Type the following command into a command window:
+
+
+\example{echo "Test."|/usr/andrew/etc/queuemail -i -r "<foo>" foo; echo 
+$status}
+
+
+You should again see the digit 0 printed as the result status of this 
+command.  This time, the short piece of mail should consist of a 
+Return-Path: header line, a Received: header line, and the text ``Test.''
+
+
+\paragraph{trymail and switchmail}
+
+
+The programs DESTDIR/etc/trymail and DESTDIR/etc/switchmail are versions of 
+the same underlying program.  Trymail is the program that executes on the 
+workstation and attempts to deliver mail to local Andrew addressees. 
+ Switchmail performs a similar function on Post Office machines, but it 
+also knows how to queue network mail and return error messages to mail 
+senders.
+
+
+For the most part, it is simplest to test trymail not by delivering lots of 
+mail, but by getting it to tell you where the mail would have gone if it 
+had completed its delivery.
+
+
+Trymail and switchmail need you to give a list of addressees to them via 
+their standard input.  What this means is that you should start them with a 
+command at your command prompt, then type the given set of addressees and 
+follow them with a control-D.  Thus, for the first example given below, you 
+should type the line that begins "/usr/andrew/etc/trymail" to a shell 
+prompt in a command window, then you should type the line with the 
+hash-mark, and then you should type a control-D (hold down the CTRL key and 
+strike the D key) on a third line.
+
+
+\bold{trymail test 1. } Type the following command into a command window:
+
+
+\example{/usr/andrew/etc/trymail -F -T /.hostname "<foo>"
+
+foo#}
+
+\leftindent{(control-D)}
+
+
+You should see the following messages:
+
+ \
+
+
+\example{170 foo+@andrew.cmu.edu (Requested not to send)
+
+999 End.}
+
+
+\bold{trymail test 2. } Type the following command into a command window:
+
+
+\example{/usr/andrew/etc/trymail -F /.hostname "<foo>"
+
+foo#}
+
+\leftindent{(control-D)
+
+}
+You should see the following messages appear:
+
+
+\example{101 foo+@andrew.cmu.edu (Your Andrew Name)
+
+999 End.}
+
+
+Furthermore, you should now have a new piece of mail in your Andrew 
+Mailbox, consisting, again, of a Return-path: header line, a Received: 
+header line, and the name of your workstation.
+
+
+\bold{trymail test 3.}  Type the following command into a command window:
+
+
+\example{/usr/andrew/etc/trymail -F -T /.hostname "<foo>"
+
+owjeroijweori}
+
+\leftindent{(control-D)}
+
+
+You should see the following messages appear:
+
+
+\example{229 owjeroijweori@andrew.cmu.edu (User name not recognized)
+
+999 End.}
+
+
+\bold{trymail test 4\italic{.}  }Type the following command into a command 
+window:
+
+
+\example{/usr/andrew/etc/switchmail -F -T /.hostname "<foo>"
+
+owjeroijweori}
+
+\leftindent{(control-D)}
+
+
+After a slight delay, you should see the following messages appear:
+
+
+\example{190 owjeroijweori@andrew.cmu.edu (No such addressee; error message 
+sent OK)
+
+999 End.}
+
+
+Furthermore, in your Mailbox should be a note from the Mailer-daemon 
+explaining that there is no such addressee as 
+"owjeroijweori@andrew.cmu.edu", and enclosing the entire text of your mail, 
+which consists solely of the name of your workstation.
+
+
+\bold{trymail test 5. } Type the following command into a command window:
+
+
+\example{/usr/andrew/etc/trymail -F -T /.hostname "<foo>"
+
+c.f.everhart}
+
+\leftindent{(control-D)}
+
+
+You should see the following messages appear: \
+
+
+
+\example{170 cfe+@andrew.cmu.edu (Requested not to send)
+
+999 End.}
+
+
+\bold{trymail test 6. } Type the following command into a command window:
+
+
+\example{/usr/andrew/etc/trymail -F -T /.hostname "<foo>"
+
+c.f.everhart#}
+
+\leftindent{(control-D)}
+
+
+You should see the following messages appear:
+
+
+\example{229 c.f.everhart+@andrew.cmu.edu (User name not recognized)
+
+999 End.}
+
+
+\bold{trymail test 7. }  Type the following command into a command window:
+
+
+\example{/usr/andrew/etc/trymail -F -T /.hostname "<foo>"
+
+cfe+foo, c.f.everhart, cfe+bar, bark@dog, meow@cat, bark@dog}
+
+\leftindent{(control-D)}
+
+
+You should see the following messages appear: \
+
+
+
+\example{170 cfe+foo@andrew.cmu.edu (Requested not to send)
+
+210 bark@dog (non-local host)
+
+210 meow@cat (non-local host)
+
+999 End.}
+
+
+The ordering of the messages before ``999 End.'' is not significant.
+
+
+\paragraph{vicemail}
+
+
+Vicemail is a simple program that in some circumstances performs final 
+delivery of mail into the file system.
+
+
+\bold{vicemail test 1. }  Type into a command window the command
+
+
+\example{echo "Test" | /usr/andrew/etc/vicemail foo; echo $status}
+
+
+You should see the digit 0 printed as the result status of this command, 
+and you should receive a very short piece of mail consisting of a 
+Return-Path: header line, a Received: header line (which may continue to 
+more than one physical line in the mail, as usual), and the word ``Test''.
+
+
+\bold{vicemail test 2.}  Type into a command window the command
+
+
+\example{echo "Test" | /usr/andrew/etc/vicemail vxzutrp9; echo $status}
+
+
+You should see the number 67 (``no such user'') printed as the result 
+status of this command.  You may also generate a piece of warning mail for 
+the postmaster.
+
+\begindata{bp,538210688}
+\enddata{bp,538210688}
+\view{bpv,538210688,2,0,0}
+\section{Configuration}
+
+
+There are many things to be configured in the process of installing the 
+AMDS.  There are three broad configuration tasks to perform: defining 
+AndrewSetup variables to configure binaries, selecting machine services in 
+pobbconf.h, and supporting the service decisions in pobbconf.c.
+
+
+\subsection{Programs}
+
+
+Programs may be configured either by setting variables prior to 
+compilation, or by configuring binaries.  Values defined prior to 
+compilation (in mailconf.c) are compiled into the system are overridden by 
+binary configuration values (in AndrewSetup) if they exist. \
+
+
+
+The mechanism for configuring binaries is much easier: you simply put the 
+variables and their values on a line in an AndrewSetup file.  See the 
+SetUp.ref document for information on where the AndrewSetup file can go.
+
+
+The mechanism for setting variables prior to compilation is more involved. 
+ You edit the source file andrew/overhead/mail/lib/mailconf.c, define the 
+appropriate values and then re-install the following directories:
+
+
+\leftindent{\typewriter{andrew/overhead
+
+andrew/ams
+
+andrew/atkams
+
+
+}}There are several variables that relate to the Andrew Message Delivery 
+system.  They are listed here in the following format:
+
+
+\italic{AndrewSetUpVariableName}: type
+
+\leftindent{Definition of the variable.  \
+
+
+Example: example
+
+
+}Each variable described below is one of the following data types: 
+\bold{integer}, \bold{boolean}, \bold{string}, \bold{list-of-strings}. 
+ Booleans may be specified as yes/1/true, or no/0/false.  Strings should be 
+enclosed in quotation marks ("").  Each element in a list-of-strings should 
+be enclosed in quotation marks (""), and elements in a list should be 
+separated by a comma.  \
+
+
+
+The variables can be defined in either AndrewSetup or mailconf.c. 
+ AndrewSetup variables are case-insensetive, but mailconf.c variables are 
+not, so they are presented here with the capitalization expected by 
+mailconf.c.
+
+
+Note that the variables described in this section are\bold{ not} the 
+complete set needed to be defined in order for AMDS to function; they are 
+variables that are relevent to a minimal set of AMDS services directly and 
+assume that you have already defined many variables in the process of 
+defining either cell-based services (in scvconf.c) or configuring AMS (in 
+mailconf.c). \
+
+
+
+\italic{\index{MailboxName}}: string
+
+\leftindent{This variable specifies the name of the subdirectory in each 
+user's home directory for mail delivery.
+
+Example: "Mailbox"
+
+}
+\italic{\index{ForwardingName}}: string
+
+\leftindent{This variable specifies the file in the user's home directory 
+to check for mail forwarding information.
+
+Example: ".forward"
+
+}
+\italic{\index{OutgoingName}}: string
+
+\leftindent{This variable specifies the name of the subdirectory, in each 
+user's home directory, in which outgoing messages from the user are queued.
+
+Example: ".Outgoing"
+
+}
+\italic{\index{PostmasterName}}: string
+
+\leftindent{This variable specifies the userid of the postmaster account.
+
+Example: "postman"
+
+}
+\italic{\index{PostmasterTitle}}: string
+
+\leftindent{This variable specifies the title for the system postmaster. 
+ It should be set to "Postmaster".  This value is used in generating 
+certain mail headers to automatically generate headers in error report 
+messages.
+
+Example: "Postmaster"
+
+}
+\italic{\index{PostmasterMailbox}}: string
+
+\leftindent{This variable specifies the full pathname for the 
+PostmasterName Mailbox.  \italic{PostmasterMailbox} is used to receive 
+automatically-generated error report messages.
+
+Example: "/afs/toaster.com/usr/postman/Mailbox"
+
+}
+\italic{\index{lastDitchPrefixes}}: list
+
+\leftindent{This variable specifies a list of directories where 
+\typewriter{queuemail }error notices will be filed, when all else fails. 
+ \typewriter{Queuemail} is the primary mail handler for AMDS.
+
+Example: "/afs/toaster.com/usr/postman/errors","/usr/errors"
+
+}
+\italic{\index{bailoutPrefixes}}: list
+
+\leftindent{This variable specifies a list of directories where 
+\typewriter{vicemail} error notices will be filed, when all else fails. 
+ \typewriter{Vicemail} is a secondary mail handler for AMDS.
+
+Example: "/afs/toaster.com/usr/postman/errors","/usr/spool/errors"
+
+}
+\italic{\index{AMS_ViceQueueLifetime}}: integer
+
+\leftindent{This variable specifies the length of time, in seconds, that a 
+message will remain in an AFS mail queue before being rejected to the 
+sender for "normal reasons".  An example of a "normal reason" is that the 
+recipient is over quota.
+
+Example: 691200  (8 days, in seconds)
+
+}
+\italic{\index{AMS_ExtraViceQueueLifetime}}: integer
+
+\leftindent{This variable specifies the length of time, in seconds, in 
+addition to the \italic{AMS_ViceQueueLifetime}, that a message will be left 
+in an AFS mail queue before being rejected for "abnormal reasons".  When 
+mail is rejected for "abnormal reasons" it is rejected to 
+\italic{PostmasterName}, not to the sender. An example of an "abnormal 
+reason" is that the delivery system is unable to connect to a remote mail 
+site.
+
+Example: 432000 (5 days, in seconds)
+
+}
+\italic{\index{AMS_ViceQueueLifetimeCap}}: integer
+
+\leftindent{This variables specifies the maximum length of time, in 
+seconds, that the delivery system expects a message to remain in the queue. 
+ If, judging from the time stamp on a message,  a message looks like it has 
+been in the queue longer than this amount of time,  it is left in the 
+queue.  For example, if a file appears to have been in a queue for ten 
+years, it is more likely that there is a problem with a clock, rather than 
+with mail delivery.
+
+Example:  2246400 (26 days, in seconds)
+
+}
+\subsection{pobbconf.h}
+
+
+The files in andrew/overhead/pobbconf provide an easy way to configure and 
+maintain the scripts and files for the disk maintenance on the Post Office 
+machines that AMDS relies heavily on to do its day-to-day operations. 
+ Maintaining the disks of the Post Office machines also requires scripts. 
+ For example, the package program determines what should be on the local 
+disk by reading a package script.  \
+
+
+
+The large-grain decisions that define what types of services to be run are 
+expressed by editing the pobbconf.h file and supporting decisions are made 
+by editing pobbconf.c.  All options in pobbconf.h are set to a value of 
+TRUE or FALSE.  Options whose value is TRUE will be defined during the 
+installation process, while options whose value is FALSE will not be 
+defined. \
+
+
+
+There are many options in pobbconf.h, but only two of them are truly 
+independent: \italic{pobb_RunAMSDelivery} (the running of AMDS, the Andrew 
+Message Delivery System) and \italic{pobb_AutoPost} (the automatic posting 
+of some classes of incoming mail messages).  The other options depend on 
+the values of the independent settings; for example, the AMS facility for 
+retrieving netnews and posting it locally (\italic{pobb_NNTPIn}) depends on 
+the infrastructure for posting mail messages (\italic{pobb_AutoPost}).
+
+
+To run AMDS and nothing else, only the following option in pobbconf.h needs 
+to be set to TRUE:
+
+
+\italic{\index{pobb_\index{RunAMSDelivery}}}: boolean
+
+\leftindent{Default: FALSE
+
+Prerequisites: None
+
+This variable specifies that scripts supporting AMDS will be created during 
+the installation process.  Setting \italic{pobb_RunAMSDelivery} to TRUE 
+automatically sets a second option,  \italic{\index{pobb_\index{RunMachines}}} 
+to TRUE.}
+
+
+\subsection{pobbconf.c}
+
+
+Site-dependent variables for scripts and other text files related to the 
+AMDS and services defined in pobbconf.h are set in 
+andrew/overhead/pobbconf/pobbconf.c.  \
+
+
+
+Each variable in pobbconf.c has a value of type \bold{string} or 
+\bold{list-of-strings}.  Strings are enclosed in quotation marks ("").  A 
+list-of-strings is an array of strings.  Each element in a list-of-strings, 
+except the NULL element, should be enclosed in quotation marks ("").
+
+
+\paragraph{Post Office machines}
+
+
+The following variables define the list of available Post Office machines, 
+and provide information about them.
+
+
+\italic{\index{PossiblePOs}}: list-of-strings
+
+\leftindent{Default: "andrew.cmu.edu",
+
+	"po2.andrew.cmu.edu",
+
+	"po3.andrew.cmu.edu",
+
+	"po4.andrew.cmu.edu",
+
+	"po5.andrew.cmu.edu",
+
+	"po6.andrew.cmu.edu",
+
+	NULL
+
+}\leftindent{This variable is the list of all machines that may, at some 
+time, be used as Post Office machines.  All machines listed as 
+\italic{PossiblePOs} must be listed in /etc/hosts.}
+
+
+\italic{\index{PossiblePOAddrs}}: list-of-strings
+
+\leftindent{Default: "128.2.11.131",
+
+		"128.2.249.105",
+
+		"128.2.12.31",
+
+		"128.2.12.32",
+
+		"128.2.30.1",
+
+		"128.2.30.2",
+
+		NULL
+
+Prerequisites: pobb_RunAMSDelivery TRUE in pobbconf.h}
+
+\leftindent{This variable is the list of Internet address for all 
+\italic{PossiblePOs}.  The order of addresses in the list should correspond 
+to the order of machines in \italic{PossiblePOs}.}
+
+
+\italic{\index{PossiblePOCapas}}:list-of-strings
+
+\leftindent{Default:"160",
+
+		"100",
+
+		"160",
+
+		"100",
+
+		"100",
+
+		"100",
+
+		NULL
+
+}\leftindent{This variable is a list of capability weightings for all 
+\italic{PossiblePOs}.  The capability weightings are used to determine what 
+jobs are run on what Post Office machines.  The order of capabilities in 
+the list should correspond to the order of machines in 
+\italic{PossiblePOs}.}
+
+
+\italic{\index{PossiblePOHDSizes}}:list-of-strings
+
+\leftindent{Default:"40",
+
+		"40",
+
+		"40",
+
+		"40",
+
+		"40",
+
+		"40",
+
+		NULL
+
+}\leftindent{This variable is a list of the hard drive sizes for all 
+\italic{PossiblePOs}. The order of hard drive sizes in the list should 
+correspond to the order of machines in \italic{PossiblePOs}.}
+
+
+\italic{\index{DeployedPOs}}:list-of-strings
+
+\leftindent{Default:"andrew.cmu.edu",
+
+		"po2.andrew.cmu.edu",
+
+		"po3.andrew.cmu.edu",
+
+		"po5.andrew.cmu.edu",
+
+		NULL
+
+}\leftindent{This variable is a list of all Post Office machines that are 
+actually deployed.  This list is a subset of \italic{PossiblePOs}.}
+
+
+\italic{\index{PrimaryMXHost}}:string
+
+\leftindent{Default:"po3.andrew.cmu.edu"
+
+}\leftindent{This variable is the name of the Post Office machine that is 
+the primary receiver of mail from MX hosts.  If your site is running only 
+one Post Office machine, then the \italic{PrimaryMXHost} should be set to 
+the name of that machine.
+
+}
+\paragraph{Package Files}
+
+
+These variables are used to construct and install the package files for 
+PostOffice machines.
+
+
+\italic{\index{PackageHome}}:string
+
+\leftindent{Default: "/afs/andrew.cmu.edu/wsadmin/postman"
+
+}\leftindent{This variable specifies the parent directory on AFS for the 
+directories that contain the Post Office and Bboard server package scripts, 
+and other files used for disk maintenance on the servers.  There are 
+subdirectories located in \italic{PackageHome, }specified by the following 
+three variables.}
+
+
+\italic{\index{PackageBaseLib}}:string
+
+\leftindent{Default: "/afs/.andrew.cmu.edu/wsadmin/lib"
+
+}\leftindent{This variable specifies the location of the system source 
+files library for \typewriter{package}.   The files in this directory are 
+used to build and install the Post Office machine package scripts.}
+
+
+\italic{\index{PackagePrefixFiles}}:list-of-strings
+
+\leftindent{Default: "?[PackageBaseLib]/devel",
+
+		"?[PackageBaseLib]/base.generic",
+
+		"?[PackageBaseLib]/cmu.readonly",
+
+		NULL
+
+Prerequisites: PackageBaseLib defined in pobbconf.c}
+
+\leftindent{This variable specifies the list of files that should be 
+included at the beginning of all Post Office machine package scripts.
+
+}
+\italic{\index{PackageSuffixFiles}}:list-of-strings
+
+\leftindent{Default: "?[PackageBaseLib]/console.6155",
+
+		"?[PackageBaseLib]/tree.generic",
+
+		"?[PackageBaseLib]/device.generic",
+
+		NULL
+
+Prerequisites: PackageBaseLib defined in pobbconf.c}
+
+\leftindent{This variable specifies the list of files that should be 
+included at the end of all Post Office machine package scripts.
+
+}
+\italic{\index{PackageSupportedSysTypes}}:list-of-strings
+
+\leftindent{Default:"rt_r3", "sun3_35", "vax_22", "pmax_3",
+
+		NULL
+
+}\leftindent{This variable specifies the list of all workstation system 
+types at the site whose disks are maintained via package. A package script 
+will be built for each Post Office machine for each supported system type.
+
+}
+\paragraph{AFS Access}
+
+
+These variables are used to set the AFS access for the directories in which 
+the scripts and files built by pobbconf are installed.
+
+
+\italic{\index{generalReadingPublic}}:string
+
+\leftindent{Default: "System:AnyUser"
+
+Prerequisites: AFS_ENV TRUE in site.h}
+
+\leftindent{This variable specifies the group of users who need read and 
+lookup access to \italic{PostmasterHome}, and the directories in 
+\italic{PackageHome}.
+
+}
+\italic{\index{generalEnqueueingPublic}}:string
+
+\leftindent{Default: "System:AnyUser"
+
+Prerequisites: AFS_ENV TRUE in site.h}
+
+\leftindent{This variable specifies the group of users who need lookup and 
+insert access to the system fast mail queues, and lookup access to the 
+system slow mail queues.
+
+}
+\italic{\index{PostmanDirOwners}}:list-of-strings
+
+\leftindent{Default:"pierette:MailMavens",
+
+		"?[PostmasterName]",
+
+		NULL
+
+Prerequisites: AFS_ENV TRUE in site.h, PostMasterName in AndrewSetup or 
+mailconf.c}
+
+\leftindent{This variable specifies the list of groups and users who will 
+be full access to \italic{PostmasterHome} , and all its subdirectories, and 
+read, lookup, insert, delete, kill, and administrate access to the mail 
+queue directories.  All members of \italic{PostmanDirOwners} are also 
+members of \italic{PackageDirOwners} (described below), and will have the 
+appropriate access to all directories to which \italic{PackageDirOwners} 
+have access.
+
+}
+\italic{\index{PostmasterAccess}}:list-of-strings
+
+\leftindent{Default:"?[arrlist(PostmanDirOwners, \\" all \\")] all 
+?[generalReadingPublic] rl";
+
+Prerequisites: AFS_ENV TRUE in site.h, PostmanDirOwners and 
+generalReadingPublic in pobbconf.c}
+
+\leftindent{This variable specifies the access list for 
+\italic{PostmasterHome} and all its subdirectories.  It also specifies part 
+of the access list for the following directories:
+
+}   \
+
+
+\leftindent{/afs/CELLNAME/service/wp \
+
+
+/afs/CELLNAME/service/mailqs
+
+\italic{GlobalMailQueues
+
+\italic{GlobalSlowMailQueues}}
+
+\italic{POQueues}
+
+\italic{BBDaemonDir} \
+
+
+\italic{ViceCUILogsDir}
+
+\italic{CUIDatabase} \
+
+
+\italic{NetBBHome} \
+
+
+\italic{AFSCaptureProcesses}
+
+\italic{wpbuildHome}  \
+
+
+\italic{wpbuildDir}}
+
+
+\italic{\index{PackageDirOwners}}:list-of-strings
+
+\leftindent{Default: "?[arrlist(PostmanDirOwners)]",
+
+		"System:Administrators",
+
+		"cdc", "vasilis", "wally",
+
+		NULL
+
+Prerequisites: AFS_ENV TRUE in site.h, PostmanDirOwners in pobbconf.c}
+
+\leftindent{This variable specifies the list of groups and users who will 
+be granted the full access for \italic{PackageHome} and all its 
+subdirectories.}
+
+
+\italic{\index{PackageAccess}}:list-of-strings
+
+\leftindent{Default: "?[arrlist(PackageDirOwners, \\" all \\")] all 
+?[generalReadingPublic] rl"
+
+Prerequisites: AFS_ENV TRUE in site.h, PackageDirOwners and 
+generalReadingPublic in pobbconf.c}
+
+\leftindent{This variable specifies the access list for the directory 
+\italic{PackageHome}, and for all its subdirectories.
+
+}
+\italic{\index{ConfigDirAccess}}:list-of-strings
+
+\leftindent{Default: "cdc:SoftwareCreators rlidwk System:AnyUser rl cfe a";
+
+Prerequisites: AFS_ENV TRUE in site.h}
+
+\leftindent{This variable specifies the access list for the directory 
+/afs/CELLNAME/service/configuration.  Files that are used for by other 
+cells to gain information about the installation cell, are stored in this 
+directory.  An example of such a file is AMS-Server.
+
+}
+\paragraph{Restricting Access to Post Offices}
+
+
+These variables are used to restrict remote access to the Post Office 
+machines.
+
+
+\italic{\index{EquivalentHosts}}: list-of-strings
+
+\leftindent{Default: \
+
+
+	"apollo.andrew.cmu.edu",		/* cfe office */
+
+	"duquesne.andrew.cmu.edu",	/* mcinerny office */
+
+	"patterson.andrew.cmu.edu",	/* pierette office */
+
+	"ephrata.andrew.cmu.edu",		/* bobg office */
+
+	"ghostwheel.andrew.cmu.edu",	/* aw0g office */
+
+	"russelton.andrew.cmu.edu",		/* operator */
+
+	"kingston.andrew.cmu.edu",		/* operator */
+
+	"landru.andrew.cmu.edu",		/* operator */
+
+	"elkland.andrew.cmu.edu",		/* operator */
+
+	"wilkinsburg.andrew.cmu.edu",	/* operator */
+
+	"burnham.andrew.cmu.edu",		/* operator */
+
+	"hawthorne.andrew.cmu.edu",	/* advisor office */
+
+	"beta4.andrew.cmu.edu",		/* advisor office */
+
+#if (pobb_DowJonesIn)
+
+	"suffern.andrew.cmu.edu",		/* Steve Waldbusser office */
+
+#endif /* (pobb_DowJonesIn) */
+
+	NULL
+
+}\leftindent{This variable specifies the list of machines from which users 
+may telnet or rsh to the Post Office machines.
+
+}
+\italic{\index{UsersToAllow}}: list-of-strings
+
+\leftindent{Default: "bobg", "cdc", "cfe", "dc0m", "mcinerny",
+
+	"pierette", "jetson", "aw0g", "ckk", "ww19",
+
+	"operator", "grm", "ef1c",
+
+#if (pobb_DowJonesIn)
+
+	"?[DJUserName]", "sw0l",
+
+#endif /* (pobb_DowJonesIn) */
+
+	"root",
+
+	"?[PostmasterName]",
+
+#if (pobb_WPUpdate)
+
+	"?[wpbuildUser]",
+
+#endif /* (pobb_WPUpdate) */
+
+	NULL
+
+}\leftindent{This variable specifies the list of users who are allowed to 
+login to the Post Office machines.  This list is used to construct the 
+user.permits file for these machines.
+
+}
+\paragraph{Sendmail}
+
+
+The following variables specify useful information about sendmail, the 
+long-haul transport agent.
+
+
+\italic{\index{SendmailConfigDir}}: string
+
+\leftindent{Default: "/etc"
+
+}\leftindent{This variable specifies the directory in which sendmail.cf and 
+sendmail.fc are located.
+
+}
+\italic{\index{SendmailQueueDir}}: string
+
+\leftindent{Default: "/usr/spool/mqueue"
+
+}\leftindent{This variable specifies the directory on the Post Office 
+machine local disk where incoming mail to be processed by sendmail is 
+stored.
+
+}
+\italic{\index{SendmailQueueTime}}: string
+
+\leftindent{Default: "30m"
+
+}\leftindent{This variable specifies the length of time that a sendmail 
+queue daemon will sleep between runs.
+
+}
+\italic{\index{SendmailLocalAbbrevs}}: list-of-strings
+
+\leftindent{Default: "andrew", "po1", "po2", "po3", "po4", "po5", "po6",
+
+	NULL
+
+}\leftindent{This variable specifies a list of allowed abbreviations for 
+the \italic{DeployedPO }machine names\italic{.}
+
+}
+\paragraph{Post Office Daemons}
+
+
+These variables specify useful information about various daemons that run 
+on the Post Office machines.
+
+
+\italic{\index{SomeScriptDir}}:string
+
+\leftindent{Default: "/afs/andrew.cmu.edu/usr0/postman/bin"}
+
+\leftindent{This variable specifies the directory where certain Post Office 
+and Bboard maintenance scripts are stored.
+
+}
+\italic{\index{DaemonBB}}:string
+
+\leftindent{Default: "bb+andrew.daemons"}
+
+\leftindent{This variable specifies the mailing address where the Post 
+Office daemons send reports.  If your site runs an AMS bboard system, then 
+this variable specifies the mailing address for the messages folders where 
+the daemon bboards are located.
+
+}
+\italic{\index{LogBB}}:string
+
+\leftindent{Default: "postman+logs"}
+
+\leftindent{This variable specifies  the mailing address to which daemons 
+send small daemon logs.
+
+}
+\italic{\index{DaemonLog}}:string
+
+\leftindent{Default: "postman+logs"}
+
+\leftindent{This variable specifies the directory on the Post Office 
+machine disk where daemons write their logs.
+
+}
+\italic{\index{TempLog}}:string
+
+\leftindent{Default: "/usr/spool/log"}
+
+\leftindent{This variable specifies the directory where daemons write logs 
+that are to be kept for a short time.
+
+}
+\italic{\index{QueuemailOutgoingInterval}}:integer
+
+\leftindent{Default: 7200}
+
+\leftindent{This variable specifies the length of time, in seconds, that 
+the  \typewriter{queuemail} daemon that polls each users 
+\italic{OutgoingName} directory should sleep between sweeps (the argument 
+for the -O switch for the outgoing deamon.  \italic{OutgoingName} is set in 
+AndrewSetup.
+
+}
+\italic{\index{POCleanInterval}}:integer
+
+\leftindent{Default: 3600}
+
+\leftindent{This variable specifies the length of time, in seconds, that 
+the  \typewriter{po.clean}  daemon should sleep between runs.  The po.clean 
+daemon writes the status file for each Post Office machine that is read by 
+the mailq program.
+
+}
+\italic{\index{PurgeProgram}}:string
+
+\leftindent{Default: "?[POBBAndrewDir]/etc/purgesent"}
+
+\leftindent{This variable specifies the location of the 
+\typewriter{purgesent} program, which purges the duplicates databases. 
+ purgesent is run by the FlushOld daemon.
+
+}
+\italic{\index{SentKeepLen}}:string
+
+\leftindent{Default:  "3d"}
+
+\leftindent{This variable specifies the length of time that entries in the 
+SENT duplicates database should be kept.  It is used by the FlushOld 
+daemon.
+
+}
+\italic{\index{ReauthSleepInterval}}:integer
+
+\leftindent{Default: 43200}
+
+\leftindent{This variables specifies the length of time in seconds that the 
+reauth daemon should sleep between successful runs.  The reauth daemon 
+maintains AFS authentication for daemons running on the local machine.
+
+}
+\paragraph{Post Office Files and Directories}
+
+
+These variables specify files and directories on the Post Office machines' 
+disks that are used by the daemons that run on these machines.
+
+
+\italic{\index{PMPasswordFile}}:string
+
+\leftindent{Default: "/.Password"
+
+}\leftindent{This variables specifies the name of the file that contains 
+the unencrypted password for \italic{PostmasterName}.
+
+}
+\italic{\index{SmallLocalDir}}:string
+
+\leftindent{Default: "/etc"
+
+}\leftindent{This variable specifies the directory on the local disk where 
+small scripts, such as startup, and pobb.shutdown, that are used to start 
+or stop daemon processing are stored.
+
+
+}\paragraph{Mail Queue Directories}
+
+
+These variables specify the location of mail queues.  These lists are what 
+is consulted for doing the load balancing, not what's actually in 
+.../mailqs.
+
+
+\italic{\index{GlobalMailQueues}}:list-of-strings
+
+\leftindent{Default: "q000", "q001", "q002", "q003", "q004", "q005", 
+"q006", "q007",
+
+	NULL
+
+}\leftindent{This variable specifies the names of directories to be used as 
+the WorkstationCell's global mail queues in /afs/.CELLNAME/service/mailqs. 
+ The value is that of the directory name, such as "q1", "q2", "q3", rather 
+than /afs/andrew.cmu.edu/service/mailqs/q1".
+
+
+}\italic{\index{GlobalSlowMailQueues}}:list-of-strings
+
+\leftindent{Default: "sq1", "sq2",
+
+	NULL
+
+}\leftindent{This variable specifies the names of directories to be used as 
+the WorkstationCell's slow global mail queues in 
+/afs/.CELLNAME/service/mailqs.  The value is that of the directory name, 
+such as "sq1", "sq2", "sq3", rather than 
+/afs/andrew.cmu.edu/service/mailqs/sq1".}
+
+\begindata{bp,538210752}
+\enddata{bp,538210752}
+\view{bpv,538210752,3,0,0}
+\subsection{Installation}
+
+
+Once the appropriate variables have been set in pobbconf.h and pobbconf.c, 
+the scripts and files in the pobbconf directory can be built and installed. 
+ To do this, type:
+
+
+\typewriter{make install}
+
+
+in andrew/overhead/pobbconfig.  The "make install" command will build the 
+pobbscpt macro processor, make all the target *.msh and *.csh files by 
+running them through that processor, and then execute the generated 
+pobb-install.msh script, which will check for the existence of target 
+directories, and create any that do not already exist, and, finally, 
+install the compiled scripts into the target directories.
+
+
+There will no doubt be many error messages at this point in the 
+installation process.  The messages of interest (that are dependant on the 
+installation procedures themselves and can not be corrected at this point) 
+are due to the fact that you have not created the mail queue directories 
+yet.  The messages are normal, and look similar to this example from a 
+sample installation at site "toaster.com":
+
+
+\typewriter{\smaller{Standard mail-queue directory 
+/afs/toaster.com/service/mailqs doesn't exist;
+
+   trying to use read/write-mounted /afs/.toaster.com/service/mailqs
+
+**Read/write-mounted /afs/.toaster.com/service/mailqs doesn't exist**
+
+fs: File '/afs/.toaster.com/service/mailqs' doesn't exist
+
+Mail queues not (yet) installed in /afs/.toaster.com/service/mailqs :
+
+	q1
+
+	q2
+
+	q3
+
+Slow mail queues not (yet) installed in /afs/.toaster.com/service/mailqs :
+
+	sq1
+
+	sq2
+
+	sq3}}
+
+
+The names and number of the fast and slow queues in the error message will 
+match the names and number of the \italic{GlobalMailQueues} and 
+\italic{GlobalSlowMailQueues} variables.
+
+
+Because the mail queue directories do not exist, several of the scripts 
+will not be built completely.  This is normal, and will be corrected later 
+in the installation process.
+
+
+\paragraph{PackageHome make install}
+
+
+Performing a "make install" in andrew/overhead/pobbconf does not create 
+complete package scripts for the machines.  Instead, it creates source 
+files for these package scripts, which then need to be compiled to create 
+the completed package scripts.  To compile and install the package scripts 
+for the bulletin board servers, move to \italic{PackageHome}/src, and type:
+
+
+\typewriter{make install}
+
+
+This command builds the package scripts for the Post Office machines from 
+the script sources, checks for the appropriate target directories and 
+creates any that do not already exist, and installs the completed scripts 
+in the appropriate directories.
+
+
+You should check and make sure your version of sendmail is running at this 
+point.
+
+
+\paragraph{Reboot}
+
+
+You should make sure the Post Office machines reboot and re-package 
+correctly.  This means that the file /.package must point to the 
+appropriate package file for that machine.  The text of this file should be 
+the line \italic{PackageHome}/etc/\italic{hostname}, where \italic{hostname} 
+is the fully qualified domain name of the machine.
+
+
+There will no doubt be error messages during the reboot process.  The 
+reboot should, however, indicate that the Post Office deamon is failing to 
+authenticate, because the passwords are not on the local disk yet.  The 
+message that indicates this looks like:
+
+
+\typewriter{\smaller{Starting Postoffice deamons: (sendmail -bz) Flush Old 
+.}}
+
+
+\paragraph{Files on the local machines}
+
+
+To allow the deamon processes to authenticate, the following file must be 
+written:
+
+\leftindent{
+The file \italic{PMPasswordFile} must contain the unencrypted password for 
+\italic{PostmasterName}.}
+
+
+\paragraph{Reboot}
+
+
+When this file has been installed on the local disk of each machine, the 
+machines should be rebooted.  This time, the message that indicates 
+authentication should look something like the following:
+
+
+\typewriter{\smaller{Starting Postoffice deamons: (sendmail -bz) Flush Old 
+q1 q2 sq1 sq2 reauth .}}
+
+
+where q1, q2, sq1 and sq2 are the names of the mail queue directories 
+specified in \italic{GlobalMailQueues} and\italic{ GlobalSlowMailQueues.}
+
+
+Other errors will still be present due to the abscence of mail queue 
+directories.
+
+\begindata{bp,538210816}
+\enddata{bp,538210816}
+\view{bpv,538210816,4,0,0}
+\section{Creating Mail Queues}
+
+
+There are two types of mail queues that must be created: fast mail queues, 
+where message are stored that cannot be delivered by \typewriter{queuemail} 
+on the user's workstation, and slow mail queues, where messages that cannot 
+be delivered from the fast mail queues are transferred and delivered at a 
+later time.   The names of the directories are the values specified in 
+\italic{GlobalMailQueues} and\italic{ GlobalSlowMailQueues}, but must be 
+located in /afs/CELLNAME/service/mailqs. \
+
+
+
+\subsection{Create mail queue parent directory}
+
+
+To create the mail queue directories you first need to create the directory 
+to hold the queues and a make a volume for it.  The volume for this 
+directory can be a read-only replicated clone, so that it is always 
+available if one of the file servers goes down.  It can either be read-only 
+by virtue of being its own read-only volume, or by virtue of being a 
+subdirectory in a read-only volume.  The following commands are what you 
+might need to create a volume, make the directory and mount the volume. 
+ Notice that you are not \bold{releasing} the volume yet, so that the 
+directory is not visable to AFS users.
+
+
+\typewriter{\smaller{% vos create volname.mailq.parent
+
+% mkdir /afs/.CELLNAME/service/mailqs
+
+% fs mkmount -dir /afs/.CELLNAME/service/mailqs -vol volname.mailq.parent}}
+
+
+Notice the dot in front of "CELLNAME" indicating that the volume is 
+read-write.
+
+
+\subsection{Create mail queues}
+
+
+Next you need to create the actual mail queue directories themselves 
+specified by \italic{GlobalMailQueues} and\italic{ GlobalSlowMailQueues 
+}and volumes for them.  The individual mail queue volumes can be read-write 
+volumes on different servers.  Here is an example creation of a mail queue 
+called "q1".
+
+
+\typewriter{\smaller{% vos create volname.mailq.q1
+
+% mkdir /afs/.CELLNAME/service/mailqs/q1
+
+% fs mkmount -dir /afs/.CELLNAME/service/mailqs/q1 -vol volname.mailq.q1}}
+
+
+\subsection{Set AFS access}
+
+
+Once the mail queues have been created, you should again perform a \
+
+
+
+\typewriter{make install} \
+
+
+
+in the andrew/overhead/pobbconf directory.  This ensures that the access 
+list for the mail queues is set properly, and that scripts that refer to 
+the mail queues contain the proper information.
+
+
+\subsection{Turn on AMDS}
+
+
+Once all the mail queue directories and volumes have been created, you can 
+release the volumes and "turn on" AMDS.  \bold{\italic{Once you have 
+released the volumes, users can start queueing mail in the queues.}}  You 
+can release all the volumes with the single command:
+
+
+\typewriter{\smaller{% vos release volname.mailq.parent}}
+
+
+\subsection{Reboot Post Office machines}
+
+
+After you release the mail queue volumes and they are visable, you need to 
+reboot the Post Office machines again.  There should be no error messages 
+during reboot that are due to the queues not existing.
+
+\begindata{bp,538210880}
+\enddata{bp,538210880}
+\view{bpv,538210880,5,0,0}
+\section{After AMDS is Running}
+
+
+After AMDS is running, you may want to revise some of the choices you made 
+when installing AMS.  For example, you may want to change the ThisDomain 
+name, whether you are running a mail system on the workstation (as opposed 
+to AMDS for your AFS cell), and where the user's default mail home is.
+
+
+Once AMDS is installed at a site, existing user-agent programs will still 
+wish to enqueue mail for delivery, and until they are fully converted to 
+using AMDS, they may attempt to enqueue mail by invoking old mail 
+interfaces.  AMDS provides two stub programs that can help to find 
+unconverted programs: a replacement for /bin/mail, and a replacement for 
+/usr/lib/sendmail.  The replacement for /bin/mail does not send any mail, 
+but simply prints a warning and sends an error message to the postmaster. 
+ The replacement for /usr/lib/sendmail can perform some of the simplest 
+message-dropoff functions of UC-Berkeley sendmail, and when it encounters 
+an option that it cannot interpret, it prints a warning and sends an error 
+message to the postmaster.
+
+
+User-agent programs may be converted to using AMDS for their 
+message-droppoff function by converting them to use either the queuemail 
+program or the droppoff() procedure from libmail.
+
+
+\subsection{More pobbconf variables}
+
+
+After you have the initial pobb configuration, there are several variables 
+that you may want to define.  \
+
+
+
+\paragraph{pobbconf.h
+
+}
+\italic{\index{pobb_\index{ButlerPool}}}: boolean
+
+\leftindent{If defined, "telnet"-ing to ThisDomain gives a list of free 
+workstations (via butler).}
+
+
+\italic{\index{pobb_\index{GetHostTable}}}:boolean
+
+\leftindent{If defined, tells how to retrieve an up-to-date Arpanet host 
+table periodically.}
+
+
+\paragraph{pobbconf.c
+
+}
+These variables depend on setting pobb_GetHostTable to TRUE in pobbconf.h.
+
+
+\italic{\index{GetHostTableHost}}: string
+
+\leftindent{Default: "dist.fac.cs.cmu.edu"
+
+Tells what host to get host table from.}
+
+
+\italic{\index{IPFilePrefix}}: string
+
+\leftindent{Default: "/afs/.?[WorkstationCell]/common/etc"
+
+Where /etc/hosts, /etc/networks, /etc/gateways are updated from.}
+
+
+\italic{\index{IPFileSuffix}}: string
+
+\leftindent{Default: ".arpa"
+
+The suffix of the file to get /etc/hosts from (e.g., /etc/hosts comes from 
+/afs/andrew.cmu.edu/common/etc/hosts.arpa).
+
+}
+\paragraph{Installation}
+
+
+When you turn on ButlerPool, you need to do a ``make install'' in the 
+overhead/pobbconf directory.  Then, when the ?[ThisDomain] server reboots, 
+it will pick up the /etc/butlertelnetd file and the new inetd.conf file, so 
+if you can wait until the nightly reboot, you'll be fine.  \
+
+
+
+For turning on GetHostTable, you also need to do a "make install" in the 
+overhead/pobbconf directory.  Then, the nightly reboot of the 
+configuration-selected servers will pick up the new crontab for those 
+servers, which will cause the table to begin to be retrieved.
+
+\begindata{bp,538210944}
+\enddata{bp,538210944}
+\view{bpv,538210944,6,0,0}
+Copyright 1992 Carnegie Mellon University and IBM.  All rights reserved.
+
+\smaller{\smaller{$Disclaimer: 
+
+Permission to use, copy, modify, and distribute this software and its 
+
+documentation for any purpose is hereby granted without fee, 
+
+provided that the above copyright notice appear in all copies and that 
+
+both that copyright notice, this permission notice, and the following 
+
+disclaimer appear in supporting documentation, and that the names of 
+
+IBM, Carnegie Mellon University, and other copyright holders, not be 
+
+used in advertising or publicity pertaining to distribution of the software 
+
+without specific, written prior permission.
+
+
+
+IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+
+DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+
+ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+
+SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+
+BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+
+DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+
+ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+
+OF THIS SOFTWARE.
+
+ $
+
+}}\enddata{text,538387104}

@@ -1,0 +1,121 @@
+;; Copyright 1992 NEC Corporation, Tokyo, Japan.
+;;
+;; Permission to use, copy, modify, distribute and sell this software
+;; and its documentation for any purpose is hereby granted without
+;; fee, provided that the above copyright notice appear in all copies
+;; and that both that copyright notice and this permission notice
+;; appear in supporting documentation, and that the name of NEC
+;; Corporation not be used in advertising or publicity pertaining to
+;; distribution of the software without specific, written prior
+;; permission.  NEC Corporation makes no representations about the
+;; suitability of this software for any purpose.  It is provided "as
+;; is" without express or implied warranty.
+;;
+;; NEC CORPORATION DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+;; INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN 
+;; NO EVENT SHALL NEC CORPORATION BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+;; CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF 
+;; USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR 
+;; OTHER TORTUOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR 
+;; PERFORMANCE OF THIS SOFTWARE. 
+
+;;  $Id: skk.canna,v 1.2 1993/04/05 07:01:32 kon Exp $
+
+; skk like customization
+;
+; KANZEN から SKK へと流れている「いままでのかな漢字変換は変換をしすぎ
+; る」という精神を受け継いだカスタマイズです。ただし、SKK の 「Simple
+; Kana Kanji」のsimple の方は受け継いでおらず、SKK では単文節変換が採
+; 用されているのに対してここでは連文節変換を用いています。
+;
+; たとえば、「SKK のシンプルという部分は受け継ぎませんでした。」と入力
+; するのに、SKK では、
+;
+; lSKK ^JnoqsinpuruqtoiuBubunHa UKe TsuGimasendeshita .
+;
+; と入力しますが、ここでは、上の入力方法に加えて、以下の入力も受け付け
+; ます。
+;
+; lSKK ^JnoqsinpuruqtoiuBubunhauketsugimasendeshita .
+;
+; すなわち、このカスタマイズファイルを使った場合、通常はかな漢字変換を
+; 伴わない「確定入力モード」で日本語の入力が行われますが、英大文字を入
+; 力すると一時的にかな漢字変換を伴う「変換入力モード」での入力になりま
+; す。一時的な「変換入力モード」は変換キーを押した後、次の入力が行われ
+; るなどして、変換した文字を確定すると、抜けるようになります。
+;
+; このファイルは以下のような操作を定義しています。
+;
+; C-j  日本語入力モードとなる。
+; l    アルファベット入力モードになる(l は latin の l)。
+; L    全角アルファベット入力モードになる。
+; q    ひらがなとカタカナをトグルする。
+; /    英字変換モードになる。
+; \    16 進コード入力モードになる。
+; AB.. 変換入力モードになる。SKK の▽モード。
+;
+
+(initialize-function '(japanese-mode base-kakutei alpha-mode))
+
+(setq romkana-table "default.kp")
+
+(use-dictionary
+ "iroha"
+ "fuzokugo"
+ "hojomwd"
+ "hojoswd"
+ :bushu "bushu"
+ :user  "user"
+ )
+
+(global-unbind-key-function 'japanese-mode)
+(global-unbind-key-function 'alpha-mode)
+
+(defmode LATIN-mode "[Ａ  ]" romkana-table '(zenkaku romaji kakutei) nil)
+
+(set-mode-display 'yomi-mode "[あ▽]")
+(set-mode-display 'tankouho-mode "[あ▼]")
+(set-mode-display 'zen-hira-henkan-mode "[あ  ]")
+(set-mode-display 'zen-hira-kakutei-mode "[あ  ]")
+(set-mode-display 'zen-kata-kakutei-mode "[ア  ]")
+(set-mode-display 'han-alpha-henkan-mode "[英字]")
+
+(set-key 'alpha-mode "\C-j" 'japanese-mode)
+(set-key 'empty-mode "\C-j" 'base-kana)
+(set-key 'LATIN-mode "\C-j" '(henkan-nyuuryoku-mode base-kakutei))
+
+(set-key 'empty-mode "l" 'alpha-mode)
+(set-key 'empty-mode "L" 'LATIN-mode)
+
+(set-key 'henkan-nyuuryoku-mode "q" 'base-hiragana-katakana-toggle)
+
+(set-key 'yomi-mode "\Return" '(kakutei kakutei))
+
+(defun define-as-capital (x)
+  (set-key 'empty-mode x 
+           '(temporary base-hiragana base-henkan self-insert)))
+
+(setq ignore-case t)
+
+(defun define-capitals (l)
+  (cond ((atom l) nil)
+        (t
+         (define-as-capital (car l))
+         (define-capitals (cdr l)) )))
+
+(setq skk-capitals '(
+  "A"     "E"     "I"           "O"             "U"           ;母音
+                "H"   "K" "M" "N"     "R" "S" "T"   "W" "Y"   ;子音
+    "B" "D"   "G"                 "P"                     "Z" ;濁音
+      "C"   "F"     "J"                           "V" "X"))   ;ヘボン用
+;                       "L"         "Q"                       ;未使用
+
+(define-capitals skk-capitals)
+
+(set-key 'henkan-nyuuryoku-mode
+	"/" '(temporary base-henkan base-eisu base-hankaku))
+
+(set-key 'henkan-nyuuryoku-mode "\\" 'hex-mode)
+
+(setq allow-next-input t)
+(setq hex-direct t)

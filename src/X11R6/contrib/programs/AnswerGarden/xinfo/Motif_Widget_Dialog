@@ -1,0 +1,102 @@
+@begin(header)
+author: ackerman=ag@ics.uci.edu
+show_author: ShowNone
+author_organization: MIT
+node_expert: ackerman=ag@ics.uci.edu 
+expiration_date: 09/02/93
+last_modifier: ackerman=ag@ics.uci.edu
+last_mod_date: 09/02/91
+mod_num: 2
+@end(header)
+@begin(Q)
+All dialog boxes come up with width and height reversed.
+@end(Q)
+
+@begin(A)
+You compiled release 1.1 with prototypes (congratulations).  Best not
+to.
+
+If you must, look at lib/Xm/GeoUtils.c, line 1518 (in the prototype
+for _XmGeoArrangeBoxes).  The parameters *pH and *pW in the prototype
+are reversed in order.
+@end(A)
+
+@begin(Q)
+I manage a "working" dialog, and do some computing.  The dialog
+window appears empty until the work is finished.  I call
+XmUpdateDisplay with no effect.  How can I display the window? 
+@end(Q)
+
+@begin(A)
+/*
+ * This procedure will ensure that, if a dialog window is being mapped,
+ * its contents become visible before returning.  It is intended to be
+ * used just before a bout of computing that doesn't service the display.
+ * You should still call XmUpdateDisplay() at intervals during this
+ * computing if possible.
+ *
+ * The monitoring of window states is necessary because attempts to map
+ * the dialog are redirected to the window manager (if there is one) and
+ * this introduces a significant delay before the window is actually mapped
+ * and exposed.  This code works under mwm, twm, uwm, and no-wm.  It
+ * doesn't work (but doesn't hang) with olwm if the mainwindow is iconified.
+ *
+ * The argument to ForceDialog is any widget in the dialog (often it
+ * will be the BulletinBoard child of a DialogShell).
+ */
+ForceDialog(w)
+     Widget w;
+{
+  Widget diashell, topshell;
+  Window diawindow, topwindow;
+  Display *dpy;
+  XWindowAttributes xwa;
+  XEvent event;
+  XtAppContext cxt;
+
+/* Locate the shell we are interested in.  In a particular instance, you
+ * may know these shells already.
+ */
+
+  for (diashell = w;
+       !XtIsShell(diashell);
+       diashell = XtParent(diashell))
+    ;
+
+/* Locate its primary window's shell (which may be the same) */
+
+  for (topshell = diashell;
+       !XtIsTopLevelShell(topshell);
+       topshell = XtParent(topshell))
+    ;
+
+  if (XtIsRealized(diashell) && XtIsRealized(topshell)) {
+    dpy = XtDisplay(topshell);
+    diawindow = XtWindow(diashell);
+    topwindow = XtWindow(topshell);
+    cxt = XtWidgetToApplicationContext(diashell);
+
+/* Wait for the dialog to be mapped.  It's guaranteed to become so unless... */
+
+    while (XGetWindowAttributes(dpy, diawindow, &xwa),
+	   xwa.map_state != IsViewable) {
+
+/* ...if the primary is (or becomes) unviewable or unmapped, it's
+   probably iconified, and nothing will happen. */
+
+      if (XGetWindowAttributes(dpy, topwindow, &xwa),
+	  xwa.map_state != IsViewable)
+	break;
+
+/* At this stage, we are guaranteed there will be an event of some kind.
+   Beware; we are presumably in a callback, so this can recurse. */
+
+      XtAppNextEvent(cxt, &event);
+      XtDispatchEvent(&event);
+    }
+  }
+
+/* The next XSync() will get an expose event if the dialog was unmapped. */
+
+  XmUpdateDisplay(topshell);
+}

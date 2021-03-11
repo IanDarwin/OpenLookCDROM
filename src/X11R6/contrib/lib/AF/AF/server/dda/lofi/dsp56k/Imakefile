@@ -1,0 +1,75 @@
+/*
+ * Rules for DSP tools
+ */
+.SUFFIXES: .cld .cln .lod .c .asm
+
+.cld.lod:
+	${CLDLOD} $< > $@
+.c.cln:
+	${G56K} -g -O -c -o $@ $(G56KFLAGS) $<
+.asm.cln:
+	${G56K} -g -O -c -o $@ $(G56KFLAGS) $<
+
+G56K	= ${DSPTOOLROOT}/bin/g56k
+ASM56K	= ${DSPTOOLROOT}/dsp/bin/asm56000
+LINK56K	= ${DSPTOOLROOT}/dsp/bin/dsplnk
+#CLDLOD	= ${DSPTOOLROOT}/bin/cldlod
+CLDLOD	= cldlod
+#DSPLIB	= ${DSPTOOLROOT}/bin/dsplib
+DSPLIB	= dsplib
+
+/*
+ *
+ */
+LODFILES=main.lod mainteleport.lod
+
+none:
+
+all:: $(LODFILES)
+
+/*
+ *
+ */
+dsp.asm: ../dsp.h
+	/lib/cpp -P ../dsp.h >dsp.asm
+
+main.cln: main.asm dsp.asm
+	$(ASM56K) -L -I../../include -c -B main.cln -- main.asm
+
+main.cld: main.cln
+	$(LINK56K) -M -c -g -R /usr/local/dsp/lib/map56 -B main.cld -- main.cln
+
+mainteleport.cln: mainteleport.asm dsp.asm
+	$(ASM56K) -L -I../../include -c \
+		-B mainteleport.cln -- mainteleport.asm
+
+mainteleport.cld: mainteleport.cln
+	$(LINK56K) -M -c -g -R /usr/local/dsp/lib/map56 \
+		 -B mainteleport.cld -- mainteleport.cln
+
+/* 
+ *  Test version of the DSP lod file that does a digital loopback.
+ */
+testmain.cln: testmain.asm dsp.asm
+	$(ASM56K) -L -I../../include -c -B testmain.cln -- testmain.asm
+
+testmain.cld: testmain.cln
+	$(LINK56K) -M -c -g -R /usr/local/dsp/lib/map56 -B testmain.cld -- testmain.cln
+
+
+install::
+	@case '${MFLAGS}' in *[i]*) set +e;; esac; \
+	for i in $(LODFILES); do \
+		(set -x; $(INSTALL) -c $(INSTLIBFLAGS) $$i $(LODDIR)); \
+	done
+
+clean::
+	rm -f *.CKP *.ln *.BAK *.bak *.o core errs ,* *~ *.a .emacs_* tags TAGS make.log MakeOut
+
+completely_clean::
+	make clean
+	rm -f *.lod *.cld *.cln *.map *.lst
+
+
+
+# DO NOT DELETE THIS LINE -- make depend depends on it.

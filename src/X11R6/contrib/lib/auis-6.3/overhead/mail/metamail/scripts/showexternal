@@ -1,0 +1,244 @@
+#!/bin/csh -f
+# Copyright (c) 1991 Bell Communications Research, Inc. (Bellcore)
+# 
+# Permission to use, copy, modify, and distribute this material 
+# for any purpose and without fee is hereby granted, provided 
+# that the above copyright notice and this permission notice 
+# appear in all copies, and that the name of Bellcore not be 
+# used in advertising or publicity pertaining to this 
+# material without the specific, prior written permission 
+# of an authorized representative of Bellcore.  BELLCORE 
+# MAKES NO REPRESENTATIONS ABOUT THE ACCURACY OR SUITABILITY 
+# OF THIS MATERIAL FOR ANY PURPOSE.  IT IS PROVIDED "AS IS", 
+# WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES.
+# 
+
+onintr cleanup
+if (! $?METAMAIL_TMPDIR) then
+    set METAMAIL_TMPDIR=/tmp
+endif
+if (! $?FTP) then
+    set FTP=ftp
+endif
+
+if ($#argv <3) then
+    echo "Usage: showexternal body-file access-type name [site [directory [mode [server]]]]"
+    exit -1
+endif
+set bodyfile=$1
+set atype=`echo $2 | tr ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz`
+set name=$3
+if ($#argv > 3) then
+    set site=$4
+else 
+    set site=""
+endif
+if ($#argv > 4) then
+    set dir=$5
+else
+    set dir=""
+endif
+if ($#argv > 5) then
+    set mode=$6
+else
+    set mode=""
+endif
+if ($#argv > 6) then
+    set server=$7
+else
+    set server=""
+endif
+
+if ("$server" == "" && $atype == "mail-server") then
+# Backward compatibility with some broken stuff
+    set server=${name}@${site}
+    echo WARNING -- old style mailserver syntax, using server $server
+endif
+
+set ctype="`grep -i content-type: $bodyfile | sed -e 's/............: //'`"
+if ("$ctype" == "") set ctype="text/plain"
+set cenc=`grep -i content-transfer-encoding: $bodyfile | sed -e 's/.........................: //'`
+set username=""
+set pass=""
+set TMPDIR=${METAMAIL_TMPDIR}/XXXternal.$$
+mkdir $TMPDIR
+pushd $TMPDIR
+set NEWNAME="mm.ext.$$"
+set NEEDSCONFIRMATION=1
+switch ("$atype")
+    case anon-ftp:
+	echo "This mail message contains a POINTER (reference) to data that is "
+	echo not included in the message itself.  Rather, the data can be retrieved 
+	echo automatically using  anonymous FTP to a site on the network.
+	breaksw
+    case ftp:
+	echo "This mail message contains a POINTER (reference) to data that is "
+	echo not included in the message itself.  Rather, the data can be retrieved 
+	echo automatically using  the FTP protocol to a site on the network.
+	breaksw
+    case mail-server:  
+	cat > ${METAMAIL_TMPDIR}/ext.junk.$$ <<!
+This mail message contains a POINTER (reference) to data that is 
+not included in the message itself.  Rather, the data can be retrieved 
+by sending a special mail message to a mail server on the network.
+However, doing this automatically is slightly dangerous, because  someone
+might be using this mechanism to cause YOU to send obnoxious mail.
+For that reason, the mail message that WOULD be sent is being shown to you
+first for your approval.
+
+This is the message that will be sent if you choose to go ahead and
+retreive the external data:
+
+To: ${server}
+Subject: Automated Mail Server Request
+
+!
+	cat $bodyfile >> ${METAMAIL_TMPDIR}/ext.junk.$$
+	more ${METAMAIL_TMPDIR}/ext.junk.$$
+	rm ${METAMAIL_TMPDIR}/ext.junk.$$
+	breaksw
+    default:
+	# IGNORE ALL THE OTHERS -- AUTOMATIC FOR LOCAL-FILE, AFS.
+	set NEEDSCONFIRMATION=0
+endsw
+
+if ($NEEDSCONFIRMATION) then
+	echo ""
+	echo -n "Do you want to proceed with retrieving the external data [y] ? "
+	set ANS=$<
+	if ("$ANS" =~ n* ||  "$ANS" =~ N* ) then
+		cd ${METAMAIL_TMPDIR}
+		rm -rf $TMPDIR
+		exit 0
+	endif
+endif
+
+switch ("$atype")
+    case anon-ftp:
+	set username=anonymous
+	set pass=`whoami`@`hostname`
+	# DROP THROUGH
+    case ftp:
+	if ("$site" == "") then
+	    echo -n "Site for ftp access: "
+	    set site=$<
+	endif
+	if ("$username" == "") then
+	    echo -n "User name at site ${site}: "
+	    set username=$<
+	endif
+	if ("$pass" == "") then
+	    echo -n "Password for user $username at site ${site}: "
+	    stty -echo
+	    set pass=$<
+	    stty echo
+	    echo ""
+	endif
+	if ("$dir" == "") then
+	    set DIRCMD=""
+	else
+	    set DIRCMD="cd $dir"
+	endif
+	if ("$mode" == "") then
+	    set MODECMD=""
+	else
+	    set MODECMD="type $mode"
+	endif
+	echo OBTAINING MESSAGE BODY USING FTP
+	echo SITE: $site USER $username
+	$FTP -n <<!
+open $site
+user $username $pass
+$DIRCMD
+$MODECMD
+get $name $NEWNAME
+quit
+!
+	if (! -e $NEWNAME) then
+	    echo FTP failed.
+	    cd ${METAMAIL_TMPDIR}
+	    rm -rf $TMPDIR
+	    exit -1
+	endif
+	breaksw
+    case afs:
+    case local-file:
+	if (! -e $name) then
+	    echo local file not found
+	    cd ${METAMAIL_TMPDIR}
+	    rm -rf $TMPDIR
+	    exit -1
+	endif
+    	set NEWNAME=$name
+	echo GETTING BODY FROM FILE NAMED: $NEWNAME
+	breaksw
+    case mail-server:  # A very special case
+	if ("$bodyfile" == "") then
+	    echo mail-server access-type requires a body file
+	    cd ${METAMAIL_TMPDIR}
+	    rm -rf $TMPDIR
+	    exit -1
+	endif
+	echo Subject: Automated Mail Server Request > $NEWNAME
+	echo To: ${server} >> $NEWNAME
+	cat $bodyfile >> $NEWNAME
+	echo "" >> $NEWNAME
+	echo "" >> $NEWNAME
+	/usr/lib/sendmail -t  < $NEWNAME
+	if ($status) then
+	    echo sendmail failed
+	    cd ${METAMAIL_TMPDIR}
+	    rm -rf $TMPDIR
+	    exit -1
+	endif
+	cd ${METAMAIL_TMPDIR}
+	rm -rf $TMPDIR
+	echo Your $ctype data has been requested from a mail server.
+	exit 0
+    default:
+	echo UNRECOGNIZED ACCESS-TYPE
+	cd ${METAMAIL_TMPDIR
+	rm -rf $TMPDIR
+	exit -1
+endsw
+if ($cenc == base64) then
+	mimencode -u -b < $NEWNAME > OUT
+	mv OUT $NEWNAME
+else if ($cenc == quoted-printable) then
+	mimencode -u -q < $NEWNAME > OUT
+	mv OUT $NEWNAME
+endif
+
+popd
+if ($atype == "local-file") then
+    metamail -b -c "$ctype" $NEWNAME
+else
+    metamail -b -c "$ctype" $TMPDIR/$NEWNAME
+endif
+
+if ($status) then
+	echo metamail failed
+	cd ${METAMAIL_TMPDIR}
+	rm -rf $TMPDIR
+	exit -1
+endif
+
+if ($NEWNAME != $name) then
+	echo ""
+	echo The data just displayed is stored in the file $TMPDIR/$NEWNAME
+	echo "Do you want to delete it?"
+	rm -i $TMPDIR/$NEWNAME
+endif
+
+if (! -e ${TMPDIR}/${NEWNAME}) then
+    cd ${METAMAIL_TMPDIR}
+    rmdir $TMPDIR
+endif
+exit 0
+
+cleanup:
+cd ${METAMAIL_TMPDIR}
+if (-e $TMPDIR) then    
+    rmdir $TMPDIR
+endif
+exit -1

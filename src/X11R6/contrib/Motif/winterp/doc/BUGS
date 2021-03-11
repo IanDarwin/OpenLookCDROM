@@ -1,0 +1,148 @@
+# 
+# Copyright (C) 1994, Enterprise Integration Technologies Corp. and Niels Mayer.
+# WINTERP 1.15-1.99, Copyright (c) 1993, Niels P. Mayer.
+# WINTERP 1.0-1.14, Copyright (c) 1989-1992 Hewlett-Packard Co. and Niels Mayer.
+# 
+# Permission to use, copy, modify, distribute, and sell this software and its
+# documentation for any purpose is hereby granted without fee, provided that
+# the above copyright notice appear in all copies and that both that
+# copyright notice and this permission notice appear in supporting
+# documentation, and that the name of Enterprise Integration Technologies,
+# Hewlett-Packard Company, or Niels Mayer not be used in advertising or
+# publicity pertaining to distribution of the software without specific,
+# written prior permission. Enterprise Integration Technologies, Hewlett-Packard
+# Company, and Niels Mayer makes no representations about the suitability of
+# this software for any purpose.  It is provided "as is" without express or
+# implied warranty.
+# 
+# ENTERPRISE INTEGRATION TECHNOLOGIES, HEWLETT-PACKARD COMPANY AND NIELS MAYER
+# DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL ENTERPRISE
+# INTEGRATION TECHNOLOGIES, HEWLETT-PACKARD COMPANY OR NIELS MAYER BE LIABLE
+# FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER
+# RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF
+# CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+# CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+#
+
+------------------------------------------------------------------------------
+
+WINTERP 2.0 bug: in some cases, if a xlisp fatal error occurs, WINTERP will exist
+without printing any message relating to the fatal error message. If
+WINTERP exists unexpectedly, and without a "segmentation violation core dumped"
+type message, check the exit status by typing
+	echo $status
+into the xterm in which WINTERP was running (must be the first command
+run following the termination of the previous 'winterp' command).
+If the exit status of WINTERP is 127, then an XLISP fatal error occured.
+
+This will only occur when you've loaded
+	<winterp-top-dir>/examples/lib-utils/redir-err.lsp
+What happens is that the error message goes into the widget interface created
+by redir-err.lsp, but WINTERP does an exit() before you can see the message.
+
+If this is happening to you, check if "echo $status" is returning 127,
+and if so, remove the 'require' of "lib-utils/redir-err" and try again.
+If the XLISP fatal error occurs again, the error message will print
+out, since the stderr messages don't get redirected if redir-err
+is not loaded.
+
+------------------------------------------------------------------------------
+
+Motif bug: if you create widgety with XM_ROW_COLUMN_WIDGET_CLASS
+:simple_popup_menu, :simple_pulldown_menu, :simple_check_box,
+:simple_option_menu, etc, and the number given as :XMN_BUTTON_COUNT is
+longer than the number of elements in :XMN_BUTTONS (or :XMN_BUTTON_TYPE, or
+:XMN_BUTTON_MNEMONICS) then you may get a segmentation violation from
+motif. The workaround is not to do that. Better yet, don't even allow that
+error to become possible by using
+	<winterp-top-dir>/examples/lib-widgets/simple-RC.lsp.
+
+------------------------------------------------------------------------------
+
+Motif bug: I noticed this only on SGI Irix 5.1.3; the same code running on
+a HPUX or Sun box would work fine. THe problem is that when you create
+widgetry using :simple_popup_menu, :simple_pulldown_menu, :simple_check_box,
+:simple_option_menu, etc, and you forget to specify the
+:XMN_BUTTON_TYPE argument, you will get a sementation violation. Again, if
+you use
+	<winterp-top-dir>/examples/lib-widgets/simple-RC.lsp
+this won't happen, since those routines automatically insert a default
+:XMN_BUTTON_TYPE...
+
+------------------------------------------------------------------------------
+WINTERP 2.0 BUG:
+
+If there's an unbalanced number of parens in a file being loaded (or in an
+emacs interactive evaluation), then instead of giving an informative message
+like "unbalanced parens in file xxx", you get 'error: illegal character - #\M-Rubout'
+
+------------------------------------------------------------------------------
+
+There following describes bugs in WINTERP, all of which surfaced with Motif
+1.1, and will hopefully go away in Motif 1.2 and/or X11r5. Despite these
+bugs, we've managed to run a number of WINTERP applications successfully --
+it is important to know the cause of these problems, and have knowledge of
+what sorts of operations will cause trouble.
+
+			--------------------
+
+For Motif versions < 1.1.4, the following is a BUG:
+
+The first bug occurs whenever a shell containing a popup or option menu is
+closed.  This causes an erroneous XtWarning:
+
+	"Warning: Attempt to remove non-existant passive grab"
+
+The warning itself is harmless. However, if you start up WINTERP with
+resource "Winterp.enableXtWarningBreak" set to TRUE (or specify the command
+line flag "-enable_xtwarn_brk"), you will notice problems. When
+enableXtWarningBreak is set, any XtWarnings will break out of the routine
+that caused the XtWarning and go to the XLISP error handling routine. For
+many XtWarnings, that works out just fine, allowing you to trace the exact
+call which cause the toolkit to balk. Unfortunately, for the "Attempt to
+remove non-existant passive grab" warning, it seems to leave Motif/Xt in an
+indeterminate state that can result in odd behavior, program freezes, or
+core dumps. After a popup menu gets popupped up, any subsequent attempts at
+"closing" the shell containing the popup-menu or option-menu don't work
+correctly. By "closing" I mean using the window-manager's "close" menu
+entry (f.kill). Upon doing a "close" on a shell containing a popup menu,
+I've seen a number of things happen:
+   (1) The "close" is ignored, but subsequent attempts at closing a
+       different WINTERP shell result in a core dump.
+   (2) Doing the "close" generates the message:
+	error: X Toolkit Warning:
+		Attempt to remove non-existant passive grab
+       Doing the "close" again, on either the same shell, or a different
+       WINTERP shell will result in the following sort of error message:
+	XIO:  fatal IO error 32 (Broken pipe) on X server "unix:0.1"
+	after 19581 requests (19573 known processed) with 0 events remaining.
+	The connection was probably broken by a server shutdown or KillClient.
+
+The workaround for the above problem is simple -- don't set resource
+"Winterp.enableXtWarningBreak" to TRUE. The default for WINTERP 1.13 is to
+set the resource to FALSE so as to avoid the problem.
+
+Typically, you will also want to deliver WINTERP applications with
+"Winterp.enableXtWarningBreak" set to the default FALSE value. XtWarnings
+can occur when your X server runs out of colors, or can't find a particular
+font, etc -- such situations often warrant continuing program operation
+normally (after issuing a warning), rather than causing a Lisp break.
+
+The only reason why you'd want to set "Winterp.enableXtWarningBreak" to
+TRUE is during debugging a program -- enableXtWarningBreak combined with
+'baktrace' will allow you to figure out which particular call in your
+program caused the warning to be issued.
+
+			--------------------
+
+For Motif versions < 1.1.4, the following BUG exists...
+
+The last problem of note in WINTERP 1.13 and Motif 1.1 is that option menus
+created via XmCreateSimpleOptionMenu() (see examples/RowColumn.lsp) invoke
+yet another widget destroy problem. Basically, anytime I destroy a shell
+containing a simple option menu, I get a core dump, typically containgin
+the following C backtrace:
+| __XtDoPhase2Destroy+0x44:       _XtCreateApplicationShell+0x1CA (0x1F1538)
+| _XtDispatchEvent+0x46:  __XtDoPhase2Destroy     (0x151E88, 0x1)
+| _main+0x9FE:    _XtDispatchEvent(0xFFEFFCB8)

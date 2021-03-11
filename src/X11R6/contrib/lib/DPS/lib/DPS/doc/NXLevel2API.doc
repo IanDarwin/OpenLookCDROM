@@ -1,0 +1,126 @@
+NXLevel2API.doc -- Fri Apr 29 15:09:41 PDT 1994
+
+The following new procedures and options have been added to the
+Level 2 Client Library API.  These new features supplement those
+discussed in the  "Display PostScript NX Software Concepts and
+Facilities" manual.  (DPSNXDoc.ps)
+
+CHECKING FOR THE EXTENSION
+
+Adobe recommends that applications use the XDPSExtensionPresent
+routine in the dpstk to check whether DPS is available (either
+through the extension or through a DPS NX agent).  Applications
+SHOULD NOT rely on XListExtensions or XQueryExtension from Xlib,
+since neither of these routines are aware of DPS NX.
+
+If an application is unable to use XDPSExtensionPresent for some
+reason, Adobe recommends that an application use the following
+simple code to determine whether DPS is available (again, either
+through the extension or DPS NX).
+
+	/* First, set up any DPS NX options that are relevant,
+	   such as autolaunching.  See
+	   motifdemos/dpsclock for full details. */
+
+	XDPSNXSetClientArg(XDPSNX_AUTO_LAUNCH, True);
+
+	/* Then, simply test to see whether a context can be
+	   created. */
+	
+	DPSContext ctxt;
+	ctxt = XDPSCreateSimpleContext(
+	  dpy, None, NULL, 0, 0, DPSDefaultTextBackstop,
+	  DPSDefaultErrorProc, NULL);
+	if (!ctxt)
+	   {/* DPS is not available */}
+	else {
+	   /* DPS is available, free the test context */
+	   DPSDestroySpace(DPSSpaceFromContext(ctxt));
+	}
+
+
+NEW PROCEDURES
+
+void XDPSFlushGC(dpy, gc)
+
+     Display *dpy;	Specifies the X server
+     GC gc;		Specifies the GC to flush
+
+     Update the interpreter's copy of the GC, flushing all changes.
+     Whenever the dependent values in a GC associated with a
+     context is changed (either the values of the GC are changed,
+     or the entire GC is to be changed with setXgcdrawable or
+     setgstate), XDPSFlushGC should be called on the changed GC
+     before any PostScript language that depends on the change is
+     sent to the interpreter.
+     
+     This routine flushes all changed values, not just the
+     dependent values, so it can be used as a general purpose
+     GC flushing routine.
+     
+     As described in the "Client Library Supplement for X", 
+     the dependent values are:
+     
+     	clip_mask (or XSetClipRectangles/XSetRegion clipping)
+	clip_x_origin
+	clip_y_origin
+	plane_mask
+	subwindow_mode
+      
+     This procedures subsumes the function of XDPSSyncGCClip,
+     in the case where only the clip in the GC has changed.
+     Use this routine where you are currently using XDPSSyncGCClip,
+     unless you desire the connection synchronization side-effect
+     of calling XDPSSyncGCClip.  The benefit of using XDPSFlushGC
+     instead is that connection synchronization is avoided,
+     improving performance.
+     
+New Option Arguments For XDPSNXSetClientArg
+
+     XDPSNX_GC_UPDATES_SLOW	val := (Display *), default := NULL
+     
+     The val argument specifies an X server and associated agent
+     whose GC update handling mode should be changed.  The
+     library automatically tracks changes to the GCs used by
+     the application.  When any GC is changed by any component
+     of the application (widget, toolkit, etc.), a notification
+     of the change is sent to the agent and both connections
+     (the client to server connection, and the client to agent
+     connection) are synchronized.  This guarantees that the
+     agent tracks all GC changes that it cares about correctly,
+     at the cost of sending unnecessary updates for GC's
+     that the agent doesn't care about.  This is the default
+     mode.
+     
+     XDPSNX_GC_UPDATES_FAST	val := (Display *), default := NULL
+     
+     The val argument specifies an X server and associated agent
+     whose GC update handling mode should be changed.  No automatic
+     tracking of GC changes is done.  The library depends upon
+     the application to do explicit notification of relevant GC
+     changes by using the XDPSFlushGC function.  Setting this mode
+     means that the application commits to all updates, including
+     components linked into the application (widgets, toolkits)
+     which use GCs that also happen to be associated with contexts
+     and gstates.  Since no synchronization happens, and since
+     only those updates which are necessary are sent, there is a
+     significant performance benefit to this mode in certain
+     situations.  Do not use this mode unless you are sure that
+     all components of your application use XDPSFlushGC if they
+     alter GCs that are used by contexts, or else inaccurate
+     display renderings may occur.  The best way to insure this
+     is to create a separate GC for use with DPS, and make sure
+     that the GC is not used by any other component.
+
+     XDPSNX_SEND_BUF_SIZE	val := int, default := XDPSNX_USE_BEST
+     
+     The val argument specifies the size in bytes that the library
+     should use for low-level output buffering on the agent
+     connection.  Sizes less than 4096 or greater than 65536 are
+     ignored.  If your application sends large amounts of data
+     per request, such as for photographic image editing, consider
+     increasing the buffer size to the maximum.  This will reduce
+     the overhead per request and increase performance a moderately
+     small amount.
+
+     

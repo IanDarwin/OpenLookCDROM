@@ -1,0 +1,122 @@
+/* ********************************************************************** *\
+ *         Copyright IBM Corporation 1988,1991 - All Rights Reserved      *
+ *        For full copyright information see:'andrew/config/COPYRITE'     *
+\* ********************************************************************** */
+
+/*
+	$Disclaimer: 
+* Permission to use, copy, modify, and distribute this software and its 
+* documentation for any purpose is hereby granted without fee, 
+* provided that the above copyright notice appear in all copies and that 
+* both that copyright notice, this permission notice, and the following 
+* disclaimer appear in supporting documentation, and that the names of 
+* IBM, Carnegie Mellon University, and other copyright holders, not be 
+* used in advertising or publicity pertaining to distribution of the software 
+* without specific, written prior permission.
+* 
+* IBM, CARNEGIE MELLON UNIVERSITY, AND THE OTHER COPYRIGHT HOLDERS 
+* DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING 
+* ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.  IN NO EVENT 
+* SHALL IBM, CARNEGIE MELLON UNIVERSITY, OR ANY OTHER COPYRIGHT HOLDER 
+* BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY 
+* DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, 
+* WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS 
+* ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE 
+* OF THIS SOFTWARE.
+*  $
+*/
+
+
+/*
+ * AOS specific code.
+ */
+	.globl	.oVncs
+	.set	.oVncs,0
+	.globl	_class_Lookup
+	.globl	_.class_Lookup
+	.text
+	.align	1
+
+#define	MQ	r10	/* Multiply-Quotient register is SCR10 */
+
+#if defined(__STDC__) && !defined(__HIGHC__)
+#define ClassEntry(n) \
+        .globl  _.ClassEntry ## n \
+_.ClassEntry ## n:
+#else
+#define ClassEntry(n) \
+        .globl  _.ClassEntry/**/n \
+_.ClassEntry/**/n:
+#endif
+
+#include <../common/entrydefs.h>
+
+	.data
+	.globl	_class_ErrorReturnValue
+	.text
+L000:
+	stm   	r10,-60(r1)	/* prolog saving registers */
+	ai    	r13,r1,-16	/* second word in data block contains the index */
+	cal   	r1,-60(r1)
+	mr	r12,r0		/* move index into r12 */
+	ls	r12,4(r12)
+	/* Save incoming register parameters */
+	sts   	r2,0(r13)		/* 1st param already correct for class_Lookup */
+	sts   	r3,4(r13)
+	sts   	r4,8(r13)
+	sts   	r5,12(r13)
+	mr	r3,r12		/* index is 2nd param for class_Lookup */
+	get	r0,$_class_Lookup
+	bali	r15,_.class_Lookup	/* Call procedure to return the routine list */
+	ci	r2,0		/* lookup failed? */
+	jne	L001
+
+	/* return the error value in class_ErrorReturnValue */
+	load	r2,_class_ErrorReturnValue
+	ls   	r3,4(r13)		/* restore register parameters except for r2 */
+	ls   	r4,8(r13)
+	ls   	r5,12(r13)
+	ai	r1,r13,16
+	lm	r10,-60(r1)
+	br	r15
+
+	/* non-null value from class_Lookup is index to proc table */
+L001:	sli   	r12,2
+	cas	r3,r2,r12		/* generate index to proper procedure to call */
+	ls	r3,0(r3)
+	ls	r2,0(r3)		/* r2 has procedure address */
+	mr	r0,r3		/* r0 has the data block */
+
+	ls	r3,0(r13)		/* load r3 with r2's value */
+	mts	MQ,r3		/*     and save it in MQ */
+
+	ls   	r3,4(r13)		/* restore register parameters except for r2 */
+	ls   	r4,8(r13)
+	ls   	r5,12(r13)
+	ai    	r1,r13,16		/* reset the stack pointer and restore registers */
+	lm    	r10,-60(r1)
+	brx    	r2		/* branch to the procedure */
+	mfs	MQ,r2		/*     and restore r2 on the way out */
+
+	.long	0xDF07DFA8	/* First gpr=r10 */
+	.short	0x4D04	# npars=4, off=4
+	.data	1
+#undef ClassEntry
+#if defined(__STDC__) && !defined(__HIGHC__)
+#define ClassEntry(n) \
+        .globl  _ClassEntry ## n \
+_ClassEntry ## n: \
+        .long L000 \
+        .long n
+#else
+#define ClassEntry(n) \
+        .globl  _ClassEntry/**/n \
+_ClassEntry/**/n: \
+        .long L000 \
+        .long n
+#endif
+
+#include <../common/entrydefs.h>
+
+	.align	2
+	.data
