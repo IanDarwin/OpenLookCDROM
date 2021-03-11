@@ -9,11 +9,7 @@ VERSION=		OpenLook-XView-1.2a		# CHANGE THIS EVERY TIME!!
 # Used as the Primary Volume Identifier. AVOID volume names with 
 # imbedded slashes as some UNIX versions will be unable to auto-mount them!
 
-# BE SURE YOU CHANGE THIS to where you want the CD image to go.
-# If you get this wrong, it's a partition, and you run as root, 
-# YOU PROBABLY LOSE A WHOLE DISK PARTITION.
-
-#DISK_IMAGE=	/dev/rdsk/c0t2d0s4	# Your mileage WILL vary. CHANGE THIS.
+# Where to put the generated image
 DISK_IMAGE=		$$HOME/olcd_image.iso
 
 # The cdrecord description of the CD burner
@@ -37,9 +33,9 @@ master:
 	echo "Start premastering at `date`"
 
 	mkisofs \
-		-P 'Darwin Open Systems, R R # 1, Palgrave, ON Canada L0N 1P0.' \
+		-P 'Darwin Open Systems, ADDRESS REDACTED' \
 		-A "The OPEN LOOK and XView CD-ROM" \
-		-p 'Ian F. Darwin, ian@darwinsys.com' 	\
+		-p 'Ian F. Darwin, EMAIL REDACTED' 	\
 		-r 			\
 		-V $(VERSION)		\
 		-o $(DISK_IMAGE) \
